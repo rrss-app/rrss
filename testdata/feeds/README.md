@@ -2,7 +2,7 @@
 
 阶段 1 起放入订阅快照（RSS / Atom / JSON Feed）和 OPML，供 `rrss-core` / `rrss-render` 回归。正文带常见 HTML，不要手写「完美 Markdown」充当唯一语料。
 
-合成样例用来钉去重 / 标签 / fragment；`real/` 是 2026-08-23 从公网抓的真实快照，版权归原站点，只做解析回归。为减少收录他人原文，只留解析回归需要的条数，正文只留开头：Hacker News 与 Solidot 各留 10 条、LWN 与少数派各留 5 条，Solidot、LWN、少数派每条描述只留第一句；阮一峰日志只留第一篇的前三段；V2EX 只留前 10 条。Hacker News、少数派、V2EX 的作者名换成 `userN` 占位。
+合成样例用来钉去重 / 标签 / fragment；`real/` 是 2026-08-23 从公网抓的真实快照，版权归原站点，只做解析回归。为减少收录他人原文，只留解析回归需要的条数，正文只留开头：Hacker News 与 Solidot 各留 10 条、LWN 与少数派各留 5 条，Solidot、LWN、少数派每条描述只留第一句；阮一峰日志只留第一篇的前三段；V2EX 只留前 10 条。Hacker News、少数派、V2EX 的作者名换成 `userN` 占位，正文里的个人邮箱换成 `.example` 地址。
 
 | 文件 | 用途 |
 | --- | --- |

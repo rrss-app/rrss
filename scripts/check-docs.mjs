@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // 根目录文档；公开导出版没有 AGENTS.md，缺的文件跳过。
-const files = ["README.md", "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md"].map((name) => resolve(root, name)).filter((path) => existsSync(path));
+const files = ["README.md", "README.en.md", "CHANGELOG.md", "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md"].map((name) => resolve(root, name)).filter((path) => existsSync(path));
 function collect(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = resolve(directory, entry.name);
