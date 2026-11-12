@@ -1,0 +1,8 @@
+{
+  "annotations": [
+    { "key": "readOnlyHint", "value": true, "writes": false },
+    { "key": "destructiveHint", "value": true, "writes": true }
+  ],
+  "name_words": ["write", "edit", "delete", "remove", "move", "create", "update", "append", "rename", "mkdir", "patch", "save", "put", "set", "insert", "replace", "truncate"],
+  "default": false
+}

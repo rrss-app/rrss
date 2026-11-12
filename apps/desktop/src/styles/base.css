@@ -1,0 +1,420 @@
+/* ---------- 基础 ---------- */
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+/* 窗口本身是固定的应用外壳，只有内部面板滚动：根节点绝不滚。内部溢出（输入区里隐藏的提示框、
+   缩放窗口时某一栏暂时放不下）一律在根上裁掉，不能让整页冒出滚动条。clip 不是滚动容器，
+   聚焦、scrollIntoView 也滚不动它；不支持 clip 的旧引擎退回 hidden。body 设为定位元素，
+   挂在 body 上的绝对定位浮层同样被裁住。 */
+html { overflow: hidden; overscroll-behavior: none; }
+body, #root { overflow: hidden; overflow: clip; }
+body { position: relative; }
+body {
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-size);
+  line-height: var(--line-ui);
+  color: var(--text);
+  background: var(--surface);
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+button, input, textarea, select {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+button {
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  padding: 4px 6px;
+  cursor: pointer;
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: color var(--motion) var(--ease), background var(--motion) var(--ease), border-color var(--motion) var(--ease), box-shadow var(--motion) var(--ease);
+}
+button:hover { color: var(--text); background: var(--tint-hover); }
+button:disabled { opacity: 1; color: var(--text-muted); cursor: default; }
+button:disabled:hover { background: transparent; color: var(--text-2); }
+button.primary { color: var(--accent); }
+button.primary:hover { background: var(--accent-tint); color: var(--accent-strong); }
+button.danger { color: var(--danger); }
+button.danger:hover { background: var(--danger-tint); color: var(--danger); }
+:where(button, input, textarea, select, summary, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+::selection { background: var(--selection); }
+.icon { flex: none; }
+.spin { animation: spin 0.9s linear infinite; }
+kbd, .kbd {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-muted);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  padding: 2px 5px;
+  white-space: nowrap;
+}
+.muted { color: var(--text-muted); }
+.mono { font-family: var(--font-mono); font-size: 12px; }
+.row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.toolbar-spacer { flex: 1; min-width: 0; }
+
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: var(--radius-pill);
+}
+*::-webkit-scrollbar-thumb:hover { background-color: var(--text-faint); }
+*::-webkit-scrollbar-track { background: transparent; }
+/* 滚轮边界由 lib/wheelContainment.ts 统一处理；不要再给容器写 overscroll-behavior。 */
+
+/* ---------- 输入控件 ---------- */
+input, textarea, select {
+  background: var(--surface-sunken);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  width: 100%;
+  min-height: var(--control-height);
+  color: var(--text);
+  transition: border-color var(--motion) var(--ease), box-shadow var(--motion) var(--ease);
+}
+input::placeholder, textarea::placeholder { color: var(--text-faint); }
+input:hover, textarea:hover, select:hover { background-color: color-mix(in srgb, var(--surface-sunken) 80%, var(--border-strong)); }
+input:focus, textarea:focus, select:focus {
+  background-color: var(--surface-3);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+input:disabled, textarea:disabled, select:disabled { opacity: 0.6; }
+textarea { resize: none; line-height: 1.5; }
+/* 勾选框自己画：系统样式在 WebView2 / WebKitGTK 各不相同。 */
+input[type="checkbox"] {
+  position: relative;
+  flex: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  box-shadow: none;
+  cursor: pointer;
+}
+input[type="checkbox"]:hover { background: var(--surface); border-color: var(--text-muted); }
+input[type="checkbox"]:checked { border-color: var(--ink); background: var(--ink); }
+input[type="checkbox"]:checked::after {
+  content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px;
+  border: solid var(--on-ink); border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+input[type="checkbox"]:focus { box-shadow: none; }
+input[type="checkbox"]:focus:not(:checked) { border-color: var(--border-strong); background: var(--surface); }
+input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type="checkbox"]:disabled { cursor: default; }
+input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+  width: 100%;
+  min-width: 0;
+}
+.field > span, .field > label { font-size: 12px; font-weight: 500; color: var(--text-2); }
+.field-hint { font-size: 12px; color: var(--text-muted); }
+.field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 16px; }
+.search-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.search-field > .icon { position: absolute; left: 10px; color: var(--text-faint); pointer-events: none; }
+.search-field > input { padding-left: 30px; }
+.secret-input { display: flex; gap: 8px; align-items: center; }
+.secret-input input { flex: 1; min-width: 0; }
+.secret-input > button { flex: none; white-space: nowrap; }
+.hint { font-size: 12px; color: var(--text-muted); margin: 4px 0 8px; line-height: 1.6; }
+.form-status { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; }
+.form-status.error { color: var(--danger); }
+.form-actions { margin-top: 16px; }
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+  background: transparent;
+  border-radius: 0;
+  overflow-wrap: anywhere;
+  border: 0;
+  border-left: 2px solid var(--accent);
+}
+.notice > .icon { margin-top: 2px; color: var(--accent); }
+.notice.ok { border-left-color: var(--focus); }
+.notice.ok > .icon { color: var(--focus); }
+.notice.error { border-left-color: var(--danger); }
+.notice.error > .icon { color: var(--danger); }
+.notice.warn { border-left-color: var(--warn); }
+.notice.warn > .icon { color: var(--warn); }
+
+/* ---------- 按钮 ---------- */
+.btn {
+  min-height: var(--control-height);
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: none;
+}
+.btn:hover { background: var(--tint-hover); border-color: var(--text-faint); color: var(--text); }
+.btn:active { background: var(--tint-press); }
+.btn.primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12); }
+.btn.primary:hover { background: color-mix(in srgb, var(--ink) 86%, var(--surface)); border-color: transparent; color: var(--on-ink); }
+.btn.danger { color: var(--danger); }
+.btn.danger:hover { background: var(--danger-tint); border-color: var(--danger); }
+.btn.ghost { border-color: transparent; background: transparent; box-shadow: none; color: var(--text-2); }
+.btn.ghost:hover { background: var(--tint-hover); color: var(--text); }
+.btn.sm { min-height: var(--control-height-sm); padding: 0 10px; font-size: 12px; }
+.btn.icon { width: var(--control-height); padding: 0; }
+.btn:disabled, .btn:disabled:hover { background: transparent; border-color: var(--border); color: var(--text-muted); box-shadow: none; }
+.btn.primary:disabled, .btn.primary:disabled:hover { background: transparent; border-color: var(--border); color: var(--text-muted); box-shadow: none; }
+
+.tool-btn {
+  min-height: var(--control-height);
+  padding: 0 10px;
+  border-radius: var(--radius);
+  color: var(--text-2);
+  font-size: 13px;
+}
+.tool-btn:hover { color: var(--text); background: var(--tint-hover); }
+.tool-btn.icon-only { width: var(--control-height); padding: 0; }
+.tool-btn.primary { color: var(--accent); }
+.tool-btn.primary:hover { background: var(--accent-tint); color: var(--accent-strong); }
+.tool-btn[aria-pressed="true"] { color: var(--accent); }
+
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--tint-hover);
+  border-radius: var(--radius-pill);
+}
+.segmented .tab, .segmented .chip-btn {
+  min-height: 26px;
+  padding: 0 10px;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--text-2);
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: none;
+}
+.segmented .tab:hover, .segmented .chip-btn:hover { color: var(--text); background: var(--tint-hover); }
+.segmented .tab[data-on="1"], .segmented .chip-btn[data-on="1"] {
+  color: var(--text);
+  background: transparent;
+  box-shadow: none;
+  font-weight: 500;
+}
+/* 分段滑块（Segmented.tsx）：只平移一枚独立的纸签，按钮语义与键盘行为留在调用方。 */
+.segmented, .reader-article-drawer-scopes, .reader-context-modes { position: relative; isolation: isolate; background: var(--tint-hover); }
+.segmented > button, .reader-article-drawer-scopes > button, .reader-context-modes > button { position: relative; z-index: 1; }
+.segmented > .segment-thumb, .reader-article-drawer-scopes > .segment-thumb, .reader-context-modes > .segment-thumb {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  background: var(--surface-3);
+  box-shadow: var(--lift);
+  border-radius: var(--radius-pill);
+  transition: transform var(--motion) var(--ease);
+}
+
+.tab {
+  padding: 6px 10px;
+  color: var(--text-2);
+  border-radius: var(--radius);
+}
+.tab:hover { color: var(--text); background: var(--tint-hover); }
+.tab[data-on="1"] { color: var(--text); font-weight: 600; }
+.tab.tool { gap: 5px; }
+.menu-trigger { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.menu-trigger[aria-expanded="true"] { background: var(--tint-hover); color: var(--text); }
+.menu-caret { color: var(--text-faint); margin-left: -2px; }
+/* 下拉菜单（MenuSelect.tsx）：外壳同右键菜单；勾号固定占位，只在选中时显示。 */
+.menu-list { max-height: 320px; overflow: auto; }
+.menu-list .menu-check { visibility: hidden; }
+.menu-list [aria-checked="true"] .menu-check { visibility: visible; color: var(--text); }
+.menu-list .menu-count { margin-left: auto; padding-left: var(--space-3); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+:is(.menu-label, .menu-select-value) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 表单里的单选下拉：外观同输入框。 */
+.menu-select {
+  display: inline-flex; align-items: center; gap: 8px; min-height: var(--control-height); padding: 0 10px;
+  border: 1px solid transparent; border-radius: var(--radius); background: var(--surface-sunken); color: var(--text); font: inherit; text-align: left;
+}
+.menu-select:hover, .menu-select[aria-expanded="true"] { color: var(--text); background-color: color-mix(in srgb, var(--surface-sunken) 80%, var(--border-strong)); }
+.menu-select .menu-select-value { flex: 1; }
+.menu-select .menu-caret { margin-left: 0; }
+.field .menu-select { width: 100%; }
+
+.chips, .scope-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-btn {
+  min-height: var(--control-height-sm);
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+}
+.chip-btn:hover { color: var(--text); border-color: var(--border-strong); background: var(--tint-hover); }
+.chip-btn[data-on="1"] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  font-weight: 600;
+}
+.chip-btn.toggle .toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  transition: background var(--motion) var(--ease);
+}
+.chip-btn.toggle[data-on="1"] .toggle-dot { background: var(--focus); }
+.chip-btn.danger-text { color: var(--danger); }
+.chip-btn.danger-text:hover { border-color: var(--danger); background: var(--danger-tint); }
+
+.menu {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-2);
+  padding: 6px;
+}
+.menu-item {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius);
+  color: var(--text);
+  text-align: left;
+}
+.menu-item > .icon { color: var(--text-faint); }
+.menu-item:hover { background: var(--tint-hover); }
+.menu-item:hover > .icon { color: var(--text); }
+.menu-item:disabled { color: var(--text-muted); }
+.menu-item[aria-pressed="true"] { color: var(--accent); background: var(--accent-tint); }
+.menu-item[aria-pressed="true"] > .icon, .menu-item[aria-pressed="true"] svg { color: var(--accent); }
+
+.meta-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  margin-left: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  background: transparent;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.meta-tag.accent, .meta-tag.interest { color: var(--accent); background: transparent; }
+.meta-tag.starred { color: var(--accent); background: transparent; }
+.meta-tag.warn { color: var(--warn); background: transparent; }
+.meta-tag.danger { color: var(--danger); background: transparent; }
+
+.source-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-ui);
+  line-height: 1;
+  letter-spacing: 0;
+  color: hsl(var(--avatar-hue) 38% 32%);
+  background: hsl(var(--avatar-hue) 40% 88%);
+}
+/* 图标铺满头像框；显式清掉外边距，放在任何容器里都不会被那里的 img 规则挤偏。 */
+span.source-avatar > img { display: block; width: 100%; height: 100%; max-width: none; margin: 0; border-radius: inherit; object-fit: contain; box-shadow: none; }
+:root[data-theme="dark"] .source-avatar {
+  color: hsl(var(--avatar-hue) 45% 82%);
+  background: hsl(var(--avatar-hue) 22% 26%);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .source-avatar {
+    color: hsl(var(--avatar-hue) 45% 82%);
+    background: hsl(var(--avatar-hue) 22% 26%);
+  }
+}
+
+/* ---------- 动效 ---------- */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slide-in {
+  from { transform: translateX(16px); opacity: 0.5; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes rise-in {
+  from { transform: translateY(8px); opacity: 0.5; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+/* 下拉与浮出卡：从触发点方向放大淡入 140ms（0.97 倍、4px），收起 100ms。用独立的 translate / scale，
+   不覆盖贴边平移等写在 transform 上的定位。 */
+@keyframes pop-down-in { from { opacity: 0; translate: 0 -4px; scale: 0.97; } }
+@keyframes pop-up-in { from { opacity: 0; translate: 0 4px; scale: 0.97; } }
+@keyframes pop-down-out { to { opacity: 0; translate: 0 -4px; scale: 0.97; } }
+@keyframes pop-up-out { to { opacity: 0; translate: 0 4px; scale: 0.97; } }
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+/* 开关的状态文字：两种叠在一格，宽度取较长者，只显示当前那个。 */
+.toggle-label { display: inline-grid; }
+.toggle-label > span { grid-area: 1 / 1; }
+.chip-btn.toggle[data-on="1"] .toggle-label > :last-child, .chip-btn.toggle[data-on="0"] .toggle-label > :first-child { visibility: hidden; }
+/* 处理中的按钮：文字留着占宽、只是看不见，中间转圈；不换成「保存中…」之类，按钮不变宽。 */
+.btn[aria-busy="true"] { position: relative; color: transparent !important; }
+.btn[aria-busy="true"] > * { visibility: hidden; }
+.btn[aria-busy="true"]::after {
+  content: ""; position: absolute; inset: 0; width: 14px; height: 14px; margin: auto; border-radius: 50%;
+  border: 2px solid var(--busy-ring, var(--text-muted)); border-right-color: transparent; animation: spin 0.8s linear infinite;
+}
+.btn.primary { --busy-ring: var(--on-ink); }

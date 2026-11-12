@@ -1,0 +1,5 @@
+{"type":"agent_start"}
+{"type":"message_end","message":{"role":"user","content":"hi"}}
+{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"401 Incorrect API key provided: sk-abcd****wxyz"}}
+{"type":"agent_end","messages":[],"willRetry":false}
+{"type":"agent_settled"}

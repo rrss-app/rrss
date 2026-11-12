@@ -1,0 +1,174 @@
+name: Release
+
+# 与 CI 共用仓库变量 CI_RUNNER：不设则 GitHub 托管，设成 rrss 则自托管。
+# 三个包：Linux 原生、Windows mingw（Linux runner 上交叉编译）、Windows MSVC（调用 release-msvc.yml，托管 Windows runner）。
+# 推送 v* 标签时先核对标签与应用版本一致，三个包都成功后建一个草稿 Release（附 SHA256SUMS），检查后手动发布。
+# 手动触发只留 artifact；MSVC 默认不跑（私有仓库托管 Windows 分钟按 2 倍计费），需要时勾选 msvc。
+on:
+  workflow_dispatch:
+    inputs:
+      msvc:
+        description: 同时编 Windows MSVC 包（托管 Windows runner）
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_BUILD_JOBS: "4"
+  MAKEFLAGS: "-j4"
+  CMAKE_BUILD_PARALLEL_LEVEL: "4"
+
+jobs:
+  version:
+    if: github.repository == 'rrss-app/rrss' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          v=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          for f in crates/rrss-desktop/tauri.conf.json apps/desktop/package.json; do
+            grep -q "\"version\": \"$v\"" "$f" || { echo "::error::$f 的版本不是 $v"; exit 1; }
+          done
+          [ "$GITHUB_REF_NAME" = "v$v" ] || { echo "::error::标签 $GITHUB_REF_NAME 与应用版本 v$v 不一致"; exit 1; }
+          node scripts/release-notes.mjs "$GITHUB_REF_NAME" >/dev/null || { echo "::error::CHANGELOG.md 没有 $GITHUB_REF_NAME 的说明"; exit 1; }
+
+  build:
+    needs: version
+    # 发版标签只在公开仓库构建发布包；私有仓库的标签由 public-sync 同步过去。手动触发两边都可用。
+    if: github.repository == 'rrss-app/rrss' || github.event_name == 'workflow_dispatch'
+    name: release (${{ matrix.artifact }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            artifact: rrss-linux-x64
+            bin: rrss
+            kind: native-linux
+          # Linux runner 上 mingw 交叉编 Windows（含 WebView2Loader.dll）
+          - os: ubuntu-22.04
+            target: x86_64-pc-windows-gnu
+            artifact: rrss-windows-x64
+            bin: rrss.exe
+            kind: cross-windows-gnu
+
+    runs-on: "${{ vars.CI_RUNNER || matrix.os }}"
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Self-hosted cache
+        run: bash .github/ci/prepare-runner.sh rust node
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: runner.environment != 'self-hosted'
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Ensure Rust target (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: rustup target add ${{ matrix.target }}
+
+      - uses: pnpm/action-setup@v5
+        if: runner.environment != 'self-hosted'
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v5
+        if: runner.environment != 'self-hosted'
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+
+      - name: Install Linux native build dependencies
+        if: matrix.kind == 'native-linux'
+        run: .github/apt/install.sh .github/apt/packages.txt
+
+      - name: Install mingw cross toolchain
+        if: matrix.kind == 'cross-windows-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 zip unzip ca-certificates
+          rustup target add x86_64-pc-windows-gnu
+
+      - uses: swatinem/rust-cache@v2
+        if: runner.environment != 'self-hosted'
+        with:
+          shared-key: release-${{ matrix.artifact }}-${{ matrix.target }}-v1
+
+      - name: Frontend build
+        working-directory: apps/desktop
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: cargo build release (native Linux)
+        if: matrix.kind == 'native-linux'
+        run: cargo build --release -p rrss-desktop
+
+      - name: cargo build release (Windows mingw cross)
+        if: matrix.kind == 'cross-windows-gnu'
+        env:
+          CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
+        run: cargo build --release -p rrss-desktop --target ${{ matrix.target }}
+
+      - name: Package (Linux)
+        if: matrix.kind == 'native-linux'
+        run: |
+          bin_dir="${CARGO_TARGET_DIR:-target}/release"
+          mkdir -p dist
+          cp "$bin_dir/${{ matrix.bin }}" dist/
+          tar -czf "dist/${{ matrix.artifact }}.tar.gz" -C dist "${{ matrix.bin }}"
+
+      - name: Package (Windows mingw + WebView2Loader)
+        if: matrix.kind == 'cross-windows-gnu'
+        run: bash .github/ci/package-windows-mingw.sh "${{ matrix.target }}" "${{ matrix.bin }}" "${{ matrix.artifact }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.*
+
+  msvc:
+    needs: version
+    if: github.repository == 'rrss-app/rrss' || inputs.msvc
+    uses: ./.github/workflows/release-msvc.yml
+    with:
+      c_and_link: llvm
+      rust: stable
+      llvm: latest
+
+  release:
+    needs: [build, msvc]
+    runs-on: "${{ vars.CI_RUNNER || 'ubuntu-22.04' }}"
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v5
+      - name: Release notes from CHANGELOG.md
+        run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
+      - uses: actions/download-artifact@v7
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: |
+          rm -f ./*.sha256
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+      - uses: softprops/action-gh-release@v3
+        with:
+          name: RRSS ${{ github.ref_name }}
+          body_path: ${{ runner.temp }}/release-notes.md
+          draft: true
+          files: dist/*

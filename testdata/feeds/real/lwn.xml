@@ -1,0 +1,58 @@
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"
+    		xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <channel>
+        <title>LWN.net</title>
+        <link>https://lwn.net</link>
+        <description> LWN.net is a comprehensive source of news and opinions from
+        and about the Linux community.  This is the main LWN.net feed,
+        listing all articles which are posted to the site front page.
+</description>
+        <language>en-us</language>
+        <pubDate>Sun, 23 Aug 2026 13:46:16 +0000</pubDate>
+        <lastBuildDate>Sun, 23 Aug 2026 13:46:16 +0000</lastBuildDate>
+        <docs>https://www.rssboard.org/rss-specification</docs>
+        <webMaster>lwn@lwn.net</webMaster>
+        <atom:link href="https://lwn.net/headlines/rss2"
+    		rel="self" type="application/rss+xml"/>
+    <item>
+        <title>Sunday's stable kernel set</title>
+        <link>https://lwn.net/Articles/1090099/</link>
+        <guid>https://lwn.net/Articles/1090099/</guid>
+        <dc:creator>corbet</dc:creator>
+        <description>&lt;p&gt;The 7.1.10, 6.18.46, 6.12.105, 6.6.153, 6.1.184, 5.15.217, and 5.10.266 stable kernels have all been released; each cont …&lt;/p&gt;</description>
+        <pubDate>Sun, 23 Aug 2026 13:46:14 +0000</pubDate>
+        </item>
+<item>
+        <title>Mourning Steve French</title>
+        <link>https://lwn.net/Articles/1090098/</link>
+        <guid>https://lwn.net/Articles/1090098/</guid>
+        <dc:creator>corbet</dc:creator>
+        <description>&lt;p&gt;From Jeremy Allison we have the sad news of the passing of Steve French. …&lt;/p&gt;</description>
+        <pubDate>Sun, 23 Aug 2026 13:40:42 +0000</pubDate>
+        </item>
+<item>
+        <title>[$] Considering the OpenMDW license</title>
+        <link>https://lwn.net/Articles/1089251/</link>
+        <guid>https://lwn.net/Articles/1089251/</guid>
+        <dc:creator>corbet</dc:creator>
+        <description>&lt;p&gt;The open-source world has been struggling for a few years now to understand how to approach large language models (LLMs) …&lt;/p&gt;</description>
+        <pubDate>Fri, 21 Aug 2026 13:42:29 +0000</pubDate>
+        </item>
+<item>
+        <title>Security updates for Friday</title>
+        <link>https://lwn.net/Articles/1089999/</link>
+        <guid>https://lwn.net/Articles/1089999/</guid>
+        <dc:creator>jzb</dc:creator>
+        <description>&lt;p&gt;Security updates have been issued by AlmaLinux (ansible-core and pcp), Debian (chromium, libgit2, python-httplib2, and s …&lt;/p&gt;</description>
+        <pubDate>Fri, 21 Aug 2026 13:17:30 +0000</pubDate>
+        </item>
+<item>
+        <title>[$] A look at the Quickshell desktop-component toolkit</title>
+        <link>https://lwn.net/Articles/1083090/</link>
+        <guid>https://lwn.net/Articles/1083090/</guid>
+        <dc:creator>jzb</dc:creator>
+        <description>&lt;p&gt;Quickshell is a toolkit for building desktop components, such as toolbars or menus. …&lt;/p&gt;</description>
+        <pubDate>Thu, 20 Aug 2026 19:39:51 +0000</pubDate>
+        </item>
+        </channel>
+</rss>

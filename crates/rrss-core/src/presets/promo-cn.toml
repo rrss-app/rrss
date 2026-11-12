@@ -1,0 +1,24 @@
+id = "promo-cn"
+name = "促销与抽奖"
+description = "限时、福利、抽奖、优惠码一类促销稿"
+polarity_default = "dislike"
+
+[[rules]]
+dimension = "title_kw"
+pattern = "限时"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "福利"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "抽奖"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "优惠码"
+weight = 10

@@ -1,0 +1,3 @@
+# Windows 目标交叉检查（ci.yml 的 windows-check）用的 mingw 工具链；与 release.yml 的 Windows 包同一路线。
+gcc-mingw-w64-x86-64
+g++-mingw-w64-x86-64

@@ -1,0 +1,354 @@
+/* ---------- 对话 ---------- */
+.chat-header { position: relative; z-index: 1; flex: none; background: var(--surface); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); align-items: center; height: 48px; padding: 0 16px; border-bottom: 1px solid var(--border); }
+.chat-backchip { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: min(360px, 100%); width: fit-content; height: 30px; padding: 0 12px 0 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-pill); color: var(--text-2); font-size: 12.5px; }
+.chat-backchip:hover { background: var(--tint-hover); color: var(--text); }
+.chat-backchip > :not(em) { flex-shrink: 0; }
+.chat-backchip em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px/1.5 var(--font-read); }
+.chat-backchip kbd { font-size: 10px; }
+.chat-header h1 { grid-column: 2; margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center; font: 600 14px/1.5 var(--font-read); }
+.chat-pane { padding: 28px 0 40px; }
+/* 版心 840px，含两侧各 40px 内边距共 920px，与过程条、输入区同宽。 */
+.chat-column { width: 100%; max-width: 920px; padding-inline: 40px; margin: 0 auto; }
+.chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 72px 16px 32px;
+  color: var(--text-muted);
+}
+.chat-empty strong { font-size: 15px; color: var(--text); margin-bottom: 4px; }
+.chat-empty p { margin: 0; max-width: 360px; line-height: 1.6; }
+.chat-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+/* 等待过程（单行）：脉冲点 + 当前步骤（扫光文字）+ 参数摘要（次级色衬线）+ 计时。换步骤时新文字自下方 4px 上推淡入。 */
+.chat-wait { display: flex; align-items: center; gap: 8px; min-height: 24px; margin: 0 0 20px; color: var(--text-2); font-size: 13px; }
+.chat-wait-pulse { position: relative; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.chat-wait-pulse::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; background: var(--accent); opacity: .25; animation: chat-wait-halo 1.4s var(--ease) infinite; }
+@keyframes chat-wait-halo { 0% { transform: scale(.5); opacity: .45; } 100% { transform: scale(1.6); opacity: 0; } }
+.chat-wait-step { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; animation: chat-wait-swap 200ms var(--ease) both; }
+@keyframes chat-wait-swap { from { opacity: 0; translate: 0 4px; } }
+.chat-wait-label {
+  flex: none; white-space: nowrap; color: transparent; -webkit-background-clip: text; background-clip: text; background-size: 250% 100%;
+  background-image: linear-gradient(90deg, var(--text-2) 0%, var(--text-2) 40%, var(--text-faint) 50%, var(--text-2) 60%, var(--text-2) 100%);
+  animation: chat-wait-sheen 2s linear infinite;
+}
+@keyframes chat-wait-sheen { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+.chat-wait-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-family: var(--font-read); }
+.chat-wait-time { flex: none; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+/* 外部工具的服务名用等宽小一号；在扫光文字里保持透明，扫光照样走过。 */
+.chat-srv { font-family: var(--font-mono); font-size: .92em; }
+.chat-wait-asking { white-space: nowrap; color: var(--text-2); }
+.chat-wait-asking .chat-srv, .chat-trace-label .chat-srv, .chat-confirm .chat-srv { color: var(--text-muted); }
+/* 等用户确认时停下脉冲。 */
+.chat-wait[data-paused] .chat-wait-pulse::after { animation: none; opacity: 0; }
+/* 减少动态效果：不扫光、不脉冲，文字照常可见。 */
+@media (prefers-reduced-motion: reduce) {
+  .chat-wait-pulse::after { animation: none; opacity: 0; }
+  .chat-wait-label { color: var(--text-2); background: none; }
+}
+/* 开始出字后收成一行「查阅了 N 处 · 用时 X 秒」，点开列出各步骤。 */
+.chat-trace { margin: 0 0 8px; }
+.chat-trace[data-enter] { animation: chat-paragraph-in 240ms var(--ease) both; }
+.chat-trace-toggle { height: 26px; margin-left: -8px; padding: 0 8px; color: var(--text-muted); font-size: 12.5px; }
+.chat-trace-toggle:hover { color: var(--text-2); }
+.chat-trace-toggle .icon { transition: transform 200ms var(--ease); }
+.chat-trace-toggle[aria-expanded="true"] .icon { transform: rotate(180deg); }
+.chat-trace-list { margin: 4px 0 12px; padding: 0; list-style: none; font-size: 13px; animation: chat-message-in 200ms var(--ease) both; }
+.chat-trace-list li { display: flex; align-items: center; gap: 8px; min-height: 26px; color: var(--text-muted); }
+.chat-trace-icon { display: grid; place-items: center; flex: none; width: 16px; color: var(--text-faint); }
+.chat-trace-list li[data-error] .chat-trace-icon { color: var(--danger); }
+.chat-trace-label { flex: none; }
+.chat-trace-approval { flex: none; color: var(--focus); font-size: 11.5px; }
+.chat-trace-approval[data-denied] { color: var(--text-muted); }
+.chat-trace-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-read); }
+.chat-trace-time { margin-left: auto; padding-left: 12px; color: var(--text-faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.chat-load-older { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin: 0 0 16px; font-size: 12px; }
+.chat-load-older .btn { display: inline-flex; align-items: center; gap: 6px; }
+.bubble { max-width: 100%; margin-bottom: 20px; overflow-wrap: anywhere; }
+.bubble.user { width: fit-content; max-width: 78%; margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; }
+.bubble.user .message-body { padding: 12px 16px; background: var(--surface-3); box-shadow: var(--lift); border-radius: 14px 14px 4px 14px; font: 14px/1.7 var(--font-ui); max-width: 100%; }
+.bubble.user p { margin: 0; white-space: pre-wrap; }
+.bubble.user .reader { font: inherit; }
+/* 只作用于 ChatMessages（含简报追问），不改变阅读器与简报正文的块 IR。 */
+.bubble.assistant, .bubble.assistant .reader { font: 15.5px/1.85 var(--font-read); color: var(--text); }
+.bubble.assistant p { margin: 0 0 .8em; }
+.bubble.assistant h2, .bubble.assistant h3 { font-family: var(--font-read); }
+.bubble .reader p:last-child, .bubble.assistant > p:last-child { margin-bottom: 0; }
+.bubble a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--border-strong); }
+.bubble a:hover { border-bottom-color: var(--accent); }
+.message-citations { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; max-width: 100%; }
+/* 回复里的链接：本地文章前加文档小图标，与外部链接区分；外部链接后用小号次级色标出站点与「↗」。悬停预览见 LinkPreview。 */
+.bubble.assistant a[href^="rrss://article/"]::before {
+  content: ""; display: inline-block; width: 12px; height: 12px; margin: 0 3px 0 1px; vertical-align: -1px; background: currentColor; opacity: .5;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6'%3E%3Cpath d='M4 2h6l3 3v9H4z'/%3E%3Cpath d='M6 8h5M6 11h4'/%3E%3C/svg%3E") center/contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6'%3E%3Cpath d='M4 2h6l3 3v9H4z'/%3E%3Cpath d='M6 8h5M6 11h4'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+/* 站点名只是视觉提示：替代文字为空，不并进链接的可访问名称（不支持该写法的引擎退回第一行）。 */
+.bubble.assistant a[data-site]::after { content: attr(data-site) " ↗"; content: attr(data-site) " ↗" / ""; margin-left: 3px; color: var(--text-faint); font: 11.5px var(--font-ui); }
+/* 悬停卡片：与简报来源卡同一套，多一行操作；从链接方向放大淡入 140ms，收起 100ms。 */
+.digest-source-card.chat-link-card { padding: 12px 14px; box-shadow: var(--shadow-3); transform-origin: top left; animation: pop-down-in 140ms var(--ease) both; }
+.digest-source-card.chat-link-card[data-up] { transform-origin: bottom left; animation-name: pop-up-in; }
+.digest-source-card.chat-link-card[data-leaving] { pointer-events: none; animation: pop-down-out 100ms var(--ease) forwards; }
+.digest-source-card.chat-link-card[data-up][data-leaving] { animation-name: pop-up-out; }
+.chat-link-card .digest-source-card-meta { align-items: center; font-size: 11.5px; }
+.chat-link-card .digest-source-card-title { margin: 6px 0 4px; font: 600 14px/1.5 var(--font-read); }
+.chat-link-card .digest-source-card-summary { margin: 0; font: 13px/1.65 var(--font-read); -webkit-line-clamp: 3; }
+.chat-link-unread { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.chat-link-url { margin: 6px 0 0; color: var(--text-2); font: 12px/1.5 var(--font-mono); word-break: break-all; }
+.chat-link-actions { display: flex; gap: 4px; margin: 10px -6px -4px; padding-top: 8px; border-top: 1px solid var(--border); }
+.chat-link-actions button { height: 28px; padding: 0 8px; font-size: 12px; }
+.chat-link-actions kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-faint); font: 10.5px/15px var(--font-mono); }
+/* 自己刚发出的一条：发送中半透明，宿主接受后变实。 */
+.bubble.user { transition: opacity 200ms var(--ease); }
+.bubble[data-pending] { opacity: .62; }
+/* 只在出现那一下播：发出的提问、开始出字的回复上浮淡入；从历史读回、换成落库那条时不播。 */
+.bubble[data-enter] { animation: chat-message-in 220ms var(--ease) both; }
+@keyframes chat-message-in { from { opacity: 0; translate: 0 6px; } }
+/* 流式回复：新出现的段落只淡入；末尾一枚闪烁的块状光标，回复结束随这条一起换走。 */
+.bubble[data-streaming] .reader > [data-block-id] { animation: chat-paragraph-in 260ms var(--ease) both; }
+@keyframes chat-paragraph-in { from { opacity: 0; } }
+.bubble[data-streaming] > p:last-child::after,
+.bubble[data-streaming] .reader > [data-block-id]:nth-last-child(1 of [data-block-id])::after {
+  content: ""; display: inline-block; width: 7px; height: 1.05em; margin-left: 2px; vertical-align: -2px; border-radius: 1px;
+  background: var(--text-muted); animation: chat-caret 1s steps(1) infinite;
+}
+@keyframes chat-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .bubble[data-streaming] > p:last-child::after,
+  .bubble[data-streaming] .reader > [data-block-id]:nth-last-child(1 of [data-block-id])::after { animation: none; }
+}
+.bubble.user .message-citations { justify-content: flex-end; }
+.chat-status, .chat-load-older, .chat-load-older .btn, .message-error { color: var(--text-muted); }
+/* 回复位置的失败提示：沿用 .notice.error 的左侧红线，与回复同宽，留到下一轮开始。原因可能是上游原文，保留换行、长串可折行。 */
+.chat-failure { margin: 0 0 20px; animation: chat-message-in 200ms var(--ease) both; }
+.chat-failure-body { flex: 1; min-width: 0; }
+.chat-failure-body strong { font-weight: 600; }
+.chat-failure-body p { margin: 2px 0 0; color: var(--text-2); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-failure > .btn { flex: none; align-self: center; }
+/* 进行中的进度、未验证版本提示和网页读取确认。 */
+.chat-activity { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 920px; padding-inline: 40px; margin: 0 auto 8px; }
+.chat-status-line { margin: 0; padding: 0 4px; font-size: 12px; color: var(--text-muted); }
+.chat-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  border-left: 2px solid var(--warn);
+}
+.chat-notice > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.chat-confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 12px 16px;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+  border-left: 2px solid var(--accent);
+}
+.chat-confirm > div { flex: 1 1 240px; min-width: 0; }
+.chat-confirm p { margin: 4px 0; overflow-wrap: anywhere; color: var(--text-2); }
+.chat-confirm small { display: block; }
+.chat-confirm-args { max-height: calc(4 * 1.55em + 12px); margin: 6px 0; padding: 6px 8px; overflow: hidden; border-radius: var(--radius-sm); background: var(--surface-sunken); color: var(--text-2); font: 11.5px/1.55 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-confirm-remember { display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 4px; color: var(--text-2); font-size: 12px; cursor: pointer; }
+
+/* ---------- 输入区 ---------- */
+.composer { flex: none; background: var(--surface); }
+/* 回到最新：挂在输入区顶边上方 12px，随输入区长高一起上移。平时 34px 圆键；悬停向左展开「回到最新」，
+   不在底部时来了新内容展开成强调色的「有新回复」。出现 160 / 200ms，消失约七成。 */
+.composer-jump { max-width: 920px; height: 0; margin: 0 auto; padding-inline: 40px; }
+.composer-jump > div { position: relative; height: 0; }
+.jump-latest {
+  position: absolute; z-index: 3; right: 0; bottom: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 0;
+  min-width: 34px; height: 34px; padding: 0 9.5px; border-radius: 17px; background: var(--surface-3); box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-2); color: var(--text-2);
+  opacity: 0; transform: translateY(6px) scale(.92); transform-origin: right center; pointer-events: none;
+  transition: opacity 110ms var(--ease), transform 140ms var(--ease), background var(--motion) var(--ease), color var(--motion) var(--ease),
+    padding 220ms var(--ease), gap 220ms var(--ease);
+}
+.jump-latest[data-show] { opacity: 1; transform: none; pointer-events: auto; transition-duration: 160ms, 200ms, var(--motion), var(--motion), 220ms, 220ms; }
+.jump-latest svg { flex: none; width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.jump-latest-label { max-width: 0; overflow: hidden; white-space: nowrap; font-size: 12.5px; opacity: 0; transition: max-width 220ms var(--ease), opacity 160ms var(--ease); }
+.jump-latest:is(:hover, :focus-visible, [data-new]) { gap: 6px; padding: 0 14px 0 12px; color: var(--text); }
+.jump-latest:is(:hover, :focus-visible, [data-new]) .jump-latest-label { max-width: 72px; opacity: 1; }
+.jump-latest[data-new] { background: var(--accent); box-shadow: var(--shadow-2); color: var(--on-accent); }
+/* 浮在正文上，底色必须一直不透明：通用按钮的悬停 / 按下薄雾是半透明的，会让正文透上来。 */
+button.jump-latest:not(:disabled):hover { background: color-mix(in srgb, var(--ink) 5%, var(--surface-3)); }
+button.jump-latest:not(:disabled):active { background: color-mix(in srgb, var(--ink) 9%, var(--surface-3)); }
+button.jump-latest[data-new]:not(:disabled):is(:hover, :active) { background: var(--accent-strong); }
+/* 对话区够宽时放在正文右缘外 16px，不压正文；放不下（版心 920 + 两侧各留 30）就收进版心、右缘对齐输入卡。 */
+@container composer (width >= 980px) { .jump-latest { right: -50px; } }
+.composer-card { width: 100%; max-width: 920px; margin: 0 auto; }
+.composer-content { position: relative; max-width: 920px; margin: 0 auto; padding: 0 40px 20px; }
+.composer-context { display: flex; align-items: center; gap: 4px; margin: 4px 0 8px; font-size: 12px; color: var(--text-muted); }
+.composer .cite-row { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 8px; max-height: 144px; overflow-y: auto; }
+.composer .input-row { display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 12px; border-radius: 10px; background: var(--surface-3); box-shadow: var(--lift); transition: box-shadow var(--motion) var(--ease); }
+.composer .input-row:focus-within { box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px var(--accent-tint), var(--lift); }
+.composer textarea { flex: 1; min-width: 0; min-height: 32px; max-height: 160px; padding: 4px 0; resize: none; field-sizing: content; border: 0; border-radius: 0; background: none; box-shadow: none; font: 13.5px/24px var(--font-ui); }
+.composer textarea:focus { outline: none; background: none; box-shadow: none; }
+/* 输入行还要放模型、圆环与发送：提示语只占一行，放不下截断。 */
+.composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.composer .model-picker[data-variant="chip"] { min-width: 0; max-width: 45%; flex: none; }
+.composer .model-picker[data-variant="chip"] .model-picker-trigger { min-height: 28px; padding-inline: 8px; }
+.composer .input-row .reader-tool-tip { flex: none; }
+.composer .model-picker[data-variant="chip"] .model-picker-text { max-width: 160px; }
+.chat-model-level { flex: none; margin-left: -4px; color: var(--text-muted); white-space: nowrap; }
+.composer-sep { flex: none; width: 1px; height: 16px; margin: 0 2px; background: var(--border); }
+
+/* 对话输入区（简报台子除外）：输入卡一行起，只有输入框与回车键；模型与用量圆环在卡下常驻的模型行，右缘对齐输入卡。 */
+.composer:not([data-dock]) { container: composer / inline-size; }
+.composer:not([data-dock]) .composer-content { padding-bottom: 8px; }
+.composer:not([data-dock]) .input-row { align-items: flex-end; }
+.composer .composer-send[data-ghost] { background: none; color: var(--text-2); transition: background var(--motion) var(--ease), color var(--motion) var(--ease); }
+.composer .composer-send[data-ghost]:disabled { opacity: 1; }
+.composer .composer-send[data-ghost]:hover { background: var(--tint-hover); color: var(--text); }
+/* 发送键 ↔ 停止键：新图标 180ms 从 0.6 倍、-30° 缩放旋入。 */
+.composer-send[data-swap] svg { animation: composer-icon-in 180ms var(--ease) both; }
+@keyframes composer-icon-in { from { opacity: 0; scale: 0.6; rotate: -30deg; } }
+.composer-model-row { display: flex; justify-content: flex-end; align-items: center; gap: 2px; height: 28px; margin-top: 4px; }
+.composer .composer-model-row .model-picker[data-variant="chip"] { max-width: 70%; }
+.composer .composer-model-row .model-picker[data-variant="chip"] .model-picker-trigger { height: 26px; min-height: 26px; padding: 0 6px; color: var(--text); font-size: 13px; }
+.composer .composer-model-row .model-picker[data-variant="chip"] .model-picker-trigger:hover { background: var(--tint-hover); }
+.composer .composer-model-row .model-picker-label { gap: 12px; }
+.composer .composer-model-row .model-picker[data-variant="chip"] .model-picker-text { max-width: none; font: 13px var(--font-ui); }
+.composer .composer-model-row .model-picker[data-variant="chip"] .model-picker-text.mono { font: 12.5px var(--font-mono); }
+.composer-model-row .chat-model-level { margin-left: 0; color: var(--text-2); font: 13px var(--font-ui); }
+.composer-model-row .context-meter-ring { width: 26px; height: 26px; }
+@container composer (width < 560px) {
+  .composer .composer-model-row .model-picker[data-variant="chip"] { max-width: 60%; }
+}
+/* 菜单里的思考档位：在模型列表下面，与列表同宽。 */
+.chat-thinking { padding: 8px 12px 10px; border-top: 1px solid var(--border); }
+.chat-thinking h5 { margin: 0 0 6px; color: var(--text-faint); font-size: 11px; font-weight: 600; letter-spacing: .06em; }
+.chat-thinking .segmented { display: flex; flex-wrap: nowrap; gap: 2px; }
+.chat-thinking .segmented .chip-btn { flex: 1; min-width: 0; justify-content: center; padding-inline: 4px; font-size: 12px; }
+.chat-thinking .hint { margin: 6px 0 0; font-size: 11.5px; line-height: 1.5; }
+/* 上下文用量：只画圆环，80% 起警示色、95% 起危险色；点开的详情贴着圆环向上展开。 */
+.context-meter { position: relative; flex: none; display: inline-flex; }
+.context-meter-ring { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border-radius: var(--radius); }
+.context-meter-ring:hover, .context-meter-ring[aria-expanded="true"] { background: var(--tint-hover); }
+.context-meter-ring svg { width: 17px; height: 17px; transform: rotate(-90deg); }
+.context-meter-ring circle { fill: none; stroke-width: 2.4; }
+.context-meter-ring .track { stroke: var(--border-strong); }
+.context-meter-ring .fill { stroke: var(--ink); stroke-linecap: round; }
+.context-meter-ring[data-tone="warn"] .fill { stroke: var(--warn); }
+.context-meter-ring[data-tone="danger"] .fill { stroke: var(--danger); }
+.context-meter-tip { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: var(--z-overlay); width: 260px; padding: 10px 12px; border-radius: 10px; background: var(--surface-3); box-shadow: var(--shadow-2); color: var(--text); font-size: 12.5px; }
+/* 详情卡从圆环右下角展开，同下拉的时长。 */
+.context-meter-tip { transform-origin: right bottom; animation: pop-up-in 140ms var(--ease) both; }
+.context-meter-tip[data-leaving] { pointer-events: none; animation: pop-up-out 100ms var(--ease) forwards; }
+.context-meter-tip strong { display: block; font-size: 13px; font-variant-numeric: tabular-nums; }
+.context-meter-bar { height: 6px; margin: 8px 0; border-radius: 3px; background: var(--tint-hover); overflow: hidden; }
+.context-meter-bar i { display: block; height: 100%; background: var(--ink); }
+.context-meter-tip[data-tone="warn"] .context-meter-bar i { background: var(--warn); }
+.context-meter-tip[data-tone="danger"] .context-meter-bar i { background: var(--danger); }
+.context-meter-tip p { margin: 4px 0 0; color: var(--text-muted); font-size: 11.5px; line-height: 1.55; }
+.composer button:disabled, .digest button:disabled { cursor: default; }
+.composer-send-slot { display: contents; }
+
+/* ---------- 简报追问：空闲时收成底部小台子 ----------
+   台子与输入卡是同一个输入行：宽、内边距、圆角一起过渡；标签与输入框交叉淡入，模型、分隔、发送依次长出，
+   圆环一直在。展开 430ms 缓出，收起 300ms 更利落。卡片浮在正文上，正文底部按 `--composer-h` 留白。 */
+.main-view { position: relative; }
+.digest .scroll { padding-bottom: calc(var(--composer-h, 104px) + 8px); }
+.composer[data-dock] {
+  --dock-open: 430ms; --dock-close: 300ms; --dock-in: cubic-bezier(.2, .9, .25, 1); --dock-out: cubic-bezier(.4, 0, .6, 1);
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; background: none; pointer-events: none;
+}
+.composer[data-dock]::before {
+  content: ""; position: absolute; inset: auto 0 0 0; height: 112px; pointer-events: none;
+  background: linear-gradient(to top, var(--surface) 40%, color-mix(in srgb, var(--surface) 0%, transparent));
+  opacity: 0; transition: opacity var(--dock-close) var(--dock-out);
+}
+.composer[data-dock="open"]::before { opacity: 1; transition: opacity var(--dock-open) var(--dock-in); }
+.composer[data-dock] :is(.input-row, .cite-row, .chat-activity) { pointer-events: auto; }
+.composer[data-dock] .composer-card, .composer[data-dock] .composer-content { position: relative; }
+.composer[data-dock] .input-row {
+  position: relative; width: 100%; margin-inline: auto;
+  transition: width var(--dock-open) var(--dock-in), padding var(--dock-open) var(--dock-in), border-radius var(--dock-open) var(--dock-in),
+    transform var(--dock-open) var(--dock-in), box-shadow var(--dock-open) var(--dock-in);
+}
+.composer[data-dock="closed"] .input-row {
+  width: var(--dock-w, 200px); padding: 3px 4px 3px 12px; border-radius: 19px; cursor: text;
+  box-shadow: inset 0 0 0 1px var(--border-strong), var(--shadow-1);
+  transition-duration: var(--dock-close); transition-timing-function: var(--dock-out);
+}
+/* 感应带比台子大一圈，指针擦边不跳；排在内容下面，不挡圆环。 */
+.composer[data-dock="closed"] .input-row::after { content: ""; position: absolute; inset: -16px -48px -20px; z-index: -1; }
+/* 展开后的维持范围必须包住收起时的触发范围（上下各多留几像素）：否则停在触发带边缘时，
+   展开 → 判定离开 → 收起 → 又碰到触发带，会来回循环。 */
+.composer[data-dock="open"] .input-row::after { content: ""; position: absolute; inset: -28px -48px -24px; z-index: -1; }
+/* 指针停住、还没到展开时刻：先浮起一点作预告。 */
+.composer[data-dock="closed"][data-arming] .input-row { transform: translateY(-2px); box-shadow: inset 0 0 0 1px var(--accent), var(--shadow-2); }
+.composer-dock-label {
+  position: absolute; left: 12px; top: 50%; translate: 0 -50%; display: inline-flex; align-items: center; gap: 6px;
+  color: var(--text-2); font-size: 12.5px; white-space: nowrap; pointer-events: none;
+  opacity: 0; transform: translateY(-6px) scale(.96); transform-origin: left center;
+  transition: opacity 95ms var(--dock-out), transform 190ms var(--dock-out);
+}
+.composer-dock-label .icon { color: var(--text-muted); }
+.composer-dock-count { color: var(--text-faint); }
+.composer[data-dock="closed"] .composer-dock-label { opacity: 1; transform: none; transition: opacity 240ms var(--dock-in) 120ms, transform 320ms var(--dock-in) 80ms; }
+.composer[data-dock] textarea { transition: opacity 300ms var(--dock-in) 70ms, transform 380ms var(--dock-in) 70ms; }
+.composer[data-dock="closed"] textarea { opacity: 0; transform: translateY(6px); transition: opacity 130ms var(--dock-out), transform 190ms var(--dock-out); }
+/* 右侧零件：收起时宽度归零淡出，展开时依次长出（模型 → 分隔 → 发送）。 */
+.composer-grow {
+  flex: none; display: inline-flex; align-items: center; max-width: 240px;
+  transition: max-width var(--dock-open) var(--dock-in), margin var(--dock-open) var(--dock-in),
+    opacity 270ms var(--dock-in) var(--grow-delay, 150ms), transform 350ms var(--dock-in) var(--grow-delay, 150ms);
+}
+.composer-sep.composer-grow { --grow-delay: 190ms; max-width: 6px; }
+/* 模型按钮原来按输入行的 45% 限宽；放进会伸缩的格子后改按自身限宽，免得名字被挤掉。 */
+.composer .composer-grow > .model-picker[data-variant="chip"] { max-width: none; }
+.composer-grow:last-child { --grow-delay: 230ms; }
+.composer[data-dock="closed"] .composer-grow {
+  max-width: 0; margin-inline: -2px; overflow: hidden; opacity: 0; transform: translateY(4px) scale(.9);
+  transition: max-width var(--dock-close) var(--dock-out), margin var(--dock-close) var(--dock-out), opacity 120ms var(--dock-out), transform 190ms var(--dock-out);
+}
+/* 快捷键提示反过来：只在台子上，展开时先收走。 */
+.composer-dock-key { flex: none; display: inline-flex; max-width: 0; margin-inline: -2px; overflow: hidden; opacity: 0;
+  transition: max-width var(--dock-open) var(--dock-in), margin var(--dock-open) var(--dock-in), opacity 110ms; }
+.composer[data-dock="closed"] .composer-dock-key { max-width: 28px; margin-inline: 0 2px; opacity: 1;
+  transition: max-width var(--dock-close) var(--dock-out), margin var(--dock-close) var(--dock-out), opacity 220ms var(--dock-in) 160ms; }
+.composer-dock-key kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-faint); font: 11px/16px var(--font-mono); }
+/* 上方的「追问 某期」最后升上来。 */
+.composer[data-dock] .composer-context { transition: opacity 270ms var(--dock-in) 210ms, transform 350ms var(--dock-in) 190ms; }
+.composer[data-dock="closed"] .composer-context { opacity: 0; transform: translateY(8px); visibility: hidden; transition: opacity 110ms, transform 160ms, visibility 0s 160ms; }
+@media (prefers-reduced-motion: reduce) {
+  .composer[data-dock], .composer[data-dock] *, .composer[data-dock]::before { transition-duration: 1ms !important; transition-delay: 0ms !important; }
+}
+.digest-thread-error { align-items: center; flex-wrap: wrap; }
+.digest-thread-error > span { flex: 1; min-width: 200px; }
+
+.chip {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-2);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  max-width: 100%;
+}
+.chip button { padding: 0 2px; color: var(--text-muted); border-radius: var(--radius-sm); }
+/* 托盘、消息、待发草稿只共用这一套小签；托盘保留原 28px 高度与 260px 上限。 */
+.citation-chip { flex: none; display: inline-flex; align-items: center; gap: 4px; max-width: min(260px, 100%); height: 28px; padding: 0 4px 0 12px; border: 0; border-radius: var(--radius-pill); background: var(--tint-hover); box-shadow: inset 0 0 0 1px var(--border); color: var(--text-2); font-size: 12px; }
+.citation-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-read); }
+.citation-full { flex: none; color: var(--text-faint); }
+.citation-chip .citation-open { display: inline-flex; justify-content: flex-start; align-items: center; gap: 4px; min-width: 0; height: 100%; padding: 0 8px 0 0; border-radius: inherit; text-align: left; color: inherit; }
+.citation-chip:has(.citation-open:hover:not(:disabled)) { background: var(--tint-press); }
+.citation-chip .citation-open:hover, .citation-chip .citation-open:disabled { background: none; color: inherit; }
+.citation-chip .citation-remove { flex: none; display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border-radius: 50%; color: var(--text-faint); }
+.citation-chip .citation-remove:hover { background: var(--tint-press); color: var(--text); }
+.citation-chip[data-new] { animation: reader-citation-in 600ms var(--ease); }
+
+/* 从搜索打开到命中的消息：短暂淡底，随后褪去。 */
+.bubble[data-flash] { animation: bubble-flash 1.6s var(--ease); }
+@keyframes bubble-flash { 0%, 40% { background-color: var(--accent-tint-strong); } 100% { background-color: transparent; } }
+@media (prefers-reduced-motion: reduce) { .bubble[data-flash] { animation: none; outline: 2px solid var(--accent-tint-strong); } }

@@ -1,0 +1,11 @@
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary=synthetic-soft-break
+
+--synthetic-soft-break
+Content-Type: text/html; charset=utf-8
+Content-Location: https://snapshot.example.test/story
+Content-Transfer-Encoding: quoted-printable
+
+<html><body><p>Snapshot soft=
+line</p></body></html>
+--synthetic-soft-break--

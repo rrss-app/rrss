@@ -1,0 +1,88 @@
+import { useEffect, useRef, useState } from "react";
+import type { ContextUsageView, ModelChoice } from "../../lib/api";
+import { usePresence } from "../../lib/motion";
+import { chatDefault, findEntry, modelName, usePoolChoices } from "../../settings/modelChoices";
+
+/** 上限从哪来：设置里填的、引擎给的默认值、上次发送时记下的。 */
+export type WindowSource = "user" | "engine" | "last";
+
+const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 100_000 ? 0 : 1).replace(/\.0$/, "")}K` : String(n));
+
+/** 用量比例；窗口未知或不大于零时没有比例，不当作零或无限。 */
+export function contextPercent(used: number | undefined, window: number | null) {
+  return used === undefined || !window || window <= 0 ? null : Math.min(100, Math.round((used / window) * 100));
+}
+const toneOf = (pct: number | null) => (pct === null ? undefined : pct >= 95 ? "danger" : pct >= 80 ? "warn" : undefined);
+
+/**
+ * 输入区的上下文指示：只画圆环，点开看用量、上限与来源。用量是上一轮结束（或压缩后）引擎报告的当前占用，
+ * 80% 起转警示色、95% 起转危险色。
+ */
+export function ContextMeter({ usage, limit, source, model }: {
+  usage: ContextUsageView | null;
+  /** 上下文上限（token）；未知为 null。 */
+  limit: number | null;
+  source: WindowSource | null;
+  model: string;
+}) {
+  const [open, setOpen] = useState(false);
+  // 详情卡从圆环一角展开，收起留 100ms 退场。
+  const presence = usePresence(open, 100);
+  const root = useRef<HTMLSpanElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const pct = contextPercent(usage?.used, limit);
+  const tone = toneOf(pct);
+
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.isComposing) return;
+      e.preventDefault(); e.stopImmediatePropagation(); setOpen(false); trigger.current?.focus();
+    };
+    document.addEventListener("pointerdown", outside);
+    window.addEventListener("keydown", escape, true);
+    return () => { document.removeEventListener("pointerdown", outside); window.removeEventListener("keydown", escape, true); };
+  }, [open]);
+
+  const r = 6.5;
+  const c = 2 * Math.PI * r;
+  const label = !usage ? "上下文用量：还没有" : pct === null ? `上下文用量 ${k(usage.used)}` : `上下文用量 ${pct}%`;
+  const limitText = !limit ? "还不知道上下文上限；对话引擎启动过一次后会显示。"
+    : source === "user" ? `上限 ${k(limit)} 取 ${model} 的上下文长度（设置里填的）。`
+    : source === "engine" ? `上限 ${k(limit)} 是对话引擎给 ${model} 的默认值（设置里留空）。`
+    : `上限 ${k(limit)} 按上次发送时的模型计算。`;
+  return (
+    <span className="context-meter" ref={root}>
+      <button type="button" ref={trigger} className="context-meter-ring" data-tone={tone} aria-label={`${label}，点开看详情`}
+        aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <circle className="track" cx="8" cy="8" r={r} />
+          {pct ? <circle className="fill" cx="8" cy="8" r={r} strokeDasharray={`${(c * pct) / 100} ${c}`} /> : null}
+        </svg>
+      </button>
+      {presence.mounted && (
+        <div className="context-meter-tip" role="dialog" aria-label="上下文用量" data-tone={tone}
+          data-leaving={presence.leaving ? "" : undefined} inert={presence.leaving} aria-hidden={presence.leaving || undefined}>
+          <strong>{!usage ? "上下文 —" : `上下文 ${k(usage.used)}${limit ? ` / ${k(limit)}` : ""}${pct === null ? "" : ` · ${pct}%`}`}</strong>
+          {pct !== null && <div className="context-meter-bar"><i style={{ width: `${pct}%` }} /></div>}
+          <p>{usage ? "上一轮结束时这条对话占用的上下文。" : "这条对话还没有用量记录，发一条之后显示。"}{limitText}</p>
+          {pct !== null && pct >= 80 && (
+            <p>{pct >= 95 ? "已接近上限：" : "快到上限了："}对话引擎会自动压缩较早的内容，细节可能丢失。需要完整上下文时可以新开对话并引用这条的要点。</p>
+          )}
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** 按这条对话当前选的模型定上限：设置里填的优先，其次引擎握手报告的默认值，都没有用上次发送时记下的。 */
+export function ChatContextMeter({ value, usage }: { value: ModelChoice | null; usage: ContextUsageView | null }) {
+  const { pool, bindings } = usePoolChoices();
+  const current = value ?? (bindings?.chat_uses_own_config ? null : chatDefault(bindings));
+  const entry = findEntry(pool, current);
+  const [limit, source]: [number | null, WindowSource | null] = entry?.context_window ? [entry.context_window, "user"]
+    : entry?.engine_context_window ? [entry.engine_context_window, "engine"]
+    : usage?.window ? [usage.window, "last"] : [null, null];
+  return <ContextMeter usage={usage} limit={limit} source={source} model={entry ? modelName(entry) : current?.model ?? "这个模型"} />;
+}

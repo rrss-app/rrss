@@ -1,0 +1,82 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/rrss-core",
+    "crates/rrss-render",
+    "crates/rrss-ai",
+    "crates/rrss-app",
+    "crates/rrss-desktop",
+]
+
+[workspace.package]
+version = "0.3.1"
+edition = "2024"
+license = "MIT"
+description = "Local-first reader and information hub"
+publish = false
+
+[workspace.dependencies]
+ammonia = "4"
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+directories = "6"
+dom_smoothie = "0.18"
+libreadability = "0.3"
+dom_query = "0.28"
+encoding_rs = "0.8"
+feed-rs = "2"
+html5ever = "0.35"
+opml = "1"
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html", "simd"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip", "brotli", "http2", "stream", "socks"] }
+rusqlite = { version = "0.37", features = ["bundled", "chrono"] }
+sqlite-vec = "0.1.6"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync", "fs", "process", "io-util"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+percent-encoding = "2"
+url = { version = "2", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+toml = { version = "0.8", default-features = false, features = ["parse"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
+
+rrss-core = { path = "crates/rrss-core" }
+rrss-render = { path = "crates/rrss-render" }
+rrss-ai = { path = "crates/rrss-ai" }
+rrss-app = { path = "crates/rrss-app" }
+
+# 开发编译：自家 crate 可逐行调试；第三方依赖 debug=0 以减小符号体积（无法对 crates.io 依赖源码下断点）。
+[profile.dev]
+incremental = true
+opt-level = 0
+debug = 2
+
+[profile.dev.package."*"]
+debug = 0
+
+[profile.dev.package.rrss-core]
+debug = 2
+
+[profile.dev.package.rrss-render]
+debug = 2
+
+[profile.dev.package.rrss-ai]
+debug = 2
+
+[profile.dev.package.rrss-app]
+debug = 2
+
+[profile.dev.package.rrss-desktop]
+debug = 2
+
+# 发布编译：面向最终用户，不带调试符号，开启跨 crate 内联与单代码单元。
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

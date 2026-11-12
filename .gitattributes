@@ -1,0 +1,2 @@
+# MHTML transfer encodings use MIME CRLF; preserve fixture bytes on every platform.
+testdata/web/*.mhtml -text whitespace=cr-at-eol

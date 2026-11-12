@@ -1,0 +1,48 @@
+[package]
+name = "rrss-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Feeds, SQLite, rules, and OPML (no UI)"
+publish = false
+
+[dependencies]
+chrono.workspace = true
+directories.workspace = true
+feed-rs.workspace = true
+html5ever.workspace = true
+httpdate = "1"
+opml.workspace = true
+regex.workspace = true
+pulldown-cmark.workspace = true
+reqwest.workspace = true
+rustls = { version = "0.23", default-features = false }
+rrss-render.workspace = true
+rusqlite.workspace = true
+sqlite-vec.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+percent-encoding.workspace = true
+url.workspace = true
+uuid.workspace = true
+unicode-segmentation = "1.12"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Console", "Win32_System_JobObjects", "Win32_System_Threading"] }
+
+[dev-dependencies]
+tracing-subscriber.workspace = true
+# 代理矩阵测试里的本地 TLS 代理 / 目标；只用锁定里已有的 ring 后端。
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+rusqlite.workspace = true
+tempfile = "3"

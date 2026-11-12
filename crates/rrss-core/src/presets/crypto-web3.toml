@@ -1,0 +1,29 @@
+id = "crypto-web3"
+name = "加密与 Web3"
+description = "空投、土狗盘、合约地址等促销向加密内容。默认不装，按需启用。"
+polarity_default = "dislike"
+
+[[rules]]
+dimension = "title_kw"
+pattern = "空投"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "土狗"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "合约地址"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "Web3"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "NFT"
+weight = 10

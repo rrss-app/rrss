@@ -1,0 +1,67 @@
+# Build and target artifacts
+/target/
+**/*.rs.bk
+Cargo.lock.bak
+# Rewritten by every desktop build; mcp-debug adds permissions a normal build removes.
+crates/rrss-desktop/gen/schemas/
+
+# Database and SQLite temporary files
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+!testdata/**
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# IDE and Editor files
+.idea/
+.vscode/
+.cursor/*
+!.cursor/mcp.json
+*.swp
+*.swo
+*~
+*.bak
+
+# OS and system files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Media and temporary caches
+cache/
+/tmp/
+*.tmp
+*.temp
+*.log
+
+# Unpublished local notes; keep out of the app tree
+/site/
+
+# Development data and desktop test artifacts
+/.local/
+/test-results/
+**/__pycache__/
+*.py[cod]
+
+# Node / frontend
+node_modules/
+apps/desktop/dist/
+apps/desktop/e2e/screenshots/
+apps/desktop/test-results/
+apps/desktop/playwright-report/
+pnpm-lock.yaml.bak
+.playwright-mcp/
+/*.png
+
+*.profraw
+*.profdata
+coverage/

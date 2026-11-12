@@ -1,0 +1,159 @@
+name: Release (MSVC)
+
+# Windows 原生包：x86_64-pc-windows-msvc，在 GitHub 托管的 Windows runner 上编译。
+# 只有这份 workflow 固定用托管 runner、不读 CI_RUNNER；ci.yml 与 release.yml 仍按 CI_RUNNER 选 runner。
+# 发版时由 release.yml 调用（公开仓库推 v* 标签），产物交给 release.yml 统一建 Release。
+# 也可单独手动触发（Actions → Release (MSVC) → Run workflow）：「Use workflow from」选 v* tag 时，
+# 包会传到该 tag 的 GitHub Release；选分支时只留 artifact。私有仓库的托管 Windows 分钟按 2 倍计费。
+# 工具链：Rust 代码一律由 rustc 编译，后端是 rustc 自带的 LLVM，跟着 Rust 版本走（默认最新稳定版）。
+# 目标是 MSVC ABI，CRT、头文件与 Windows SDK 来自镜像里的 Visual Studio。输入 c_and_link 只决定
+# Rust 以外的两件事：依赖里的 C 代码用谁编译、最终用谁链接。
+on:
+  workflow_call:
+    inputs:
+      c_and_link:
+        type: string
+        default: llvm
+      rust:
+        type: string
+        default: stable
+      llvm:
+        type: string
+        default: latest
+  workflow_dispatch:
+    inputs:
+      c_and_link:
+        description: "依赖里的 C 代码与最终链接（Rust 代码始终由 rustc 自带的 LLVM 编译）：llvm = 最新官方 LLVM 的 clang-cl + lld-link；microsoft = Visual Studio 的 cl.exe + link.exe"
+        type: choice
+        options: [llvm, microsoft]
+        default: llvm
+      rust:
+        description: "Rust 工具链（rustup 名称，如 stable、beta、1.99.1）；它决定 Rust 代码用的 LLVM 版本"
+        default: stable
+      llvm:
+        description: "c_and_link 选 llvm 时下载的官方 LLVM 版本；latest 取最新正式版"
+        default: latest
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-msvc-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: windows msvc (C 与链接：${{ inputs.c_and_link }})
+    runs-on: windows-2025
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      TARGET: x86_64-pc-windows-msvc
+      RUST_CHANNEL: ${{ inputs.rust }}
+      LLVM_INPUT: ${{ inputs.llvm }}
+      ARTIFACT: rrss-windows-x64-msvc
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install $env:RUST_CHANNEL --profile minimal --target $env:TARGET
+          rustup default $env:RUST_CHANNEL
+          rustc -vV
+          cargo -V
+
+      - name: Visual Studio environment
+        run: ./.github/msvc/windows-msvc.ps1 vcvars
+
+      - name: LLVM version
+        if: inputs.c_and_link == 'llvm'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./.github/msvc/windows-msvc.ps1 llvm-version $env:LLVM_INPUT
+
+      # 只缓存用到的三个工具与 clang 头文件，按版本区分；新版发布（约两周一次）时才重新下载。
+      - uses: actions/cache@v5
+        if: inputs.c_and_link == 'llvm'
+        with:
+          path: C:\llvm-ci
+          key: llvm-ci-${{ env.LLVM_VERSION }}-win64-v2
+
+      # 下载 610 MB 的 MSI 并解包；脚本里 msiexec 另有 20 分钟上限。
+      - name: LLVM (clang-cl, lld-link)
+        if: inputs.c_and_link == 'llvm'
+        timeout-minutes: 25
+        run: ./.github/msvc/windows-msvc.ps1 llvm $env:LLVM_VERSION
+
+      - name: Toolchain summary
+        run: |
+          rustc -vV | Select-String 'release|LLVM'
+          if ($env:LLVM_VERSION) {
+            & $env:CC_x86_64_pc_windows_msvc --version | Select-Object -First 1
+            & $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER --version
+          } else {
+            (Get-Command cl.exe).Source
+            (Get-Command link.exe).Source
+          }
+
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+
+      # ~/.cargo（crate 源码与索引）和 target 里的编译产物。键里含 rustc 版本与 Cargo.lock，
+      # Rust 升级或依赖变化时自然失效。工作区 crate 也缓存，没改动的不重编。
+      # 缓存按 ref 隔离：tag 上的运行只能读同一 tag 和 main 的缓存，先从 main 跑一次再从 tag 跑。
+      - uses: swatinem/rust-cache@v2
+        with:
+          shared-key: release-msvc-${{ inputs.c_and_link }}-v1
+          cache-workspace-crates: true
+
+      - name: Frontend build
+        working-directory: apps/desktop
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: cargo build --release
+        timeout-minutes: 90
+        run: cargo build --release --locked -p rrss-desktop --target $env:TARGET
+
+      - name: Check runtime dependencies
+        run: |
+          $exe = "target\$env:TARGET\release\rrss.exe"
+          $deps = dumpbin /nologo /dependents $exe | Out-String
+          Write-Host $deps
+          # VC 运行库应静态链接（Tauri 的 staticVCRuntime），WebView2 Loader 在 MSVC 下也静态链接；
+          # 用户机只需要系统自带的 UCRT 与 WebView2 Runtime。
+          if ($deps -match '(?im)^\s*(vcruntime\d+|msvcp\d+|webview2loader)\S*\.dll') {
+            throw "rrss.exe 依赖了用户机未必有的 DLL：$($Matches[0].Trim())"
+          }
+
+      - name: Package
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "target\$env:TARGET\release\rrss.exe" dist\
+          Compress-Archive -Path dist\rrss.exe -DestinationPath "dist\$env:ARTIFACT.zip" -CompressionLevel Optimal -Force
+          $hash = (Get-FileHash "dist\$env:ARTIFACT.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $env:ARTIFACT.zip" | Out-File "dist\$env:ARTIFACT.zip.sha256" -Encoding ascii
+          Get-ChildItem dist
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: dist/${{ env.ARTIFACT }}.zip*
+
+      # 单独从 tag 手动触发时把包传到该 tag 的 GitHub Release（没有就新建）；被 release.yml 调用时由它统一上传。
+      - uses: softprops/action-gh-release@v3
+        if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/')
+        with:
+          files: dist/${{ env.ARTIFACT }}.zip*

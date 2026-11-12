@@ -1,0 +1,5 @@
+{"type":"message_update","usage":{"input":1,"output":1},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"写到一半"}}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"写到一半"}],"stopReason":"aborted","errorMessage":"Request was aborted"}}
+{"type":"agent_end","messages":[],"willRetry":false}
+{"type":"agent_settled"}
+{"type":"response","command":"abort","success":true,"id":"rrss-9"}

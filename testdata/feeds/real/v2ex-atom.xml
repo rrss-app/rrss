@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>V2EX</title>
+<subtitle>way to explore</subtitle>
+
+
+<link rel="alternate" type="text/html" href="https://www.v2ex.com/" />
+<link rel="self" type="application/atom+xml" href="https://www.v2ex.com/index.xml" />
+<id>https://www.v2ex.com/</id>
+
+<updated>2026-08-23T14:26:22Z</updated>
+
+<rights>Copyright © 2010-2018, V2EX</rights>
+<entry>
+	<title>[问与答] 有松下 s9 二代的消息吗？？</title>
+	<link rel="alternate" type="text/html" href="https://www.v2ex.com/t/1236630#reply0" />
+	<id>tag:www.v2ex.com,2026-08-23:/t/1236630</id>
+	<published>2026-08-23T14:26:22Z</published>
+	<updated>2026-08-23T14:26:22Z</updated>
+	<author>
+		<name>user1</name>
+		<uri>https://www.v2ex.com/member/user1</uri>
+	</author>
+	<content type="html" xml:base="https://www.v2ex.com/" xml:lang="en"><![CDATA[
+	<p>现在买一代感觉有点不划算了，硬伤比较多，期待第二代</p>
+
+	]]></content>
+</entry><entry>
+	<title>[问与答] 有什么好的提示词或方法来验证中转站给 deepseekv4 是不是正式版？</title>
+	<link rel="alternate" type="text/html" href="https://www.v2ex.com/t/1236629#reply0" />
+	<id>tag:www.v2ex.com,2026-08-23:/t/1236629</id>
+	<published>2026-08-23T14:26:15Z</published>
+	<updated>2026-08-23T14:26:15Z</updated>
+	<author>
+		<name>user2</name>
+		<uri>https://www.v2ex.com/member/user2</uri>
+	</author>
+	<content type="html" xml:base="https://www.v2ex.com/" xml:lang="en"><![CDATA[
+	
+	]]></content>
+</entry><entry>
+	<title>[程序员] 神秘的 Ox Alpha（中文圈昵称“牛来”）究竟是何方神圣...</title>
+	<link rel="alternate" type="text/html" href="https://www.v2ex.com/t/1236628#reply1" />
+	<id>tag:www.v2ex.com,2026-08-23:/t/1236628</id>
+	<published>2026-08-23T13:49:21Z</published>
+	<updated>2026-08-23T14:05:01Z</updated>
+	<author>
+		<name>user3</name>
+		<uri>https://www.v2ex.com/member/user3</uri>
+	</author>
+	<content type="html" xml:base="https://www.v2ex.com/" xml:lang="en"><![CDATA[
+	根据各个使用者对于模型输出特征的深挖，很多人相信它是属于 GLM 家族的另一个多模态模型。<br /><br /><div class="embedded_video_wrapper"><iframe src="https://www.youtube.com/embed/4felGszvs_4" class="embedded_video" allowfullscreen="" type="text/html" id="ytplayer" frameborder="0"></iframe></div>
+	]]></content>
+</entry><entry>
+	<title>[OpenWrt] 光猫 xg-040g-md 的 pon 功能好像终于能到 openwrt 里面来了</title>
+	<link rel="alternate" type="text/html" href="https://www.v2ex.com/t/1236626#reply0" />
+	<id>tag:www.v2ex.com,2026-08-23:/t/1236626</id>
+	<published>2026-08-23T13:47:48Z</published>
+	<updated>2026-08-23T13:47:48Z</updated>
+	<author>
+		<name>user4</name>
+		<uri>https://www.v2ex.com/member/user4</uri>
+	</author>
+	<content type="html" xml:base="https://www.v2ex.com/" xml:lang="en"><![CDATA[
+	<p>下午看到 <a href="https://www.right.com.cn/forum/thread-8486486-1-1.html" rel="nofollow">https://www.right.com.cn/forum/thread-8486486-1-1.html</a> 帖子，提到已经打通 xgpon 了。可惜那个兄弟迟迟没有分享代码出来。</p>
+<p>好奇怎么搞定驱动代码的，是 vendor 的 sdk 泄漏了吗还是开源代码有 xpon ？</p>
+
+	]]></content>
+</entry><entry>
+	<title>[DotA] 恭喜三冠王 Yatoro, Collapse, 恭喜 Team Spirit</title>
+	<link rel="alternate" type="text/html" href="https://www.v2ex.com/t/1236625#reply1" />
+	<id>tag:www.v2ex.com,2026-08-23:/t/1236625</id>
+	<published>2026-08-23T13:46:37Z</published>
+	<updated>2026-08-23T13:46:37Z</updated>
+	<author>
+		<name>user5</name>
+		<uri>https://www.v2ex.com/member/user5</uri>
+	</author>
+	<content type="html" xml:base="https://www.v2ex.com/" xml:lang="en"><![CDATA[
+	
+	]]></content>
+</entry><entry>
+	<title>[问与答] Ox Alpha Free 是什么模型？</title>
+	<link rel="alternate" type="text/html" href="https://www.v2ex.com/t/1236624#reply9" />
+	<id>tag:www.v2ex.com,2026-08-23:/t/1236624</id>
+	<published>2026-08-23T13:34:52Z</published>
+	<updated>2026-08-23T14:27:12Z</updated>
+	<author>
+		<name>user6</name>
+		<uri>https://www.v2ex.com/member/user6</uri>
+	</author>
+	<content type="html" xml:base="https://www.v2ex.com/" xml:lang="en"><![CDATA[
+	<p>opencode 上看到了一个限时 免费的模型
+Ox Alpha Free 有 v 友试用过吗</p>
+
+	]]></content>
+</entry><entry>
+	<title>[OpenAI] 悲， ChatGPT Web 被路由到 5.5mini 了，弱智得流口水</title>
+	<link rel="alternate" type="text/html" href="https://www.v2ex.com/t/1236623#reply6" />
+	<id>tag:www.v2ex.com,2026-08-23:/t/1236623</id>
+	<published>2026-08-23T13:29:21Z</published>
+	<updated>2026-08-23T14:07:17Z</updated>
+	<author>
+		<name>user7</name>
+		<uri>https://www.v2ex.com/member/user7</uri>
+	</author>
+	<content type="html" xml:base="https://www.v2ex.com/" xml:lang="en"><![CDATA[
+	<p>订阅是 Plus 订阅的，在 ios 上测试了 app 下也是如此被路由。 太恶心了，花了钱给搞这种操作。</p>
+<p>我在想为了这些要不要搞一个 VPS 了，不过现在似乎鸡荒。也不确定是不是廉价机场的 IP 被万人用导致风控了。
+前面测试 Plus 的周额度也低于 140 。</p>
+<p>原本不用 VPS 是嫌麻烦，没想到几年后用得来研究 VPS 这些了，有点烦啊。</p>
+<p>各位的 ChatGPT 弱智了或者被路由了吗？还是希望国模起来吧，不是说爱国啥的，就是单纯希望有竞争对手免得垄断。</p>
+
+	]]></content>
+</entry><entry>
+	<title>[推广] 智友社上新啦， Super Grok 稳定特殊渠道周卡独享成品号 2（稳定新渠道），欢迎您的试用反馈！</title>
+	<link rel="alternate" type="text/html" href="https://www.v2ex.com/t/1236622#reply0" />
+	<id>tag:www.v2ex.com,2026-08-23:/t/1236622</id>
+	<published>2026-08-23T13:03:34Z</published>
+	<updated>2026-08-23T13:03:34Z</updated>
+	<author>
+		<name>user8</name>
+		<uri>https://www.v2ex.com/member/user8</uri>
+	</author>
+	<content type="html" xml:base="https://www.v2ex.com/" xml:lang="en"><![CDATA[
+	智友社上新啦，Super Grok 稳定特殊渠道周卡独享成品号 2 （稳定新渠道）<br />欢迎您的试用反馈！<br /><br />商品购买链接： <a target="_blank" href="https://pay.ldxp.cn/item/ew9kxy" rel="nofollow noopener">https://pay.ldxp.cn/item/ew9kxy</a><br /><br /><br /><br /><br /><br />欢迎您加入：<br />我们的官方 QQ 开放交流 2 群：66457509<br />我们的官方 TG 开放交流群： <a target="_blank" href="https://t.me/+fzIWsUSbcq1kMDYx" rel="nofollow noopener">https://t.me/+fzIWsUSbcq1kMDYx</a>
+	]]></content>
+</entry><entry>
+	<title>[酷工作] [找技术合伙人] 汽车零部件仓储 AI 项目，已有潜在客户，寻全栈技术合伙人（长沙/可远程）</title>
+	<link rel="alternate" type="text/html" href="https://www.v2ex.com/t/1236621#reply1" />
+	<id>tag:www.v2ex.com,2026-08-23:/t/1236621</id>
+	<published>2026-08-23T13:02:26Z</published>
+	<updated>2026-08-23T10:02:26Z</updated>
+	<author>
+		<name>user9</name>
+		<uri>https://www.v2ex.com/member/user9</uri>
+	</author>
+	<content type="html" xml:base="https://www.v2ex.com/" xml:lang="en"><![CDATA[
+	我是汽车供应链领域从业者，潜在客户为汽车零部件中小型仓库，仓库为多家汽车零部件厂商提供仓储物流服务，配套汽车整车厂，月出货量数十万件级别。<br /><br />这个行业有个致命痛点：重复性工作较多，数字化程度很低，仓库换装易出错导致主机厂停线——停线损失极高。中小仓库用不起传统 WMS （每年数万元的成本），只能用 Excel+纸质单据，账实不符、错装漏装频发。<br /><br />因此我准备启动一个创业项目：AI 驱动的轻量级仓储协同平台，从换装防错切入，为中小汽车零部件仓库提供低成本数字化服务。<br /><br />核心功能模块：<br /><br />1 、AI 智能收货：拍照自动识别供应商标签，蓝牙打印内部标准标签，告别手工录入<br />2 、智能换装防错：扫码硬性校验，拿错即拦截（核心价值）<br />3 、全流程追溯：操作留痕，责任到人<br />4 、AI 智能体订单自动化：用 AI 智能体登录整车厂系统，自动检索下载订单（符合长沙经开区最新政策方向）<br />5 、AI 智能交付看板：自动融合订单、库存数据，生成交付健康度分析，主动推送供应商协同信息<br />6 、自然语言交互：支持对话式查询库存、订单状态<br />7 、供应商协同模块（规划中）：供应商预贴标，货到扫码即收货<br /><br />我需要什么样的技术合伙人<br />1 、能独立开发微信小程序（前端+云开发或自建后端）<br />2 、熟悉 Node.js 或 Python ，能搭后端 API<br />3 、有数据库设计能力<br />4 、能对接 OCR API<br />5 、了解蓝牙打印机 SDK 调用<br />加分项：<br />1 、有 AI 大模型 API 集成经验（ DeepSeek 、智谱等）<br />2 、了解浏览器自动化/RPA （ OpenClaw 、智谱 AutoClaw 等）<br />3 、有工业/仓储业务经验<br />4 、有创业经验<br /><br />软性要求：<br /><br />1 、有主人翁意识，愿意从 0 到 1<br />2 、能接受初期无工资（有股权）<br />3 、最好在长沙或愿意来长沙<br /><br />我能提供的<br />1 、股权诚意：详细方案私聊<br />2 、现成客户：产品出来就有试用场景<br />3 、政策红利：长沙经开区有相关扶持政策<br /><br />如果你感兴趣，请加微信详聊：Finale_<br />备注“V2EX 技术合伙人”<br /><br />非诚勿扰，谢绝外包团队。
+	]]></content>
+</entry><entry>
+	<title>[程序员] 求 codex 月付中转</title>
+	<link rel="alternate" type="text/html" href="https://www.v2ex.com/t/1236620#reply1" />
+	<id>tag:www.v2ex.com,2026-08-23:/t/1236620</id>
+	<published>2026-08-23T12:56:06Z</published>
+	<updated>2026-08-23T13:19:18Z</updated>
+	<author>
+		<name>user10</name>
+		<uri>https://www.v2ex.com/member/user10</uri>
+	</author>
+	<content type="html" xml:base="https://www.v2ex.com/" xml:lang="en"><![CDATA[
+	<p>之前一直使用 rawchat 月付的中转站，用的是每天 100 刀的，求一个月付的中转站</p>
+
+	]]></content>
+</entry>
+</feed>

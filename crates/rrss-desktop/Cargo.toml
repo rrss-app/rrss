@@ -1,0 +1,55 @@
+[package]
+name = "rrss-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "RRSS Tauri desktop host"
+publish = false
+default-run = "rrss"
+
+[lib]
+name = "rrss_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "rrss"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[features]
+# Dev-only MCP bridge (see src/mcp_debug.rs). Requires debug build; release never registers.
+mcp-debug = ["dep:tauri-plugin-mcp-bridge"]
+
+[dependencies]
+anyhow.workspace = true
+rrss-ai.workspace = true
+rrss-app.workspace = true
+rrss-core.workspace = true
+rrss-render.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tauri = { version = "2.12", features = ["unstable"] }
+tauri-plugin-mcp-bridge = { version = "0.13.1", optional = true }
+tauri-plugin-clipboard-manager = "2.5"
+tauri-plugin-dialog = "2.8"
+tauri-plugin-opener = "2.7"
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "=0.18.2"
+webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = "=0.39.1"
+windows = { version = "=0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_HiDpi",
+    "Win32_UI_WindowsAndMessaging",
+] }

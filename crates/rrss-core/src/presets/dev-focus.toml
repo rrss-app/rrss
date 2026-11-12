@@ -1,0 +1,34 @@
+id = "dev-focus"
+name = "开发关注"
+description = "Rust、异步、SQLite、编译器与性能。启用后立刻有 score>0 的关注条目，点亮摘要与 Digest。"
+polarity_default = "like"
+
+[[rules]]
+dimension = "title_kw"
+pattern = "Rust"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "async"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "SQLite"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "编译器"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "性能"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "内存安全"
+weight = 10

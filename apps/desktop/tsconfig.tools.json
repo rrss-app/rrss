@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "types": ["node", "vite/client"]
+  },
+  "include": ["src", "e2e", "perf", "*.config.ts"],
+  "exclude": ["node_modules", "dist", "test-results"]
+}

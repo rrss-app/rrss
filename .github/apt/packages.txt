@@ -1,0 +1,7 @@
+libwebkit2gtk-4.1-dev
+libgtk-3-dev
+libayatana-appindicator3-dev
+librsvg2-dev
+pkg-config
+# GitHub 托管镜像自带编译器；自托管的 Ubuntu 镜像没有，这里补上。
+build-essential

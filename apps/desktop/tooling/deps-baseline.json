@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "note": "Stock from→to import exemptions only. New edges fail. Stale entries fail. Do not auto-update.",
+  "items": []
+}

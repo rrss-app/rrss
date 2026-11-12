@@ -1,0 +1,29 @@
+From: <Saved by Blink>
+Snapshot-Content-Location: https://snapshot.example.test/story
+MIME-Version: 1.0
+Content-Type: multipart/related;
+ type="text/html";
+ boundary="synthetic-boundary"
+
+--synthetic-boundary
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://snapshot.example.test/frame
+
+<p>Subframe</p>
+--synthetic-boundary
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://snapshot.example.test/story
+
+<html><head><title>Snapshot =E6=B5=8B=E8=AF=95</title></head><body><article=
+><p>Snapshot =E6=B5=8B=E8=AF=95</p><img src=3D"https://snapshot.example.tes=
+t/image.png"></article></body></html>
+--synthetic-boundary
+Content-Type: image/png
+Content-Transfer-Encoding: base64
+Content-Location: https://snapshot.example.test/image.png
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMo75gJAAMSAZmECXFR
+AAAAAElFTkSuQmCC
+--synthetic-boundary--

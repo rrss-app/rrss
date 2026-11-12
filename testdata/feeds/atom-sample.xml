@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Lab Notes</title>
+  <link href="https://lab.example.org/"/>
+  <link rel="self" href="https://lab.example.org/atom.xml"/>
+  <updated>2026-02-01T12:00:00Z</updated>
+  <id>urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6</id>
+  <entry>
+    <title>Measuring cache hits</title>
+    <link href="https://lab.example.org/posts/cache"/>
+    <id>urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a</id>
+    <updated>2026-02-01T12:00:00Z</updated>
+    <published>2026-02-01T09:00:00Z</published>
+    <author><name>Lin Researcher</name></author>
+    <content type="html">&lt;h1&gt;Cache hits&lt;/h1&gt;&lt;p&gt;We logged &lt;strong&gt;hit rate&lt;/strong&gt; overnight.&lt;/p&gt;&lt;pre&gt;&lt;code&gt;hit=0.92&lt;/code&gt;&lt;/pre&gt;</content>
+  </entry>
+  <entry>
+    <title>Weekend notes</title>
+    <link href="https://lab.example.org/posts/weekend"/>
+    <id>urn:uuid:1225c695-cfb8-4ebb-bbbb-80da344efa6a</id>
+    <updated>2026-01-25T18:00:00Z</updated>
+    <summary>Short notes from the bench.</summary>
+  </entry>
+</feed>

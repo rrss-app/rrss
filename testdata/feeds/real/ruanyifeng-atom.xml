@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <title>阮一峰的网络日志</title>
+    <link rel="alternate" type="text/html" href="http://www.ruanyifeng.com/blog/" />
+    <link rel="self" type="application/atom+xml" href="http://www.ruanyifeng.com/blog/atom.xml" />
+    <id>tag:www.ruanyifeng.com,2010-04-11:/blog//1</id>
+    <updated>2026-08-23T00:24:11Z</updated>
+    <subtitle>Ruan YiFeng&apos;s Blog</subtitle>
+    <generator uri="http://www.sixapart.com/movabletype/">Movable Type 5.2.2</generator>
+
+<entry>
+    <title>科技爱好者周刊（第 409 期）：程序员的职业未来</title>
+    <link rel="alternate" type="text/html" href="http://www.ruanyifeng.com/blog/2026/08/weekly-issue-409.html" />
+    <id>tag:www.ruanyifeng.com,2026:/blog//1.2553</id>
+
+    <published>2026-08-20T23:53:54Z</published>
+    <updated>2026-08-23T00:24:11Z</updated>
+
+    <summary>这里记录每周值得分享的科技内容，周五发布。...</summary>
+    <author>
+        <name>阮一峰</name>
+        <uri>http://www.ruanyifeng.com</uri>
+    </author>
+    
+        <category term="Weekly" scheme="http://www.sixapart.com/ns/types#category" />
+    
+    
+    <content type="html" xml:lang="en" xml:base="http://www.ruanyifeng.com/blog/">
+        <![CDATA[<p>这里记录每周值得分享的科技内容，周五发布。</p>
+]]>
+        <![CDATA[<p>本杂志<a href="https://github.com/ruanyf/weekly">开源</a>，欢迎<a href="https://github.com/ruanyf/weekly/issues">投稿</a>。另有<a href="https://github.com/ruanyf/weekly/issues/10950">《谁在招人》</a>服务，发布程序员招聘信息。合作请<a href="mailto:yifeng.ruan@gmail.com">邮件联系</a>（yifeng.ruan@gmail.com）。</p>
+
+<h2>封面图</h2>
+
+<p><img src="https://cdn.beekka.com/blogimg/asset/202608/bg2026082001.webp" alt="" title="" /></p>]]></content>
+</entry>
+
+</feed>

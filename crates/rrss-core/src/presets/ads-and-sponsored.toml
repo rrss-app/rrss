@@ -1,0 +1,29 @@
+id = "ads-and-sponsored"
+name = "广告与推广"
+description = "赞助稿、推广链接、带跟踪参数的投放页"
+polarity_default = "dislike"
+
+[[rules]]
+dimension = "title_kw"
+pattern = "赞助"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "推广"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "Sponsored"
+weight = 10
+
+[[rules]]
+dimension = "url_phrase"
+pattern = "/sponsored/"
+weight = 10
+
+[[rules]]
+dimension = "url_phrase"
+pattern = "utm_campaign"
+weight = 10

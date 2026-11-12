@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "note": "Stock react-hooks exemptions only. New mismatches fail. Stale entries fail. Do not auto-update.",
+  "items": [
+    {
+      "file": "src/lib/useModalFocus.ts",
+      "rule": "react-hooks/exhaustive-deps",
+      "message": "The ref value 'genRef.current' will likely have changed by the time this effect cleanup function runs. If this ref points to a node rendered by React, copy 'genRef.current' to a variable inside the effect, and use that variable in the cleanup function.",
+      "source": "if (genRef.current !== gen) return;",
+      "fingerprint": "dc3bb1cdccd1c391",
+      "count": 1
+    },
+    {
+      "file": "src/lib/useModalFocus.ts",
+      "rule": "react-hooks/exhaustive-deps",
+      "message": "The ref value 'openersRef.current' will likely have changed by the time this effect cleanup function runs. If this ref points to a node rendered by React, copy 'openersRef.current' to a variable inside the effect, and use that variable in the cleanup function.",
+      "source": "delete openersRef.current[id];",
+      "fingerprint": "69c38f73489b1017",
+      "count": 1
+    },
+    {
+      "file": "src/lib/useModalFocus.ts",
+      "rule": "react-hooks/exhaustive-deps",
+      "message": "The ref value 'lastFocusRef.current' will likely have changed by the time this effect cleanup function runs. If this ref points to a node rendered by React, copy 'lastFocusRef.current' to a variable inside the effect, and use that variable in the cleanup function.",
+      "source": "delete lastFocusRef.current[id];",
+      "fingerprint": "b9009db3d32bf4f5",
+      "count": 1
+    },
+    {
+      "file": "src/lib/useModalFocus.ts",
+      "rule": "react-hooks/exhaustive-deps",
+      "message": "React Hook useLayoutEffect has a missing dependency: 'restoreOpener'. Either include it or remove the dependency array.",
+      "source": "}, [layersKey, activeId, suspended]);",
+      "fingerprint": "72beddffe8b01caa",
+      "count": 1
+    }
+  ]
+}

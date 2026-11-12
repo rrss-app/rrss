@@ -1,0 +1,30 @@
+/* ---------- 响应式 ---------- */
+@media (max-width: 900px) {
+  .toolbar { padding: 8px max(12px, calc(var(--window-controls-w) + 8px)) 8px 12px; gap: 6px 8px; }
+  .tab.tool { padding: 6px 8px; }
+  .tab.tool .tool-label { display: none; }
+  .toolbar-select-wrap { max-width: 150px; }
+  .article-source { max-width: 140px; }
+}
+@media (max-width: 640px) {
+  .settings-shell { flex-direction: column; }
+  .settings-sidebar { width: 100%; border-right: 0; border-bottom: 1px solid var(--border); }
+  .settings-nav-head { flex-direction: row; align-items: center; padding: 8px 16px; }
+  .settings-nav { flex-direction: row; padding: 4px 12px 0; gap: 4px; overflow-x: auto; overflow-y: hidden; }
+  .settings-nav .settings-nav-second { margin-top: 0; margin-left: 24px; }
+  .settings-nav button { flex: none; width: auto; min-height: 36px; padding: 0 12px; }
+  .settings-nav button::after { inset: 0 0 4px; }
+  .settings-nav button[data-on="1"]::after { inset: 0; border-radius: var(--radius) var(--radius) 0 0; }
+  .settings-nav button[data-on="1"]::before { left: 10%; right: 10%; top: auto; bottom: 0; width: auto; height: 3px; border-radius: 2px 2px 0 0; }
+  .settings-nav-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 16px; }
+  .settings-nav-foot p { margin: 0; }
+  .settings-theme { flex-direction: row; align-items: center; }
+
+  .sidebar { width: 180px; }
+  .manage-models { grid-template-columns: minmax(0, 1fr); }
+  .manage-models[data-detail="1"] .manage-list, .manage-models[data-detail="0"] .manage-detail { display: none; }
+  .manage-back { display: inline; }
+  .choice-control { flex: 1 1 100%; flex-wrap: wrap; }
+  .choice-control > :is(select, input) { flex: 1 1 140px; width: auto; }
+  .model-picker-menu:not(.up) { left: 0; right: auto; }
+}

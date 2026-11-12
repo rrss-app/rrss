@@ -1,0 +1,14 @@
+{"id":"rrss-1","type":"response","command":"prompt","success":true}
+{"type":"agent_start"}
+{"type":"turn_start"}
+{"type":"message_start","message":{"role":"user","content":"你好","timestamp":1733234401000}}
+{"type":"message_end","message":{"role":"user","content":"你好","timestamp":1733234401000}}
+{"type":"message_start","message":{"role":"assistant","content":[],"stopReason":"pending"}}
+{"type":"message_update","usage":{"input":100,"output":1,"cacheRead":0,"cacheWrite":0,"totalTokens":101,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"assistantMessageEvent":{"type":"text_start","contentIndex":0}}
+{"type":"message_update","usage":{"input":100,"output":2,"cacheRead":0,"cacheWrite":0,"totalTokens":102,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"你好，"}}
+{"type":"message_update","usage":{"input":100,"output":4,"cacheRead":0,"cacheWrite":0,"totalTokens":104,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"有什么可以帮你？"}}
+{"type":"message_update","usage":{"input":100,"output":4,"cacheRead":0,"cacheWrite":0,"totalTokens":104,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"assistantMessageEvent":{"type":"text_end","contentIndex":0,"content":"你好，有什么可以帮你？"}}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"你好，有什么可以帮你？"}],"stopReason":"stop","usage":{"input":100,"output":4}}}
+{"type":"turn_end","message":{"role":"assistant"},"toolResults":[]}
+{"type":"agent_end","messages":[],"willRetry":false}
+{"type":"agent_settled"}

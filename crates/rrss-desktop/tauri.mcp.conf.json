@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "capabilities": [
+        "default",
+        {
+          "identifier": "mcp-debug",
+          "description": "Development-only MCP callbacks and inspection for the main window",
+          "windows": ["main"],
+          "permissions": ["mcp-bridge:default"]
+        }
+      ]
+    }
+  }
+}

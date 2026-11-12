@@ -1,0 +1,17 @@
+{
+  "version": "https://jsonfeed.org/version/1.1",
+  "title": "JSON Feed Example",
+  "home_page_url": "https://json.example.net/",
+  "feed_url": "https://json.example.net/feed.json",
+  "items": [
+    {
+      "id": "https://json.example.net/2026/hello",
+      "url": "https://json.example.net/2026/hello#section",
+      "title": "Hello JSON Feed",
+      "content_html": "<p>A <a href=\"https://jsonfeed.org/\">JSON Feed</a> item with a fragment in the permalink.</p>",
+      "date_published": "2026-03-01T10:00:00Z",
+      "tags": ["json", "example"],
+      "authors": [{ "name": "Jay Feed" }]
+    }
+  ]
+}

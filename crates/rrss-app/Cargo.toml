@@ -1,0 +1,46 @@
+[package]
+name = "rrss-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "UI-agnostic view models, actions, jobs, Pi runtime, and CLI"
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+dom_smoothie.workspace = true
+libreadability.workspace = true
+dom_query.workspace = true
+url.workspace = true
+idna = "1.1"
+unicode-security = "0.1"
+encoding_rs.workspace = true
+mailparse = "0.16"
+base64 = "0.22"
+quoted_printable = "0.5"
+flate2 = "1"
+pulldown-cmark.workspace = true
+reqwest.workspace = true
+rrss-ai.workspace = true
+rrss-core.workspace = true
+rrss-render.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+tar = "0.4"
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+ts-rs = { version = "10.1", features = ["serde-compat", "no-serde-warnings"] }
+webbrowser = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+proc-macro2 = "1"
+syn = { version = "2", features = ["full", "visit"] }
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+wiremock = "0.6"

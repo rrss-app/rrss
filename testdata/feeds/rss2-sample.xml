@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Example News</title>
+    <link>https://news.example.com/</link>
+    <description>A small news channel used as a golden snapshot.</description>
+    <item>
+      <title>City opens new library</title>
+      <link>https://news.example.com/library?utm_source=rss&amp;utm_medium=feed&amp;fbclid=abc</link>
+      <guid isPermaLink="false">urn:example:library-1</guid>
+      <author>Ada Example</author>
+      <category>Library</category>
+      <category>City</category>
+      <pubDate>Mon, 12 Jan 2026 08:00:00 GMT</pubDate>
+      <description>&lt;p&gt;The &lt;a href=&quot;https://news.example.com/library&quot;&gt;new library&lt;/a&gt; opened downtown.&lt;/p&gt;&lt;p&gt;Hours: &lt;em&gt;9–21&lt;/em&gt;.&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>Storm delays trains</title>
+      <link>https://news.example.com/storm</link>
+      <guid isPermaLink="false">urn:example:storm-1</guid>
+      <pubDate>Tue, 13 Jan 2026 11:30:00 GMT</pubDate>
+      <description>&lt;p&gt;Several lines are delayed. See &lt;code&gt;/status&lt;/code&gt;.&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>

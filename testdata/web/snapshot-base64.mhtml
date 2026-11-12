@@ -1,0 +1,22 @@
+From: <Saved by WebKit>
+MIME-Version: 1.0
+Content-Type: multipart/related;
+ type="text/html";
+ boundary="synthetic-boundary"
+
+--synthetic-boundary
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: base64
+Content-Location: https://snapshot.example.test/story
+
+PGh0bWw+PGhlYWQ+PHRpdGxlPlNuYXBzaG90IOa1i+ivlTwvdGl0bGU+PC9oZWFkPjxib2R5Pjxh
+cnRpY2xlPjxwPlNuYXBzaG90IOa1i+ivlTwvcD48aW1nIHNyYz0iaHR0cHM6Ly9zbmFwc2hvdC5l
+eGFtcGxlLnRlc3QvaW1hZ2UucG5nIj48L2FydGljbGU+PC9ib2R5PjwvaHRtbD4=
+--synthetic-boundary
+Content-Type: image/png
+Content-Transfer-Encoding: base64
+Content-Location: https://snapshot.example.test/image.png
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMo75gJAAMSAZmECXFR
+AAAAAElFTkSuQmCC
+--synthetic-boundary--

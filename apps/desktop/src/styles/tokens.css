@@ -1,0 +1,192 @@
+@font-face {
+  font-family: "RRSS Serif";
+  src: url("../assets/fonts/rrss-serif-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "RRSS Serif";
+  src: url("../assets/fonts/rrss-serif-600.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+  --font-ui: "Segoe UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif;
+  --font-read: "RRSS Serif", "Noto Serif CJK SC", "Source Han Serif SC", "Georgia", "Microsoft YaHei", "PingFang SC", serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", "Noto Sans Mono CJK SC", Menlo, Consolas, monospace;
+  --font-ui-size: 13px;
+  --font-title-size: 15px;
+  --font-read-size: 17px;
+  --line-ui: 1.5;
+  --measure-reading: 760px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 6px;
+  --radius-xl: 10px;
+  --radius-pill: 999px;
+  --sidebar-width: 220px;
+  --control-height: 32px;
+  --control-height-sm: 28px;
+  --z-panel: 5;
+  --z-overlay: 20;
+  --z-toast: 40;
+  --z-palette: 50;
+  /* 自绘标题栏：顶栏高度、窗口三键所占宽度（没有宿主时为 0）、三键层级与关闭键悬停色。 */
+  --titlebar-h: 48px;
+  --window-controls-w: 0px;
+  --z-titlebar: 60;
+  --window-close: #c42b1c;
+  --on-window-close: #ffffff;
+
+  --surface: #f3f1ec;
+  --surface-2: #e9e6df;
+  --surface-3: #f8f7f3;
+  --surface-sunken: #e6e2da;
+  --text: #1c1b19;
+  --text-2: #56534d;
+  --text-muted: #736f68;
+  --text-faint: #8f8a81;
+  --border: #dcd7cd;
+  --border-strong: #c6c0b3;
+  --ink: #262420;
+  --on-ink: #f6f4ef;
+  --brand-dot: #b8392a;
+  --accent: #3a5478;
+  --accent-strong: #2c4261;
+  --accent-tint: rgba(58, 84, 120, 0.09);
+  --accent-tint-strong: rgba(58, 84, 120, 0.16);
+  --on-accent: #ffffff;
+  --active: rgba(38, 36, 32, 0.06);
+  --focus: #3f6b55;
+  --focus-tint: rgba(63, 107, 85, 0.1);
+  --fade: #74706a;
+  --fade-tint: rgba(116, 112, 106, 0.14);
+  --unread: #2f4f80;
+  --danger: #9a453c;
+  --danger-tint: rgba(154, 69, 60, 0.1);
+  --warn: #8a6528;
+  --warn-tint: rgba(138, 101, 40, 0.1);
+  --selection: #d8d3c8;
+  --overlay: rgba(24, 22, 18, 0.42);
+  --hover: rgba(28, 26, 22, 0.05);
+  --tint-hover: color-mix(in srgb, var(--ink) 4.5%, transparent);
+  --tint-press: color-mix(in srgb, var(--ink) 8%, transparent);
+  --lift: 0 0 0 1px color-mix(in srgb, var(--ink) 7%, transparent), 0 1px 2px color-mix(in srgb, var(--ink) 8%, transparent), 0 2px 6px -2px color-mix(in srgb, var(--ink) 10%, transparent);
+  --chip: var(--surface);
+  --ring: rgba(58, 84, 120, 0.35);
+  --shadow-1: none;
+  --shadow-2: 0 4px 16px rgba(20, 18, 14, 0.1), 0 1px 2px rgba(20, 18, 14, 0.06);
+  --shadow-3: 0 18px 48px rgba(20, 18, 14, 0.2), 0 2px 6px rgba(20, 18, 14, 0.08);
+  --motion: 120ms;
+  --motion-slow: 240ms;
+  --ease: cubic-bezier(0.2, 0.75, 0.2, 1);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #18191b;
+  --surface-2: #121315;
+  --surface-3: #1f2023;
+  --surface-sunken: #0f1012;
+  --text: #eceae6;
+  --text-2: #c3c0ba;
+  --text-muted: #9a9690;
+  --text-faint: #7d7a75;
+  --border: #2a2c30;
+  --border-strong: #3a3d42;
+  --ink: #e9e6e0;
+  --on-ink: #18191b;
+  --brand-dot: #c9472f;
+  --accent: #9db0cc;
+  --accent-strong: #b5c4da;
+  --accent-tint: rgba(157, 176, 204, 0.12);
+  --accent-tint-strong: rgba(157, 176, 204, 0.2);
+  --on-accent: #10131a;
+  --active: rgba(255, 255, 255, 0.06);
+  --focus: #7fb096;
+  --focus-tint: rgba(127, 176, 150, 0.12);
+  --fade: #8a8783;
+  --fade-tint: rgba(138, 135, 131, 0.18);
+  --unread: #8fa6c9;
+  --danger: #d08a80;
+  --danger-tint: rgba(208, 138, 128, 0.12);
+  --warn: #cfa766;
+  --warn-tint: rgba(207, 167, 102, 0.12);
+  --selection: #3a3c42;
+  --overlay: rgba(0, 0, 0, 0.58);
+  --hover: rgba(255, 255, 255, 0.05);
+  --tint-hover: rgba(255, 255, 255, 0.045);
+  --tint-press: rgba(255, 255, 255, 0.075);
+  --lift: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --chip: var(--surface-3);
+  --ring: rgba(157, 176, 204, 0.45);
+  --shadow-1: none;
+  --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.36), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-3: 0 18px 48px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark;
+    --surface: #18191b;
+    --surface-2: #121315;
+    --surface-3: #1f2023;
+    --surface-sunken: #0f1012;
+    --text: #eceae6;
+    --text-2: #c3c0ba;
+    --text-muted: #9a9690;
+    --text-faint: #7d7a75;
+    --border: #2a2c30;
+    --border-strong: #3a3d42;
+    --ink: #e9e6e0;
+    --on-ink: #18191b;
+    --brand-dot: #c9472f;
+    --accent: #9db0cc;
+    --accent-strong: #b5c4da;
+    --accent-tint: rgba(157, 176, 204, 0.12);
+    --accent-tint-strong: rgba(157, 176, 204, 0.2);
+    --on-accent: #10131a;
+    --active: rgba(255, 255, 255, 0.06);
+    --focus: #7fb096;
+    --focus-tint: rgba(127, 176, 150, 0.12);
+    --fade: #8a8783;
+    --fade-tint: rgba(138, 135, 131, 0.18);
+    --unread: #8fa6c9;
+    --danger: #d08a80;
+    --danger-tint: rgba(208, 138, 128, 0.12);
+    --warn: #cfa766;
+    --warn-tint: rgba(207, 167, 102, 0.12);
+    --selection: #3a3c42;
+    --overlay: rgba(0, 0, 0, 0.58);
+    --hover: rgba(255, 255, 255, 0.05);
+    --tint-hover: rgba(255, 255, 255, 0.045);
+    --tint-press: rgba(255, 255, 255, 0.075);
+    --lift: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    --chip: var(--surface-3);
+    --ring: rgba(157, 176, 204, 0.45);
+    --shadow-1: none;
+    --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.36), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-3: 0 18px 48px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion: 0ms;
+    --motion-slow: 0ms;
+  }
+}
+
+/* 宿主给出窗口三键样式后（`WindowControls` 写在根元素上），右上角有内容的顶栏按这个宽度让位。 */
+:root[data-chrome="windows"] { --window-controls-w: 138px; }
+:root[data-chrome="gnome"] { --window-controls-w: 112px; }

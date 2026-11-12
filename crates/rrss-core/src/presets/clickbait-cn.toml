@@ -1,0 +1,29 @@
+id = "clickbait-cn"
+name = "中文标题党"
+description = "震惊体、速看、一图看懂等点击诱饵"
+polarity_default = "dislike"
+
+[[rules]]
+dimension = "title_kw"
+pattern = "震惊"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "速看"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "你不知道的"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "一图看懂"
+weight = 10
+
+[[rules]]
+dimension = "title_kw"
+pattern = "网友热议"
+weight = 10

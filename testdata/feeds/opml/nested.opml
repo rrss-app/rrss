@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>Example subscriptions</title>
+  </head>
+  <body>
+    <outline text="News">
+      <outline text="Example News" title="Example News" type="rss" xmlUrl="https://news.example.com/rss.xml" htmlUrl="https://news.example.com/"/>
+      <outline text="Local">
+        <outline text="Lab Notes" xmlUrl="https://lab.example.org/atom.xml" htmlUrl="https://lab.example.org/"/>
+      </outline>
+    </outline>
+    <outline text="JSON Feed Example" xmlUrl="https://json.example.net/feed.json"/>
+  </body>
+</opml>

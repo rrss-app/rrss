@@ -1,0 +1,5 @@
+{"type":"tool_execution_start","toolCallId":"call_2","toolName":"fetch_url","args":{"url":"https://example.org"}}
+{"type":"extension_ui_request","id":"uuid-2","method":"confirm","title":"读取网页","message":"执行 fetch_url？","timeout":120000}
+{"type":"extension_ui_request","id":"uuid-3","method":"select","title":"Pick one","options":["A","B"]}
+{"type":"extension_ui_request","id":"uuid-5","method":"notify","message":"Command blocked by user","notifyType":"warning"}
+{"type":"extension_error","extensionPath":"/path/to/extension.ts","event":"tool_call","error":"Error message"}

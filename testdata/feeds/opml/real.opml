@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>RRSS real feeds (smoke)</title>
+  </head>
+  <body>
+    <outline text="中文">
+      <outline text="奇客Solidot" title="奇客Solidot" type="rss" xmlUrl="https://www.solidot.org/index.rss" htmlUrl="https://www.solidot.org/"/>
+      <outline text="少数派" title="少数派" type="rss" xmlUrl="https://sspai.com/feed" htmlUrl="https://sspai.com/"/>
+      <outline text="阮一峰的网络日志" title="阮一峰的网络日志" type="rss" xmlUrl="https://www.ruanyifeng.com/blog/atom.xml" htmlUrl="https://www.ruanyifeng.com/blog/"/>
+      <outline text="V2EX" title="V2EX" type="rss" xmlUrl="https://www.v2ex.com/index.xml" htmlUrl="https://www.v2ex.com/"/>
+    </outline>
+    <outline text="English">
+      <outline text="Hacker News" title="Hacker News" type="rss" xmlUrl="https://hnrss.org/frontpage" htmlUrl="https://news.ycombinator.com/"/>
+      <outline text="LWN.net" title="LWN.net" type="rss" xmlUrl="https://lwn.net/headlines/rss" htmlUrl="https://lwn.net/"/>
+      <outline text="Rust Blog" title="Rust Blog" type="rss" xmlUrl="https://blog.rust-lang.org/feed.xml" htmlUrl="https://blog.rust-lang.org/"/>
+      <outline text="GitHub Blog" title="GitHub Blog" type="rss" xmlUrl="https://github.blog/feed/" htmlUrl="https://github.blog/"/>
+      <outline text="Simon Willison" title="Simon Willison" type="rss" xmlUrl="https://simonwillison.net/atom/everything/" htmlUrl="https://simonwillison.net/"/>
+    </outline>
+    <outline text="JSON Feed">
+      <outline text="JSON Feed" title="JSON Feed" type="rss" xmlUrl="https://www.jsonfeed.org/feed.json" htmlUrl="https://www.jsonfeed.org/"/>
+    </outline>
+  </body>
+</opml>

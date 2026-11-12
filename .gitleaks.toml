@@ -1,0 +1,7 @@
+# gitleaks 配置：沿用默认规则，只放过测试里刻意写的假密钥。
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Pi 模拟场景里用来测试错误信息脱敏的假密钥"
+paths = ['''testdata/pi/scenario_rpc\.py''']

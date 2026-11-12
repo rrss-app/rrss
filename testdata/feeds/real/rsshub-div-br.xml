@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>RSSHub fixture</title>
+    <link>https://rsshub.example/</link>
+    <description>div+br description 回归，非公网抓取</description>
+    <item>
+      <title>墙文</title>
+      <link>https://rsshub.example/item/1</link>
+      <guid isPermaLink="false">rsshub-div-br-1</guid>
+      <description><![CDATA[
+        <div>第一段内容</div>
+        <div>第二段内容<br><br>第三段在双 br 之后</div>
+        <div>第四段</div>
+      ]]></description>
+    </item>
+  </channel>
+</rss>

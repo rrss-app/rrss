@@ -1,0 +1,17 @@
+/* 通用控件状态：按下加深、图标灰阶、状态圆点。 */
+button:not(:disabled):active { background-color: var(--tint-press); }
+.btn.primary:not(:disabled):active { background-color: color-mix(in srgb, var(--tint-press), var(--ink)); }
+.icon { color: var(--text-faint); }
+:is(button, summary, a):hover > .icon { color: var(--text-muted); }
+:is([data-on="1"], [aria-pressed="true"], [aria-checked="true"]) > .icon { color: var(--ink); }
+.btn.primary > .icon { color: inherit; }
+button.danger > .icon { color: var(--danger); }
+/* 文字本身带强调 / 选中色的控件，图标跟随文字。 */
+:is(button.primary, .tool-btn.primary, .tool-btn[aria-pressed="true"], .star-btn.on, .reader-head-actions > button[aria-pressed="true"], .cluster-head .cluster, .cluster-foot-btn, .focus-lede-cta, .thread-item.new-thread) > .icon { color: inherit; }
+:is(.menu-item, .citation-open, .settings-nav button, .nav-item) > .icon { color: var(--text-faint); }
+:is(.menu-item, .citation-open, .settings-nav button, .nav-item):hover > .icon { color: var(--text-muted); }
+:is(.menu-item, .settings-nav button, .nav-item):is([data-on="1"], [aria-pressed="true"]) > .icon { color: var(--ink); }
+.model-input-wrap input { background: transparent; }
+.model-picker[data-variant="field"] .model-picker-trigger:focus { background: var(--surface-3); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+:is(.meta-tag.warn, .meta-tag.danger, .health-badge)::before { content: ""; display: inline-block; flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.health-badge { gap: 6px; }
