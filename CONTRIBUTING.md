@@ -65,13 +65,15 @@ cargo build --release --locked -p rrss-desktop
 
 ```sh
 pnpm --dir apps/desktop check:frontend   # 类型、Hooks、依赖与 IPC 契约检查
-pnpm --dir apps/desktop test             # 前端单测
+pnpm --dir apps/desktop test:affected --dry-run # 先查看选择范围
 pnpm --dir apps/desktop test:affected    # 按改动挑选单测、e2e 与 Rust 测试
-cargo test --locked --workspace --exclude rrss-desktop
-cargo check --locked -p rrss-desktop   # 桌面 crate 没有单测，只做编译检查
+pnpm --dir apps/desktop test:e2e e2e/reader-ending.spec.ts # 只验证当前路径
+cargo test --locked -p rrss-core --lib -- score:: # 只验证改动模块
 ```
 
-- e2e 用模拟宿主跑在 Chromium 上：首次先运行 `pnpm --dir apps/desktop exec playwright install chromium`，之后用 `pnpm --dir apps/desktop test:e2e`。
+- e2e 用模拟宿主跑在 Chromium 上：首次先运行 `pnpm --dir apps/desktop exec playwright install chromium`。`test:e2e` 必须给出 spec、`spec.ts:line` 或 `--grep`；启动浏览器前收集用例，默认最多 10 次用例执行（包含重复、可能的失败重试与多 project），本地默认 2 个 worker。超限就缩小范围，`--dry-run` 只预检。
+- `test:affected` 默认与 `origin/main` 比较，`--base HEAD` 只看未提交的改动。e2e 利用本检出的执行记录选择用例；没有记录或影响无法精确选择时，用 `test:affected --e2e e2e/<name>.spec.ts[:line]` 指定当前路径，可重复 `--e2e`。记录只辅助选择，不代表完整回归。
+- 全量前端、Rust 与桌面编译由 CI 承担；CI 显式用 `test:e2e --full`。本地仅在需要扩大回归或复现失败时显式使用 `--full`，重复复现单条用例可指定 `test:e2e … --repeat-each=N --max-tests=N`。
 - 自动测试使用一次性数据库，不调用模型、不下载；不要让测试碰日常库。
 - 规则、存储、迁移、代理与脱敏相关的改动要有测试；修缺陷时先写能复现它的回归测试。
 - Windows 目标的编译由 CI 的 `windows-check` 负责。
@@ -81,7 +83,7 @@ cargo check --locked -p rrss-desktop   # 桌面 crate 没有单测，只做编�
 
 - 一个 PR 做一件事，说明改了什么行为、怎么验证的。
 - 用户能感知的变化（新功能、行为变化、修复）在 [CHANGELOG.md](CHANGELOG.md) 的「未发布」下加一条，写给用户看，不写实现细节；纯重构、测试与文档改动不用写。
-- 界面有明显变化时附截图。README 的演示截图可用 `RRSS_README_SHOTS=1 pnpm --dir apps/desktop exec playwright test e2e/readme-shots.spec.ts` 重新生成。
+- 界面有明显变化时附截图。README 的演示截图可用 `RRSS_README_SHOTS=1 pnpm --dir apps/desktop test:e2e e2e/readme-shots.spec.ts` 重新生成。
 - 安全问题不要开公开 issue，按 [SECURITY.md](SECURITY.md) 私下报告。
 - 这个仓库由上游开发仓库同步生成，上游每合并一项改动，这里就多一个对应的提交，提交说明写给外部读者。PR 不在这里直接合并：评审通过后，维护者把改动并入上游，同步时作为单独的提交出现在这里，PR 会附说明后关闭，提交里用 `Co-authored-by` 署上你的名字。
 - 提交的代码按仓库的 [MIT 许可](LICENSE) 发布。

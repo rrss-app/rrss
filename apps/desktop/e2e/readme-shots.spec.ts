@@ -5,7 +5,7 @@ import { expect, test, type Page } from "./fixtures";
 import { installMockHost, MOCK_FOCUS, MOCK_RULES, settingsTab, type MockHostOptions } from "./mockHost";
 
 // README 截图：只在更新 README 时运行，CI 与日常 e2e 跳过。
-//   RRSS_README_SHOTS=1 pnpm --dir apps/desktop exec playwright test e2e/readme-shots.spec.ts
+//   RRSS_README_SHOTS=1 pnpm --dir apps/desktop test:e2e e2e/readme-shots.spec.ts
 // 数据是演示用的模拟宿主内容，不调用模型、不碰日常库。PNG 先写到 test-results/readme-shots/，
 // 再用 Python Pillow 转成无损 WebP 写到 doc/images/（体积约为 PNG 的四成）。
 test.skip(!process.env.RRSS_README_SHOTS, "只在更新 README 截图时运行");

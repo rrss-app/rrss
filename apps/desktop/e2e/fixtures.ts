@@ -1,4 +1,5 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test as base } from "@playwright/test";
 
@@ -7,11 +8,13 @@ import { test as base } from "@playwright/test";
 export * from "@playwright/test";
 
 const INJECTED = /^(\$|_c\d*$)/;
-export const COVERAGE_DIR = path.resolve(import.meta.dirname, "../test-results/e2e-coverage");
+// Playwright clears test-results before every run; keep the per-worktree index outside it.
+export const COVERAGE_DIR = path.resolve(import.meta.dirname, "../.cache/e2e-coverage");
 
 export const test = base.extend<{ recordSources: void }>({
   recordSources: [async ({ page, browserName }, use, info) => {
     if (browserName !== "chromium") return use();
+    const specHash = createHash("sha256").update(readFileSync(info.file)).digest("hex");
     await page.coverage.startJSCoverage({ resetOnNavigation: false });
     await use();
     const entries = await page.coverage.stopJSCoverage().catch(() => []);
@@ -22,8 +25,12 @@ export const test = base.extend<{ recordSources: void }>({
         files.add(match[1]);
       }
     }
+    if (info.status !== "passed" || !files.size) return;
     mkdirSync(COVERAGE_DIR, { recursive: true });
     const spec = path.relative(path.resolve(import.meta.dirname, ".."), info.file).split(path.sep).join("/");
-    writeFileSync(path.join(COVERAGE_DIR, `${info.testId}.json`), JSON.stringify({ spec, line: info.line, title: info.title, files: [...files].sort() }));
+    const target = path.join(COVERAGE_DIR, `${info.testId}.json`);
+    const temporary = `${target}.${info.workerIndex}.tmp`;
+    writeFileSync(temporary, JSON.stringify({ spec, specHash, line: info.line, title: info.title, files: [...files].sort() }));
+    renameSync(temporary, target);
   }, { auto: true }],
 });

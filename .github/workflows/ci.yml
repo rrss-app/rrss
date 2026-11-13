@@ -160,7 +160,7 @@ jobs:
 
       - name: e2e
         working-directory: apps/desktop
-        run: pnpm test:e2e --shard=${{ matrix.shard }}/${{ (vars.CI_RUNNER && vars.CI_RUNNER != 'ubuntu-22.04') && 1 || 3 }}${{ runner.environment == 'self-hosted' && ' --workers=4' || '' }}
+        run: pnpm test:e2e --full --shard=${{ matrix.shard }}/${{ (vars.CI_RUNNER && vars.CI_RUNNER != 'ubuntu-22.04') && 1 || 3 }}${{ runner.environment == 'self-hosted' && ' --workers=4' || '' }}
 
       - name: Upload e2e results
         if: failure()

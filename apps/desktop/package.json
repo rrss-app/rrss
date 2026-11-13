@@ -10,7 +10,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 1420",
     "test": "vitest run",
-    "test:e2e": "playwright test --reporter=line",
+    "test:e2e": "node tooling/e2e.mjs",
     "test:perf": "playwright test -c playwright.perf.config.ts --reporter=line",
     "test:perf:minimal": "PERF_SCENE=minimal playwright test -c playwright.perf.config.ts --reporter=line",
     "test:perf:daily": "PERF_SCENE=daily playwright test -c playwright.perf.config.ts --reporter=line",

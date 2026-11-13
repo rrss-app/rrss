@@ -57,6 +57,7 @@ node_modules/
 apps/desktop/dist/
 apps/desktop/e2e/screenshots/
 apps/desktop/test-results/
+apps/desktop/.cache/e2e-coverage/
 apps/desktop/playwright-report/
 pnpm-lock.yaml.bak
 .playwright-mcp/
