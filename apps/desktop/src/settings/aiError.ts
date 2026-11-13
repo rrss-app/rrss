@@ -1,3 +1,5 @@
+import { i18n } from "../i18n";
+
 /** AI 设置失败信息：中文归类、折叠详情、去敏 Key / URL 凭证。 */
 
 export type AiErrorKind =
@@ -14,17 +16,6 @@ export type AiErrorView = {
   kind: AiErrorKind;
   title: string;
   detail: string;
-};
-
-const TITLE: Record<AiErrorKind, string> = {
-  auth: "认证失败，请检查 API Key 是否正确。",
-  forbidden: "没有访问权限，请检查账号或 Key 的权限。",
-  notFound: "找不到地址或模型，请核对接口地址和模型名。",
-  rateLimit: "请求过于频繁，请稍后再试。",
-  timeout: "连接超时。服务可能未启动，或网络不通。",
-  network: "无法连上接口。请确认地址、本机服务和网络。",
-  server: "接口服务器出错，请稍后再试。",
-  other: "操作失败。可展开查看详情。",
 };
 
 export function rawErrorText(err: unknown): string {
@@ -93,7 +84,7 @@ export function classifyAiError(raw: string): AiErrorKind {
 export function explainAiError(err: unknown, extraSecrets: string[] = []): AiErrorView {
   const detail = redactAiText(rawErrorText(err), extraSecrets);
   const kind = classifyAiError(rawErrorText(err));
-  return { kind, title: TITLE[kind], detail };
+  return { kind, title: i18n.t(`error.${kind}`, { ns: "settingsModels" }), detail };
 }
 
 export function secretsFromConnection(apiKey: string, baseUrl: string): string[] {

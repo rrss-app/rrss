@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { i18n, Trans, useTranslation } from "../../i18n";
 import type { CitationView, ThreadView } from "../../lib/api";
 import { FloatingMenu, type MenuAnchor } from "../../components/FloatingMenu";
 import { Icon } from "../../components/Icon";
@@ -7,7 +8,7 @@ import { useDraftSubmission, type DraftStore } from "../chat";
 
 /** 打开阅读器时的提问来源；换篇保留托盘及其目标。 */
 export type ReaderCitationSource = { kind: "new" } | { kind: "digest"; digestId: number } | { kind: "thread"; threadId: number; title: string };
-export const citationTargetLabel = (target: ReaderCitationSource) => target.kind === "new" ? "新对话" : target.kind === "digest" ? "本期追问" : target.title;
+export const citationTargetLabel = (target: ReaderCitationSource) => target.kind === "new" ? i18n.t("tray.targetNew", { ns: "reader" }) : target.kind === "digest" ? i18n.t("tray.targetDigest", { ns: "reader" }) : target.title;
 export const citationTargetContext = (drafts: DraftStore, target: ReaderCitationSource) => target.kind === "digest" ? `digest:${target.digestId}` : drafts.threadContext(target.kind === "thread" ? target.threadId : 0);
 
 export function ReaderCitationTray({ drafts, context, focusRequest, target, source, busy, sending, latestCitation, getThreads, onTarget, onSend, onClear, inert }: {
@@ -19,6 +20,7 @@ export function ReaderCitationTray({ drafts, context, focusRequest, target, sour
   onSend: (text: string, citations: CitationView[]) => Promise<boolean>;
   onClear: () => void;
 }) {
+  const { t } = useTranslation("reader");
   const { draft, canSend, send, onKeyDown, pending } = useDraftSubmission({ drafts, context, ready: true, busy, onSend });
   const [menu, setMenu] = useState<MenuAnchor | null>(null);
   const [threads, setThreads] = useState<ThreadView[]>([]);
@@ -49,32 +51,32 @@ export function ReaderCitationTray({ drafts, context, focusRequest, target, sour
   // 当前目标即使已不在最近六条内，也保持可见。
   if (!targets.some(t => citationTargetContext(drafts, t) === context)) targets.unshift(target);
   const contexts = new Set<string>();
-  return <div ref={root} className="reader-citation-tray" role="region" aria-label="引用托盘" aria-busy={locked}>
+  return <div ref={root} className="reader-citation-tray" role="region" aria-label={t("tray.label")} aria-busy={locked}>
     {draft.citations.length > 0 ? <div className="reader-citation-row">
-      <span className="reader-citation-count"><Icon name="quote" size={13} />引用 {draft.citations.length}</span>
+      <span className="reader-citation-count"><Icon name="quote" size={13} />{t("tray.count", { n: draft.citations.length })}</span>
       <div className="reader-citation-chips">
         {draft.citations.map((citation, index) => <CitationChip key={`${citation.article_id}-${index}`} ref={citation === latestCitation ? latest : undefined}
           citation={citation} className="reader-citation-chip" isNew={citation === latestCitation}
-          removeLabel={`移除引用 ${index + 1}`} removeDisabled={locked}
+          removeLabel={t("tray.removeCitation", { n: index + 1 })} removeDisabled={locked}
           onRemove={() => drafts.setCitations(context, cs => cs.filter((_, i) => i !== index))} />)}
       </div>
-      <button type="button" className="reader-citation-clear" disabled={locked} onClick={onClear}>清空</button>
+      <button type="button" className="reader-citation-clear" disabled={locked} onClick={onClear}>{t("tray.clear")}</button>
     </div> : null}
     <div className="reader-citation-input">
-      <textarea ref={input} aria-label="针对引用提问" rows={1} placeholder={source.kind === "thread" ? `继续问「${source.title}」…` : "针对这些引用提问…"}
+      <textarea ref={input} aria-label={t("tray.inputLabel")} rows={1} placeholder={source.kind === "thread" ? t("tray.placeholderThread", { title: source.title }) : t("tray.placeholder")}
         value={draft.text} disabled={locked} onChange={event => drafts.setText(context, event.target.value)} onKeyDown={onKeyDown} />
-      <button ref={trigger} type="button" className="reader-citation-target" aria-label={`发到 ${citationTargetLabel(target)}`} aria-haspopup="menu" aria-expanded={!!menu} disabled={locked}
+      <button ref={trigger} type="button" className="reader-citation-target" aria-label={t("tray.sendToLabel", { target: citationTargetLabel(target) })} aria-haspopup="menu" aria-expanded={!!menu} disabled={locked}
         onClick={() => {
           if (menu) { setMenu(null); return; }
           setThreads(getThreads());
           const selection = trigger.current!.getBoundingClientRect();
           setMenu({ x: selection.x, y: selection.y, selection });
-        }}>发到 <b>{citationTargetLabel(target)}</b><Icon name="chevronDown" size={12} /></button>
-      <button type="button" className="reader-citation-send" aria-label={locked ? "发送中…" : "发送"} disabled={!canSend} onClick={() => void send()}><Icon name="send" size={16} /></button>
+        }}><Trans t={t} i18nKey="tray.sendTo" values={{ target: citationTargetLabel(target) }} components={{ b: <b /> }} /><Icon name="chevronDown" size={12} /></button>
+      <button type="button" className="reader-citation-send" aria-label={locked ? t("tray.sending") : t("tray.send")} disabled={!canSend} onClick={() => void send()}><Icon name="send" size={16} /></button>
     </div>
-    {busy && !locked ? <div className="reader-citation-status" role="status">正在生成回复，请等待完成后发送。</div> : null}
-    {menu && !inert ? <FloatingMenu anchor={menu} boundary={root.current?.closest<HTMLElement>(".drawer.reader")} label="发到" className="reader-context-menu reader-citation-target-menu" restoreFocusTo={trigger.current} onClose={() => setMenu(null)}>
-      <div className="reader-context-caption">发到</div>
+    {busy && !locked ? <div className="reader-citation-status" role="status">{t("tray.busy")}</div> : null}
+    {menu && !inert ? <FloatingMenu anchor={menu} boundary={root.current?.closest<HTMLElement>(".drawer.reader")} label={t("tray.sendToCaption")} className="reader-context-menu reader-citation-target-menu" restoreFocusTo={trigger.current} onClose={() => setMenu(null)}>
+      <div className="reader-context-caption">{t("tray.sendToCaption")}</div>
       {targets.map(t => {
         const key = citationTargetContext(drafts, t);
         if (contexts.has(key)) return null;

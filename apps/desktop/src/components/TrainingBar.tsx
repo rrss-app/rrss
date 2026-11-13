@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, type CSSProperties } from "react";
 import type { ArticleView, FeatureView } from "../lib/api";
 import { getFocusableElements, isFocusable } from "../lib/useModalFocus";
+import { useTranslation } from "../i18n";
 import { Icon } from "./Icon";
 import { ThumbIcon } from "./ThumbIcon";
 
@@ -19,6 +20,7 @@ export function TrainingBar({
   busy?: boolean;
   error?: string;
 }) {
+  const { t } = useTranslation("focus");
   const stage = useRef<HTMLDivElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -58,7 +60,7 @@ export function TrainingBar({
   }, [busy]);
   return (
     <div ref={stage} className="overlay bottom training-stage" style={style}>
-      <button type="button" className="overlay-dismiss" aria-label="关闭" disabled={busy} onClick={onClose} />
+      <button type="button" className="overlay-dismiss" aria-label={t("trainingBar.close")} disabled={busy} onClick={onClose} />
       <div ref={sheet} className="sheet training-sheet" role="dialog" aria-modal="true" aria-labelledby="training-title" aria-busy={busy} tabIndex={-1}
         onKeyDown={(event) => {
           if (event.key === "Escape" && busy) { event.preventDefault(); event.stopPropagation(); }
@@ -73,10 +75,10 @@ export function TrainingBar({
         <div className="sheet-head">
           <span className={`training-kind ${item.dislike ? "down" : "up"}`}><ThumbIcon down={item.dislike} /></span>
           <div className="sheet-title">
-            <strong id="training-title">{item.dislike ? "不感兴趣" : "感兴趣"} · {item.article.title}</strong>
-            <span className="muted">已记录偏好。选一条规则，确认后才生效。</span>
+            <strong id="training-title">{t(item.dislike ? "trainingBar.dislike" : "trainingBar.like")} · {item.article.title}</strong>
+            <span className="muted">{t("trainingBar.hint")}</span>
           </div>
-          <button type="button" className="tool-btn icon-only" aria-label="关闭" disabled={busy} onClick={onClose}>
+          <button type="button" className="tool-btn icon-only" aria-label={t("trainingBar.close")} disabled={busy} onClick={onClose}>
             <Icon name="close" size={16} />
           </button>
         </div>
@@ -84,13 +86,13 @@ export function TrainingBar({
         <div className="training-list">
           {item.features.map((f) => (
             <div key={f.dimension + f.pattern} className="training-row">
-              <span className="training-label">{f.label}{item.dislike ? "时降分" : "时加分"}</span>
+              <span className="training-label">{t(item.dislike ? "trainingBar.scoreDown" : "trainingBar.scoreUp", { label: f.label })}</span>
               <div className="row">
                 <button type="button" className="btn sm" disabled={busy} aria-busy={busy} onClick={() => onConfirm(f, false)}>
-                  全局
+                  {t("trainingBar.global")}
                 </button>
                 <button type="button" className="btn sm" disabled={busy} aria-busy={busy} onClick={() => onConfirm(f, true)}>
-                  仅此源
+                  {t("trainingBar.feedOnly")}
                 </button>
               </div>
             </div>

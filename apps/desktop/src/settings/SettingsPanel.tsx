@@ -6,6 +6,7 @@ import { aiQueryOptions } from "./aiQuery";
 import type { FeedTree, RankingSettings } from "../lib/api";
 import type { RankingToggle } from "../components/FocusPane";
 import { Icon, type IconName } from "../components/Icon";
+import { useTranslation } from "../i18n";
 import { DiagPane } from "./DiagPane";
 import { MemoryPane } from "./MemoryPane";
 import { ModelPane } from "./ModelPane";
@@ -49,38 +50,36 @@ type SettingsPanelProps = {
 /** 分类注册项：壳层只遍历注册表，各分类自行上报通用离开状态。 */
 type SettingsTab = {
   id: SettingsTabId;
-  label: string;
-  title: string;
-  desc: string;
   icon: IconName;
   render: (props: SettingsPanelProps) => ReactNode;
 };
 
 const TABS: ReadonlyArray<SettingsTab> = [
-  { id: "subscribe", label: "订阅", title: "订阅", desc: "添加来源，或把已有列表导入进来。", icon: "rss",
+  { id: "subscribe", icon: "rss",
     render: (p) => <SubscribePane onAsk={p.onAsk} onChanged={p.onChanged} onEditStateChange={p.onEditStateChange} /> },
-  { id: "web", label: "网页阅读", title: "网页阅读", desc: "网页链接的打开方式与提示。", icon: "external",
+  { id: "web", icon: "external",
     render: p => <WebReadingPane onAsk={p.onAsk} onEditStateChange={p.onEditStateChange} siteRuleSeed={p.siteRuleSeed} onSiteRuleSeedUsed={p.onSiteRuleSeedUsed} /> },
-  { id: "rules", label: "规则", title: "规则", desc: "匹配到的文章加分或减分。兴趣只影响排序，不在这里改。", icon: "filter",
+  { id: "rules", icon: "filter",
     render: (p) => <RulesPane onOpenArticle={p.onOpenArticle} onAsk={p.onAsk} onChanged={p.onChanged} onEditStateChange={p.onEditStateChange} /> },
-  { id: "memory", label: "记忆", title: "记忆", desc: "记在本机的偏好。兴趣只影响排序，不会改规则。", icon: "memory",
+  { id: "memory", icon: "memory",
     render: (p) => <MemoryPane ranking={p.ranking} onRanking={p.onRanking} onAsk={p.onAsk} onOpenArticle={p.onOpenArticle}
       onChanged={p.onChanged} onEditStateChange={p.onEditStateChange} /> },
-  { id: "model", label: "模型", title: "模型", desc: "每个用途单独指定连接和模型。没选的用途暂停。", icon: "cpu",
+  { id: "model", icon: "cpu",
     render: (p) => <ModelPane onAsk={p.onAsk} onNavigate={p.onTab} onEditStateChange={p.onEditStateChange} /> },
-  { id: "assistant", label: "对话助手", title: "对话助手", desc: "对话用哪个模型，以及它能调用什么。", icon: "chat",
+  { id: "assistant", icon: "chat",
     render: (p) => <AssistantPane onAsk={p.onAsk} onNavigate={p.onTab} onEditStateChange={p.onEditStateChange} /> },
-  { id: "translate", label: "翻译", title: "翻译", desc: "阅读时点「翻译」才调用服务，不改写原文。", icon: "translate",
+  { id: "translate", icon: "translate",
     render: (p) => <TranslatePane onEditStateChange={p.onEditStateChange} onOpenModels={() => p.onTab("model")} /> },
-  { id: "diagnostics", label: "诊断", title: "本机状态与排查", desc: "查看运行状况，需要时做些维护。", icon: "activity",
+  { id: "diagnostics", icon: "activity",
     render: (p) => <DiagPane onAsk={p.onAsk} onEditStateChange={p.onEditStateChange} onChanged={p.onChanged} /> },
-  { id: "storage", label: "存储", title: "存储", desc: "清理只删缓存，不删订阅和规则。", icon: "database",
+  { id: "storage", icon: "database",
     render: (p) => <StoragePane onAsk={p.onAsk} onEditStateChange={p.onEditStateChange} onChanged={p.onChanged} /> },
-  { id: "advanced", label: "高级", title: "高级", desc: "一般不用改这里。模型或助手出问题，先看对话助手页顶部的状态。", icon: "layers",
+  { id: "advanced", icon: "layers",
     render: (p) => <AdvancedPane onAsk={p.onAsk} onEditStateChange={p.onEditStateChange} /> },
 ];
 
 export function SettingsPanel(props: SettingsPanelProps) {
+  const { t } = useTranslation("settingsSystem");
   const { tab, onTab } = props;
   const feeds = useQuery(feedQueryOptions()).data;
   const memories = useQuery(memoryQueryOptions()).data;
@@ -110,12 +109,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
     <div className="settings-shell" data-scroll-boundary>
       <aside className="settings-sidebar">
         {props.navigationHead}
-        <nav className="settings-nav" aria-label="设置分类">
-          {TABS.map(({ id, label, title, icon }) => (
+        <nav className="settings-nav" aria-label={t("panel.navAria")}>
+          {TABS.map(({ id, icon }) => (
             <button
               key={id}
               type="button"
-              title={title}
+              title={t(`panel.tabs.${id}.title`)}
               aria-current={current.id === id ? "page" : undefined}
               data-on={current.id === id ? "1" : "0"}
               // 测试与冒烟脚本按分类 id 定位，改导航文字不必跟着改用例。
@@ -125,15 +124,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
               onFocus={() => warm(id)}
               onClick={() => goto(id)}
             >
-              <Icon name={icon} size={16} />{label}
+              <Icon name={icon} size={16} />{t(`panel.tabs.${id}.label`)}
               {!!counts[id] && <span className={`settings-nav-count${id === "subscribe" ? " warn" : ""}`}>{counts[id]}</span>}
-              {id === "model" && autoNotice && <span className="settings-nav-dot" aria-label="有新提示" />}
+              {id === "model" && autoNotice && <span className="settings-nav-dot" aria-label={t("panel.newHint")} />}
             </button>
           ))}
         </nav>
         <footer className="settings-nav-foot">
           {props.navigationFoot}
-          <p>数据只存在本机</p>
+          <p>{t("panel.dataLocal")}</p>
         </footer>
       </aside>
       <div className="settings-main">
@@ -143,10 +142,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
           <section className="settings-panel-content" aria-labelledby="settings-page-title">
             <header className="settings-page-heading">
               <div>
-                <h3 id="settings-page-title">{current.title}</h3>
-                <p>{current.desc}</p>
+                <h3 id="settings-page-title">{t(`panel.tabs.${current.id}.title`)}</h3>
+                <p>{t(`panel.tabs.${current.id}.desc`)}</p>
               </div>
-              {tab === "subscribe" && feeds && <span className="settings-page-summary">{sources.length} 个源 · {feeds.folders.length} 个文件夹</span>}
+              {tab === "subscribe" && feeds && <span className="settings-page-summary">{t("panel.subscribeSummary", { sources: sources.length, folders: feeds.folders.length })}</span>}
             </header>
             {current.render({ ...props, onTab: goto })}
           </section>

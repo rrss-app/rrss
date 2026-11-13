@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SettingSpec } from "../lib/api";
+import { i18n, useTranslation } from "../i18n";
 import { formatNotice } from "../lib/notice";
 import { Stepper } from "./Stepper";
 import { ChipBar, SaveBar, SettingRow, Toggle } from "./chips";
@@ -33,6 +34,7 @@ export function SettingsRows({ ids, label, title, className, disabled = false, o
   onEditStateChange?: (state: SettingsEditState | null) => void;
   onChanged?: () => void;
 }) {
+  const { t } = useTranslation("settingsSystem");
   const client = useQueryClient();
   const query = useQuery(settingsSchemaOptions());
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -57,7 +59,7 @@ export function SettingsRows({ ids, label, title, className, disabled = false, o
     for (const { row, value } of pending) {
       const problem = checkDraft(row.spec, value);
       if (problem) {
-        setStatus({ tone: "err", text: `「${row.label}」${problem}` });
+        setStatus({ tone: "err", text: t("rows.problem", { label: row.label, problem }) });
         return false;
       }
     }
@@ -68,20 +70,20 @@ export function SettingsRows({ ids, label, title, className, disabled = false, o
     setOptimistic({});
     if (outcome.status === "busy") return false;
     if (outcome.status === "failed") {
-      setStatus({ tone: "err", text: formatNotice("保存失败：", outcome.error) });
+      setStatus({ tone: "err", text: formatNotice(t("rows.saveFailed"), outcome.error) });
       return false;
     }
     const result = outcome.data;
     setDraft(old => Object.fromEntries(Object.entries(old).filter(([id]) => !result.saved.some(s => s.id === id))));
     if (result.failure) {
       const row = pending.find(p => p.row.spec.id === result.failure!.id)!.row;
-      setStatus({ tone: "err", text: formatNotice(`没能保存「${row.label}」：`, result.failure.error) });
+      setStatus({ tone: "err", text: formatNotice(t("rows.saveRowFailed", { label: row.label }), result.failure.error) });
       return false;
     } else {
       onChanged?.();
       const affectsPi = pending.some(p => p.row.spec.affects_pi);
       if (affectsPi || pending.some(p => p.row.spec.apply === "draft")) {
-        setStatus({ tone: "ok", text: affectsPi ? "已保存，将在下次发送时生效。" : "已保存。" });
+        setStatus({ tone: "ok", text: affectsPi ? t("rows.savedAffectsPi") : t("rows.saved") });
       }
       return true;
     }
@@ -106,7 +108,7 @@ export function SettingsRows({ ids, label, title, className, disabled = false, o
     const kind = spec.kind;
     if (kind.type === "bool") {
       const entry = registryEntry(spec.id);
-      return <Toggle label={row.control} on={value === "1"} onLabel={entry?.on ?? "已开启"} offLabel={entry?.off ?? "已关闭"}
+      return <Toggle label={row.control} on={value === "1"} onLabel={entry?.on ?? t("rows.on")} offLabel={entry?.off ?? t("rows.off")}
         disabled={blocked} onClick={() => void change(row, value === "1" ? "0" : "1")} />;
     }
     const display = registryEntry(spec.id)?.display;
@@ -123,7 +125,7 @@ export function SettingsRows({ ids, label, title, className, disabled = false, o
         <textarea value={draft[spec.id] ?? value} aria-label={row.control} disabled={blocked} rows={4}
           maxLength={kind.type === "text" ? kind.max : undefined} onChange={(e) => change(row, e.target.value)} />
         <div className="settings-note-actions"><span className="hint">{value.length}{kind.type === "text" ? ` / ${kind.max}` : ""}</span>
-          {spec.level !== "l2" && <button type="button" className="link-btn" disabled={blocked || value === spec.default} onClick={() => change(row, spec.default)}>恢复默认</button>}</div>
+          {spec.level !== "l2" && <button type="button" className="link-btn" disabled={blocked || value === spec.default} onClick={() => change(row, spec.default)}>{t("rows.restoreDefault")}</button>}</div>
       </div>;
     }
     if (display === "minutes") {
@@ -163,11 +165,11 @@ export function SettingsRows({ ids, label, title, className, disabled = false, o
   const body = (
     <>
       {title ? <h4>{title}</h4> : null}
-      {!query.data && !query.isError && <Pending>正在读取设置…</Pending>}
+      {!query.data && !query.isError && <Pending>{t("rows.loading")}</Pending>}
       {query.isError && (
         <p className="notice error" role="alert">
-          {formatNotice("读取设置失败：", query.error)}
-          <button type="button" className="btn sm" onClick={() => void query.refetch()}>重新读取</button>
+          {formatNotice(t("rows.loadFailed"), query.error)}
+          <button type="button" className="btn sm" onClick={() => void query.refetch()}>{t("rows.reload")}</button>
         </p>
       )}
       {rows.map((row) => (
@@ -186,6 +188,7 @@ export function SettingsRows({ ids, label, title, className, disabled = false, o
  * 只把换算成 token 的值交出去；外部值变了（保存、撤销）且和输入框对不上时再同步回来。
  */
 function WanInput({ label, tokens, disabled, onChange }: { label: string; tokens: string; disabled: boolean; onChange: (tokens: string) => void }) {
+  const { t } = useTranslation("settingsSystem");
   const [text, setText] = useState(() => tokensToWanText(tokens));
   useEffect(() => {
     setText((old) => (wanTextToTokens(old) === tokens ? old : tokensToWanText(tokens)));
@@ -193,7 +196,7 @@ function WanInput({ label, tokens, disabled, onChange }: { label: string; tokens
   return <span className="settings-amount">
     <input type="text" inputMode="decimal" aria-label={label} value={text} disabled={disabled}
       onChange={(e) => { setText(e.target.value); onChange(wanTextToTokens(e.target.value)); }} />
-    <span className="settings-amount-unit">万 token / 天</span>
+    <span className="settings-amount-unit">{t("rows.wanUnit")}</span>
   </span>;
 }
 
@@ -202,9 +205,9 @@ export function checkDraft(spec: SettingSpec, raw: string): string | null {
   const text = raw.trim();
   if (spec.kind.type === "int") {
     const n = Number(text);
-    if (!text || !Number.isSafeInteger(n)) return "需要填写整数。";
-    if (n < spec.kind.min || n > spec.kind.max) return `需要在 ${spec.kind.min} 到 ${spec.kind.max} 之间。`;
+    if (!text || !Number.isSafeInteger(n)) return i18n.t("rows.check.integer", { ns: "settingsSystem" });
+    if (n < spec.kind.min || n > spec.kind.max) return i18n.t("rows.check.range", { ns: "settingsSystem", min: spec.kind.min, max: spec.kind.max });
   }
-  if (spec.kind.type === "text" && text.length > spec.kind.max) return `不能超过 ${spec.kind.max} 字。`;
+  if (spec.kind.type === "text" && text.length > spec.kind.max) return i18n.t("rows.check.maxLength", { ns: "settingsSystem", max: spec.kind.max });
   return null;
 }

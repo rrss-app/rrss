@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { Icon } from "../components/Icon";
+import { useTranslation } from "../i18n";
 
 export function ModelField({ label, value, onChange, placeholder, options, disabled }: {
   label: string;
@@ -9,6 +10,7 @@ export function ModelField({ label, value, onChange, placeholder, options, disab
   options: string[];
   disabled?: boolean;
 }) {
+  const { t } = useTranslation("settingsModels");
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [active, setActive] = useState(0);
@@ -139,14 +141,14 @@ export function ModelField({ label, value, onChange, placeholder, options, disab
             type="button"
             className="model-dropdown-trigger"
             disabled={disabled}
-            aria-label={label + "：选择模型"}
+            aria-label={t("field.pickAria", { label })}
             aria-haspopup="listbox"
             aria-expanded={open}
             aria-controls={open ? listId : undefined}
             onClick={(event) => (open ? close(false) : openMenu(event.currentTarget))}
-            title="从已获取的模型列表中选择"
+            title={t("field.pickTitle")}
           >
-            <span>{value ? "切换" : "选择"}</span>
+            <span>{t(value ? "field.switch" : "field.choose")}</span>
             <Icon name="chevronDown" size={12} />
           </button>
         )}
@@ -163,15 +165,15 @@ export function ModelField({ label, value, onChange, placeholder, options, disab
                 aria-expanded="true"
                 value={filter}
                 onChange={(event) => { setFilter(event.target.value); setActive(0); }}
-                placeholder="搜索模型…"
-                aria-label="搜索模型"
+                placeholder={t("field.searchPlaceholder")}
+                aria-label={t("field.searchAria")}
                 aria-controls={listId}
                 aria-activedescendant={filtered[activeIndex] ? listId + "-" + activeIndex : undefined}
               />
             </div>
-            <div className="model-dropdown-list" role="listbox" id={listId} aria-label={label + "候选"} ref={listRef}>
+            <div className="model-dropdown-list" role="listbox" id={listId} aria-label={t("field.listAria", { label })} ref={listRef}>
               {filtered.length === 0 ? (
-                <div className="model-dropdown-empty" role="status">无匹配模型</div>
+                <div className="model-dropdown-empty" role="status">{t("field.empty")}</div>
               ) : filtered.map((option, index) => (
                 <button
                   key={option}

@@ -1,1 +1,247 @@
-{}
+{
+  "goModels": "去选模型",
+  "estimateSuffix": "{{text}}（估算）",
+  "toggle": { "on": "已开启", "off": "已关闭" },
+  "notice": { "saveFailed": "没有保存：" },
+  "tenThousands": "{{n}} 万",
+  "fit": {
+    "onlyDigest": "只够自动简报（约 {{total}} / 天），自动摘要基本不会运行",
+    "onlyDigestCluster": "只够自动简报和自动汇总（约 {{total}} / 天），自动摘要基本不会运行",
+    "overLimit": "扣除自动简报约 {{digest}}后超过每天 {{limit}} 篇的上限，预算不是瓶颈",
+    "overLimitCluster": "扣除自动简报约 {{digest}}、自动汇总约 {{cluster}}后超过每天 {{limit}} 篇的上限，预算不是瓶颈",
+    "fits": "扣除自动简报约 {{digest}}后约够 {{n}} 篇 / 天",
+    "fitsCluster": "扣除自动简报约 {{digest}}、自动汇总约 {{cluster}}后约够 {{n}} 篇 / 天"
+  },
+  "unlimited": {
+    "plain": "自动摘要每天最多约 {{most}} token（{{limit}} 篇 × 约 {{per}}，加自动简报约 {{digest}}，估算）",
+    "cluster": "自动摘要每天最多约 {{most}} token（{{limit}} 篇 × 约 {{per}}，加自动简报约 {{digest}}、自动汇总约 {{cluster}}，估算）"
+  },
+  "upgrade": {
+    "dismissFailed": "没能关掉提示：",
+    "title": "自动摘要已关闭",
+    "body": "后台自动摘要会为每篇新文章调用生成模型，是最主要的持续费用，所以这次升级后统一关闭。阅读时点「本篇摘要」和每日简报照常可用。",
+    "reenable": "要重新打开：设置 → 模型 → 自动任务。按当前设置（{{tier}}档）每篇约 {{tokens}} token（估算）。",
+    "budgetDefaulted": "自动任务现在有每日预算：<strong>生成 {{generation}}、嵌入 {{embedding}} token / 天</strong>，用完当天暂停、次日恢复。你以前没设过预算（不限额），现在按这个默认生效，可在「用量」里改。",
+    "budgetKept": "你设过的日预算 {{budget}} token 保留为「生成日预算」；嵌入另算，默认 {{embedding}} token / 天。",
+    "showJobs": "查看自动任务",
+    "dismiss": "知道了"
+  },
+  "budgetNote": {
+    "fit": "自动摘要按{{tier}}档每篇约 {{tokens}} token，{{fit}}（估算）。",
+    "unlimitedOn": "现在不限额：{{text}}。建议设一个上限，例如 20 万。",
+    "unlimitedOff": "现在不限额。建议设一个上限，例如 20 万。"
+  },
+  "usage": {
+    "todayOut": "今日 {{today}} / {{cap}} token · 已用完",
+    "todayCap": "今日 <strong>{{today}}</strong> / {{cap}} token",
+    "today": "今日 <strong>{{today}}</strong> token",
+    "month": "本月 {{month}} token",
+    "generation": {
+      "label": "生成用量",
+      "hint": "只读。自动与手动的摘要、简报、记忆整理都计入；按本地日计。",
+      "paused": "今天的生成预算已用完，自动摘要和自动简报暂停到明天。手动摘要、手动简报照常。"
+    },
+    "embedding": {
+      "label": "嵌入用量",
+      "hint": "只读。只计嵌入请求。",
+      "paused": "今天的嵌入预算已用完，新文章暂时只靠全文检索找到，明天恢复。摘要和简报不受影响。"
+    },
+    "chat": { "label": "对话用量", "hint": "只读。对话不计入任何预算。" }
+  },
+  "auto": {
+    "label": "自动摘要",
+    "disabled": "已关闭自动摘要。手动「本篇摘要」和简报照常可用。",
+    "enabled": "已开启自动摘要。下一批在 {{minutes}} 分钟内开始。",
+    "enabledWithBudget": "已开启自动摘要，生成日预算设为 {{budget}} token。下一批在 {{minutes}} 分钟内开始。",
+    "on": {
+      "intro": "在后台为新文章写摘要，焦点卡片直接显示。这是持续费用。",
+      "scopeWindow": "只处理入库 {{days}} 天内、评分为正的文章；更早的文章需要时点「本篇摘要」。",
+      "scopeLimit": "每天最多 {{limit}} 篇（手动摘要不计入），每 {{minutes}} 分钟一批 {{size}} 篇。",
+      "scopeCostBudget": "按{{tier}}档每篇约 {{tokens}} token；生成日预算 {{budget}}，{{fit}}（估算）。",
+      "scopeCostUnlimited": "按{{tier}}档每篇约 {{tokens}} token；生成日预算不限额。",
+      "noModel": "「摘要」还没选模型，自动摘要暂停",
+      "pausedToday": "今日已摘要 {{today}} 篇 · 生成预算已用完，明天继续",
+      "today": "今日已摘要 {{today}} / {{limit}} 篇"
+    },
+    "off": {
+      "intro": "关闭时不在后台自动摘要。阅读时点「本篇摘要」照常可用；每日简报也照常生成，只是没有摘要的文章选题时只看标题，内容可能少一些。",
+      "enableFit": "开启后只处理入库 {{days}} 天内的正分文章，每天最多 {{limit}} 篇，{{fit}}（估算）。",
+      "enableUnlimited": "开启后只处理入库 {{days}} 天内的正分文章，每天最多 {{limit}} 篇，生成日预算现在不限额。",
+      "noModel": "「摘要」还没选模型：可以先开启，选好模型后才开始。"
+    }
+  },
+  "neutral": { "label": "中性未读额外摘要", "needAuto": "需先开启自动摘要。" },
+  "cluster": {
+    "label": "自动汇总相近报道",
+    "disabled": "已关闭自动汇总。点「汇总」照常可以生成。",
+    "enabled": "已开启自动汇总相近报道。下一批排在自动摘要之后。",
+    "on": {
+      "intro": "在后台为焦点里的相近报道写综述，展开时直接看到，和你点「汇总」生成的一样。计入生成日预算。",
+      "scopeSources": "只汇总至少 2 个来源、最新一篇在 3 天内的组；还没有综述的先做。",
+      "scopeUpdate": "已有综述的组，来了新报道、且距上次生成超过 24 小时才更新。",
+      "scopeLimit": "每天最多 {{limit}} 组，排在自动摘要之后；每组约 {{per}} token，每天最多约 {{most}}（估算）。",
+      "noModel": "「相近报道综述」还没选模型，自动汇总暂停",
+      "pausedToday": "今日已汇总 {{today}} 组 · 生成预算已用完，明天继续",
+      "today": "今日已汇总 {{today}} / {{limit}} 组"
+    },
+    "off": {
+      "intro": "关闭时只在你点「汇总」时生成综述。开启后在后台为多来源的相近报道写综述，每天最多 {{limit}} 组，约 {{tokens}} token / 天（估算），计入生成日预算。"
+    }
+  },
+  "digest": { "label": "简报自动生成" },
+  "dialog": {
+    "title": "开启自动摘要？",
+    "intro": "开启后，RRSS 会在后台为新文章调用生成模型写摘要。<strong>这是持续费用</strong>：只要应用开着，每天都会产生用量。",
+    "scopeWindow": "只处理入库 {{days}} 天内、评分为正的文章。",
+    "scopeLimit": "每天最多 {{limit}} 篇，每 {{minutes}} 分钟一批 {{size}} 篇；手动摘要不计入。",
+    "model": "用「摘要」用途的模型：<mono>{{model}}</mono>。",
+    "estimateTag": "估算",
+    "estimateFit": "每篇约 {{per}} token，约够 {{n}} 篇 / 天",
+    "estimateOnlyDigest": "每篇约 {{per}} token，预算只够自动简报",
+    "estimateOnlyDigestCluster": "每篇约 {{per}} token，预算只够自动简报和自动汇总",
+    "deduct": "按当前输入档位（{{tier}}）粗算；当前生成日预算 {{budget}} token，先扣掉自动简报约 {{digest}} / 天。",
+    "deductCluster": "按当前输入档位（{{tier}}）粗算；当前生成日预算 {{budget}} token，先扣掉自动简报约 {{digest}}、自动汇总约 {{cluster}} / 天。",
+    "estimateNote": "实际随文章长短与模型而变。预算用完当天就停，自动简报也用这份预算，会一起停到次日。",
+    "noBudgetTag": "还没有生成日预算",
+    "unlimitedIntro": "现在是不限额。开启后{{text}}。建议先设一个上限：",
+    "budgetAria": "生成日预算（万 token）",
+    "budgetUnit": "万 token / 天",
+    "budgetInvalid": "填一个大于 0 的数；以后可在「用量」里改。",
+    "enableNoBudget": "不设预算，直接开启",
+    "enable": "开启自动摘要",
+    "enableWithBudget": "设预算并开启"
+  },
+  "vector": {
+    "title": "向量库",
+    "intro": "向量只能和同一个模型生成的向量比较，所以本库绑定一个嵌入模型。",
+    "effortLocal": "约 {{minutes}} 分钟，不产生费用",
+    "effortRemote": "约 {{tokens}} token，按服务商价格计费",
+    "bind": {
+      "title": "绑定本库的向量",
+      "ok": "绑定并开始生成",
+      "effortUnknown": "耗时取决于文章数量",
+      "message": "本库的向量将由 {{label}} 生成，约 {{chunks}} 段，{{effort}}。以后更换嵌入模型需要全量重建向量库。生成在后台进行，期间照常使用。"
+    },
+    "change": {
+      "title": "更换嵌入模型并重建",
+      "ok": "开始重建",
+      "message": "从 {{from}} 换到 {{label}}，需要重新生成 {{chunks}} 段，{{effort}}。重建完成前，相似文章和对话检索继续用 {{from}}；完成后自动切换，旧向量被替换。"
+    },
+    "dims": {
+      "label": "向量维度",
+      "auto": "自动（不超过 1024 维）",
+      "n": "{{dims}} 维",
+      "native": "原始",
+      "nativeN": "原始（{{dims}} 维）",
+      "hint": "只有部分模型适合降维（如 OpenAI text-embedding-3、Gemini embedding、Qwen3-Embedding、EmbeddingGemma），其他模型降维后效果会明显变差。默认不超过 1024 维，节省空间。",
+      "hintStale": "向量库已暂停生成，请先恢复原配置再改维度。",
+      "hintBuilding": "正在重建向量库，完成或取消后才能改维度。"
+    },
+    "notice": {
+      "failed": "没有完成：",
+      "readFailed": "读取向量库状态失败：",
+      "dimsSaved": "已保存向量维度。",
+      "cancelled": "已取消重建。",
+      "restored": "已恢复原配置并重新核对。",
+      "checked": "核对完成。"
+    },
+    "resize": {
+      "title": "调整向量维度",
+      "truncate": "将向量库从 {{from}} 维调整到 {{to}} 维，直接在本地截断已有的 {{chunks}} 段向量，不调用接口、不产生费用；完成前检索继续用当前 {{from}} 维。",
+      "rebuild": "将向量库从 {{from}} 维调整到 {{to}} 维，需要重新生成向量，约 {{chunks}} 段，{{effort}}。重建完成前检索继续用当前 {{from}} 维。",
+      "okAdjust": "开始调整",
+      "okRebuild": "开始重建"
+    },
+    "bound": {
+      "tag": "已绑定本库向量",
+      "summary": "{{model}}（{{provider}}）· {{dims}} 维 · {{chunks}} 段",
+      "summaryNative": "{{model}}（{{provider}}）· {{dims}} 维（原始 {{sourceDims}} 维） · {{chunks}} 段"
+    },
+    "unbound": "还没有嵌入模型。没有它时，对话检索只用全文检索，排序不用向量。",
+    "building": {
+      "resizing": "正在把向量库调整到 {{dims}} 维：{{written}} / {{total}} 段",
+      "rebuilding": "正在用 {{model}} 重建向量库：{{written}} / {{total}} 段",
+      "progressAria": "向量库重建进度",
+      "keepDims": "重建完成前，检索继续用 当前 {{dims}} 维；完成后自动切换。",
+      "keepModel": "重建完成前，检索继续用 {{model}}；完成后自动切换。",
+      "previousVectors": "原来的向量"
+    },
+    "cancel": {
+      "button": "取消重建",
+      "title": "取消重建",
+      "messageDims": "已生成的新向量会被删除，维度改回 {{dims}} 维。",
+      "messageModel": "已生成的新向量会被删除，嵌入改回原来的模型。",
+      "ok": "取消重建",
+      "keep": "继续重建"
+    },
+    "stale": {
+      "title": "已暂停生成新向量",
+      "restore": "恢复原配置",
+      "defaultReason": "服务返回的向量和建库时不同，可能是模型版本或量化变了。",
+      "existingUsable": "已有向量照常用于检索。"
+    },
+    "check": {
+      "title": "核对生成方式",
+      "hint": "定期检查服务生成的向量有没有变化；变了会暂停生成并提醒你。",
+      "last": "上次核对：{{time}}。",
+      "button": "立即核对"
+    }
+  },
+  "translate": {
+    "editLabel": "翻译设置",
+    "loading": "正在读取已保存的翻译设置…",
+    "retry": "重试读取",
+    "backend": { "complete": "大模型", "deepl": "DeepL 官方", "deeplx": "DeepLX", "http": "HTTP 服务" },
+    "lang": { "zh": "中文", "en": "英语", "ja": "日语" },
+    "notice": {
+      "readFailedRetry": "读取翻译设置失败，请重试：",
+      "readFailedKept": "读取翻译设置失败，当前输入已保留：",
+      "testOk": "设置已保存，测试翻译：",
+      "saved": "翻译设置已保存。",
+      "testFailed": "设置已保存，但测试失败：",
+      "saveFailedNoTest": "保存失败，未开始测试：",
+      "saveFailed": "保存失败：",
+      "savedButReadFailed": "设置已保存，但{{error}}"
+    },
+    "reading": {
+      "title": "阅读",
+      "enable": "启用翻译",
+      "enableHint": "关闭后阅读器里不出现翻译。",
+      "targetLang": "目标语言",
+      "otherLangs": "其他语言",
+      "langCode": "语言代码",
+      "langCodeHint": "其他语言可填写代码，例如 de（德语）、fr（法语）。"
+    },
+    "service": {
+      "title": "服务",
+      "hint": "选一种即生效。换服务时，各自的地址和密钥都留着。",
+      "aria": "翻译服务",
+      "test": "测试连接",
+      "testDirtyTitle": "会先保存当前修改再测试"
+    },
+    "deepl": {
+      "hint": "填写 DeepL API 密钥。免费版密钥以 :fx 结尾；不填写自定义地址时，会根据密钥选择官方地址。",
+      "keyLabel": "API Key",
+      "keyPlaceholder": "例如 12345678-abcd-...:fx",
+      "urlLabel": "自定义 API 地址（可选）",
+      "urlPlaceholder": "留空使用官方默认地址"
+    },
+    "deeplx": {
+      "hint": "填写你已部署的 DeepLX 服务地址；服务需要认证时，再填写 Token。",
+      "urlLabel": "DeepLX 服务地址",
+      "tokenLabel": "Token（可选）"
+    },
+    "http": {
+      "hint": "填写兼容 LibreTranslate 的翻译服务地址。",
+      "urlLabel": "HTTP 服务地址",
+      "keyLabel": "API Key（可选）",
+      "keyPlaceholder": "可选 API Key"
+    },
+    "model": {
+      "label": "使用模型",
+      "hint": "和模型页「翻译」用途是同一项。",
+      "menuLabel": "翻译的模型",
+      "saved": "已保存：翻译改用 {{model}}。"
+    }
+  }
+}

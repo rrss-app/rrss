@@ -1,4 +1,5 @@
 import type { EmbedCoverView } from "../bindings";
+import { useTranslation } from "../i18n";
 import { coverMeta, isLocalMediaHref } from "./embedUrl";
 
 type Props = {
@@ -9,10 +10,11 @@ type Props = {
 };
 
 export function EmbedCoverCard({ cover, site, openUrl, onOpenUrl }: Props) {
+  const { t } = useTranslation("reader");
   const ready = Boolean(cover && !cover.failed && cover.title && isLocalMediaHref(cover.cover_href));
-  const label = site === "bilibili" ? "哔哩哔哩" : "YouTube";
+  const label = site === "bilibili" ? t("embed.bilibili") : "YouTube";
   if (!ready || !cover) {
-    const text = cover?.failed ? `${label} · 封面未能显示` : label;
+    const text = cover?.failed ? t("embed.coverFailed", { label }) : label;
     return (
       <button type="button" className="embed-external" onClick={() => onOpenUrl?.(openUrl)}>
         {text}

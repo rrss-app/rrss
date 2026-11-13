@@ -1,6 +1,7 @@
 import { forwardRef, useImperativeHandle, useRef, useState, type CSSProperties } from "react";
 import { TrainingBar } from "../../components/TrainingBar";
 import { api, type ArticleView, type FeatureView } from "../../lib/api";
+import { useTranslation } from "../../i18n";
 import { trackEvent } from "../../lib/signals";
 import { formatNotice } from "../../lib/notice";
 import type { ArticleWriteOrder } from "../../lib/articleWriteOrder";
@@ -13,6 +14,7 @@ export const FocusTraining = forwardRef<FocusTrainingHandle, {
   ratings: ArticleWriteOrder;
   onOpen: () => void; onClose: () => void; notify: (notice: FocusNotice) => void;
 }>(function FocusTraining({ session, open, style, ratings, onOpen, onClose, notify }, ref) {
+  const { t } = useTranslation("focus");
   const [training, setTraining] = useState<{ article: ArticleView; features: FeatureView[]; dislike: boolean } | null>(null);
   const confirming = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -20,11 +22,11 @@ export const FocusTraining = forwardRef<FocusTrainingHandle, {
   useImperativeHandle(ref, () => ({
     async rate(article, up) {
       try { await ratings.write(article.id, () => api.rate(article.id, up)); trackEvent(article.id, up ? "up" : "down"); }
-      catch (err) { notify({ message: formatNotice("评分失败：", err) }); return false; }
+      catch (err) { notify({ message: formatNotice(t("training.rateFailed"), err) }); return false; }
       if (article.spot_check) session.revealSpotCheck(article.id, up);
       // 推荐详情关时抽查卡与普通卡片无异，照常进入训练条；说明留到打开详情时再显示。
       if (article.spot_check && session.getRanking().show_details) {
-        notify({ message: "已记录偏好", holdMs: 2500 });
+        notify({ message: t("training.recorded"), holdMs: 2500 });
         return true;
       }
       const features = await api.training(article.id).catch(() => []);
@@ -33,12 +35,12 @@ export const FocusTraining = forwardRef<FocusTrainingHandle, {
         setTraining({ article, features, dislike: !up });
         onOpen();
       } else {
-        notify({ message: "已记录偏好", holdMs: 2500 });
+        notify({ message: t("training.recorded"), holdMs: 2500 });
         await session.reload();
       }
       return true;
     },
-  }), [notify, onOpen, ratings, session]);
+  }), [notify, onOpen, ratings, session, t]);
   if (!open || !training) return null;
   return <TrainingBar item={training} style={style} busy={busy} error={error}
     onClose={() => { if (!confirming.current) onClose(); }} onConfirm={async (feature, feedScope) => {
@@ -52,7 +54,7 @@ export const FocusTraining = forwardRef<FocusTrainingHandle, {
         onClose();
         await session.reload();
       } catch (err) {
-        setError(formatNotice("规则保存失败：", err));
+        setError(formatNotice(t("training.saveFailed"), err));
       } finally {
         confirming.current = false;
         setBusy(false);

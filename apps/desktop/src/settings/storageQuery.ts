@@ -1,16 +1,17 @@
 import { settingsQueryPolicy } from "./queryPolicy";
 import { queryOptions } from "@tanstack/react-query";
 import { api, type StoragePage } from "../lib/api";
+import { i18n } from "../i18n";
 import { isTauri } from "../lib/preview";
 
 // 浏览器预览只展示结构，不代表本机数据。
-const PREVIEW_STORAGE: StoragePage = {
-  data_dir: "浏览器预览",
+const previewStorage = (): StoragePage => ({
+  data_dir: i18n.t("storage.preview.dataDir", { ns: "settingsSystem" }),
   total: "—",
-  summary: "未连接本机数据",
+  summary: i18n.t("storage.preview.summary", { ns: "settingsSystem" }),
   groups: [],
   scanned_at: 0,
-};
+});
 export const storageKeys = {
   page: ["storage", "page"] as const,
   write: ["storage", "write"] as const,
@@ -21,7 +22,7 @@ export function storageQueryOptions() {
     queryKey: storageKeys.page,
     queryFn: ({ signal }) => {
       void signal; // IPC 不可取消；消费 signal 让 query 取消隔离迟到快照。
-      return isTauri() ? api.storagePage() : Promise.resolve(PREVIEW_STORAGE);
+      return isTauri() ? api.storagePage() : Promise.resolve(previewStorage());
     },
     ...settingsQueryPolicy,
   });

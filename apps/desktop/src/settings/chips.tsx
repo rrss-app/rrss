@@ -2,6 +2,7 @@ import type { SecretView } from "../bindings";
 import { cloneElement, isValidElement, useId, useState, type ReactNode } from "react";
 import { Icon } from "../components/Icon";
 import { Segmented } from "../components/Segmented";
+import { useTranslation } from "../i18n";
 import { useReveal } from "../lib/motion";
 
 export function ChipBar({
@@ -110,6 +111,7 @@ export function SecretField({
   placeholder?: string;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation("settingsModels");
   const [show, setShow] = useState(false);
   const inputId = useId();
   return (
@@ -125,8 +127,8 @@ export function SecretField({
           placeholder={placeholder}
           autoComplete="off"
         />
-        <button type="button" className="btn sm" disabled={disabled} onClick={() => setShow((v) => !v)} aria-label={(show ? "隐藏" : "显示") + label} aria-pressed={show} title={show ? "隐藏密钥" : "显示密钥"}>
-          <Icon name="eye" size={14} />{show ? "隐藏" : "显示"}
+        <button type="button" className="btn sm" disabled={disabled} onClick={() => setShow((v) => !v)} aria-label={t(show ? "secret.hideNamed" : "secret.showNamed", { label })} aria-pressed={show} title={t(show ? "secret.hideTitle" : "secret.showTitle")}>
+          <Icon name="eye" size={14} />{t(show ? "secret.hide" : "secret.show")}
         </button>
       </div>
     </Field>
@@ -137,16 +139,17 @@ export function SecretField({
 export function SavedSecretField({ label, saved, value, onChange, placeholder }: {
   label: string; saved: SecretView; value?: string; onChange: (value: string | undefined) => void; placeholder?: string;
 }) {
+  const { t } = useTranslation("settingsModels");
   if (saved.state === "set" && value === undefined) return <Field label={label}>
-    <div className="row"><span className="mono">{saved.hint ? `已保存 · ${saved.hint}` : "已保存"}</span>
-      <button type="button" className="btn sm" onClick={() => onChange("")}>更换{label}</button>
+    <div className="row"><span className="mono">{saved.hint ? t("secret.savedHint", { hint: saved.hint }) : t("secret.saved")}</span>
+      <button type="button" className="btn sm" onClick={() => onChange("")}>{t("secret.replace", { label })}</button>
     </div>
   </Field>;
   return <>
-    {saved.state === "missing" && <p className="notice warn">备份未包含此密钥，需要重新填写 {label}。</p>}
+    {saved.state === "missing" && <p className="notice warn">{t("secret.missing", { label })}</p>}
     <SecretField label={label} value={value ?? ""} onChange={onChange} placeholder={placeholder} />
-    {saved.state === "set" && <div className="row"><span className="hint">填写新值替换；留空保存将清除密钥。</span>
-      <button type="button" className="btn sm ghost" onClick={() => onChange(undefined)}>取消更换</button></div>}
+    {saved.state === "set" && <div className="row"><span className="hint">{t("secret.replaceHint")}</span>
+      <button type="button" className="btn sm ghost" onClick={() => onChange(undefined)}>{t("secret.cancelReplace")}</button></div>}
   </>;
 }
 
@@ -182,11 +185,12 @@ export function Fold({ title, summary, open, onToggle, className, children }: {
 
 /** 草稿保存栏：只在有改动时出现，吸底。保存中按钮转圈、不换文字，宽度不跳。 */
 export function SaveBar({ label, busy, saving = busy, onSave, onUndo }: { label: string; busy: boolean; saving?: boolean; onSave: () => void; onUndo: () => void }) {
+  const { t } = useTranslation("settingsModels");
   return (
-    <div className="settings-savebar" role="group" aria-label={`${label}的未保存修改`}>
-      <span className="hint">有未保存的修改</span>
-      <button type="button" className="btn primary" disabled={busy} aria-busy={saving || undefined} onClick={onSave}>保存</button>
-      <button type="button" className="btn ghost" disabled={busy} onClick={onUndo}>撤销</button>
+    <div className="settings-savebar" role="group" aria-label={t("saveBar.group", { label })}>
+      <span className="hint">{t("saveBar.dirty")}</span>
+      <button type="button" className="btn primary" disabled={busy} aria-busy={saving || undefined} onClick={onSave}>{t("saveBar.save")}</button>
+      <button type="button" className="btn ghost" disabled={busy} onClick={onUndo}>{t("saveBar.undo")}</button>
     </div>
   );
 }

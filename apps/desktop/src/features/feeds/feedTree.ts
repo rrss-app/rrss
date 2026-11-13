@@ -1,4 +1,5 @@
 import type { FeedCountsView, FeedTree, FeedView } from "../../lib/api";
+import { i18n } from "../../i18n";
 
 /** 订阅树的一行。`key` 就是后端认的范围文本：`all` / `folder:<id>` / `feed:<id>`。 */
 export type TreeRow = {
@@ -80,7 +81,7 @@ export function ancestorFolders(tree: FeedTree, scope: string): number[] {
 
 /** 范围的名称与上级路径，用于时间线标题。找不到时按全部订阅。 */
 export function scopeTitle(tree: FeedTree | undefined, scope: string): { name: string; path: string[] } {
-  if (!tree) return { name: "全部订阅", path: [] };
+  if (!tree) return { name: i18n.t("scope.all", { ns: "feeds" }), path: [] };
   const folders = folderIndex(tree);
   const pathOf = (id: number | null) => {
     const out: string[] = [];
@@ -95,7 +96,7 @@ export function scopeTitle(tree: FeedTree | undefined, scope: string): { name: s
   const feed = /^feed:(\d+)$/.exec(scope);
   const found = feed ? findFeed(tree, Number(feed[1])) : undefined;
   if (found) return { name: found.title, path: pathOf(found.folder_id || null) };
-  return { name: "全部订阅", path: [] };
+  return { name: i18n.t("scope.all", { ns: "feeds" }), path: [] };
 }
 
 /**
@@ -118,7 +119,7 @@ export function treeRows(tree: FeedTree, counts: FeedCountsView | null, open: Re
     keeps.set(folder.id, result);
     return result;
   };
-  const out: TreeRow[] = q ? [] : [{ key: "all", kind: "all", name: "全部订阅", depth: 0, count: counts?.total ?? 0, parent: null, branch: false, open: false }];
+  const out: TreeRow[] = q ? [] : [{ key: "all", kind: "all", name: i18n.t("scope.all", { ns: "feeds" }), depth: 0, count: counts?.total ?? 0, parent: null, branch: false, open: false }];
   const feedRow = (feed: FeedView, depth: number, parent: string | null): TreeRow =>
     ({ key: `feed:${feed.id}`, kind: "feed", name: feed.title, depth, count: feedCounts.get(feed.id) ?? 0, parent, branch: false, open: false, feed });
   const walk = (parent: number | null, depth: number, whole: boolean, seen: Set<number>) => {
@@ -179,8 +180,8 @@ function blocksParent(tree: FeedTree, key: string, parent: number | null): boole
 }
 
 function whereParent(tree: FeedTree, parent: number | null): string {
-  if (parent === null) return "移到根层";
-  return `移到「${folderIndex(tree).get(parent)?.name ?? ""}」`;
+  if (parent === null) return i18n.t("move.where.root", { ns: "feeds" });
+  return i18n.t("move.where.folder", { ns: "feeds", name: folderIndex(tree).get(parent)?.name ?? "" });
 }
 
 function keysOf(key: string | string[]): string[] {
@@ -224,7 +225,7 @@ export function planToTop(tree: FeedTree, key: string): MovePlan | null {
   const root = siblingKeys(tree, null);
   if (parentOfKey(tree, key) === null && root[0] === key) return null;
   const before = root[0] === key ? root[1] ?? null : root[0] ?? null;
-  return plan(tree, key, null, before, "移到最上面");
+  return plan(tree, key, null, before, i18n.t("move.where.top", { ns: "feeds" }));
 }
 
 /** `folderId` 为空：不放文件夹，放到根层最前。 */
@@ -232,11 +233,11 @@ export function planIntoFolder(tree: FeedTree, key: string | string[], folderId:
   const moving = new Set(keysOf(key));
   if (folderId === null) {
     const before = siblingKeys(tree, null).find((item) => !moving.has(item)) ?? null;
-    return plan(tree, key, null, before, "移到根层最上面");
+    return plan(tree, key, null, before, i18n.t("move.where.rootTop", { ns: "feeds" }));
   }
   const name = folderIndex(tree).get(folderId)?.name;
   if (!name) return null;
-  return plan(tree, key, folderId, null, `移到「${name}」`, folderId);
+  return plan(tree, key, folderId, null, i18n.t("move.where.folder", { ns: "feeds", name }), folderId);
 }
 
 export function planDrop(tree: FeedTree, key: string | string[], row: TreeRow, zone: "before" | "after" | "into"): MovePlan | null {
@@ -277,7 +278,7 @@ export function pickerGroups(tree: FeedTree, folderId: number, query: string, lo
     const loose = feed.folder_id <= 0;
     if (looseOnly && !loose) continue;
     const path = scopeTitle(tree, `feed:${feed.id}`).path;
-    const label = loose || path.length === 0 ? "未放进文件夹" : path.join(" › ");
+    const label = loose || path.length === 0 ? i18n.t("picker.loose", { ns: "feeds" }) : path.join(" › ");
     const list = groups.get(label) ?? [];
     list.push({ id: feed.id, title: feed.title, locked: inside.has(feed.id), loose });
     groups.set(label, list);

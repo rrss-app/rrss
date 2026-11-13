@@ -10,7 +10,7 @@ import { useSettingsWrite, type SettingsEditState } from "./editState";
 import { choiceKey, modelName, parseChoice, sameChoice } from "./modelChoices";
 import type { Ask } from "./SettingsPanel";
 import { MenuSelect } from "../components/MenuSelect";
-import { locale } from "../i18n";
+import { locale, useTranslation } from "../i18n";
 
 type Note = { tone: "ok" | "err"; text: string };
 
@@ -34,6 +34,7 @@ export function AddModelsDialog({ providers, pool, initial, note: firstNote, onA
   onApplied: (message: string, firstRun: ModelChoice | null) => void;
   onEditStateChange?: (state: SettingsEditState | null) => void;
 }) {
+  const { t } = useTranslation("settingsModels");
   const client = useQueryClient();
   const { writing, run } = useSettingsWrite(aiMutationOptions(client));
   const bindings = useQuery(bindingsQueryOptions()).data;
@@ -56,7 +57,7 @@ export function AddModelsDialog({ providers, pool, initial, note: firstNote, onA
   const removes = Object.entries(staged).filter(([k, v]) => !v && inPool(k)).map(([k]) => parseChoice(k)!);
   const dirty = adds.length + removes.length > 0 || !!manual.trim();
   const busy = writing || fetching;
-  const used = removes.flatMap((c) => bindings?.tasks.filter((t) => sameChoice(t, c)) ?? []);
+  const used = removes.flatMap((c) => bindings?.tasks.filter((x) => sameChoice(x, c)) ?? []);
 
   const toggle = (model: string) => {
     const key = choiceKey({ provider_id: providerId, model });
@@ -79,7 +80,7 @@ export function AddModelsDialog({ providers, pool, initial, note: firstNote, onA
     });
     const fresh = listed.filter((m) => !checked(choiceKey({ provider_id: providerId, model: m }))).length;
     if (!all && fresh > BULK_CONFIRM) {
-      onAsk(`一次勾选 ${fresh} 个模型？`, "加进来的模型会出现在所有选模型的地方。通常挑几个常用的就够。", apply, { okLabel: "全部勾选" });
+      onAsk(t("add.bulkTitle", { count: fresh }), t("add.bulkBody"), apply, { okLabel: t("add.bulkOk") });
     } else apply();
   };
   const addManual = () => {
@@ -87,7 +88,7 @@ export function AddModelsDialog({ providers, pool, initial, note: firstNote, onA
     if (!model) return;
     setManual("");
     setStaged((old) => ({ ...old, [choiceKey({ provider_id: providerId, model })]: true }));
-    setNote({ tone: "ok", text: `已勾选手填的 ${model}，应用后加入。` });
+    setNote({ tone: "ok", text: t("add.manualStaged", { model }) });
   };
   const refetch = async () => {
     setNote(null);
@@ -98,11 +99,11 @@ export function AddModelsDialog({ providers, pool, initial, note: firstNote, onA
     setFetching(false);
     if (outcome.status === "failed") {
       setNote({ tone: "err", text: formatNotice(catalog
-        ? `重新获取失败，已记住的 ${catalog.models.length} 个模型不受影响：`
-        : "获取失败，可以先手填模型 id：", outcome.error) });
+        ? t("add.refetchFailed", { count: catalog.models.length })
+        : t("add.fetchFailed"), outcome.error) });
     } else {
       const next = client.getQueryData<ModelPoolView>(aiKeys.pool)?.catalogs.find((c) => c.provider_id === providerId);
-      setNote({ tone: "ok", text: next ? `已更新，共 ${next.models.length} 个模型。` : "服务没有返回模型，可以手填。" });
+      setNote({ tone: "ok", text: next ? t("add.updated", { count: next.models.length }) : t("add.noModels") });
     }
   };
 
@@ -112,49 +113,51 @@ export function AddModelsDialog({ providers, pool, initial, note: firstNote, onA
     const firstRun = !pool?.pool.length && adds.length ? adds[0] : null;
     const outcome = await run({ type: "pool", args: { add: adds, remove: removes, replace: replace ?? undefined } });
     if (outcome.status === "busy" || !outcome.mounted) return false;
-    if (outcome.status === "failed") { setNote({ tone: "err", text: formatNotice("没有应用：", outcome.error) }); return false; }
+    if (outcome.status === "failed") { setNote({ tone: "err", text: formatNotice(t("add.applyFailed"), outcome.error) }); return false; }
     const view = outcome.data.pool;
-    const moved = view?.replaced.length ? `，${view.replaced.length} 项用途改用替换模型` : view?.unset.length ? `，${view.unset.length} 项用途暂停，等你另选` : "";
-    onApplied(`已加入 ${adds.length} 个、移出 ${removes.length} 个模型${moved}。`, firstRun);
+    const counts = { adds: adds.length, removes: removes.length };
+    onApplied(view?.replaced.length ? t("add.appliedReplaced", { ...counts, count: view.replaced.length })
+      : view?.unset.length ? t("add.appliedUnset", { ...counts, count: view.unset.length })
+      : t("add.applied", counts), firstRun);
     onClose();
     return true;
   };
 
   return (
-    <Dialog title="添加模型" dirty={dirty} busy={busy} onAsk={onAsk} onClose={onClose} onSave={() => apply()}
+    <Dialog title={t("add.title")} dirty={dirty} busy={busy} onAsk={onAsk} onClose={onClose} onSave={() => apply()}
       onEditStateChange={onEditStateChange} className="wide"
-      leading={<span className="hint">{adds.length || removes.length ? `将加入 ${adds.length} 个、移出 ${removes.length} 个` : "勾选要用的模型，最后一次应用。"}</span>}
+      leading={<span className="hint">{adds.length || removes.length ? t("add.staged", { adds: adds.length, removes: removes.length }) : t("add.idle")}</span>}
       actions={<button type="button" className="btn primary" disabled={busy || (!adds.length && !removes.length)} aria-busy={writing || undefined} onClick={() => void apply()}>
-        应用
+        {t("add.apply")}
       </button>}>
       <ChipBar value={String(providerId)} options={providers.map((p) => ({ id: String(p.id), label: p.name }))} disabled={busy}
         onChange={(id) => { setProviderId(Number(id)); setFilter(""); setNote(null); setReplacing(false); }} />
       {note && <p className={note.tone === "err" ? "form-status error" : "form-status"} role={note.tone === "err" ? "alert" : "status"}>{note.text}</p>}
       {replacing && (
-        <ReplacePrompt pool={pool} providers={providers} removing={removes} uses={used.map((t) => t.title)} disabled={busy}
+        <ReplacePrompt pool={pool} providers={providers} removing={removes} uses={used.map((x) => x.title)} disabled={busy}
           onConfirm={(r) => void apply(r)} onCancel={() => setReplacing(false)} />
       )}
       {catalog ? <>
         <div className="row catalog-meta">
-          <span className="hint">目录 {catalog.models.length} 个 · {fetchedLabel(catalog.fetched_at)} 获取 · 已加入 {pool?.pool.filter((e) => e.provider_id === providerId).length ?? 0} 个</span>
-          <button type="button" className="btn sm" disabled={busy} aria-busy={fetching || undefined} onClick={() => void refetch()}>重新获取</button>
+          <span className="hint">{t("add.catalogMeta", { total: catalog.models.length, time: fetchedLabel(catalog.fetched_at), added: pool?.pool.filter((e) => e.provider_id === providerId).length ?? 0 })}</span>
+          <button type="button" className="btn sm" disabled={busy} aria-busy={fetching || undefined} onClick={() => void refetch()}>{t("add.refetch")}</button>
         </div>
         <div className="row catalog-filter">
-          <input type="search" value={filter} placeholder="搜索模型 id，例如 gpt5m、qwen coder" aria-label="搜索模型" onChange={(e) => setFilter(e.target.value)} />
+          <input type="search" value={filter} placeholder={t("add.searchPlaceholder")} aria-label={t("add.searchAria")} onChange={(e) => setFilter(e.target.value)} />
           {listed.length > 0 && (
             <button type="button" className="btn sm" disabled={busy} onClick={selectAll}>
-              {all ? "取消勾选" : "全选"}{filter.trim() ? `筛选出的 ${listed.length} 个` : `全部 ${listed.length} 个`}
+              {t(`add.${all ? "unselect" : "select"}${filter.trim() ? "Filtered" : "All"}`, { count: listed.length })}
             </button>
           )}
         </div>
       </> : (
         <div className="catalog-empty">
-          <p>还没有获取过「{provider?.name}」的模型列表。获取成功后会记住，下次打开直接显示。</p>
-          <button type="button" className="btn sm primary" disabled={busy} aria-busy={fetching || undefined} onClick={() => void refetch()}>获取模型列表</button>
+          <p>{t("add.noCatalog", { name: provider?.name })}</p>
+          <button type="button" className="btn sm primary" disabled={busy} aria-busy={fetching || undefined} onClick={() => void refetch()}>{t("add.fetch")}</button>
         </div>
       )}
       {(catalog || manualIds.length > 0) && (
-        <ul className="catalog-list tall" aria-label={`${provider?.name ?? ""} 的模型`}>
+        <ul className="catalog-list tall" aria-label={t("add.listAria", { name: provider?.name ?? "" })}>
           {listed.map((model) => {
             const key = choiceKey({ provider_id: providerId, model });
             const s = staged[key];
@@ -166,24 +169,24 @@ export function AddModelsDialog({ providers, pool, initial, note: firstNote, onA
                   <input type="checkbox" checked={checked(key)} disabled={busy} onChange={() => toggle(model)} />
                   <span className="mono">{model}</span>
                   {entry?.display_name && <span className="hint">{modelName(entry)}</span>}
-                  {s === true && !inPool(key) ? <span className="meta-tag accent">将加入</span>
-                    : s === false && inPool(key) ? <span className="meta-tag warn">将移出{uses ? ` · 用于 ${uses} 项` : ""}</span>
-                    : inPool(key) ? <span className="hint">已加入</span> : null}
+                  {s === true && !inPool(key) ? <span className="meta-tag accent">{t("add.willAdd")}</span>
+                    : s === false && inPool(key) ? <span className="meta-tag warn">{uses ? t("add.willRemoveUsed", { count: uses }) : t("add.willRemove")}</span>
+                    : inPool(key) ? <span className="hint">{t("add.added")}</span> : null}
                 </label>
               </li>
             );
           })}
-          {!listed.length && <li className="hint">没有匹配「{filter.trim()}」的模型。可以在下面手填。</li>}
+          {!listed.length && <li className="hint">{t("add.noMatch", { filter: filter.trim() })}</li>}
         </ul>
       )}
       <div className="field">
-        <span>手填模型 id</span>
+        <span>{t("add.manual")}</span>
         <div className="row catalog-filter">
-          <input value={manual} placeholder="例如 my-proxy-model" aria-label="手填模型 id" disabled={busy}
+          <input value={manual} placeholder={t("add.manualPlaceholder")} aria-label={t("add.manual")} disabled={busy}
             onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) addManual(); }} />
-          <button type="button" className="btn sm" disabled={busy || !manual.trim()} onClick={addManual}>加入勾选</button>
+          <button type="button" className="btn sm" disabled={busy || !manual.trim()} onClick={addManual}>{t("add.manualAdd")}</button>
         </div>
-        <span className="hint">目录里没有、或获取失败时用。挂在「{provider?.name}」下。</span>
+        <span className="hint">{t("add.manualHint", { name: provider?.name })}</span>
       </div>
     </Dialog>
   );
@@ -202,23 +205,24 @@ export function ReplacePrompt({ pool, providers, removing, uses, disabled, onCon
   onConfirm: (replace: ModelChoice | null) => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation("settingsModels");
   const gone = new Set(removing.map(choiceKey));
   const others = (pool?.pool ?? []).filter((e) => !gone.has(choiceKey(e)));
   const [target, setTarget] = useState(others[0] ? choiceKey(others[0]) : "");
-  const name = (id: number) => providers.find((p) => p.id === id)?.name ?? "已删除的连接";
+  const name = (id: number) => providers.find((p) => p.id === id)?.name ?? t("replace.deletedConnection");
   return (
-    <div className="replace-prompt" role="group" aria-label="改用哪个模型">
-      <p><strong>{removing.length === 1 ? removing[0].model : `这 ${removing.length} 个模型`}</strong> 正在用于：{uses.join("、")}。</p>
+    <div className="replace-prompt" role="group" aria-label={t("replace.aria")}>
+      <p><strong>{removing.length === 1 ? removing[0].model : t("replace.these", { count: removing.length })}</strong>{t("replace.usedBy", { uses: uses.join(t("replace.listSep")) })}</p>
       <label className="field">
-        <span>这些用途改用</span>
-        <MenuSelect label="这些用途改用" value={target} disabled={disabled} onChange={setTarget} options={[
-          ...others.map((e) => ({ value: choiceKey(e), label: `${modelName(e)}（${name(e.provider_id)}）` })),
-          { value: "", label: "不选，这些用途暂停" },
+        <span>{t("replace.switchTo")}</span>
+        <MenuSelect label={t("replace.switchTo")} value={target} disabled={disabled} onChange={setTarget} options={[
+          ...others.map((e) => ({ value: choiceKey(e), label: t("replace.option", { name: modelName(e), connection: name(e.provider_id) }) })),
+          { value: "", label: t("replace.none") },
         ]} />
       </label>
       <div className="row">
-        <button type="button" className="btn primary sm" disabled={disabled} onClick={() => onConfirm(target ? parseChoice(target) : null)}>移出</button>
-        <button type="button" className="btn ghost sm" disabled={disabled} onClick={onCancel}>取消</button>
+        <button type="button" className="btn primary sm" disabled={disabled} onClick={() => onConfirm(target ? parseChoice(target) : null)}>{t("replace.confirm")}</button>
+        <button type="button" className="btn ghost sm" disabled={disabled} onClick={onCancel}>{t("replace.cancel")}</button>
       </div>
     </div>
   );

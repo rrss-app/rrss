@@ -4,6 +4,7 @@ import { BlockView } from "../../components/BlockView";
 import { CitationChip } from "../../components/CitationChip";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
 import { Icon } from "../../components/Icon";
+import { useTranslation } from "../../i18n";
 import { threadSlot, useConversation, useFailure, useOutgoing, type ChatFailure, type ConversationStore, type Outgoing } from "./conversationStore";
 import { FailureNotice, type ChatFixTab } from "./ChatFailure";
 import { useFollowBottom, type JumpController } from "./useFollowBottom";
@@ -31,9 +32,10 @@ function makeOpenUrl({ onOpenUrl, onOpenArticle }: OpenProps) {
 }
 
 function MessageFallback() {
+  const { t } = useTranslation("chat");
   return (
     <p className="muted message-error" role="alert">
-      <Icon name="info" size={13} />这条消息显示不出来，不影响其他消息。
+      <Icon name="info" size={13} />{t("messages.renderFailed")}
     </p>
   );
 }
@@ -169,6 +171,7 @@ export type ChatMessagesProps = OpenProps & LoadOlderProps & {
 };
 
 export function ChatMessages({ messages, stream, outgoing, live, traces, failure, onFix, onOpenUrl, onOpenArticle, busy, emptyText, emptyTitle, hasMore, onLoadOlder, scrollContainer }: ChatMessagesProps) {
+  const { t } = useTranslation("chat");
   const older = useLoadOlder({ onLoadOlder, scrollContainer }, messages);
   const answering = live ? liveTrace(live) : null;
   const paused = live && answering ? pausedSince(live) : null;
@@ -177,9 +180,9 @@ export function ChatMessages({ messages, stream, outgoing, live, traces, failure
       {hasMore && onLoadOlder ? (
         <div className="chat-load-older">
           <button type="button" className="btn sm ghost" disabled={older.loading} onClick={() => void older.load()}>
-            {older.loading ? <><Icon name="spinner" size={13} className="spin" />正在加载更早的消息…</> : "加载更早的消息"}
+            {older.loading ? <><Icon name="spinner" size={13} className="spin" />{t("messages.loadingOlder")}</> : t("messages.loadOlder")}
           </button>
-          {older.error ? <span className="muted" role="alert">加载失败：{older.error}，可重试</span> : null}
+          {older.error ? <span className="muted" role="alert">{t("messages.loadOlderFailed", { error: older.error })}</span> : null}
         </div>
       ) : null}
       {messages.length === 0 && !stream?.text && !busy && !outgoing && !live && !failure && emptyText ? (
@@ -201,7 +204,7 @@ export function ChatMessages({ messages, stream, outgoing, live, traces, failure
       {failure && !live ? <FailureNotice failure={failure} onFix={onFix} /> : null}
       {busy && !live && !stream?.text ? (
         <p className="muted chat-status" role="status">
-          <Icon name="spinner" size={14} className="spin" />正在查阅并回复…
+          <Icon name="spinner" size={14} className="spin" />{t("messages.working")}
         </p>
       ) : null}
     </>
@@ -251,6 +254,7 @@ export type ChatPaneProps = Omit<ThreadMessagesProps, "onLoadOlder" | "scrollCon
 };
 
 export function ChatPane({ onLoadOlder, jump, store, threadId, context = "chat", turns, ...rest }: ChatPaneProps) {
+  const { t } = useTranslation("chat");
   const scroller = useRef<HTMLDivElement>(null);
   const column = useRef<HTMLDivElement>(null);
   const slot = threadSlot(threadId, context);
@@ -283,8 +287,8 @@ export function ChatPane({ onLoadOlder, jump, store, threadId, context = "chat",
           hasMore={conversation.hasMore}
           onLoadOlder={loadOlder}
           scrollContainer={scroller}
-          emptyTitle="深度对话"
-          emptyText="从焦点引用一篇，或直接提问。"
+          emptyTitle={t("messages.emptyTitle")}
+          emptyText={t("messages.emptyText")}
         />
       </div>
     </div>

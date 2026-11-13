@@ -1,6 +1,7 @@
 import { settingsQueryPolicy } from "./queryPolicy";
 import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
 import { api, type NetworkProxyRuleView, type NetworkProxyTestArgs, type NetworkProxyView, type SaveNetworkProxyArgs, type SaveNetworkProxyRuleArgs } from "../lib/api";
+import { i18n } from "../i18n";
 import { settingsChanged } from "./editState";
 
 export const networkProxyKeys = {
@@ -64,8 +65,8 @@ export function withPastedAuth(rule: NetworkProxyDraftRule, url: string): Networ
 /** 只拦明显缺 scheme 或误填 URL 的情况；主机、端口和网段的完整校验以后端为准。 */
 export function validateProxyDraft(draft: NetworkProxyDraft): string | null {
   for (const rule of Object.values(draft)) {
-    if (rule.mode === "custom" && !/^(https?|socks5h?):\/\/\S/i.test(rule.url.trim())) return "请填写完整代理地址，例如 http://127.0.0.1:7890。";
-    if (rule.no_proxy.split(/[,\s]+/).some((value) => value.includes("://") || value.includes("@"))) return "不代理地址只填写域名、IP、网段或 *。";
+    if (rule.mode === "custom" && !/^(https?|socks5h?):\/\/\S/i.test(rule.url.trim())) return i18n.t("proxy.validate.incompleteUrl", { ns: "settingsSystem" });
+    if (rule.no_proxy.split(/[,\s]+/).some((value) => value.includes("://") || value.includes("@"))) return i18n.t("proxy.validate.noProxyFormat", { ns: "settingsSystem" });
   }
   return null;
 }
@@ -117,7 +118,7 @@ export function networkProxyMutationOptions(client: QueryClient) {
 
 /** 与网络设置连接检查共用的线路文案；代理认证不会出现在摘要中。 */
 export function routeSummary(rule: NetworkProxyRuleView): string {
-  if (rule.mode !== "custom") return { inherit: "跟随全局", direct: "无代理", system: "系统代理" }[rule.mode];
+  if (rule.mode !== "custom") return i18n.t(`proxy.mode.${rule.mode}`, { ns: "settingsSystem" });
   const match = /^([a-z0-9]+):\/\/(?:[^@/?#]*@)?([^/?#]+)/i.exec(rule.url.trim());
-  return match ? `${match[1].toUpperCase()} · ${match[2]}` : "自定义代理 · 待填写地址";
+  return match ? `${match[1].toUpperCase()} · ${match[2]}` : i18n.t("proxy.route.customPending", { ns: "settingsSystem" });
 }

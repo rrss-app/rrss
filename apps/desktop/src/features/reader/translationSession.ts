@@ -1,4 +1,5 @@
 import type { ReaderView, TranslationCommandError, TranslationEvent, TranslationReply, TranslationStartMode, TranslationInitialViewport } from "../../bindings";
+import { i18n } from "../../i18n";
 import { createTranslationViewport } from "./translationViewport";
 import { api, onTranslationEvent } from "../../lib/api";
 import { formatNotice } from "../../lib/notice";
@@ -12,7 +13,7 @@ class ConnectionTimeout extends Error {}
 
 async function bounded<T>(request: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  try { return await Promise.race([request, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new ConnectionTimeout("读取翻译状态超时")), REQUEST_TIMEOUT_MS); })]); }
+  try { return await Promise.race([request, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new ConnectionTimeout(i18n.t("translation.timeout", { ns: "reader" }))), REQUEST_TIMEOUT_MS); })]); }
   finally { clearTimeout(timer); }
 }
 
@@ -33,7 +34,7 @@ export function createTranslationSession(reader: ReaderView, changed: (view: Tra
     disconnected = connection; issue = true;
     const typed = error && typeof error === "object" && "kind" in error && "message" in error ? error as TranslationCommandError : null;
     failure = typed?.kind ?? null;
-    note = connection ? "连接中断，已有译文仍可阅读" : formatNotice("翻译失败：", typed?.message ?? error);
+    note = connection ? i18n.t("translation.disconnected", { ns: "reader" }) : formatNotice(i18n.t("translation.failedPrefix", { ns: "reader" }), typed?.message ?? error);
     clearTimeout(timer); clearBuffer(); publish();
   };
   const schedule = () => {
@@ -67,12 +68,12 @@ export function createTranslationSession(reader: ReaderView, changed: (view: Tra
     return listening;
   };
   function accept(reply: TranslationReply, initial: TranslationInitialViewport | null) {
-    if (reply.reader.id !== reader.id) throw new Error("文章身份不匹配");
+    if (reply.reader.id !== reader.id) throw new Error(i18n.t("translation.articleMismatch", { ns: "reader" }));
     if (reply.reader.source_hash !== reader.source_hash) { sourceChanged(reply.reader); return false; }
     reconcileAfter = Math.max(1000, reply.reconcile_after_ms);
     note = reply.note; issue = reply.kind === "missing" && !!note; failure = null;
     if (reply.snapshot) {
-      if (data && sameTranslation(data.snapshot.identity, reply.snapshot.identity) && reply.snapshot.seq < data.snapshot.seq) throw new Error("快照已过期");
+      if (data && sameTranslation(data.snapshot.identity, reply.snapshot.identity) && reply.snapshot.seq < data.snapshot.seq) throw new Error(i18n.t("translation.snapshotStale", { ns: "reader" }));
       data = restoreTranslation(reply.reader, reply.snapshot, data);
     } else { data = null; sourceChanged(reply.reader); }
     disconnected = false;
@@ -109,7 +110,7 @@ export function createTranslationSession(reader: ReaderView, changed: (view: Tra
       if (disposed) return;
       if (kind === "start") autoBilingual = true;
       again = accept(reply, kind === "start" ? initial : null);
-      if (again && kind === "recover") { fail(new Error("恢复后仍存在事件缺口"), true); again = false; }
+      if (again && kind === "recover") { fail(new Error(i18n.t("translation.eventGap", { ns: "reader" })), true); again = false; }
     } catch (error) {
       if (!disposed) fail(error, kind !== "start" || !unlisten || error instanceof ConnectionTimeout);
     } finally {

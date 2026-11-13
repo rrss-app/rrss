@@ -3,6 +3,7 @@ import type { CitationView } from "../../lib/api";
 import { CitationChip } from "../../components/CitationChip";
 import { Icon } from "../../components/Icon";
 import { ReaderTooltip } from "../../components/ReaderTool";
+import { useTranslation } from "../../i18n";
 import type { DraftStore } from "./draftStore";
 import { useDraftSubmission } from "./useDraftSubmission";
 
@@ -49,6 +50,7 @@ export type ComposerProps = {
 
 /** 输入与引用草稿由这里持有并订阅；连续输入只重渲染本组件。 */
 export function Composer(props: ComposerProps) {
+  const { t } = useTranslation("chat");
   const { drafts, context, showWhenEmpty, collapsible, forceExpanded, ready, sending, generating, otherThreadBusy, disabled } = props;
   // 按下就清空输入、自己的消息立刻出现；失败时文字与引用放回来。发送期间输入框仍可用。
   const { draft, canSend, send, onKeyDown, pending } = useDraftSubmission({ drafts, context, ready, busy: sending || generating, onSend: props.onSend, clearOnSend: true });
@@ -90,7 +92,7 @@ export function Composer(props: ComposerProps) {
             </div>
           ) : null}
           {expanded && otherThreadBusy ? (
-            <div className="composer-context" role="status"><Icon name="info" size={13} />另一会话正在回复，请等待完成或停止生成。</div>
+            <div className="composer-context" role="status"><Icon name="info" size={13} />{t("composer.otherBusy")}</div>
           ) : null}
           {draft.citations.length > 0 && (
             <div className="cite-row">
@@ -123,13 +125,13 @@ export function Composer(props: ComposerProps) {
               <span className="composer-dock-key" aria-hidden="true"><kbd>/</kbd></span>
             </> : null}
             <span className={collapsible ? "composer-grow" : "composer-send-slot"} inert={collapsible && !expanded}>{generating ? (
-              <ReaderTooltip label="停止生成" placement="top">
-                <button type="button" className="composer-send" aria-label="停止生成" data-swap={swapped ? "" : undefined} onClick={props.onStop}><Icon name="stop" size={16} /></button>
+              <ReaderTooltip label={t("composer.stop")} placement="top">
+                <button type="button" className="composer-send" aria-label={t("composer.stop")} data-swap={swapped ? "" : undefined} onClick={props.onStop}><Icon name="stop" size={16} /></button>
               </ReaderTooltip>
             ) : (
-              <ReaderTooltip label="Enter 发送" shortcut="Shift+Enter 换行" placement="top">
+              <ReaderTooltip label={t("composer.sendHint")} shortcut={t("composer.newlineHint")} placement="top">
                 {/* 对话里草稿为空时是幽灵键，有可发送内容才变实底。 */}
-                <button type="button" className="composer-send" aria-label="发送" aria-busy={sending || pending} disabled={!expanded || !canSend} data-swap={swapped ? "" : undefined}
+                <button type="button" className="composer-send" aria-label={t("composer.send")} aria-busy={sending || pending} disabled={!expanded || !canSend} data-swap={swapped ? "" : undefined}
                   data-ghost={!collapsible && !canSend ? "" : undefined} onClick={() => void send()}>
                   <Icon name={collapsible ? "send" : "enter"} size={16} />
                 </button>

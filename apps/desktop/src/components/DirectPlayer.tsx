@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { useTranslation } from "../i18n";
 import { isLocalMediaHref, siteLabel } from "./embedUrl";
 
 type Props = {
@@ -18,6 +19,7 @@ function playableType(media: "video" | "audio", blobType: string): string {
 }
 
 export function DirectPlayer({ url, articleId, media, onOpenUrl }: Props) {
+  const { t } = useTranslation("reader");
   const [href, setHref] = useState("");
   const [src, setSrc] = useState("");
   const [external, setExternal] = useState(false);
@@ -63,7 +65,7 @@ export function DirectPlayer({ url, articleId, media, onOpenUrl }: Props) {
     return player;
   }
   if (href && isLocalMediaHref(href)) {
-    return <p className="embed-external">正在准备播放…</p>;
+    return <p className="embed-external">{t("embed.preparing")}</p>;
   }
   return (
     <button
@@ -78,7 +80,7 @@ export function DirectPlayer({ url, articleId, media, onOpenUrl }: Props) {
         }).catch(() => setExternal(true)).finally(() => setBusy(false));
       }}
     >
-      {busy ? "正在下载…" : "播放"}
+      {busy ? t("embed.downloading") : t("embed.play")}
     </button>
   );
 }

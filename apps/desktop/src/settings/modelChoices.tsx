@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { i18n, useTranslation } from "../i18n";
 import { ModelPicker, type PickerItem } from "../components/ModelPicker";
 import { api, type ModelBindingsView, type ModelChoice, type ModelPoolView, type PoolEntryView, type ProviderView } from "../lib/api";
 import { shortModel } from "../lib/fuzzy";
@@ -36,10 +37,10 @@ export const chatDefault = (bindings: ModelBindingsView | undefined) => taskChoi
 
 /** 按钮上的名字与悬停提示：有显示名原样显示（界面字体，太长由 CSS 截断），没有时用等宽缩写。 */
 export function describeChoice(choice: ModelChoice | null, pool: ModelPoolView | undefined, providers: ProviderView[]) {
-  if (!choice) return { text: "未选择", title: "还没选模型", plain: true };
+  if (!choice) return { text: i18n.t("choices.none", { ns: "settingsModels" }), title: i18n.t("choices.noneTitle", { ns: "settingsModels" }), plain: true };
   const e = findEntry(pool, choice);
   // 连接列表还没读回时不下结论，只显示模型 id。
-  const name = connection(providers, choice.provider_id)?.name ?? (providers.length ? "已删除的连接" : "");
+  const name = connection(providers, choice.provider_id)?.name ?? (providers.length ? i18n.t("choices.deletedConnection", { ns: "settingsModels" }) : "");
   const title = name ? `${choice.model} · ${name}` : choice.model;
   return e?.display_name ? { text: e.display_name, title, plain: true } : { text: shortModel(choice.model), title };
 }
@@ -48,8 +49,8 @@ export function describeChoice(choice: ModelChoice | null, pool: ModelPoolView |
 export type Need = "tools" | "json";
 export function lacks(e: PoolEntryView | undefined, need?: Need) {
   if (!e || !need) return "";
-  if (need === "tools" && e.effective.tool_calling === "unsupported") return "不能调用工具";
-  if (need === "json" && e.effective.structured_output === "unsupported") return "不支持结构化输出";
+  if (need === "tools" && e.effective.tool_calling === "unsupported") return i18n.t("choices.lacksTools", { ns: "settingsModels" });
+  if (need === "json" && e.effective.structured_output === "unsupported") return i18n.t("choices.lacksJson", { ns: "settingsModels" });
   return "";
 }
 
@@ -78,18 +79,18 @@ export function modelItems(opts: {
         ? { label: named ? e!.display_name : shortModel(choice.model), plain: named, hint: choice.model,
           rename: e ? { value: e.display_name, placeholder: shortModel(choice.model) } : undefined }
         : { label: e ? modelName(e) : choice.model, hint: named ? e!.model : undefined }),
-      tag: p?.name ?? "已删除的连接", tagTitle: host(p), group: p?.name ?? "已删除的连接",
+      tag: p?.name ?? i18n.t("choices.deletedConnection", { ns: "settingsModels" }), tagTitle: host(p), group: p?.name ?? i18n.t("choices.deletedConnection", { ns: "settingsModels" }),
       marks: <>
-        {inThread && e && !named && <span className="model-picker-mark faint" title="还没起显示名，用模型 id 的缩写">自动</span>}
-        {warn && <span className="model-picker-mark warn" title={need === "tools" ? "对话将无法查阅文章或读取网页" : "结果可能格式错乱"}>{warn}</span>}
-        {defaultKey === choiceKey(choice) && <span className="model-picker-mark">默认</span>}
+        {inThread && e && !named && <span className="model-picker-mark faint" title={i18n.t("choices.autoTitle", { ns: "settingsModels" })}>{i18n.t("choices.auto", { ns: "settingsModels" })}</span>}
+        {warn && <span className="model-picker-mark warn" title={i18n.t(need === "tools" ? "choices.warnTools" : "choices.warnJson", { ns: "settingsModels" })}>{warn}</span>}
+        {defaultKey === choiceKey(choice) && <span className="model-picker-mark">{i18n.t("choices.default", { ns: "settingsModels" })}</span>}
         {extra}
       </>,
     };
   };
   const members = (pool?.pool ?? []).filter((e) => !chat || e.chat).map((e) => item(e, e));
   const extra = current && !members.some((m) => m.key === choiceKey(current))
-    ? [item(current, findEntry(pool, current), <span className="model-picker-mark">{findEntry(pool, current) ? "未用于对话" : "已移出"}</span>)]
+    ? [item(current, findEntry(pool, current), <span className="model-picker-mark">{i18n.t(findEntry(pool, current) ? "choices.notChat" : "choices.removed", { ns: "settingsModels" })}</span>)]
     : [];
   return [...members, ...extra];
 }
@@ -126,6 +127,7 @@ export function ModelMenu({ label, value, onPick, providers, pool, need, chat, h
   disabled?: boolean;
   mixed?: string;
 }) {
+  const { t } = useTranslation("settingsModels");
   const items = modelItems({ pool, providers, chat, need, current: mixed ? null : value });
   const list = (pool?.pool ?? []).filter((e) => !chat || e.chat);
   const display = mixed ? { text: mixed, title: mixed, plain: true } : describeChoice(value, pool, providers);
@@ -134,12 +136,12 @@ export function ModelMenu({ label, value, onPick, providers, pool, need, chat, h
       tone={!value && !mixed ? "warn" : undefined} disabled={disabled} heading={heading}
       onPick={(key) => { const c = parseChoice(key); if (c) onPick(c); }}
       notice={list.length ? undefined : <>
-        <span>{chat ? "还没有用于对话的模型。在「管理模型」里给模型打开「用于对话」。" : "还没有加进来的模型。"}</span>
-        <button type="button" className="btn sm primary" onClick={onManage}>{chat ? "管理模型" : "添加模型"}</button>
+        <span>{t(chat ? "menu.noChatModels" : "menu.noModels")}</span>
+        <button type="button" className="btn sm primary" onClick={onManage}>{t(chat ? "menu.manage" : "menu.add")}</button>
       </>}
       footer={list.length ? (close) => <>
-        <span className="hint">{chat ? `对话可用 ${list.length} 个` : `已加入 ${list.length} 个`}</span>
-        <button type="button" className="btn sm ghost" onClick={() => { close(); onManage(); }}>管理模型</button>
+        <span className="hint">{t(chat ? "menu.chatCount" : "menu.addedCount", { count: list.length })}</span>
+        <button type="button" className="btn sm ghost" onClick={() => { close(); onManage(); }}>{t("menu.manage")}</button>
       </> : undefined} />
   );
 }
@@ -158,25 +160,26 @@ export function ChatModelMenu({ value, onPick, providers, pool, bindings, onMana
   /** 对话中就地改显示名：成功返回 null，失败返回原因。 */
   onRename?: (choice: ModelChoice, name: string) => Promise<string | null>;
 }) {
+  const { t } = useTranslation("settingsModels");
   const def = chatDefault(bindings);
   const items = modelItems({ pool, providers, chat: true, need: "tools", current: value, defaultKey: chat && def ? choiceKey(def) : undefined, inThread: !!chat });
   const count = (pool?.pool ?? []).filter((e) => e.chat).length;
   return (
-    <ModelPicker label={chat ? "这条对话的模型" : "对话模型"} value={value ? choiceKey(value) : null} items={items}
+    <ModelPicker label={t(chat ? "menu.threadModel" : "menu.chatModel")} value={value ? choiceKey(value) : null} items={items}
       onPick={(key) => { const c = parseChoice(key); if (c) onPick(c); }}
       display={describeChoice(value, pool, providers)} badge={chat?.badge} extra={chat?.extra} tone={!value ? "warn" : undefined}
       variant={chat ? "chip" : "field"} placement={chat ? "up" : "down"} disabled={disabled}
       onRename={chat && onRename ? (key, name) => { const c = parseChoice(key); return c ? onRename(c, name) : Promise.resolve(null); } : undefined}
       heading={chat
-        ? { title: "这条对话接下来用", hint: "只影响这条对话之后的回复。新对话用对话默认模型。" }
-        : { title: "对话默认模型", hint: "新对话用它。对话助手页和模型页的「对话」是同一项。" }}
+        ? { title: t("menu.threadHeading"), hint: t("menu.threadHint") }
+        : { title: t("menu.defaultHeading"), hint: t("menu.defaultHint") }}
       notice={count ? undefined : <>
-        <span>还没有用于对话的模型。在「管理模型」里给模型打开「用于对话」。</span>
-        <button type="button" className="btn sm primary" onClick={onManage}>管理模型</button>
+        <span>{t("menu.noChatModels")}</span>
+        <button type="button" className="btn sm primary" onClick={onManage}>{t("menu.manage")}</button>
       </>}
       footer={count ? (close) => <>
-        <span className="hint">对话可用 {count} 个</span>
-        <button type="button" className="btn sm ghost" onClick={() => { close(); onManage(); }}>管理模型</button>
+        <span className="hint">{t("menu.chatCount", { count })}</span>
+        <button type="button" className="btn sm ghost" onClick={() => { close(); onManage(); }}>{t("menu.manage")}</button>
       </> : undefined} />
   );
 }
@@ -191,27 +194,28 @@ export function OwnModelMenu({ value, ownModel, onPick, chat, disabled }: {
   chat?: { badge?: ReactNode; extra?: ReactNode };
   disabled?: boolean;
 }) {
+  const { t } = useTranslation("settingsModels");
   const [models, setModels] = useState<string[]>([]);
   const [status, setStatus] = useState("");
   const load = async () => {
-    setStatus("读取中…");
+    setStatus(t("own.loading"));
     try { setModels(await api.piAvailableModels()); setStatus(""); }
-    catch (err) { setStatus(formatNotice("读取 Pi 的模型失败：", err)); }
+    catch (err) { setStatus(formatNotice(t("own.loadFailed"), err)); }
   };
-  const def = (m: string) => (chat && m === ownModel ? <span className="model-picker-mark">默认</span> : null);
+  const def = (m: string) => (chat && m === ownModel ? <span className="model-picker-mark">{t("choices.default")}</span> : null);
   const ids = [...new Set([ownModel, value, ...models].filter(Boolean))];
   const items: PickerItem[] = [
-    { key: "", label: "Pi 默认", plain: true, hint: "由你的 Pi 配置决定", marks: def("") },
+    { key: "", label: t("own.piDefault"), plain: true, hint: t("own.piDefaultHint"), marks: def("") },
     ...ids.map((m) => ({ key: m, label: m, marks: def(m) })),
   ];
   return (
-    <ModelPicker label={chat ? "这条对话的模型" : "对话模型"} value={value} items={items} onPick={onPick} disabled={disabled}
-      display={value ? { text: shortModel(value), title: value } : { text: "Pi 默认", title: "Pi 默认", plain: true }}
+    <ModelPicker label={t(chat ? "menu.threadModel" : "menu.chatModel")} value={value} items={items} onPick={onPick} disabled={disabled}
+      display={value ? { text: shortModel(value), title: value } : { text: t("own.piDefault"), title: t("own.piDefault"), plain: true }}
       badge={chat?.badge} extra={chat?.extra} variant={chat ? "chip" : "field"} placement={chat ? "up" : "down"}
-      heading={{ title: "来自你的 Pi 配置", hint: "已开启「使用我自己的 Pi 配置」，模型列表不用于对话。" }}
+      heading={{ title: t("own.heading"), hint: t("own.hint") }}
       footer={() => <>
-        <span className="hint" role="status">{status || (models.length ? `Pi 可用 ${models.length} 个` : "列表需要读取")}</span>
-        <button type="button" className="btn sm ghost" onClick={() => void load()}>读取可用模型</button>
+        <span className="hint" role="status">{status || (models.length ? t("own.available", { count: models.length }) : t("own.needLoad"))}</span>
+        <button type="button" className="btn sm ghost" onClick={() => void load()}>{t("own.load")}</button>
       </>} />
   );
 }

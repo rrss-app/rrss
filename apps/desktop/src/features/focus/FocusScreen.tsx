@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { FocusPane } from "../../components/FocusPane";
 import type { SignalSurface } from "../../bindings";
 import { api, copyText, type ArticleView, type CitationView } from "../../lib/api";
+import { useTranslation } from "../../i18n";
 import { trackEvent } from "../../lib/signals";
 import { navigableRowIndices, rowKey } from "../../lib/focusUtils";
 import { isTypingTarget } from "../../lib/shortcuts";
@@ -33,6 +34,7 @@ export const FocusScreen = memo(function FocusScreen({ session, active, shortcut
   onManageModels?: () => void;
   notify: (notice: FocusNotice) => void;
 }) {
+  const { t } = useTranslation("focus");
   const state = useFocusSnapshot(session);
   const scrollRoot = useRef<HTMLDivElement>(null);
   const observeExposure = useExposureTracker({ surface, root: scrollRoot, active: active && shortcuts });
@@ -40,7 +42,7 @@ export const FocusScreen = memo(function FocusScreen({ session, active, shortcut
     ? { scope: column.scope, listScope: state.page?.list_scope ?? "all", label: column.name } : undefined;
   const columnHeading = column ? {
     name: column.name,
-    note: column.unread === undefined ? `只看「${column.name}」文件夹` : `${column.unread} 篇未读 · 只看「${column.name}」文件夹`,
+    note: column.unread === undefined ? t("screen.columnNote", { name: column.name }) : t("screen.columnNoteUnread", { count: column.unread, name: column.name }),
   } : undefined;
   const [hiddenOpen, setHiddenOpen] = useState(false);
   // 相近报道综述：按簇读回 / 生成，换栏目范围时作废。
@@ -119,11 +121,11 @@ export const FocusScreen = memo(function FocusScreen({ session, active, shortcut
     try {
       onCite(await api.citeArticle(id));
       trackEvent(id, "cite");
-      notify({ message: `已引用《${row?.title ?? id}》` });
+      notify({ message: t("screen.cited", { title: row?.title ?? String(id) }) });
     } catch {
       if (row) {
         onCite({ kind: "article", article_id: id, title: row.title, feed_title: row.feed_title, url: row.url, excerpt: "", block_id: 0 });
-        notify({ message: `已引用《${row.title}》` });
+        notify({ message: t("screen.cited", { title: row.title }) });
       }
     }
   };
@@ -153,7 +155,7 @@ export const FocusScreen = memo(function FocusScreen({ session, active, shortcut
     <ClusterSummary entry={summaryEntries.get(clusterId) ?? summaries.get(clusterId)} representativeId={representativeId}
       onGenerate={() => void summaries.generate(clusterId)} onRetryLoad={() => void summaries.load(clusterId)}
       onOpen={(id) => { clearFocus(); onOpen(id); }} onManageModels={onManageModels}
-      onCopy={(text) => void copyText(text).then(() => notify({ message: "已复制综述" }), (err) => notify({ message: `复制失败：${String(err)}` }))} />
+      onCopy={(text) => void copyText(text).then(() => notify({ message: t("screen.copied") }), (err) => notify({ message: t("screen.copyFailed", { message: String(err) }) }))} />
   );
 
   // 离开主视图只隐藏展示，滚动位置留在容器上；范围快照仍由本域唯一 session 保留。

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { WindowControlsStyle } from "../bindings";
 import { api, windowControls } from "../lib/api";
+import { useTranslation } from "../i18n";
 
 /** 10px 细线图标：Windows 用 1px 直角线，GNOME 用 1.6px 圆头线（样式里区分）。 */
 const GLYPHS: Record<WindowControlsStyle, { minimize: string; maximize: string; restore: string; close: string }> = {
@@ -26,6 +27,7 @@ const run = (action: () => Promise<unknown>) => { action().catch((error) => cons
  * 没有宿主（浏览器预览）时什么也不画。
  */
 export function WindowControls() {
+  const { t } = useTranslation("shell");
   const [style, setStyle] = useState<WindowControlsStyle | null>(null);
   const [maximized, setMaximized] = useState(false);
   useEffect(() => {
@@ -49,15 +51,15 @@ export function WindowControls() {
   }, []);
   if (!style) return null;
   const glyph = GLYPHS[style];
-  const sizeLabel = maximized ? "还原" : "最大化";
+  const sizeLabel = maximized ? t("window.restore") : t("window.maximize");
   return <div className="window-controls" data-style={style}>
-    <button type="button" tabIndex={-1} aria-label="最小化" title="最小化" onClick={() => run(windowControls.minimize)}>
+    <button type="button" tabIndex={-1} aria-label={t("window.minimize")} title={t("window.minimize")} onClick={() => run(windowControls.minimize)}>
       <svg viewBox="0 0 10 10" aria-hidden="true"><path d={glyph.minimize} /></svg>
     </button>
     <button type="button" tabIndex={-1} aria-label={sizeLabel} title={sizeLabel} onClick={() => run(windowControls.toggleMaximize)}>
       <svg viewBox="0 0 10 10" aria-hidden="true"><path d={maximized ? glyph.restore : glyph.maximize} /></svg>
     </button>
-    <button type="button" tabIndex={-1} className="window-close" aria-label="关闭窗口" title="关闭" onClick={() => run(windowControls.close)}>
+    <button type="button" tabIndex={-1} className="window-close" aria-label={t("window.closeWindow")} title={t("window.close")} onClick={() => run(windowControls.close)}>
       <svg viewBox="0 0 10 10" aria-hidden="true"><path d={glyph.close} /></svg>
     </button>
   </div>;

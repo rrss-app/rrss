@@ -1,1 +1,412 @@
-{}
+{
+  "mode": {
+    "original": "原文",
+    "bilingual": "双语",
+    "translated": "译文"
+  },
+  "head": {
+    "back": "返回",
+    "prev": "上一篇",
+    "prevArticle": "上一篇",
+    "returnPrev": "回到上一篇",
+    "nextArticle": "下一篇",
+    "returnTo": "回到「{{title}}」",
+    "returnToThread": "回到对话「{{title}}」",
+    "returnToSearch": "回到搜索「{{term}}」",
+    "backToSearch": "回到搜索",
+    "thread": "对话",
+    "search": "搜索",
+    "drawer": "篇目",
+    "pager": "上下篇",
+    "position": "篇位 {{label}}",
+    "rateNext": "踩并看下一篇"
+  },
+  "tools": {
+    "busy": "处理中…",
+    "translate": "翻译",
+    "more": "更多",
+    "fetching": "抓取中…",
+    "fetchFulltext": "抓取全文",
+    "fetchFulltextTitle": "从原文站点抓取完整正文（U）",
+    "liked": "已赞",
+    "disliked": "已踩"
+  },
+  "rail": {
+    "label": "译文视图"
+  },
+  "body": {
+    "fetchingFulltext": "正在抓取全文…",
+    "dismissNotice": "关闭提示",
+    "summarizing": "正在生成摘要…",
+    "summary": "摘要",
+    "summaryStale": "这份摘要是按之前的正文写的，正文已经更新。",
+    "generating": "生成中…",
+    "regenerate": "重新生成",
+    "pruned": "正文已按保留策略清理，这里只留标题、摘要和阅读记录。",
+    "openOriginal": "打开原文",
+    "refetch": "重新抓取正文",
+    "renderError": "正文显示不出来，可以返回列表或换一篇。",
+    "retry": "重试"
+  },
+  "hits": {
+    "label": "搜索命中",
+    "position": "第 {{n}} 处命中（共 {{total}} 处）",
+    "next": "下一处",
+    "prev": "上一处"
+  },
+  "top": {
+    "title": "回到顶部（Home）",
+    "titleLabel": "回到顶部：{{title}}"
+  },
+  "drawer": {
+    "defaultTitle": "今日焦点",
+    "collapse": "收起篇目",
+    "collapseTitle": "收起（L）",
+    "pin": "钉住",
+    "unpin": "取消钉住",
+    "filter": "筛选",
+    "scope": {
+      "all": "全部",
+      "unread": "未读",
+      "starred": "收藏"
+    },
+    "clusterSize_other": "{{count}} 篇",
+    "cluster": "合辑 · ",
+    "rate": "踩「{{title}}」",
+    "rateTitle": "踩（X）",
+    "loading": "加载中…",
+    "footMove": "移动",
+    "footOpen": "打开",
+    "footCollapse": "收起"
+  },
+  "menu": {
+    "label": "本篇操作",
+    "continueAsking": "在对话中继续提问",
+    "view": "视图",
+    "retranslate": "重新翻译全文",
+    "translate": "翻译本篇",
+    "summarizing": "摘要生成中…",
+    "resummarize": "重新生成摘要",
+    "summarize": "生成本篇摘要",
+    "collect": "收录",
+    "citeFull": "引用全文到对话",
+    "star": "收藏",
+    "unstar": "取消收藏",
+    "viewOriginal": "查看原文",
+    "top": "回到顶部"
+  },
+  "masthead": {
+    "minutes_other": "约 {{count}} 分钟"
+  },
+  "ending": {
+    "related": {
+      "title": "相关阅读",
+      "hint": "按标题与摘要相近 · 不含同一组报道",
+      "read": "已读"
+    },
+    "next": {
+      "end": "已经到底了",
+      "result": "下一条结果",
+      "article": "下一篇"
+    },
+    "hint": {
+      "doneSearch": "返回后保留搜索条件，并选中当前这条。",
+      "doneFocus": "按 Esc 回到焦点列表，仍选中当前这篇。",
+      "next": "读到这里了。按 Space 聚焦下一篇，或按 J 继续。"
+    },
+    "rating": {
+      "label": "文章评价",
+      "prompt": "这篇推荐得准吗？",
+      "up": "赞",
+      "down": "踩"
+    },
+    "star": "收藏",
+    "cite": "引用到对话",
+    "position": "第 {{index}} / 共 {{total}} 条",
+    "done": {
+      "search": "搜索结果读完了",
+      "focus": "今天的焦点读完了"
+    },
+    "doneMeta": {
+      "search": "回去换个关键词，或再看看前面的结果。",
+      "focus": "可以回到列表，看看收藏或其他来源。"
+    },
+    "returnToSearch": "回到搜索"
+  },
+  "selection": {
+    "notConfigured": "翻译服务还没配置",
+    "notConfiguredNotice": "翻译服务还没配置。",
+    "networkFailed": "翻译服务连接失败，请稍后再试",
+    "label": "划词翻译",
+    "head": "译文",
+    "close": "关闭划词翻译",
+    "translating": "翻译中",
+    "tooLong": "选中文字超过 {{max}} 字，请改用全文翻译。",
+    "goSettings": "去设置",
+    "copy": "复制译文",
+    "citeOriginal": "引用原句",
+    "note": "只翻这一段，不写入全文译文"
+  },
+  "block": {
+    "summary": "小结",
+    "copyCode": "复制代码",
+    "copy": "复制",
+    "cite": "引用",
+    "translate": "翻译",
+    "selection": "选区",
+    "digestUnsafe": "这期简报的排版有问题，来源标记和划词引用暂时不可用。"
+  },
+  "image": {
+    "retryFailed": "重试失败：",
+    "loading": "配图加载中…",
+    "cacheFailedReason": "图片未能缓存（{{reason}}）：{{label}}",
+    "cacheFailed": "图片未能缓存：{{label}}",
+    "retry": "重试",
+    "openInBrowser": "在浏览器打开图片",
+    "failed": "图片未能显示：{{fallback}}"
+  },
+  "citation": {
+    "sendFailed": "发送失败：",
+    "full": "全文 ·",
+    "digest": "简报 ·",
+    "articleTitle": "《{{title}}》",
+    "excerpt": "“{{excerpt}}”",
+    "open": "打开引用《{{title}}》",
+    "remove": "移除引用"
+  },
+  "embed": {
+    "preparing": "正在准备播放…",
+    "downloading": "正在下载…",
+    "play": "播放",
+    "bilibili": "哔哩哔哩",
+    "coverFailed": "{{label}} · 封面未能显示",
+    "openInBrowser": "在浏览器打开"
+  },
+  "tray": {
+    "targetNew": "新对话",
+    "targetDigest": "本期追问",
+    "label": "引用托盘",
+    "count": "引用 {{n}}",
+    "removeCitation": "移除引用 {{n}}",
+    "clear": "清空",
+    "inputLabel": "针对引用提问",
+    "placeholderThread": "继续问「{{title}}」…",
+    "placeholder": "针对这些引用提问…",
+    "sendToLabel": "发到 {{target}}",
+    "sendTo": "发到 <b>{{target}}</b>",
+    "sending": "发送中…",
+    "send": "发送",
+    "busy": "正在生成回复，请等待完成后发送。",
+    "sendToCaption": "发到"
+  },
+  "host": {
+    "opening": "正在打开文章",
+    "back": "返回",
+    "previewTitle": "预览",
+    "openFailedPrefix": "打开失败：",
+    "noArticle": "没抽到像文章的正文",
+    "extractFailedPrefix": "抽取失败：",
+    "collectFailedPrefix": "收录失败：",
+    "fulltextUpdated": "全文已更新",
+    "fulltextFailed": "抓取全文失败",
+    "viewOriginal": "查看原文",
+    "summaryFailedPrefix": "摘要生成失败：",
+    "unreadFailedPrefix": "标记未读失败：",
+    "regenerate": {
+      "title": "重新翻译全文？",
+      "detail": "这会重新请求翻译服务，可能产生费用。已有有效译文会保留，直到新结果可以替换。"
+    }
+  },
+  "translation": {
+    "timeout": "读取翻译状态超时",
+    "disconnected": "连接中断，已有译文仍可阅读",
+    "failedPrefix": "翻译失败：",
+    "articleMismatch": "文章身份不匹配",
+    "snapshotStale": "快照已过期",
+    "eventGap": "恢复后仍存在事件缺口",
+    "inconsistent": "译文状态不一致，需要恢复快照",
+    "note": {
+      "keptOriginal": "本处未译出 · 已保留原文",
+      "keptTranslation": "本次未译出 · 保留已有译文",
+      "withReason": "{{note}}（{{reason}}）",
+      "showOriginal": "显示原文",
+      "inflight": "翻译中"
+    }
+  },
+  "status": {
+    "action": {
+      "recover": "恢复译文",
+      "regenerate": "重新翻译全文",
+      "save": "重试保存",
+      "retry": "重试未译部分",
+      "retryTranslation": "重试翻译",
+      "restart": "重新翻译",
+      "start": "翻译"
+    },
+    "error": {
+      "timeout": "部分内容翻译超时",
+      "network": "翻译服务连接失败",
+      "invalid_output": "部分译文格式无效",
+      "authentication": "翻译服务认证失败，请检查密钥",
+      "quota": "翻译服务额度不足，请检查账户",
+      "rate_limited": "翻译服务限流，请稍后重试",
+      "configuration": "翻译配置不可用，请检查模型和服务设置",
+      "invalidated": "正文或翻译配置已更新，请重新翻译",
+      "storage": "译文未保存，可继续阅读",
+      "capacity": "翻译任务已满，请等待已有任务结束",
+      "retry_unavailable": "未译部分记录已失效，请重新翻译全文"
+    },
+    "keptWithError": "{{error}}；本次未全部译完，原有完整译文已保留",
+    "kept": "本次未全部译完，原有完整译文已保留",
+    "partial": "部分内容未译出，已保留原文",
+    "queued": "等待翻译",
+    "running": "翻译中",
+    "done": "翻译完成",
+    "progress": "已译 {{done}}/{{total}} 处",
+    "progressFailed": "已译 {{done}}/{{total}} 处 · {{failed}} 处未译出",
+    "locate": "查看未译处",
+    "busy": "处理中…",
+    "progressLabel": "翻译进度"
+  },
+  "web": {
+    "back": "返回",
+    "backTo": "回到「{{title}}」",
+    "actualAddress": "实际地址",
+    "viewLabel": "看法",
+    "readerView": "阅读视图",
+    "originalPage": "原网页",
+    "openOriginal": "打开原网页",
+    "openInBrowser": "在系统浏览器打开",
+    "systemBrowser": "系统浏览器",
+    "saved": "已收录",
+    "save": "收录",
+    "layer": {
+      "UserRule": "按你的站点规则抽取",
+      "BuiltinRule": "按内置站点规则抽取",
+      "General": "通用识别",
+      "Fallback": "通用识别（回退）",
+      "Container": "页面里的 article / main"
+    },
+    "origin": {
+      "temporary": "临时打开 · 不在库里",
+      "inLibrary": "已收录到库",
+      "extractedAt": "从原网页抽取 · <rel /> · 页面后来又加载了内容时可以",
+      "reextract": "重新抽取",
+      "openFirst": "先打开原网页",
+      "statsHost": "{{layer}}（{{host}}） · {{chars}} 字 · {{images}} 张图",
+      "stats": "{{layer}} · {{chars}} 字 · {{images}} 张图",
+      "autoSave": "引用或发到对话时会自动收录"
+    },
+    "failure": {
+      "title": "没能提取这个网页的正文",
+      "notAutoLoaded": "{{detail}}不会自动加载原网页。",
+      "openToVerify": "打开原网页通过验证",
+      "retry": "重试",
+      "verifyNote": "在原网页里通过人机验证后，RRSS 会自己试着抽取。验证由你本人完成，RRSS 不做自动化。",
+      "causes": "常见原因还有：页面靠脚本生成正文、需要登录、地址指向首页而不是文章。也可以 <rule>为 {{host}} 写一条规则</rule>。"
+    },
+    "firstTip": {
+      "text": "<strong>这是外部网页，内容来自 {{host}}。</strong>RRSS 只做了抽取和排版，没有核实内容。不要轻信页面里的链接，也不要在网页里输入密码、验证码或支付信息。",
+      "never": "不再显示",
+      "ok": "知道了",
+      "failed": "没能保存提示设置，请重试。"
+    }
+  },
+  "webWarning": {
+    "mixedScript": {
+      "title": "这个地址的域名混用了不同文字，可能是仿冒网站。",
+      "detail": "看起来是 <code>{{unicode}}</code>，实际域名是 <code>{{punycode}}</code>。"
+    },
+    "hostMismatch": {
+      "title": "链接文字和实际地址不一致。",
+      "detail": "链接里写的是 <code>{{text}}</code>，实际会去 <code>{{actual}}</code>。"
+    },
+    "nonHttps": {
+      "title": "这个网页没有使用 HTTPS。",
+      "detail": "内容在传输中可能被改写，阅读视图里看到的未必是站点原样。不要在原网页里提交任何信息。"
+    },
+    "cancel": "不打开",
+    "openAnyway": "仍然打开",
+    "continue": "继续打开",
+    "note": "这类提示不能关闭，和「首次提示」无关。"
+  },
+  "verify": {
+    "progress": "原网页抽取进度",
+    "extracted": "<b>已从原网页抽到正文</b> · 《{{title}}》· {{chars}} 字 · {{images}} 张图。原网页还留着，切回去不会重新加载。",
+    "missed": "没抽到像文章的正文",
+    "missedReason": " · {{reason}}",
+    "waiting": "<b>等待验证</b> · 在下面的网页里完成验证后，RRSS 会自己抽取当前页。",
+    "extracting": "<b>正在预抽取</b> · 页面已加载，RRSS 正在试着抽取。",
+    "read": "切到阅读视图",
+    "retryLater": "页面还在加载，稍后重抽",
+    "retryNow": "现在再抽一次",
+    "abandon": "放弃"
+  },
+  "webLinks": {
+    "citing": "正在抓取网页并添加文章引用…",
+    "cited": "已添加文章引用",
+    "citeFailed": "引用链接失败：{{summary}}",
+    "actionFailedPrefix": "链接操作失败：",
+    "checkFailedPrefix": "无法检查链接：",
+    "copyFailedPrefix": "复制失败：",
+    "menu": {
+      "label": "链接操作",
+      "reader": "在 RRSS 里打开",
+      "readerHint": "点击",
+      "web": "打开原网页",
+      "browser": "在系统浏览器打开",
+      "copy": "复制链接",
+      "cite": "引用链接"
+    }
+  },
+  "webWindow": {
+    "showFailedPrefix": "原网页显示失败：",
+    "downloadBlocked": "已拦截下载，可交给系统浏览器下载",
+    "systemBrowser": "系统浏览器",
+    "eventsFailedPrefix": "无法接收原网页事件：",
+    "boundsFailedPrefix": "原网页位置更新失败：",
+    "extractFailedPrefix": "抽取失败：",
+    "closeFailedPrefix": "原网页关闭失败：",
+    "actionFailedPrefix": "原网页操作失败：",
+    "actionDone": {
+      "copy": "已复制当前地址",
+      "disable-js": "已禁用本站 JavaScript，重新打开原网页后生效。",
+      "clear": "已清空原网页数据"
+    },
+    "tipSaveFailed": "没能保存提示设置，请重试。",
+    "tip": {
+      "text": "<strong>原网页会运行 {{host}} 自己的脚本。</strong>登录和验证状态只保留到这次退出 RRSS，下次启动全部清空。不要在里面输入密码、验证码或支付信息。",
+      "cancel": "取消"
+    },
+    "error": {
+      "proxy": "原网页用不了你现在的代理设置。",
+      "open": "没能打开原网页。",
+      "useReader": "改用阅读视图",
+      "proxySettings": "查看代理设置",
+      "retryHint": "改代理设置后可再试。"
+    },
+    "hint": "原网页 · 站点脚本在运行 · <kbd>Esc</kbd> 回到阅读视图",
+    "tool": {
+      "back": "后退",
+      "forward": "前进",
+      "reload": "刷新",
+      "more": "更多"
+    },
+    "paused": {
+      "title": "网页暂时收起",
+      "detail": "菜单、对话框、toast 打开时，原生网页会挡住它们，所以先隐藏；关闭菜单后立刻恢复，不重新加载。"
+    },
+    "opening": "正在打开原网页…",
+    "menu": {
+      "label": "原网页操作",
+      "noteRoute": "内容网络 · {{route}} · 退出 RRSS 即清空",
+      "noteDefault": "内容网络 · 当前设置 · 退出 RRSS 即清空",
+      "copy": "复制当前地址",
+      "open": "在系统浏览器打开",
+      "extract": "从当前页抽取正文",
+      "disable-js": "禁用本站 JavaScript",
+      "clear": "清空原网页数据",
+      "close": "关闭原网页"
+    }
+  }
+}

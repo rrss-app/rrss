@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { useTranslation } from "../../i18n";
 import type { JumpController } from "./useFollowBottom";
 
 /**
@@ -6,8 +7,9 @@ import type { JumpController } from "./useFollowBottom";
  * 不在底部时来了新内容，展开成强调色的「有新回复」。点按平滑滚到底并恢复跟随。
  */
 export function JumpToLatest({ controller }: { controller: JumpController }) {
+  const { t } = useTranslation("chat");
   const { away, fresh } = useSyncExternalStore(controller.subscribe, controller.get, controller.get);
-  const label = fresh ? "有新回复" : "回到最新";
+  const label = fresh ? t("jump.fresh") : t("jump.latest");
   return (
     <button type="button" className="jump-latest" data-show={away ? "" : undefined} data-new={away && fresh ? "" : undefined}
       aria-label={label} inert={!away} onClick={controller.jump}>

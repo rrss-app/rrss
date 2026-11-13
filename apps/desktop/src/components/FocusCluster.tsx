@@ -1,6 +1,7 @@
 import type { ArticleView } from "../lib/api";
 import type { ClusterSourceView } from "../bindings";
 import { SourceAvatar } from "./ArticleCard";
+import { useTranslation } from "../i18n";
 import { Icon } from "./Icon";
 import { RelativeTime } from "./RelativeTime";
 
@@ -55,6 +56,7 @@ export function ClusterHead({ row, open, sources, onExpand, onSummarize }: {
   /** 「汇总」：展开面板并带出综述，还没生成就直接生成。 */
   onSummarize?: (id: number) => void;
 }) {
+  const { t } = useTranslation("focus");
   const toggle = () => onExpand(open ? null : row.cluster_id);
   const others = Math.max(0, row.cluster_size - 1);
   const shown = sources.length > 1 ? sources : [];
@@ -64,22 +66,22 @@ export function ClusterHead({ row, open, sources, onExpand, onSummarize }: {
       <span className="cluster-label">
         {row.cluster_label ? <b title={row.cluster_label}>{row.cluster_label}</b> : null}
         <span className="cluster-note">
-          相近报道 · {row.cluster_size} 篇{shown.length ? ` · ${shown.length} 个来源` : ""}{row.cluster_span ? ` · ${row.cluster_span}` : ""}
+          {t("clusterHead.note", { size: row.cluster_size, sources: shown.length ? t("clusterHead.noteSources", { count: shown.length }) : "", span: row.cluster_span ? ` · ${row.cluster_span}` : "" })}
         </span>
       </span>
-      {row.cluster_fresh ? <span className="cluster-fresh" title="上次汇总之后新来的报道">新 {row.cluster_fresh}</span> : null}
+      {row.cluster_fresh ? <span className="cluster-fresh" title={t("clusterHead.freshTitle")}>{t("clusterHead.fresh", { count: row.cluster_fresh })}</span> : null}
       {shown.length ? <span className="cluster-stack" aria-hidden="true">
         {shown.slice(0, 5).map((source) => <SourceAvatar key={source.feed_id} title={source.title} iconHref={source.icon_href} />)}
       </span> : null}
       {onSummarize ? (
         <button type="button" className="cluster-summarize" onClick={(event) => { event.stopPropagation(); onSummarize(row.cluster_id); }}>
-          <Icon name="sparkles" size={13} />汇总
+          <Icon name="sparkles" size={13} />{t("clusterHead.summarize")}
         </button>
       ) : null}
       <button type="button" className="cluster" aria-expanded={open}
-        aria-label={`${row.cluster_label} · ${row.cluster_size} 篇 · ${open ? "收起" : "展开"}`}
+        aria-label={t(open ? "clusterHead.ariaOpen" : "clusterHead.ariaClosed", { label: row.cluster_label, size: row.cluster_size })}
         onClick={(event) => { event.stopPropagation(); toggle(); }}>
-        {open ? "收起" : `展开另外 ${others} 篇`}<Icon name="chevronDown" size={12} />
+        {open ? t("clusterHead.collapse") : t("clusterHead.expand", { count: others })}<Icon name="chevronDown" size={12} />
       </button>
     </div>
   );
@@ -92,6 +94,7 @@ export function ClusterHead({ row, open, sources, onExpand, onSummarize }: {
 export function ClusterMember({ row, focused = false, representative = false, onOpen }: {
   row: ArticleView; focused?: boolean; representative?: boolean; onOpen: (id: number) => void;
 }) {
+  const { t } = useTranslation("focus");
   return (
     <article
       className={`article cluster-member${row.read ? "" : " unread"}${focused ? " focused" : ""}`}
@@ -109,7 +112,7 @@ export function ClusterMember({ row, focused = false, representative = false, on
       <SourceAvatar title={row.feed_title} iconHref={row.feed_icon_href} />
       <span className="cluster-member-source" title={row.feed_title}>{row.feed_title}</span>
       {representative
-        ? <span className="cluster-member-main"><h3 className="cluster-member-title">{row.title}</h3><span className="cluster-member-rep">代表</span></span>
+        ? <span className="cluster-member-main"><h3 className="cluster-member-title">{row.title}</h3><span className="cluster-member-rep">{t("clusterMember.representative")}</span></span>
         : <h3 className="cluster-member-title">{row.title}</h3>}
       {row.published_at != null ? <RelativeTime className="cluster-member-time" ms={row.published_at} /> : <span />}
     </article>
@@ -123,13 +126,14 @@ export function ClusterFoot({ count, onCollapse, onMarkRead, onCite }: {
   onMarkRead?: () => void;
   onCite?: () => void;
 }) {
+  const { t } = useTranslation("focus");
   return (
     <div className="cluster-foot">
-      <button type="button" className="cluster-foot-btn" onClick={onCollapse}><Icon name="chevronDown" size={12} className="cluster-up" />收起</button>
-      <span>共 {count} 篇</span>
+      <button type="button" className="cluster-foot-btn" onClick={onCollapse}><Icon name="chevronDown" size={12} className="cluster-up" />{t("clusterFoot.collapse")}</button>
+      <span>{t("clusterFoot.total", { count })}</span>
       <span className="cluster-foot-spacer" />
-      {onMarkRead ? <button type="button" className="cluster-foot-btn" onClick={onMarkRead}><Icon name="check" size={13} />全部标为已读</button> : null}
-      {onCite ? <button type="button" className="cluster-foot-btn" onClick={onCite}><Icon name="quote" size={13} />引用整组到对话</button> : null}
+      {onMarkRead ? <button type="button" className="cluster-foot-btn" onClick={onMarkRead}><Icon name="check" size={13} />{t("clusterFoot.markRead")}</button> : null}
+      {onCite ? <button type="button" className="cluster-foot-btn" onClick={onCite}><Icon name="quote" size={13} />{t("clusterFoot.cite")}</button> : null}
     </div>
   );
 }

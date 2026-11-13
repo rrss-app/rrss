@@ -1,1 +1,197 @@
-{}
+{
+  "activity": {
+    "dismiss": "知道了",
+    "answerFailed": "没能回应：",
+    "allowUse": "允许使用 {{server}} 的 {{tool}}？",
+    "allowUseRich": "允许使用 <srv>{{server}}</srv> 的 {{tool}}？",
+    "mutatesWithArgs": "这个工具会修改内容，具体参数如下：",
+    "mutates": "这个工具会修改内容。",
+    "remember": "本次对话里不再问 {{tool}}",
+    "timeout_other": "{{count}} 分钟内不处理会自动拒绝",
+    "allow": "允许",
+    "deny": "拒绝"
+  },
+  "failure": {
+    "notInstalled": { "title": "未找到对话引擎", "detail": "可以在设置里下载。" },
+    "version": { "title": "对话引擎版本过低", "detail": "请在设置里升级。" },
+    "config": { "title": "对话模型不可用", "detail": "还没有可用的对话模型。" },
+    "model": { "title": "模型服务出错", "detail": "没有返回原因。" },
+    "processExit": { "title": "对话引擎意外退出", "detail": "下次发送会自动重启。" },
+    "default": { "title": "对话出错" },
+    "withDetail": "{{title}}：{{detail}}",
+    "fix": "去设置"
+  },
+  "linkPreview": {
+    "articleDialog": "文章预览",
+    "linkDialog": "链接预览",
+    "unknownSource": "未知来源",
+    "read": "已读",
+    "unread": "未读",
+    "loading": "正在读取…",
+    "open": "打开",
+    "cite": "引用到输入框",
+    "openWeb": "在原网页打开",
+    "copied": "已复制链接",
+    "copyFailed": "复制失败",
+    "copy": "复制链接"
+  },
+  "runtime": {
+    "eventsFailed": "聊天事件连接失败：",
+    "replyLoadFailed": "回复加载失败：",
+    "messagesLoadFailed": "消息加载失败：",
+    "modelSwitched": "之后的回复改用 {{label}}",
+    "thinkingSet": "之后的回复思考强度 {{level}}",
+    "thinkingFollow": "之后的回复思考强度跟随模型（{{label}}）",
+    "busy": "上一条回复尚未结束，请等待或停止生成后再发送"
+  },
+  "messages": {
+    "renderFailed": "这条消息显示不出来，不影响其他消息。",
+    "loadingOlder": "正在加载更早的消息…",
+    "loadOlder": "加载更早的消息",
+    "loadOlderFailed": "加载失败：{{error}}，可重试",
+    "working": "正在查阅并回复…",
+    "emptyTitle": "深度对话",
+    "emptyText": "从焦点引用一篇，或直接提问。"
+  },
+  "jump": {
+    "fresh": "有新回复",
+    "latest": "回到最新"
+  },
+  "meter": {
+    "usageNone": "上下文用量：还没有",
+    "usageTokens": "上下文用量 {{used}}",
+    "usagePercent": "上下文用量 {{pct}}%",
+    "ariaLabel": "{{label}}，点开看详情",
+    "dialog": "上下文用量",
+    "headingNone": "上下文 —",
+    "headingUsed": "上下文 {{used}}",
+    "headingUsedPercent": "上下文 {{used}} · {{pct}}%",
+    "headingLimit": "上下文 {{used}} / {{limit}}",
+    "headingLimitPercent": "上下文 {{used}} / {{limit}} · {{pct}}%",
+    "limitUnknown": "还不知道上下文上限；对话引擎启动过一次后会显示。",
+    "limitUser": "上限 {{limit}} 取 {{model}} 的上下文长度（设置里填的）。",
+    "limitEngine": "上限 {{limit}} 是对话引擎给 {{model}} 的默认值（设置里留空）。",
+    "limitLast": "上限 {{limit}} 按上次发送时的模型计算。",
+    "noteUsage": "上一轮结束时这条对话占用的上下文。",
+    "noteNoRecord": "这条对话还没有用量记录，发一条之后显示。",
+    "warnNear": "已接近上限：对话引擎会自动压缩较早的内容，细节可能丢失。需要完整上下文时可以新开对话并引用这条的要点。",
+    "warnSoon": "快到上限了：对话引擎会自动压缩较早的内容，细节可能丢失。需要完整上下文时可以新开对话并引用这条的要点。",
+    "thisModel": "这个模型"
+  },
+  "progress": {
+    "think": "思考",
+    "useTool": "使用 <srv>{{server}}</srv> 的 {{tool}}",
+    "asking": "等你确认：<srv>{{server}}</srv> 的 {{tool}}",
+    "seconds": "{{n}} 秒",
+    "allowed": "已允许",
+    "denied": "已拒绝",
+    "tools_other": "查阅了 {{count}} 处",
+    "external_other": "用了 {{count}} 次外部工具",
+    "elapsed": "用时 {{seconds}} 秒"
+  },
+  "chip": {
+    "renameBusy": "正在保存别的模型设置，稍后再试。",
+    "renameFailed": "没有保存：",
+    "piDefault": "Pi 默认",
+    "noReasoning": "{{model}} 不支持推理，对话时不思考。",
+    "thinkingLevel": "思考强度",
+    "thinking": "思考",
+    "hintDefault": "{{model}} 默认 {{level}}，这里改只影响这条对话。",
+    "hintOwn": "默认由你的 Pi 配置决定，这里改只影响这条对话。",
+    "hintNoDefault": "{{model}} 没设默认档位时按模型自己的默认；这里改只影响这条对话。",
+    "hintSnap": "模型不支持的档位会自动换成最接近的一档。"
+  },
+  "composer": {
+    "otherBusy": "另一会话正在回复，请等待完成或停止生成。",
+    "stop": "停止生成",
+    "sendHint": "Enter 发送",
+    "newlineHint": "Shift+Enter 换行",
+    "send": "发送"
+  },
+  "picker": {
+    "search": "搜索模型",
+    "displayNameOf": "「{{name}}」的显示名",
+    "renameHint": "回车保存，留空用缩写 · {{name}}",
+    "renameOf": "改名「{{name}}」",
+    "rename": "改名",
+    "noMatch": "没有匹配「{{query}}」的模型。"
+  },
+  "thread": {
+    "section": "会话",
+    "newFolder": "新建文件夹",
+    "newThread": "新对话",
+    "archived": "已归档",
+    "pinned": "已置顶",
+    "emptyFolder": "空文件夹",
+    "actionsFor": "{{title}} 的操作",
+    "folderActionsFor": "{{name}} 文件夹的操作",
+    "placeholder": {
+      "folderName": "文件夹名称",
+      "autoTitle": "留空恢复自动标题"
+    },
+    "label": {
+      "title": "会话标题",
+      "folderName": "文件夹名称",
+      "newFolderName": "新文件夹名称"
+    },
+    "menu": {
+      "confirmDelete": "确认删除",
+      "folder": "文件夹操作",
+      "thread": "会话操作",
+      "moveTo": "移到文件夹",
+      "moveToEllipsis": "移到文件夹…",
+      "newFolderAndMove": "新建文件夹并移入",
+      "moveOut": "移出文件夹",
+      "rename": "重命名",
+      "pin": "置顶",
+      "unpin": "取消置顶",
+      "archive": "归档",
+      "unarchive": "取消归档",
+      "delete": "删除…",
+      "deleteFolder": "删除文件夹…",
+      "moveUp": "上移",
+      "moveDown": "下移"
+    },
+    "failure": {
+      "createFolder": "没能新建文件夹：",
+      "rename": "没能重命名：",
+      "renameFolder": "没能重命名文件夹：",
+      "collapse": "没能折叠文件夹：",
+      "delete": "没能删除：",
+      "deleteFolder": "没能删除文件夹：",
+      "move": "没能移动：",
+      "pin": "没能置顶：",
+      "unpin": "没能取消置顶：",
+      "archive": "没能归档：",
+      "undoArchive": "没能撤销归档：",
+      "unarchive": "没能取消归档：",
+      "reorder": "没能调整顺序："
+    },
+    "notice": {
+      "deleted": "已删除「{{title}}」",
+      "movedTo": "已移到「{{name}}」",
+      "movedOut": "已移出文件夹",
+      "archived": "已归档「{{title}}」",
+      "unarchived": "已取消归档「{{title}}」",
+      "undo": "撤销",
+      "deletedFolder": "已删除文件夹「{{name}}」",
+      "deletedFolderWithThreads": "已删除文件夹「{{name}}」，里面的会话回到未归类"
+    },
+    "confirm": {
+      "askThread": "删除「{{title}}」？",
+      "askFolder": "删除文件夹「{{title}}」？",
+      "noteThread": "消息和 Pi 会话记录一起删掉，不能恢复。只是不想在侧栏看到，可以归档。",
+      "noteThreads_other": "里面的 {{count}} 条会话回到未归类，不会删除。",
+      "noteEmpty": "这是空文件夹。",
+      "cancel": "取消",
+      "delete": "删除",
+      "deleteFolder": "删除文件夹"
+    },
+    "archivedView": {
+      "back": "会话",
+      "backTitle": "回到会话（Esc）",
+      "none": "没有归档的会话。",
+      "note": "归档的会话不在侧栏、不进搜索。打开后发新消息会自动取消归档。"
+    }
+  }
+}

@@ -1,1 +1,250 @@
-{}
+{
+  "list": {
+    "enumSeparator": "、",
+    "commaSeparator": "，"
+  },
+  "cluster": {
+    "openSource": "打开 {{feed}} 的报道：{{title}}",
+    "summarizing": "正在汇总报道…",
+    "summarizingCount_other": "正在汇总 {{count}} 篇报道…",
+    "retry": "重试",
+    "pickModel": "去选模型",
+    "summarizeAll_other": "汇总这 {{count}} 篇报道",
+    "needModel": "生成综述要先选摘要模型",
+    "generateHint": "写一段综述，标出各家补充与说法不一 · 用摘要模型，{{tokens}}",
+    "tokens": "约 {{n}} token",
+    "generate": "生成综述",
+    "fresh_other": "新增 {{count}} 篇：{{items}}",
+    "listSeparator": "、",
+    "updated": "这组报道有更新",
+    "update": "更新综述",
+    "overview": "综述",
+    "basis_other": "依据 {{count}} 篇",
+    "basisGenerated_other": "依据 {{count}} 篇 · {{time}}生成",
+    "copy": "复制",
+    "regenerate": "重新生成",
+    "regenerateHint": "重新生成会再用一次摘要模型",
+    "additions": "各家补充",
+    "conflicts": "说法不一",
+    "loadFailed": "读取综述失败：",
+    "generateFailed": "生成综述失败："
+  },
+  "screen": {
+    "columnNote": "只看「{{name}}」文件夹",
+    "columnNoteUnread_other": "{{count}} 篇未读 · 只看「{{name}}」文件夹",
+    "cited": "已引用《{{title}}》",
+    "copied": "已复制综述",
+    "copyFailed": "复制失败：{{message}}"
+  },
+  "training": {
+    "rateFailed": "评分失败：",
+    "recorded": "已记录偏好",
+    "saveFailed": "规则保存失败："
+  },
+  "columns": {
+    "saveFailed": "栏目没有保存："
+  },
+  "refresh": {
+    "feedFallback": "源 #{{id}}",
+    "failed_other": "{{count}} 个源失败",
+    "failedNamed_other": "{{count}} 个源失败（{{names}}）",
+    "failedNamedMore_other": "{{count}} 个源失败（{{names}} 等 {{count}} 个源）",
+    "skipped_other": "{{count}} 个源未完成",
+    "doneWithProblems": "刷新完成，{{parts}}",
+    "listenEnded": "刷新监听已结束",
+    "runtimeStopped": "后台运行时已重启或停止，请重新刷新",
+    "recordExpired": "刷新记录已过期，请重新刷新"
+  },
+  "session": {
+    "spot": {
+      "kept": "已保持不变。",
+      "noRule": "没有可操作的隐藏规则。",
+      "allowed": "已对「{{feed}}」放行。",
+      "ruleGone": "这条规则已停用或删除，请刷新焦点。",
+      "disabled": "已停用「{{label}}」。",
+      "halved": "已把「{{label}}」的权重减半。"
+    },
+    "ruleFailed": "规则操作失败：",
+    "loadFailed": "加载失败：",
+    "retry": "重试",
+    "settingFailed": "设置失败：",
+    "starred": "已收藏",
+    "unstarred": "已取消收藏",
+    "starFailed": "收藏失败：",
+    "noUnread": "没有未读条目",
+    "marked_other": "已标记 {{count}} 篇为已读",
+    "undo": "撤销",
+    "undoFailed": "撤销失败：",
+    "markFailed": "标记已读失败：",
+    "groupAlreadyRead": "这组已经都读过了",
+    "groupMarked_other": "已把这组 {{count}} 篇标为已读",
+    "refreshedInserted_other": "刷新完成，新入库 {{count}} 篇",
+    "refreshFailed": "刷新失败："
+  },
+  "hidden": {
+    "title": "被隐藏的文章",
+    "close": "关闭",
+    "releaseFailed": "放行失败：",
+    "optionAll_other": "全部 {{count}}",
+    "optionSpotLiked_other": "抽查时你赞过 {{count}}",
+    "hint": "这里只是列出来，不会改动任何东西。想放行某篇，选一项后才生效。",
+    "range": "当前范围：{{scope}}{{listScope}} · 近 7 天 · 隐藏阈值 {{threshold}} · 只读",
+    "allFeeds": "全部订阅",
+    "rangeUnread": " · 未读",
+    "rangeStarred": " · 收藏",
+    "loading": "正在读取被隐藏的文章…",
+    "loadFailed": "读取失败：",
+    "retryLoad": "重试读取",
+    "filterLabel": "按规则筛选",
+    "empty": "此筛选下没有被隐藏的文章。",
+    "listLabel": "被隐藏的文章列表",
+    "timeUnknown": "时间未知",
+    "totalScore": "总分",
+    "spotLikedNote": "抽查时放回焦点，你打开或赞了它。",
+    "releasedNote": "已放行，会出现在焦点里。",
+    "open": "打开",
+    "releaseLabel": "放行 {{title}}",
+    "releaseFace": "放行…",
+    "releaseOne": "只放行这一篇",
+    "disableRule": "停用「{{label}}」",
+    "ruleUnavailable": "规则不可用",
+    "allowFeed": "对「{{feed}}」放行"
+  },
+  "clusterHead": {
+    "note": "相近报道 · {{size}} 篇{{sources}}{{span}}",
+    "noteSources_other": " · {{count}} 个来源",
+    "freshTitle": "上次汇总之后新来的报道",
+    "fresh_other": "新 {{count}}",
+    "summarize": "汇总",
+    "ariaOpen": "{{label}} · {{size}} 篇 · 收起",
+    "ariaClosed": "{{label}} · {{size}} 篇 · 展开",
+    "collapse": "收起",
+    "expand_other": "展开另外 {{count}} 篇"
+  },
+  "clusterMember": {
+    "representative": "代表"
+  },
+  "clusterFoot": {
+    "collapse": "收起",
+    "total_other": "共 {{count}} 篇",
+    "markRead": "全部标为已读",
+    "cite": "引用整组到对话"
+  },
+  "card": {
+    "openFeed": "在订阅里打开「{{feed}}」",
+    "representative": "代表报道",
+    "reasonSeparator": "；",
+    "noisy": "噪声源",
+    "spotCheckTitle": "随机放回的一篇本该隐藏的文章，用来核对规则有没有误杀",
+    "spotCheck": "抽查",
+    "starred": "已收藏",
+    "scoreTitle": "规则与兴趣评分",
+    "actions": "文章操作",
+    "unstar": "取消收藏",
+    "star": "收藏",
+    "citeTitle": "引用到对话",
+    "cite": "引用",
+    "like": "赞",
+    "dislike": "踩"
+  },
+  "trainingBar": {
+    "close": "关闭",
+    "dislike": "不感兴趣",
+    "like": "感兴趣",
+    "hint": "已记录偏好。选一条规则，确认后才生效。",
+    "scoreDown": "{{label}}时降分",
+    "scoreUp": "{{label}}时加分",
+    "global": "全局",
+    "feedOnly": "仅此源"
+  },
+  "spot": {
+    "result": "这是一次抽查：{{result}}",
+    "wouldHideUp": "这是一次抽查：它原本会被 <reasons/> 隐藏，总分 {{score}}，隐藏阈值 {{threshold}}。",
+    "wouldHideDown": "这是一次抽查：它原本会被 <reasons/> 隐藏，看来规则没判错。",
+    "reasonSeparator": "、",
+    "weight": "（{{weight}}）",
+    "fallbackRule": "隐藏规则",
+    "undo": "撤销",
+    "disable": "停用这条规则",
+    "halve": "权重减半",
+    "allow": "对 {{feed}} 放行",
+    "keep": "保持不变",
+    "noteUp": "规则不会自动修改；选一项才生效，随时可以撤销。",
+    "noteDown": "这次反馈记为隐藏正确。"
+  },
+  "reasonRow": {
+    "because": "推荐因为"
+  },
+  "reader": {
+    "columnFallback": "栏目",
+    "focusTitle": "今日焦点"
+  },
+  "masthead": {
+    "digits": "零一二三四五六七八九",
+    "ten": "十",
+    "weekdays": "日一二三四五六",
+    "date": "{{month}}月{{day}}日 · 星期{{weekday}}",
+    "title": "今日焦点",
+    "columnKicker": "今日焦点 · 栏目"
+  },
+  "pane": {
+    "loading": "正在加载焦点",
+    "filterLabel": "评分过滤",
+    "scopeLabel": "阅读范围",
+    "filter": {
+      "focus": "仅关注",
+      "hide_faded": "隐藏弱化",
+      "all": "所有文章"
+    },
+    "scope": {
+      "all": "全部条目",
+      "unread": "未读",
+      "starred": "收藏"
+    },
+    "display": "显示",
+    "menu": {
+      "clusterGroup": "相近文章折叠",
+      "interestBoost": "兴趣加分",
+      "interestBoostNotReady": "兴趣加分（未就绪）",
+      "rerank": "按关注度排序",
+      "hideNoisy": "收起噪声源",
+      "learnedTitle": "按你的阅读习惯调整先后，不影响隐藏",
+      "showDetails": "推荐详情"
+    },
+    "learned": {
+      "rank_features": "常读的主题与作者",
+      "rank_source": "常读的源",
+      "rank_coverage": "多源报道",
+      "rank_freshness": "新文章优先",
+      "rank_affinity": "和常读文章相似"
+    },
+    "search": "搜索",
+    "searchTitle": "搜索文章（Ctrl+K）",
+    "refresh": "刷新",
+    "refreshTitle": "抓取全部订阅源（R）",
+    "markAllRead": "全部已读",
+    "markAllReadTitle": "把当前范围内的条目标为已读",
+    "newContent_other": "有 {{count}} 篇新内容",
+    "digestTitle": "今日简报",
+    "digestCta": "阅读简报",
+    "retryLoadMore": "重试加载更多",
+    "empty": {
+      "loading": "加载中…",
+      "noFeeds": "还没有订阅。打开设置添加 RSS / Atom 源后点刷新。",
+      "noStarred": "还没有收藏。在卡片或阅读器点星标即可。",
+      "viewAll": "查看全部条目",
+      "noUnread": "没有未读。",
+      "noisyHidden": "噪声源已收起。",
+      "showNoisy": "显示噪声源",
+      "noFocus": "还没有符合「仅关注」的条目。先看全部，或到设置里加规则。",
+      "viewAllArticles": "查看所有文章",
+      "none": "暂无条目。点刷新试试。"
+    },
+    "noisy": {
+      "hidden": "已收起噪声源 · {{names}}",
+      "hiddenMore": "已收起噪声源 · {{names}} 等",
+      "hide": "收起噪声源 · {{names}}",
+      "hideMore": "收起噪声源 · {{names}} 等"
+    }
+  }
+}

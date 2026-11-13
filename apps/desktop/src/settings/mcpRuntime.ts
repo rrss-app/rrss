@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import type { McpInput, McpProbeView, McpToolView, McpView } from "../bindings";
 import { api } from "../lib/api";
 import { formatNotice } from "../lib/notice";
+import { i18n } from "../i18n";
 
 /** 按网址猜一个名字：`https://mcp.linear.app/mcp` → `linear`。 */
 export function guessHostName(url: string): string {
@@ -37,12 +38,18 @@ export function includeFrom(tools: McpToolView[], chosen: Set<string>): string[]
   return names.length === tools.length ? [] : names;
 }
 
+/** 传输类型的显示名；未知类型原样显示。 */
+export function transportName(transport: string): string {
+  return transport === "stdio" || transport === "http" || transport === "sse"
+    ? i18n.t(`mcp.transport.${transport}`, { ns: "settingsAssistant" }) : transport;
+}
+
 /** 宿主的原因句末尾可能带句号；状态行里接在「·」后面时去掉，详情里补上。 */
 export const clause = (text: string) => text.trim().replace(/[。.]$/, "");
 export const sentence = (text: string) => { const t = text.trim(); return !t || /[。.！？!?]$/.test(t) ? t : `${t}。`; };
 
 function failure(error: unknown): McpProbeView {
-  return { ok: false, elapsed_ms: 0, tools: [], error: formatNotice("", error) || "检测没有完成", hint: "", output: "" };
+  return { ok: false, elapsed_ms: 0, tools: [], error: formatNotice("", error) || i18n.t("mcp.probeIncomplete", { ns: "settingsAssistant" }), hint: "", output: "" };
 }
 
 /** 一份按服务 id 记的外部状态；检测与登录的结果在本次运行内保留，离开设置页再回来仍在。 */

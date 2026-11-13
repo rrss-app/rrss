@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ModelChoice } from "../../lib/api";
 import { formatNotice } from "../../lib/notice";
+import { useTranslation } from "../../i18n";
 import { aiMutationOptions } from "../../settings/aiQuery";
 import { ChipBar } from "../../settings/chips";
 import { useSettingsWrite } from "../../settings/editState";
@@ -21,6 +22,7 @@ export function ChatModelChip({ value, thinking, onChange, onThinking, onManageP
   onManagePool: () => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation("chat");
   const { pool, providers, bindings } = usePoolChoices();
   const own = !!bindings?.chat_uses_own_config;
   const config = useQuery({ ...piConfigOptions(), enabled: own });
@@ -28,8 +30,8 @@ export function ChatModelChip({ value, thinking, onChange, onThinking, onManageP
   const { run } = useSettingsWrite(aiMutationOptions(useQueryClient()));
   const rename = async (choice: ModelChoice, name: string) => {
     const outcome = await run({ type: "model", args: { ...choice, display_name: name } });
-    return outcome.status === "busy" ? "正在保存别的模型设置，稍后再试。"
-      : outcome.status === "failed" ? formatNotice("没有保存：", outcome.error) : null;
+    return outcome.status === "busy" ? t("chip.renameBusy")
+      : outcome.status === "failed" ? formatNotice(t("chip.renameFailed"), outcome.error) : null;
   };
 
   if (own) {
@@ -37,8 +39,8 @@ export function ChatModelChip({ value, thinking, onChange, onThinking, onManageP
     const current = value?.provider_id === 0 ? value.model : fallback;
     return <OwnModelMenu value={current} ownModel={fallback} disabled={disabled || !config.data}
       chat={{ badge: thinking ? <Level level={thinking} /> : null,
-        extra: <Thinking value={thinking} fallback={null} own model={current || "Pi 默认"} onPick={onThinking} /> }}
-      onPick={(model) => onChange(model === fallback ? null : { provider_id: 0, model }, model || "Pi 默认")} />;
+        extra: <Thinking value={thinking} fallback={null} own model={current || t("chip.piDefault")} onPick={onThinking} /> }}
+      onPick={(model) => onChange(model === fallback ? null : { provider_id: 0, model }, model || t("chip.piDefault"))} />;
   }
 
   const fallback = chatDefault(bindings);
@@ -55,7 +57,7 @@ export function ChatModelChip({ value, thinking, onChange, onThinking, onManageP
     chat={{ badge: level ? <Level level={level} /> : null,
       // 还没有可用模型时只给「管理模型」，不摆一个调了也用不上的思考档位。
       extra: !entry ? null : !reasoning
-        ? <div className="chat-thinking"><p className="hint">{modelName(entry)} 不支持推理，对话时不思考。</p></div>
+        ? <div className="chat-thinking"><p className="hint">{t("chip.noReasoning", { model: modelName(entry) })}</p></div>
         : <Thinking value={thinking} fallback={entry.thinking ?? null} model={modelName(entry)} onPick={onThinking} /> }} />;
 }
 
@@ -71,18 +73,19 @@ function Thinking({ value, fallback, own = false, model, onPick }: {
   model: string;
   onPick: (level: string | null, label: string) => void;
 }) {
+  const { t } = useTranslation("chat");
   const reported = useQuery({ ...piQueryOptions(), enabled: false }).data?.thinking_levels ?? [];
   const options = thinkingOptions(reported);
   const current = value ?? fallback ?? "";
   return (
-    <div className="chat-thinking" role="group" aria-label="思考强度">
-      <h5>思考</h5>
+    <div className="chat-thinking" role="group" aria-label={t("chip.thinkingLevel")}>
+      <h5>{t("chip.thinking")}</h5>
       <ChipBar className="segmented" value={current} options={options}
         onChange={(level) => onPick(level === fallback ? null : level, thinkingLabel(level))} />
       <p className="hint">
-        {fallback ? `${model} 默认 ${thinkingLabel(fallback)}，这里改只影响这条对话。`
-          : own ? "默认由你的 Pi 配置决定，这里改只影响这条对话。" : `${model} 没设默认档位时按模型自己的默认；这里改只影响这条对话。`}
-        模型不支持的档位会自动换成最接近的一档。
+        {fallback ? t("chip.hintDefault", { model, level: thinkingLabel(fallback) })
+          : own ? t("chip.hintOwn") : t("chip.hintNoDefault", { model })}
+        {t("chip.hintSnap")}
       </p>
     </div>
   );

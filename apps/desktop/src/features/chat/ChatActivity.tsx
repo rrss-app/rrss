@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, useSyncExternalStore } from "react";
 import { api, type ChatConfirmEvent } from "../../lib/api";
 import { formatNotice } from "../../lib/notice";
+import { Trans, useTranslation } from "../../i18n";
 
 /** 一轮对话里的过程信息：一行进度、需要看见的提示、等待回应的确认。只存最新一份，不按线程保留历史。 */
 export type ChatActivityState = {
@@ -40,6 +41,7 @@ export type ActivityStore = ReturnType<typeof createActivityStore>;
 
 /** 输入框上方的过程条：确认条优先，其次需要看见的提示，最后是一行进度。 */
 export function ChatActivity({ store }: { store: ActivityStore }) {
+  const { t } = useTranslation("chat");
   const { line, notice, confirm } = useSyncExternalStore(store.subscribe, store.get, store.get);
 
   // 提示真正显示出来才算看见；同一版本宿主只会发一次。
@@ -55,7 +57,7 @@ export function ChatActivity({ store }: { store: ActivityStore }) {
       {notice && (
         <div className="chat-notice" role="status">
           <span>{notice.text}</span>
-          <button type="button" className="btn ghost sm" onClick={() => store.set({ notice: null })}>知道了</button>
+          <button type="button" className="btn ghost sm" onClick={() => store.set({ notice: null })}>{t("activity.dismiss")}</button>
         </div>
       )}
       {line && !confirm && <p className="chat-status-line" role="status">{line}</p>}
@@ -68,6 +70,7 @@ export function ChatActivity({ store }: { store: ActivityStore }) {
  * 宿主允许时可勾「本次对话里不再问」（只随「允许」生效）。
  */
 function ConfirmCard({ confirm, store }: { confirm: ChatConfirmEvent; store: ActivityStore }) {
+  const { t } = useTranslation("chat");
   const [answering, setAnswering] = useState(false);
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
@@ -82,30 +85,30 @@ function ConfirmCard({ confirm, store }: { confirm: ChatConfirmEvent; store: Act
       store.answered(confirm, ok);
       if (store.get().confirm?.id === confirm.id) store.set({ confirm: null });
     } catch (err) {
-      setError(formatNotice("没能回应：", err));
+      setError(formatNotice(t("activity.answerFailed"), err));
     } finally {
       setAnswering(false);
     }
   };
   return (
-    <div className="chat-confirm" role="alertdialog" aria-label={external ? `允许使用 ${confirm.server} 的 ${confirm.tool}？` : confirm.title}
+    <div className="chat-confirm" role="alertdialog" aria-label={external ? t("activity.allowUse", { server: confirm.server, tool: confirm.tool }) : confirm.title}
       aria-describedby={messageId}>
       <div>
         {external
-          ? <strong>允许使用 <span className="chat-srv">{confirm.server}</span> 的 {confirm.tool}？</strong>
+          ? <strong><Trans t={t} i18nKey="activity.allowUseRich" values={{ server: confirm.server, tool: confirm.tool }} components={{ srv: <span className="chat-srv" /> }} /></strong>
           : <strong>{confirm.title}</strong>}
-        <p id={messageId}>{external ? (confirm.args ? "这个工具会修改内容，具体参数如下：" : "这个工具会修改内容。") : confirm.message}</p>
+        <p id={messageId}>{external ? (confirm.args ? t("activity.mutatesWithArgs") : t("activity.mutates")) : confirm.message}</p>
         {external && confirm.args ? <pre className="chat-confirm-args">{confirm.args}</pre> : null}
         {external && confirm.can_remember ? (
           <label className="chat-confirm-remember">
-            <input type="checkbox" checked={remember} disabled={answering} onChange={(e) => setRemember(e.target.checked)} />本次对话里不再问 {confirm.tool}
+            <input type="checkbox" checked={remember} disabled={answering} onChange={(e) => setRemember(e.target.checked)} />{t("activity.remember", { tool: confirm.tool })}
           </label>
         ) : null}
-        {confirm.timeout_ms ? <small className="muted">{Math.round(confirm.timeout_ms / 60000) || 1} 分钟内不处理会自动拒绝</small> : null}
+        {confirm.timeout_ms ? <small className="muted">{t("activity.timeout", { count: Math.round(confirm.timeout_ms / 60000) || 1 })}</small> : null}
         {error && <p className="form-status error" role="alert">{error}</p>}
       </div>
-      <button type="button" className="btn primary sm" disabled={answering} onClick={() => void answer(true)}>允许</button>
-      <button type="button" className="btn sm" disabled={answering} onClick={() => void answer(false)}>拒绝</button>
+      <button type="button" className="btn primary sm" disabled={answering} onClick={() => void answer(true)}>{t("activity.allow")}</button>
+      <button type="button" className="btn sm" disabled={answering} onClick={() => void answer(false)}>{t("activity.deny")}</button>
     </div>
   );
 }

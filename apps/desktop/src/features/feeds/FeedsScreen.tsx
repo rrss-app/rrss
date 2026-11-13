@@ -5,6 +5,7 @@ import type { ArticleView, FeedTree } from "../../lib/api";
 import { feedQueryOptions } from "../../lib/feedQuery";
 import { formatDay, formatPublished, formatPublishedFull, useMinuteClock } from "../../lib/time";
 import { useRetainedScroll } from "../../lib/useRetainedScroll";
+import { useTranslation } from "../../i18n";
 import { useViewEnter } from "../../lib/motion";
 import { useExposureTracker, type ExposureObserver } from "../../lib/useExposureTracker";
 import { Icon } from "../../components/Icon";
@@ -14,11 +15,7 @@ import { HiddenListDialog } from "../focus";
 import { feedsInScope, scopeTitle, scopeUnread } from "./feedTree";
 import { useFeedsSession, type FeedsSession } from "./feedsSession";
 
-const LIST_SCOPES = [
-  { id: "all", label: "全部" },
-  { id: "unread", label: "未读" },
-  { id: "starred", label: "收藏" },
-] as const;
+const LIST_SCOPES = ["all", "unread", "starred"] as const;
 
 type Item = { kind: "day"; label: string } | { kind: "row"; row: ArticleView; position: number };
 
@@ -61,6 +58,7 @@ export const FeedsScreen = memo(function FeedsScreen({ session, active, onOpen, 
   /** 抓取全部订阅源；完成后重读时间线。 */
   onFetch: () => Promise<unknown>;
 }) {
+  const { t } = useTranslation("feeds");
   const state = useFeedsSession(session);
   const tree = useQuery(feedQueryOptions()).data;
   const now = useMinuteClock();
@@ -154,31 +152,31 @@ export const FeedsScreen = memo(function FeedsScreen({ session, active, onOpen, 
     {hiddenOpen ? <HiddenListDialog scope={{ scope: state.scope, listScope: state.listScope, label: title.name }} onClose={() => setHiddenOpen(false)}
       onOpenArticle={(id) => { setHiddenOpen(false); onOpen(id); }} onChanged={() => void session.refresh()} /> : null}
     <div className="toolbar" data-tauri-drag-region="deep">
-      <Segmented className="toolbar-group segmented" role="group" aria-label="阅读范围">
-        {LIST_SCOPES.map((item) => <button key={item.id} type="button" className="tab" data-on={state.listScope === item.id ? "1" : "0"}
-          onClick={() => { if (item.id !== state.listScope) void session.setListScope(item.id); }}>{item.label}</button>)}
+      <Segmented className="toolbar-group segmented" role="group" aria-label={t("screen.scopeLabel")}>
+        {LIST_SCOPES.map((id) => <button key={id} type="button" className="tab" data-on={state.listScope === id ? "1" : "0"}
+          onClick={() => { if (id !== state.listScope) void session.setListScope(id); }}>{t(`screen.scope.${id}`)}</button>)}
       </Segmented>
       <span className="toolbar-spacer" />
       <div className="toolbar-actions">
-        <button type="button" className="tab tool" title="把当前范围内可见的未读标为已读" aria-label="标为已读"
+        <button type="button" className="tab tool" title={t("screen.markReadTitle")} aria-label={t("screen.markRead")}
           disabled={!unread} onClick={() => void session.markScopeRead()}>
-          <Icon name="check" size={15} /><span className="tool-label">标为已读</span>
+          <Icon name="check" size={15} /><span className="tool-label">{t("screen.markRead")}</span>
         </button>
-        <button type="button" className="tab tool" title="抓取全部订阅源" aria-label="刷新" aria-busy={fetching} onClick={() => void fetchAll()}>
-          <Icon name="refresh" size={15} /><span className="tool-label">刷新</span>
+        <button type="button" className="tab tool" title={t("screen.fetchTitle")} aria-label={t("screen.refresh")} aria-busy={fetching} onClick={() => void fetchAll()}>
+          <Icon name="refresh" size={15} /><span className="tool-label">{t("screen.refresh")}</span>
         </button>
       </div>
     </div>
     <div className="scroll feeds-scroll" ref={scroll} tabIndex={-1}>
       <div className="feeds-column">
         <header className="feeds-head">
-          <div className="feeds-path">订阅{title.path.length ? ` · ${title.path.join(" › ")}` : ""}</div>
-          <h1>{title.name}<small>{unread} 篇未读 · 按时间</small></h1>
+          <div className="feeds-path">{title.path.length ? t("screen.pathNested", { path: title.path.join(" › ") }) : t("screen.path")}</div>
+          <h1>{title.name}<small>{t("screen.unreadLine", { count: unread })}</small></h1>
         </header>
         <div className="feeds-sticky" aria-hidden="true">{sticky ? <div className="feeds-day" data-sticky="1">{sticky}</div> : null}</div>
         {state.articles.length === 0 && !state.loading ? <div className="feeds-empty">
-          <p>这个范围没有文章</p>
-          {troubled.map((feed) => <small key={feed.id}>{feed.title}：{feed.reason}</small>)}
+          <p>{t("screen.empty")}</p>
+          {troubled.map((feed) => <small key={feed.id}>{t("screen.troubled", { title: feed.title, reason: feed.reason })}</small>)}
         </div> : null}
         <div className="feeds-list" ref={list} aria-busy={state.loading} style={{ height: virtual.getTotalSize(), position: "relative" }}>
           {virtual.getVirtualItems().map((v) => {
@@ -191,7 +189,7 @@ export const FeedsScreen = memo(function FeedsScreen({ session, active, onOpen, 
             const row = item.row;
             return <MeasuredItem key={v.key} index={v.index} measure={virtual.measureElement} observe={observe} row={row} position={item.position} style={style}>
               <button type="button" className="feeds-item" data-read={row.read ? "1" : "0"} data-article-id={row.id} onClick={() => onOpen(row.id)}>
-                <span className="feeds-item-dot" aria-label={row.read ? "已读" : "未读"} />
+                <span className="feeds-item-dot" aria-label={row.read ? t("screen.read") : t("screen.unread")} />
                 <span className="feeds-item-body">
                   <span className="feeds-item-title">{row.title}</span>
                   {row.summary ? <span className="feeds-item-summary">{row.summary}</span> : null}
@@ -206,10 +204,10 @@ export const FeedsScreen = memo(function FeedsScreen({ session, active, onOpen, 
         </div>
         {state.moreError ? <div className="notice error" role="alert">
           <span>{state.moreError}</span>
-          <button type="button" className="btn sm" onClick={() => void session.loadMore()} disabled={state.loadingMore}>重试加载更多</button>
+          <button type="button" className="btn sm" onClick={() => void session.loadMore()} disabled={state.loadingMore}>{t("screen.retryMore")}</button>
         </div> : null}
         {!state.hasMore && !state.loading && state.hiddenCount > 0 ? <button type="button" className="feeds-hidden" onClick={() => setHiddenOpen(true)}>
-          另有 {state.hiddenCount} 篇被规则隐藏
+          {t("screen.hidden", { count: state.hiddenCount })}
         </button> : null}
       </div>
     </div>

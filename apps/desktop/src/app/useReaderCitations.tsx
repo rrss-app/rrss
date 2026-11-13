@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { api, type CitationView, type ThreadView } from "../lib/api";
 import { formatNotice } from "../lib/notice";
+import { i18n } from "../i18n";
 import type { DraftStore, useConversationRuntime } from "../features/chat";
 import { ReaderCitationTray, citationTargetContext, type ReaderCitationSource } from "../features/reader";
 
@@ -72,7 +73,7 @@ export function useReaderCitations({ drafts, chat, getThreads, getSourceArticle,
       callbacks.current.onSent(id, digestId, sameReader);
       return true;
     } catch (error) {
-      callbacks.current.notify({ message: formatNotice("发送失败：", error) });
+      callbacks.current.notify({ message: formatNotice(i18n.t("citation.sendFailed", { ns: "reader" }), error) });
       return false;
     } finally { sendLock.current = false; setResolving(false); }
   };

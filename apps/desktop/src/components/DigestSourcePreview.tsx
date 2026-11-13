@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { createPortal } from "react-dom";
 import type { DigestSourceView } from "../bindings";
 import { useExposureTracker, type ExposureObserver } from "../lib/useExposureTracker";
-import { locale } from "../i18n";
+import { i18n, locale, useTranslation } from "../i18n";
 
 const CARD_ID = "digest-source-card";
 const HIDE_DELAY_MS = 120;
@@ -31,15 +31,22 @@ function SourceExposureProvider({ scrollRoot, active, sources, children }: {
 }
 
 export function sourceStatusNote(status: string): string {
-  if (status === "removed") return "文章已移除，仅保留生成时的标题与源名";
-  if (status === "unavailable") return "文章信息暂不可用";
+  if (status === "removed") return i18n.t("source.removed", { ns: "digest" });
+  if (status === "unavailable") return i18n.t("source.unavailable", { ns: "digest" });
   return "";
 }
 
 export function sourceLabel(source: DigestSourceView): string {
-  const head = source.number != null ? `来源 ${source.number}：` : "来源：";
+  const feed = source.feed_title || i18n.t("source.unknownFeed", { ns: "digest" });
   const note = sourceStatusNote(source.status);
-  return `${head}《${source.title}》，${source.feed_title || "未知来源"}${note ? `（${note}）` : ""}`;
+  if (source.number != null) {
+    return note
+      ? i18n.t("source.labelNumberedNote", { ns: "digest", number: source.number, title: source.title, feed, note })
+      : i18n.t("source.labelNumbered", { ns: "digest", number: source.number, title: source.title, feed });
+  }
+  return note
+    ? i18n.t("source.labelNote", { ns: "digest", title: source.title, feed, note })
+    : i18n.t("source.label", { ns: "digest", title: source.title, feed });
 }
 
 function formatDay(ms: number): string {
@@ -139,7 +146,7 @@ export function DigestSourcePreviewProvider({ active = true, exposureActive = ac
             onPointerLeave={hideSoon}
           >
             <div className="digest-source-card-meta">
-              <span>{source.feed_title || "未知来源"}</span>
+              <span>{source.feed_title || i18n.t("source.unknownFeed", { ns: "digest" })}</span>
               {day ? <span>{day}</span> : null}
             </div>
             <p className="digest-source-card-title">{source.title}</p>
@@ -219,7 +226,7 @@ function SourceRow({ source, onOpenArticle }: { source: DigestSourceView; onOpen
       {source.number != null ? <span className="digest-source-index-no" aria-hidden>{source.number}</span> : null}
       <SourceButton source={source} onOpenArticle={onOpenArticle} className="digest-source-index-link">
         <span className="digest-source-index-title">{source.title}</span>
-        <span className="digest-source-index-feed">{source.feed_title || "未知来源"}{sourceStatusNote(source.status) ? ` · ${sourceStatusNote(source.status)}` : ""}</span>
+        <span className="digest-source-index-feed">{source.feed_title || i18n.t("source.unknownFeed", { ns: "digest" })}{sourceStatusNote(source.status) ? ` · ${sourceStatusNote(source.status)}` : ""}</span>
       </SourceButton>
     </li>
   );
@@ -232,20 +239,21 @@ export function DigestSourceIndex({ sources, unlocated, legacy, onOpenArticle }:
   legacy: boolean;
   onOpenArticle: (id: number) => void;
 }) {
+  const { t } = useTranslation("digest");
   const numbered = sources.filter((source) => source.number != null);
   if (numbered.length === 0 && unlocated.length === 0) return null;
   return (
     <div className="digest-source-index">
       {numbered.length > 0 ? (
         <details>
-          <summary>本期来源（{numbered.length}）</summary>
+          <summary>{t("sourceIndex.numbered", { count: numbered.length })}</summary>
           <ol>{numbered.map((source) => <SourceRow key={source.article_id} source={source} onOpenArticle={onOpenArticle} />)}</ol>
         </details>
       ) : null}
       {unlocated.length > 0 ? (
         <details>
-          <summary>{legacy ? "旧稿来源（未定位）" : "未定位来源"}（{unlocated.length}）</summary>
-          <p className="digest-source-index-hint muted">这些来源没能对应到具体条目，不参与划词引用。</p>
+          <summary>{legacy ? t("sourceIndex.legacy", { count: unlocated.length }) : t("sourceIndex.unlocated", { count: unlocated.length })}</summary>
+          <p className="digest-source-index-hint muted">{t("sourceIndex.hint")}</p>
           <ul>{unlocated.map((source) => <SourceRow key={source.article_id} source={{ ...source, number: null }} onOpenArticle={onOpenArticle} />)}</ul>
         </details>
       ) : null}

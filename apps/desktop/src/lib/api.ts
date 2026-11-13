@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { i18n } from "../i18n";
 import { isTauri } from "./preview";
 import type { SelectedBlock } from "./selection";
 import type {
@@ -409,7 +410,7 @@ export const api = {
   /** 用户显式操作：可能启动 Pi 读取它的模型列表。 */
   piAvailableModels: () => invoke<string[]>("pi_available_models"),
   addFeed: async (url: string) => {
-    if (isTauri() && !feedUpdates) throw new Error("订阅更新监听尚未就绪，请稍后重试");
+    if (isTauri() && !feedUpdates) throw new Error(i18n.t("api.feedUpdatesNotReady", { ns: "shell" }));
     await feedUpdates?.ready;
     const result = await invoke<AddFeedResult>("add_feed", { url });
     // Reconcile after acknowledgement too: completion can precede the command response.

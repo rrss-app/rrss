@@ -8,99 +8,98 @@ import { findEntry, ModelMenu, modelName, taskChoice, usePoolChoices } from "./m
 import { TRANSLATE_BACKENDS, translateError } from "./translateQuery";
 import { useTranslateSettings } from "./useTranslateSettings";
 import { Pending } from "../components/Pending";
+import { Trans, useTranslation } from "../i18n";
 
-const LANGS = [
-  { id: "zh", label: "中文" },
-  { id: "en", label: "英语" },
-  { id: "ja", label: "日语" },
-];
+const LANG_IDS = ["zh", "en", "ja"] as const;
 
 export function TranslatePane({ onEditStateChange, onOpenModels }: {
   onEditStateChange?: (state: SettingsEditState | null) => void;
   onOpenModels: () => void;
 }) {
+  const { t } = useTranslation("settingsJobs");
+  const LANGS = LANG_IDS.map((id) => ({ id, label: t(`translate.lang.${id}`) }));
   const { query, draft, baseline, dirty, busy, pending, status, change, pick, run, reload, discard } = useTranslateSettings(onEditStateChange);
   if (!draft || !baseline) return (
     <div className="translate-pane">
       {query.isError ? <>
-        <p className="notice error" role="alert">{translateError("读取翻译设置失败，请重试：", query.error)}</p>
-        <button type="button" className="btn" disabled={query.isFetching || busy} onClick={reload}>重试读取</button>
-      </> : <Pending>正在读取已保存的翻译设置…</Pending>}
+        <p className="notice error" role="alert">{translateError(t("translate.notice.readFailedRetry"), query.error)}</p>
+        <button type="button" className="btn" disabled={query.isFetching || busy} onClick={reload}>{t("translate.retry")}</button>
+      </> : <Pending>{t("translate.loading")}</Pending>}
     </div>
   );
 
   return (
     <div className="translate-pane">
-      {query.isError && !status && <p className="notice error" role="alert">{translateError("读取翻译设置失败，当前输入已保留：", query.error, draft)}</p>}
+      {query.isError && !status && <p className="notice error" role="alert">{translateError(t("translate.notice.readFailedKept"), query.error, draft)}</p>}
       <fieldset className="settings-fields" disabled={busy} aria-busy={busy}>
         <section className="settings-card settings-section">
           <div className="settings-section-meta">
-            <h4>阅读</h4>
+            <h4>{t("translate.reading.title")}</h4>
           </div>
           <div className="settings-section-body">
-            <SettingRow label="启用翻译" hint="关闭后阅读器里不出现翻译。">
-              <Toggle label="启用翻译" on={baseline.enabled} onLabel="" offLabel=""
+            <SettingRow label={t("translate.reading.enable")} hint={t("translate.reading.enableHint")}>
+              <Toggle label={t("translate.reading.enable")} on={baseline.enabled} onLabel="" offLabel=""
                 onClick={() => pick("enabled", !baseline.enabled)} />
             </SettingRow>
-            <SettingRow label="目标语言">
+            <SettingRow label={t("translate.reading.targetLang")}>
               <ChipBar value={LANGS.some((l) => l.id === draft.target_lang) ? draft.target_lang : ""}
                 className="segmented" options={LANGS} onChange={(value) => pick("target_lang", value)} />
             </SettingRow>
             {/* 已存的是常用三种以外的语言时默认展开，不让当前值藏起来。 */}
-            <details className="settings-more" open={!LANGS.some((l) => l.id === baseline.target_lang) || undefined}><summary>其他语言</summary>
-              <Field label="语言代码" hint="其他语言可填写代码，例如 de（德语）、fr（法语）。">
-                <input value={draft.target_lang} onChange={(e) => change("target_lang", e.target.value)} placeholder="zh" aria-label="语言代码" />
+            <details className="settings-more" open={!LANGS.some((l) => l.id === baseline.target_lang) || undefined}><summary>{t("translate.reading.otherLangs")}</summary>
+              <Field label={t("translate.reading.langCode")} hint={t("translate.reading.langCodeHint")}>
+                <input value={draft.target_lang} onChange={(e) => change("target_lang", e.target.value)} placeholder="zh" aria-label={t("translate.reading.langCode")} />
               </Field>
             </details>
           </div>
         </section>
         <section className="settings-card settings-section">
           <div className="settings-section-meta">
-            <h4>服务</h4>
-            <p className="hint">选一种即生效。换服务时，各自的地址和密钥都留着。</p>
+            <h4>{t("translate.service.title")}</h4>
+            <p className="hint">{t("translate.service.hint")}</p>
           </div>
           <div className="settings-section-body">
-            <div role="group" aria-label="翻译服务">
+            <div role="group" aria-label={t("translate.service.aria")}>
               <ChipBar className="segmented" value={baseline.backend} options={TRANSLATE_BACKENDS} onChange={(value) => pick("backend", value)} />
             </div>
             {baseline.backend === "complete" ? (
               <TranslateModel disabled={busy} onOpenModels={onOpenModels} />
             ) : baseline.backend === "deepl" ? (
               <div>
-                <p className="hint">填写 DeepL API 密钥。免费版密钥以 :fx 结尾；不填写自定义地址时，会根据密钥选择官方地址。</p>
-                <SavedSecretField saved={query.data?.deepl_key ?? { state: "none", hint: "" }} label="API Key" value={draft.deepl_key} onChange={(value) => change("deepl_key", value)} placeholder="例如 12345678-abcd-...:fx" />
-                <Field label="自定义 API 地址（可选）">
-                  <input value={draft.deepl_url} aria-label="自定义 API 地址（可选）"
-                    onChange={(e) => change("deepl_url", e.target.value)} placeholder="留空使用官方默认地址" />
+                <p className="hint">{t("translate.deepl.hint")}</p>
+                <SavedSecretField saved={query.data?.deepl_key ?? { state: "none", hint: "" }} label={t("translate.deepl.keyLabel")} value={draft.deepl_key} onChange={(value) => change("deepl_key", value)} placeholder={t("translate.deepl.keyPlaceholder")} />
+                <Field label={t("translate.deepl.urlLabel")}>
+                  <input value={draft.deepl_url} aria-label={t("translate.deepl.urlLabel")}
+                    onChange={(e) => change("deepl_url", e.target.value)} placeholder={t("translate.deepl.urlPlaceholder")} />
                 </Field>
               </div>
             ) : baseline.backend === "deeplx" ? (
               <div>
-                <p className="hint">填写你已部署的 DeepLX 服务地址；服务需要认证时，再填写 Token。</p>
-                <Field label="DeepLX 服务地址">
-                  <input value={draft.deeplx_url} aria-label="DeepLX 服务地址"
+                <p className="hint">{t("translate.deeplx.hint")}</p>
+                <Field label={t("translate.deeplx.urlLabel")}>
+                  <input value={draft.deeplx_url} aria-label={t("translate.deeplx.urlLabel")}
                     onChange={(e) => change("deeplx_url", e.target.value)} placeholder="http://127.0.0.1:1188" />
                 </Field>
-                <SavedSecretField saved={query.data?.deeplx_token ?? { state: "none", hint: "" }} label="Token（可选）" value={draft.deeplx_token} onChange={(value) => change("deeplx_token", value)} placeholder="Authorization Bearer Token" />
+                <SavedSecretField saved={query.data?.deeplx_token ?? { state: "none", hint: "" }} label={t("translate.deeplx.tokenLabel")} value={draft.deeplx_token} onChange={(value) => change("deeplx_token", value)} placeholder="Authorization Bearer Token" />
               </div>
             ) : (
               <div>
-                <p className="hint">填写兼容 LibreTranslate 的翻译服务地址。</p>
-                <Field label="HTTP 服务地址">
-                  <input value={draft.http_url} aria-label="HTTP 服务地址"
+                <p className="hint">{t("translate.http.hint")}</p>
+                <Field label={t("translate.http.urlLabel")}>
+                  <input value={draft.http_url} aria-label={t("translate.http.urlLabel")}
                     onChange={(e) => change("http_url", e.target.value)} placeholder="http://127.0.0.1:5000" />
                 </Field>
-                <SavedSecretField saved={query.data?.http_key ?? { state: "none", hint: "" }} label="API Key（可选）" value={draft.http_key} onChange={(value) => change("http_key", value)} placeholder="可选 API Key" />
+                <SavedSecretField saved={query.data?.http_key ?? { state: "none", hint: "" }} label={t("translate.http.keyLabel")} value={draft.http_key} onChange={(value) => change("http_key", value)} placeholder={t("translate.http.keyPlaceholder")} />
               </div>
             )}
             <div className="row form-actions translate-actions">
-              <button type="button" className="btn" aria-busy={pending === "test" || undefined} title={dirty ? "会先保存当前修改再测试" : undefined}
-                onClick={() => void run("test")}>测试连接</button>
+              <button type="button" className="btn" aria-busy={pending === "test" || undefined} title={dirty ? t("translate.service.testDirtyTitle") : undefined}
+                onClick={() => void run("test")}>{t("translate.service.test")}</button>
               {status ? <span className={`form-status ${status.tone === "err" ? "error" : ""}`} role={status.tone === "err" ? "alert" : "status"}>{status.text}</span> : null}
             </div>
           </div>
         </section>
-        {dirty && <SaveBar label="翻译设置" busy={busy} saving={pending === "save"} onSave={() => void run("save")} onUndo={discard} />}
+        {dirty && <SaveBar label={t("translate.editLabel")} busy={busy} saving={pending === "save"} onSave={() => void run("save")} onUndo={discard} />}
       </fieldset>
     </div>
   );
@@ -108,23 +107,24 @@ export function TranslatePane({ onEditStateChange, onOpenModels }: {
 
 /** 「大模型」服务下就地选翻译用途的模型（阶段 19-7），与模型页的翻译行同一用途、同一查询键，选即存。 */
 function TranslateModel({ disabled, onOpenModels }: { disabled: boolean; onOpenModels: () => void }) {
+  const { t } = useTranslation("settingsJobs");
   const client = useQueryClient();
   const { writing, run } = useSettingsWrite(aiMutationOptions(client));
   const { pool, providers, bindings } = usePoolChoices(readGate(writing));
   const [note, setNote] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const value = taskChoice(bindings, "article_translate");
   return (
-    <SettingRow label="使用模型" hint="和模型页「翻译」用途是同一项。">
+    <SettingRow label={t("translate.model.label")} hint={t("translate.model.hint")}>
       <div className="row translate-model">
-        <ModelMenu label="翻译的模型" value={value} providers={providers} pool={pool} disabled={disabled || writing || !bindings}
+        <ModelMenu label={t("translate.model.menuLabel")} value={value} providers={providers} pool={pool} disabled={disabled || writing || !bindings}
           onManage={onOpenModels} onPick={async (choice) => {
             setNote(null);
             const outcome = await run({ type: "bindings", args: { bindings: [{ task: "article_translate", ...choice }] } });
             if (outcome.status === "busy" || !outcome.mounted) return;
             const e = findEntry(pool, choice);
             setNote(outcome.status === "failed"
-              ? { tone: "err", text: formatNotice("没有保存：", outcome.error) }
-              : { tone: "ok", text: `已保存：翻译改用 ${e ? modelName(e) : choice.model}。` });
+              ? { tone: "err", text: formatNotice(t("notice.saveFailed"), outcome.error) }
+              : { tone: "ok", text: t("translate.model.saved", { model: e ? modelName(e) : choice.model }) });
           }} />
         {note && <span className={note.tone === "err" ? "form-status error" : "form-status"} role={note.tone === "err" ? "alert" : "status"}>{note.text}</span>}
       </div>

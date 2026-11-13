@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type ThreadFolderView, type ThreadListView, type ThreadView } from "../lib/api";
 import { feedQueryOptions } from "../lib/feedQuery";
 import { isTauri, PREVIEW_THREADS } from "../lib/preview";
+import { useTranslation } from "../i18n";
 import { Icon } from "../components/Icon";
 import { BrandMark } from "../components/BrandMark";
 import { MenuButton } from "../components/MenuSelect";
@@ -15,14 +16,14 @@ export type MainView = "focus" | "column" | "feeds" | "digest" | "chat";
 const EMPTY_LIST: ThreadListView = { folders: [], threads: [], archived_count: 0 };
 export type SidebarHandle = { reloadThreads: () => void; getThreads: () => ThreadView[]; getFolders: () => ThreadFolderView[] };
 
-/** 主视图名称。侧栏导航和订阅模式的返回按钮共用，避免两处各写一份。 */
-const VIEW_LABEL: Record<MainView, string> = {
-  focus: "今日焦点",
-  column: "栏目",
-  feeds: "订阅",
-  digest: "简报",
-  chat: "深度对话",
-};
+/** 主视图名称的语言包键。侧栏导航和订阅模式的返回按钮共用，避免两处各写一份。 */
+const VIEW_LABEL = {
+  focus: "view.focus",
+  column: "view.column",
+  feeds: "view.feeds",
+  digest: "view.digest",
+  chat: "view.chat",
+} as const;
 
 /** 侧栏独立读取低频会话列表；只将选中标题的变化上报根壳，不订阅流式消息。 */
 export const Sidebar = memo(forwardRef<SidebarHandle, {
@@ -84,8 +85,9 @@ export const Sidebar = memo(forwardRef<SidebarHandle, {
     void api.archivedThreads().then((rows) => { if (!cancelled) setArchived(rows); }, () => undefined);
     return () => { cancelled = true; };
   }, [revision, archiveMode, missing]);
+  const { t } = useTranslation("feeds");
   const current = known.find(thread => thread.id === threadId);
-  const title = current?.title ?? "新对话";
+  const title = current?.title ?? t("sidebar.newThread");
   const isArchived = !!current?.archived_at && !threads.some((thread) => thread.id === threadId);
   useEffect(() => { onThreadTitle(threadId, title, isArchived); }, [threadId, title, isArchived, onThreadTitle]);
   const reload = () => setRevision((value) => value + 1);
@@ -93,35 +95,35 @@ export const Sidebar = memo(forwardRef<SidebarHandle, {
   // 「订阅」项的未读总数：离开订阅模式时也刷新，标已读与阅读后不会停在旧数。
   useEffect(() => { if (view !== "feeds") void feeds.refreshCounts(); }, [feeds, view]);
   if (view === "feeds") return <FeedsSidebar feeds={feeds} inert={inert} feedsReturn={feedsReturn} onBack={() => onView(feedsReturn)} onAddFeed={onAddFeed} onSettings={onSettings} notify={notify} />;
-  if (archiveMode) return <aside className="sidebar thread-archive-mode" inert={inert} aria-label="已归档的会话"
+  if (archiveMode) return <aside className="sidebar thread-archive-mode" inert={inert} aria-label={t("sidebar.archivedLabel")}
     onKeyDown={(event) => { if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); setArchiveMode(false); } }}>
     <ArchivedThreads threads={archived} active={view === "chat" ? threadId : 0} onBack={() => setArchiveMode(false)}
       onThread={onThread} onChanged={reload} notify={notify} />
     <div className="sidebar-foot">
-      <button type="button" onClick={onSettings}><Icon name="settings" size={15} />设置</button>
-      <button type="button" onClick={onAbout}><Icon name="info" size={15} />关于</button>
+      <button type="button" onClick={onSettings}><Icon name="settings" size={15} />{t("sidebar.settings")}</button>
+      <button type="button" onClick={onAbout}><Icon name="info" size={15} />{t("sidebar.about")}</button>
     </div>
   </aside>;
   return <aside className="sidebar" inert={inert}>
-    <div className="sidebar-top" data-tauri-drag-region="deep"><button type="button" className="brand" onClick={onAbout} title="关于 RRSS">
+    <div className="sidebar-top" data-tauri-drag-region="deep"><button type="button" className="brand" onClick={onAbout} title={t("sidebar.aboutTitle")}>
       <BrandMark /><span className="brand-name">RRSS</span>
     </button></div>
-    <button type="button" className="sidebar-search" onClick={onSearch} title="搜索标题与正文（Ctrl+K）">
-      <Icon name="search" size={15} /><span>搜索文章</span><kbd className="kbd">Ctrl K</kbd>
+    <button type="button" className="sidebar-search" onClick={onSearch} title={t("sidebar.searchTitle")}>
+      <Icon name="search" size={15} /><span>{t("sidebar.searchLabel")}</span><kbd className="kbd">Ctrl K</kbd>
     </button>
-    <nav className="nav" aria-label="主视图">
-      <button type="button" className="nav-item" data-on={view === "focus" ? "1" : "0"} onClick={() => onView("focus")}><Icon name="focus" size={16} />{VIEW_LABEL.focus}</button>
+    <nav className="nav" aria-label={t("sidebar.navLabel")}>
+      <button type="button" className="nav-item" data-on={view === "focus" ? "1" : "0"} onClick={() => onView("focus")}><Icon name="focus" size={16} />{t(VIEW_LABEL.focus)}</button>
       <FocusColumns view={view} columnId={columnId} counts={feedsState.counts} onOpen={onOpenColumn} onGone={onColumnGone} notify={(message) => notify({ message })} />
-      <button type="button" className="nav-item" data-on="0" onClick={() => onView("feeds")}><Icon name="rss" size={16} />{VIEW_LABEL.feeds}
-        {feedsState.counts?.total ? <span className="nav-count" aria-label={`${feedsState.counts.total} 篇未读`}>{feedsState.counts.total}</span> : null}</button>
-      <button type="button" className="nav-item" data-on={view === "digest" ? "1" : "0"} onClick={() => onView("digest")}><Icon name="digest" size={16} />{VIEW_LABEL.digest}</button>
-      <button type="button" className="nav-item" data-on={view === "chat" ? "1" : "0"} onClick={() => onView("chat")}><Icon name="chat" size={16} />{VIEW_LABEL.chat}</button>
+      <button type="button" className="nav-item" data-on="0" onClick={() => onView("feeds")}><Icon name="rss" size={16} />{t(VIEW_LABEL.feeds)}
+        {feedsState.counts?.total ? <span className="nav-count" aria-label={t("sidebar.unreadCount", { count: feedsState.counts.total })}>{feedsState.counts.total}</span> : null}</button>
+      <button type="button" className="nav-item" data-on={view === "digest" ? "1" : "0"} onClick={() => onView("digest")}><Icon name="digest" size={16} />{t(VIEW_LABEL.digest)}</button>
+      <button type="button" className="nav-item" data-on={view === "chat" ? "1" : "0"} onClick={() => onView("chat")}><Icon name="chat" size={16} />{t(VIEW_LABEL.chat)}</button>
     </nav>
     <ThreadList list={list} active={view === "chat" ? threadId : 0} fresh={fresh} onThread={onThread} onChanged={reload}
       onArchived={() => { setArchived(null); setArchiveMode(true); }} notify={notify} />
     <div className="sidebar-foot">
-      <button type="button" onClick={onSettings}><Icon name="settings" size={15} />设置</button>
-      <button type="button" onClick={onAbout}><Icon name="info" size={15} />关于</button>
+      <button type="button" onClick={onSettings}><Icon name="settings" size={15} />{t("sidebar.settings")}</button>
+      <button type="button" onClick={onAbout}><Icon name="info" size={15} />{t("sidebar.about")}</button>
     </div>
   </aside>;
 }));
@@ -135,27 +137,28 @@ function FocusColumns({ view, columnId, counts, onOpen, onGone, notify }: {
   onGone: () => void;
   notify: (message: string) => void;
 }) {
+  const { t } = useTranslation("feeds");
   const columns = useFocusColumns(counts, columnId, onGone, notify);
   const menu = (item: FocusColumn, index: number, close: () => void) => <>
-    <button type="button" role="menuitem" disabled={index === 0} onClick={() => { columns.move(item.id, -1); close(); }}>上移</button>
-    <button type="button" role="menuitem" disabled={index === columns.columns.length - 1} onClick={() => { columns.move(item.id, 1); close(); }}>下移</button>
-    <button type="button" role="menuitem" onClick={() => { columns.remove(item.id); close(); }}>移出焦点栏目</button>
+    <button type="button" role="menuitem" disabled={index === 0} onClick={() => { columns.move(item.id, -1); close(); }}>{t("column.moveUp")}</button>
+    <button type="button" role="menuitem" disabled={index === columns.columns.length - 1} onClick={() => { columns.move(item.id, 1); close(); }}>{t("column.moveDown")}</button>
+    <button type="button" role="menuitem" onClick={() => { columns.remove(item.id); close(); }}>{t("column.remove")}</button>
   </>;
   return <>
     {columns.columns.map((item, index) => <div key={item.id} className="nav-item nav-column" data-on={view === "column" && columnId === item.id ? "1" : "0"}
       onContextMenu={(event) => { event.preventDefault(); event.currentTarget.querySelector<HTMLButtonElement>(".nav-column-more")?.click(); }}>
       <button type="button" className="nav-column-hit" onClick={() => onOpen(item.id)}>
         <Icon name="hash" size={13} /><span className="nav-column-name">{item.name}</span>
-        {item.unread ? <span className="nav-count" aria-label={`${item.unread} 篇未读`}>{item.unread}</span> : null}
+        {item.unread ? <span className="nav-count" aria-label={t("sidebar.unreadCount", { count: item.unread })}>{item.unread}</span> : null}
       </button>
-      <MenuButton className="nav-column-more" label={`${item.name}栏目菜单`} title="栏目菜单" face="⋯">
+      <MenuButton className="nav-column-more" label={t("column.menuLabel", { name: item.name })} title={t("column.menuTitle")} face="⋯">
         {(close) => menu(item, index, close)}
       </MenuButton>
     </div>)}
-    {columns.canAdd ? <MenuButton className="nav-item nav-column nav-column-add" label="添加栏目" face={<><Icon name="plus" size={13} />添加栏目</>}>
+    {columns.canAdd ? <MenuButton className="nav-item nav-column nav-column-add" label={t("column.add")} face={<><Icon name="plus" size={13} />{t("column.add")}</>}>
       {(close) => columns.choices.map((folder) => <button key={folder.id} type="button" role="menuitem" className="nav-column-pick" disabled={folder.added}
         style={{ "--depth": folder.depth } as CSSProperties} onClick={() => { if (!folder.added) { columns.add(folder.id); close(); } }}>
-        {folder.name}{folder.added ? "（已添加）" : ""}
+        {folder.name}{folder.added ? t("column.added") : ""}
       </button>)}
     </MenuButton> : null}
   </>;
@@ -167,14 +170,15 @@ function FeedsSidebar({ feeds, inert, feedsReturn, onBack, onAddFeed, onSettings
   onBack: () => void; onAddFeed: () => void; onSettings: () => void;
   notify: (notice: TreeNotice) => void;
 }) {
+  const { t } = useTranslation("feeds");
   const state = useFeedsSession(feeds);
   const tree = useQuery(feedQueryOptions()).data;
-  const backName = VIEW_LABEL[feedsReturn];
+  const backName = t(VIEW_LABEL[feedsReturn]);
   useEffect(() => { feeds.start(); }, [feeds]);
-  return <aside className="sidebar feeds-mode" inert={inert} aria-label="订阅">
+  return <aside className="sidebar feeds-mode" inert={inert} aria-label={t("sidebar.feedsLabel")}>
     <div className="feeds-mode-head" data-tauri-drag-region="deep">
-      <button type="button" className="feeds-back" onClick={onBack} title={`回到${backName}（Esc）`}><Icon name="chevronLeft" size={14} />{backName}</button>
-      <strong>订阅</strong>
+      <button type="button" className="feeds-back" onClick={onBack} title={t("sidebar.back", { name: backName })}><Icon name="chevronLeft" size={14} />{backName}</button>
+      <strong>{t("view.feeds")}</strong>
     </div>
     {tree ? <FeedsTree tree={tree} counts={state.counts} scope={state.scope} notify={notify} onAddFeed={onAddFeed} onSettings={onSettings} onSelect={(scope) => { if (scope !== state.scope) void feeds.setScope(scope); }} />
       : <div className="feeds-tree-scroll" aria-busy="true" />}

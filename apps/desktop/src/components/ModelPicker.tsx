@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { fuzzyMatch, type FuzzyHit } from "../lib/fuzzy";
 import { usePresence } from "../lib/motion";
+import { useTranslation } from "../i18n";
 import { Icon } from "./Icon";
 
 export type PickerItem = {
@@ -65,6 +66,7 @@ type Row = { item: PickerItem; hit: FuzzyHit };
  * 回车选中高亮项（默认第一项），上下键移动，Esc 关闭并把焦点还给按钮。各用途、对话默认与对话中共用。
  */
 export function ModelPicker(props: ModelPickerProps) {
+  const { t } = useTranslation("chat");
   const { label, value, items, onPick, display, variant = "field", placement = "down", disabled } = props;
   const [open, setOpen] = useState(false);
   // 收起时菜单留 100ms 播退场（不可交互、对读屏隐藏）。
@@ -193,7 +195,7 @@ export function ModelPicker(props: ModelPickerProps) {
           )}
           {items.length > 1 && (
             <div className="model-picker-search">
-              <input type="search" autoFocus value={query} placeholder={props.placeholder ?? "搜索模型"} aria-label="搜索模型"
+              <input type="search" autoFocus value={query} placeholder={props.placeholder ?? t("picker.search")} aria-label={t("picker.search")}
                 role="combobox" aria-expanded="true" aria-controls={listId} autoComplete="off"
                 aria-activedescendant={rows.length ? optionId(Math.min(active, rows.length - 1)) : undefined}
                 onChange={(e) => { setQuery(e.target.value); setActive(0); }} />
@@ -226,7 +228,7 @@ export function ModelPicker(props: ModelPickerProps) {
                     <div className="model-picker-rename-edit">
                       {/* 写入中只读而不禁用：禁用会丢焦点，失焦又等同取消。 */}
                       <input autoFocus value={edit.text} maxLength={NAME_MAX} readOnly={edit.saving} aria-busy={edit.saving}
-                        placeholder={rename.placeholder} aria-label={`「${item.hint ?? item.label}」的显示名`} aria-invalid={!!edit.error}
+                        placeholder={rename.placeholder} aria-label={t("picker.displayNameOf", { name: item.hint ?? item.label })} aria-invalid={!!edit.error}
                         onFocus={(e) => e.currentTarget.select()}
                         onChange={(e) => setEditing({ ...edit, text: e.target.value, error: "" })}
                         onBlur={() => { if (!editingRef.current?.saving) setEditing(null); }}
@@ -235,20 +237,20 @@ export function ModelPicker(props: ModelPickerProps) {
                           if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); void saveRename(); }
                         }} />
                       <small className={edit.error ? "form-status error" : "hint"} role={edit.error ? "alert" : undefined}>
-                        {edit.error || `回车保存，留空用缩写 · ${item.hint ?? item.label}`}
+                        {edit.error || t("picker.renameHint", { name: item.hint ?? item.label })}
                       </small>
                     </div>
                   ) : (
                     <div className="model-picker-row">
                       {option}
-                      <button type="button" className="model-picker-rename" data-rename-for={item.key} aria-label={`改名「${item.label}」`}
-                        onClick={() => setEditing({ key: item.key, text: rename.value, error: "", saving: false })}>改名</button>
+                      <button type="button" className="model-picker-rename" data-rename-for={item.key} aria-label={t("picker.renameOf", { name: item.label })}
+                        onClick={() => setEditing({ key: item.key, text: rename.value, error: "", saving: false })}>{t("picker.rename")}</button>
                     </div>
                   )}
                 </li>
               );
             })}
-            {q && !rows.length && <li className="model-picker-none" role="presentation">没有匹配「{q}」的模型。{props.noMatch?.(q)}</li>}
+            {q && !rows.length && <li className="model-picker-none" role="presentation">{t("picker.noMatch", { query: q })}{props.noMatch?.(q)}</li>}
           </ul>}
           {props.notice && <div className="model-picker-empty">{props.notice}</div>}
           {props.extra}

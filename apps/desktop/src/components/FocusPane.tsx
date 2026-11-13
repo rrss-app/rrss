@@ -5,6 +5,7 @@ import { reducedMotion, useViewEnter } from "../lib/motion";
 import { useMinuteClock } from "../lib/time";
 import type { ExposureObserver } from "../lib/useExposureTracker";
 import type { ArticleView, FeedView, FocusPage, RankingSettings } from "../lib/api";
+import { i18n, useTranslation } from "../i18n";
 import { ArticleCard } from "./ArticleCard";
 import { ArticleCardSkeleton } from "./ArticleCardSkeleton";
 import { ClusterFoot, ClusterHead, ClusterMember, clusterLayout, groupSources, PANEL_GAP, type ClusterSlot } from "./FocusCluster";
@@ -18,19 +19,19 @@ export type RankingToggle = "interest_boost" | "rerank" | "cluster_group" | "hid
   | "rank_features" | "rank_source" | "rank_coverage" | "rank_freshness" | "rank_affinity" | "show_details";
 
 /** B1 学来的排序分量（阶段 23）：只调先后，不影响隐藏。 */
-const LEARNED: { key: RankingToggle & `rank_${string}`; label: string }[] = [
-  { key: "rank_features", label: "常读的主题与作者" },
-  { key: "rank_source", label: "常读的源" },
-  { key: "rank_coverage", label: "多源报道" },
-  { key: "rank_freshness", label: "新文章优先" },
-  { key: "rank_affinity", label: "和常读文章相似" },
+const LEARNED: { key: RankingToggle & `rank_${string}` }[] = [
+  { key: "rank_features" },
+  { key: "rank_source" },
+  { key: "rank_coverage" },
+  { key: "rank_freshness" },
+  { key: "rank_affinity" },
 ];
 
 export const FILTERS = [
-  { id: "focus", label: "仅关注" },
-  { id: "hide_faded", label: "隐藏弱化" },
-  { id: "all", label: "所有文章" },
-];
+  { id: "focus" },
+  { id: "hide_faded" },
+  { id: "all" },
+] as const;
 
 export const FALLBACK_RANKING: RankingSettings = {
   show_details: false,
@@ -50,39 +51,40 @@ export const FALLBACK_RANKING: RankingSettings = {
 };
 
 export const LIST_SCOPES = [
-  { id: "all", label: "全部条目" },
-  { id: "unread", label: "未读" },
-  { id: "starred", label: "收藏" },
-];
+  { id: "all" },
+  { id: "unread" },
+  { id: "starred" },
+] as const;
 
 export function focusEmptyState(
   page: FocusPage | null,
   feeds: FeedView[],
 ): { message: string; action?: { label: string; filter?: string; scope?: string; ranking?: RankingToggle } } {
-  if (page === null) return { message: "加载中…" };
+  const t = i18n.getFixedT(null, "focus");
+  if (page === null) return { message: t("pane.empty.loading") };
   if ((page.articles ?? []).length > 0) return { message: "" };
-  if (feeds.length === 0) return { message: "还没有订阅。打开设置添加 RSS / Atom 源后点刷新。" };
+  if (feeds.length === 0) return { message: t("pane.empty.noFeeds") };
   if (page.list_scope === "starred") {
-    return { message: "还没有收藏。在卡片或阅读器点星标即可。", action: { label: "查看全部条目", scope: "all" } };
+    return { message: t("pane.empty.noStarred"), action: { label: t("pane.empty.viewAll"), scope: "all" } };
   }
   if (page.list_scope === "unread") {
-    return { message: "没有未读。", action: { label: "查看全部条目", scope: "all" } };
+    return { message: t("pane.empty.noUnread"), action: { label: t("pane.empty.viewAll"), scope: "all" } };
   }
   if (page.ranking?.hide_noisy && feeds.some((f) => f.noisy)) {
-    return { message: "噪声源已收起。", action: { label: "显示噪声源", ranking: "hide_noisy" } };
+    return { message: t("pane.empty.noisyHidden"), action: { label: t("pane.empty.showNoisy"), ranking: "hide_noisy" } };
   }
   if (page.filter === "focus") {
-    return { message: "还没有符合「仅关注」的条目。先看全部，或到设置里加规则。", action: { label: "查看所有文章", filter: "all" } };
+    return { message: t("pane.empty.noFocus"), action: { label: t("pane.empty.viewAllArticles"), filter: "all" } };
   }
-  return { message: "暂无条目。点刷新试试。" };
+  return { message: t("pane.empty.none") };
 }
 
 export function noisyToggleLabel(feeds: FeedView[], hidden: boolean): string {
   const names = feeds.filter((f) => f.noisy).map((f) => f.title);
   if (names.length === 0) return "";
-  const shown = names.slice(0, 2).join("、");
-  const more = names.length > 2 ? " 等" : "";
-  return hidden ? `已收起噪声源 · ${shown}${more}` : `收起噪声源 · ${shown}${more}`;
+  const shown = names.slice(0, 2).join(i18n.t("list.enumSeparator", { ns: "focus" }));
+  const key = names.length > 2 ? (hidden ? "pane.noisy.hiddenMore" : "pane.noisy.hideMore") : (hidden ? "pane.noisy.hidden" : "pane.noisy.hide");
+  return i18n.t(key, { ns: "focus", names: shown });
 }
 
 export function emptyIcon(page: FocusPage | null, feeds: FeedView[]): "inbox" | "star" | "rss" | "checkAll" {
@@ -93,30 +95,34 @@ export function emptyIcon(page: FocusPage | null, feeds: FeedView[]): "inbox" | 
 }
 
 function DatedMasthead() {
+  const { t } = useTranslation("focus");
   const date = new Date(useMinuteClock());
-  const digits = "零一二三四五六七八九";
-  const chinese = (n: number) => n < 10 ? digits[n] : `${n >= 20 ? digits[Math.floor(n / 10)] : ""}十${n % 10 ? digits[n % 10] : ""}`;
+  const digits = t("masthead.digits");
+  const ten = t("masthead.ten");
+  const chinese = (n: number) => n < 10 ? digits[n] : `${n >= 20 ? digits[Math.floor(n / 10)] : ""}${ten}${n % 10 ? digits[n % 10] : ""}`;
   return <header className="focus-masthead">
-    <p className="focus-kicker">{chinese(date.getMonth() + 1)}月{chinese(date.getDate())}日 · 星期{"日一二三四五六"[date.getDay()]}</p>
-    <h1>今日焦点</h1>
+    <p className="focus-kicker">{t("masthead.date", { month: chinese(date.getMonth() + 1), day: chinese(date.getDate()), weekday: t("masthead.weekdays")[date.getDay()] })}</p>
+    <h1>{t("masthead.title")}</h1>
   </header>;
 }
 
 function FocusMasthead({ column }: { column?: { name: string; note: string } }) {
+  const { t } = useTranslation("focus");
   if (!column) return <DatedMasthead />;
   return <header className="focus-masthead">
-    <p className="focus-kicker">今日焦点 · 栏目</p>
+    <p className="focus-kicker">{t("masthead.columnKicker")}</p>
     <h1>{column.name}<small>{column.note}</small></h1>
   </header>;
 }
 
 function FocusSkeleton({ onHeight }: { onHeight: (height: number) => void }) {
+  const { t } = useTranslation("focus");
   const late = useDelayed(250);
   const root = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (late && root.current) onHeight(root.current.offsetHeight);
   }, [late, onHeight]);
-  return late ? <div ref={root} className="focus-skeleton" role="status" aria-label="正在加载焦点" data-loading-skeleton="focus">
+  return late ? <div ref={root} className="focus-skeleton" role="status" aria-label={t("pane.loading")} data-loading-skeleton="focus">
     {[0, 1, 2, 3, 4, 5].map((n) => <ArticleCardSkeleton key={n} headline={n === 0} />)}
   </div> : null;
 }
@@ -263,6 +269,7 @@ export function FocusPane({
   /** 栏目刊头。有值时不显示简报横幅与导语。 */
   columnHeading?: { name: string; note: string };
 }) {
+  const { t } = useTranslation("focus");
   const root = useRef<HTMLDivElement>(null);
   const localParent = useRef<HTMLDivElement>(null);
   const parent = scrollRootRef ?? localParent;
@@ -409,14 +416,14 @@ export function FocusPane({
   return (
     <div className="focus" ref={root} hidden={!visible} inert={!visible}>
       <div className="toolbar" data-tauri-drag-region="deep">
-        <Segmented className="toolbar-group segmented" role="group" aria-label="评分过滤">
+        <Segmented className="toolbar-group segmented" role="group" aria-label={t("pane.filterLabel")}>
           {FILTERS.map((f) => (
             <button key={f.id} type="button" className="tab" data-on={page?.filter === f.id ? "1" : "0"} onClick={() => onFilter(f.id)}>
-              {f.label}
+              {t(`pane.filter.${f.id}`)}
             </button>
           ))}
         </Segmented>
-        <Segmented className="toolbar-group segmented" role="group" aria-label="阅读范围">
+        <Segmented className="toolbar-group segmented" role="group" aria-label={t("pane.scopeLabel")}>
           {LIST_SCOPES.map((s) => (
             <button
               key={s.id}
@@ -425,49 +432,49 @@ export function FocusPane({
               data-on={page?.list_scope === s.id ? "1" : "0"}
               onClick={() => onListScope?.(s.id)}
             >
-              {s.label}
+              {t(`pane.scope.${s.id}`)}
             </button>
           ))}
         </Segmented>
-        <MenuButton label="显示" className="tab menu-trigger" menuClassName="toolbar-menu"
-          face={<><Icon name="eye" size={14} />显示<Icon name="chevronDown" size={12} className="menu-caret" /></>}>
+        <MenuButton label={t("pane.display")} className="tab menu-trigger" menuClassName="toolbar-menu"
+          face={<><Icon name="eye" size={14} />{t("pane.display")}<Icon name="chevronDown" size={12} className="menu-caret" /></>}>
           {(close) => <>
-            <MenuCheck checked={ranking.cluster_group} onSelect={() => onRanking("cluster_group", !ranking.cluster_group)}>相近文章折叠</MenuCheck>
-            <MenuCheck checked={ranking.interest_boost} onSelect={() => onRanking("interest_boost", !ranking.interest_boost)}>兴趣加分{ranking.interest_ready ? "" : "（未就绪）"}</MenuCheck>
-            <MenuCheck checked={ranking.rerank} onSelect={() => onRanking("rerank", !ranking.rerank)}>按关注度排序</MenuCheck>
-            <MenuCheck checked={ranking.hide_noisy} onSelect={() => onRanking("hide_noisy", !ranking.hide_noisy)}>收起噪声源</MenuCheck>
+            <MenuCheck checked={ranking.cluster_group} onSelect={() => onRanking("cluster_group", !ranking.cluster_group)}>{t("pane.menu.clusterGroup")}</MenuCheck>
+            <MenuCheck checked={ranking.interest_boost} onSelect={() => onRanking("interest_boost", !ranking.interest_boost)}>{t(ranking.interest_ready ? "pane.menu.interestBoost" : "pane.menu.interestBoostNotReady")}</MenuCheck>
+            <MenuCheck checked={ranking.rerank} onSelect={() => onRanking("rerank", !ranking.rerank)}>{t("pane.menu.rerank")}</MenuCheck>
+            <MenuCheck checked={ranking.hide_noisy} onSelect={() => onRanking("hide_noisy", !ranking.hide_noisy)}>{t("pane.menu.hideNoisy")}</MenuCheck>
             <hr role="separator" />
             {LEARNED.map((l) => (
-              <MenuCheck key={l.key} checked={ranking[l.key]} title="按你的阅读习惯调整先后，不影响隐藏"
-                onSelect={() => onRanking(l.key, !ranking[l.key])}>{l.label}</MenuCheck>
+              <MenuCheck key={l.key} checked={ranking[l.key]} title={t("pane.menu.learnedTitle")}
+                onSelect={() => onRanking(l.key, !ranking[l.key])}>{t(`pane.learned.${l.key}`)}</MenuCheck>
             ))}
             <hr role="separator" />
-            <MenuCheck checked={ranking.show_details} onSelect={() => onRanking("show_details", !ranking.show_details)}>推荐详情</MenuCheck>
+            <MenuCheck checked={ranking.show_details} onSelect={() => onRanking("show_details", !ranking.show_details)}>{t("pane.menu.showDetails")}</MenuCheck>
             {hiddenMenuItem?.(close)}
           </>}
         </MenuButton>
         <span className="toolbar-spacer" />
         <div className="toolbar-actions">
           {onOpenSearch ? (
-            <button type="button" className="tab tool" title="搜索文章（Ctrl+K）" aria-label="搜索" onClick={onOpenSearch}>
-              <Icon name="search" size={15} /><span className="tool-label">搜索</span>
+            <button type="button" className="tab tool" title={t("pane.searchTitle")} aria-label={t("pane.search")} onClick={onOpenSearch}>
+              <Icon name="search" size={15} /><span className="tool-label">{t("pane.search")}</span>
             </button>
           ) : null}
           <button
             type="button"
             className="tab tool"
-            title="抓取全部订阅源（R）"
-            aria-label="刷新"
+            title={t("pane.refreshTitle")}
+            aria-label={t("pane.refresh")}
             aria-busy={refreshing}
             onClick={onRefresh}
             disabled={refreshing}
             data-busy={refreshing ? "1" : "0"}
           >
-            <Icon name="refresh" size={15} className={refreshing ? "spin" : undefined} /><span className="tool-label">刷新</span>
+            <Icon name="refresh" size={15} className={refreshing ? "spin" : undefined} /><span className="tool-label">{t("pane.refresh")}</span>
           </button>
           {onMarkAllRead ? (
-            <button type="button" className="tab tool" title="把当前范围内的条目标为已读" aria-label="全部已读" onClick={onMarkAllRead}>
-              <Icon name="checkAll" size={15} /><span className="tool-label">全部已读</span>
+            <button type="button" className="tab tool" title={t("pane.markAllReadTitle")} aria-label={t("pane.markAllRead")} onClick={onMarkAllRead}>
+              <Icon name="checkAll" size={15} /><span className="tool-label">{t("pane.markAllRead")}</span>
             </button>
           ) : null}
         </div>
@@ -477,7 +484,7 @@ export function FocusPane({
         <div className="focus-new" aria-live="polite">
           {newCount > 0 && onShowNew && !loading ? (
             <button type="button" className="focus-new-pill" data-testid="focus-new-content" onClick={onShowNew}>
-              <Icon name="arrowUp" size={13} />有 {newCount} 篇新内容
+              <Icon name="arrowUp" size={13} />{t("pane.newContent", { count: newCount })}
             </button>
           ) : null}
         </div>
@@ -486,8 +493,8 @@ export function FocusPane({
           {!columnHeading && page?.digest_banner ? (
             <button type="button" className="focus-lede" onClick={onOpenDigest}>
               <span className="focus-lede-icon"><Icon name="digest" size={18} /></span>
-              <span className="focus-lede-text"><strong>今日简报</strong>{page.digest_lede ? <span>{page.digest_lede}</span> : null}</span>
-              <span className="focus-lede-cta">阅读简报<Icon name="chevronRight" size={14} /></span>
+              <span className="focus-lede-text"><strong>{t("pane.digestTitle")}</strong>{page.digest_lede ? <span>{page.digest_lede}</span> : null}</span>
+              <span className="focus-lede-cta">{t("pane.digestCta")}<Icon name="chevronRight" size={14} /></span>
             </button>
           ) : null}
           {ranking.ranking_note || noisyLabel ? (
@@ -600,7 +607,7 @@ export function FocusPane({
         {moreError ? (
           <div className="notice error" role="alert">
             <span>{moreError}</span>
-            <button type="button" className="btn sm" onClick={onLoadMore} disabled={loadingMore}>重试加载更多</button>
+            <button type="button" className="btn sm" onClick={onLoadMore} disabled={loadingMore}>{t("pane.retryLoadMore")}</button>
           </div>
         ) : null}
       </div>

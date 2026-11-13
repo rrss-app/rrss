@@ -1,4 +1,5 @@
 import { Component, createRef, useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useTranslation } from "../i18n";
 import { openExternal, type ArticleView, type MediaRef, type ReaderView, type RelatedArticleView } from "../lib/api";
 import { openOriginal } from "../lib/signals";
 import { useExposureTracker, type ExposureObserver } from "../lib/useExposureTracker";
@@ -31,7 +32,7 @@ export function ReaderOverlay({
   summarizing,
   translating,
   translationStatus,
-  translateLabel = "翻译",
+  translateLabel,
   onRegenerate,
   blockNotes,
   readingPosition,
@@ -69,7 +70,7 @@ export function ReaderOverlay({
   drawerPinned = false,
   canPinDrawer = false,
   drawerRows = [],
-  drawerTitle = "今日焦点",
+  drawerTitle,
   drawerScope = "all",
   drawerSelectedId,
   drawerExpandedCluster,
@@ -184,6 +185,7 @@ export function ReaderOverlay({
   stageRef?: (node: HTMLDivElement | null) => void;
   inert?: boolean;
 }) {
+  const { t } = useTranslation("reader");
   const tools = useRef<HTMLDetailsElement>(null);
   const toolsTrigger = useRef<HTMLElement>(null);
   const [body, setBody] = useState<HTMLDivElement | null>(null);
@@ -272,41 +274,41 @@ export function ReaderOverlay({
         <div className="drawer-head reader-head" data-tauri-drag-region="deep">
           <div className="reader-head-nav">
             {webNav ?? <>
-              {onReturnArticle ? <ReaderTool label={returnArticleTitle ? `回到「${returnArticleTitle}」` : "回到上一篇"}
-                aria-label="回到上一篇" shortcut="Esc" className="reader-back" onClick={onReturnArticle}>
-                <Icon name="arrowLeft" size={16} />上一篇
-              </ReaderTool> : <ReaderTool label={returnThreadTitle ? `回到对话「${returnThreadTitle}」` : searchTerm ? `回到搜索「${searchTerm}」` : "返回"}
-                aria-label={returnThreadTitle ? "对话" : searchTerm ? "回到搜索" : "返回"} shortcut="Esc" className="reader-back" onClick={onClose}>
-                <Icon name="arrowLeft" size={16} />{returnThreadTitle ? "对话" : searchTerm ? "搜索" : "返回"}
+              {onReturnArticle ? <ReaderTool label={returnArticleTitle ? t("head.returnTo", { title: returnArticleTitle }) : t("head.returnPrev")}
+                aria-label={t("head.returnPrev")} shortcut="Esc" className="reader-back" onClick={onReturnArticle}>
+                <Icon name="arrowLeft" size={16} />{t("head.prev")}
+              </ReaderTool> : <ReaderTool label={returnThreadTitle ? t("head.returnToThread", { title: returnThreadTitle }) : searchTerm ? t("head.returnToSearch", { term: searchTerm }) : t("head.back")}
+                aria-label={returnThreadTitle ? t("head.thread") : searchTerm ? t("head.backToSearch") : t("head.back")} shortcut="Esc" className="reader-back" onClick={onClose}>
+                <Icon name="arrowLeft" size={16} />{returnThreadTitle ? t("head.thread") : searchTerm ? t("head.search") : t("head.back")}
               </ReaderTool>}
-              {onDrawerOpen ? <ReaderTool label="篇目" shortcut="L" onClick={onDrawerOpen}><Icon name="list" size={16} /></ReaderTool> : null}
+              {onDrawerOpen ? <ReaderTool label={t("head.drawer")} shortcut="L" onClick={onDrawerOpen}><Icon name="list" size={16} /></ReaderTool> : null}
               {onPrev || onNext ? <span className="reader-head-divider" /> : null}
-              {onPrev || onNext ? <div className="reader-pager" role="group" aria-label="上下篇">
-                {onPrev ? <ReaderTool label="上一篇" shortcut="K" disabled={!hasPrev} onClick={onPrev}><Icon name="chevronLeft" size={16} /></ReaderTool> : null}
-                {onNext ? <ReaderTool label="下一篇" shortcut="J" disabled={!hasNext} onClick={onNext}><Icon name="chevronRight" size={16} /></ReaderTool> : null}
+              {onPrev || onNext ? <div className="reader-pager" role="group" aria-label={t("head.pager")}>
+                {onPrev ? <ReaderTool label={t("head.prevArticle")} shortcut="K" disabled={!hasPrev} onClick={onPrev}><Icon name="chevronLeft" size={16} /></ReaderTool> : null}
+                {onNext ? <ReaderTool label={t("head.nextArticle")} shortcut="J" disabled={!hasNext} onClick={onNext}><Icon name="chevronRight" size={16} /></ReaderTool> : null}
               </div> : null}
-              {positionLabel ? <span className="reader-position" aria-label={`篇位 ${positionLabel}`}>{positionLabel}</span> : null}
-              {onDrawerRate ? <ReaderTool label="踩并看下一篇" shortcut="X" onClick={() => onDrawerRate(reader.id)}><ThumbIcon down /></ReaderTool> : null}
+              {positionLabel ? <span className="reader-position" aria-label={t("head.position", { label: positionLabel })}>{positionLabel}</span> : null}
+              {onDrawerRate ? <ReaderTool label={t("head.rateNext")} shortcut="X" onClick={() => onDrawerRate(reader.id)}><ThumbIcon down /></ReaderTool> : null}
             </>}
           </div>
           <ReaderScrollTitle body={body} title={title} />
           <div className="reader-head-actions">
             {webActions}
             {webReader ? <span className="reader-head-divider" /> : null}
-            <ReaderTool label={translating ? "处理中…" : translateLabel} shortcut="T" data-reader-action="translate" onClick={onTranslate} disabled={translating}><Icon name="translate" size={16} /></ReaderTool>
-            <ReaderTool label={summarizing ? "摘要生成中…" : "生成本篇摘要"} onClick={onSummarize} disabled={summarizing}><Icon name="sparkles" size={16} /></ReaderTool>
-            {webReader || !onStar ? null : <ReaderTool label={reader.starred ? "取消收藏" : "收藏"} shortcut="S" onClick={onStar} aria-pressed={reader.starred}><Icon name="star" size={16} filled={reader.starred} /></ReaderTool>}
-            {webReader || !reader.url ? null : <ReaderTool label="查看原文" onClick={() => openOriginal(reader.id, reader.url)}><Icon name="external" size={16} /></ReaderTool>}
+            <ReaderTool label={translating ? t("tools.busy") : translateLabel ?? t("tools.translate")} shortcut="T" data-reader-action="translate" onClick={onTranslate} disabled={translating}><Icon name="translate" size={16} /></ReaderTool>
+            <ReaderTool label={summarizing ? t("menu.summarizing") : t("menu.summarize")} onClick={onSummarize} disabled={summarizing}><Icon name="sparkles" size={16} /></ReaderTool>
+            {webReader || !onStar ? null : <ReaderTool label={reader.starred ? t("menu.unstar") : t("menu.star")} shortcut="S" onClick={onStar} aria-pressed={reader.starred}><Icon name="star" size={16} filled={reader.starred} /></ReaderTool>}
+            {webReader || !reader.url ? null : <ReaderTool label={t("menu.viewOriginal")} onClick={() => openOriginal(reader.id, reader.url)}><Icon name="external" size={16} /></ReaderTool>}
             <span className="reader-head-divider" />
             <details className="reader-tools" ref={tools}>
-              <ReaderTooltip as="summary" triggerRef={toolsTrigger} label="更多" className="tool-btn reader-tool"><span aria-hidden="true">⋯</span></ReaderTooltip>
-              <div className="reader-tools-panel menu" role="group" aria-label="更多">
-                <button type="button" className="menu-item" onClick={() => runTool(onCiteArticle)}><Icon name="quote" size={15} />引用全文到对话</button>
-                {onRegenerate ? <button type="button" className="menu-item" onClick={() => runTool(onRegenerate)} disabled={translating}><Icon name="translate" size={15} />重新翻译全文</button> : null}
-                {(reader.truncated || reader.pruned) && onFetchFulltext ? <button type="button" className="menu-item" aria-label={fetchingFulltext ? "抓取中…" : "抓取全文"} title="从原文站点抓取完整正文（U）" onClick={() => runTool(onFetchFulltext)} disabled={fetchingFulltext}><Icon name="fileText" size={15} />{fetchingFulltext ? "抓取中…" : "抓取全文"}<kbd aria-hidden="true">U</kbd></button> : null}
+              <ReaderTooltip as="summary" triggerRef={toolsTrigger} label={t("tools.more")} className="tool-btn reader-tool"><span aria-hidden="true">⋯</span></ReaderTooltip>
+              <div className="reader-tools-panel menu" role="group" aria-label={t("tools.more")}>
+                <button type="button" className="menu-item" onClick={() => runTool(onCiteArticle)}><Icon name="quote" size={15} />{t("menu.citeFull")}</button>
+                {onRegenerate ? <button type="button" className="menu-item" onClick={() => runTool(onRegenerate)} disabled={translating}><Icon name="translate" size={15} />{t("menu.retranslate")}</button> : null}
+                {(reader.truncated || reader.pruned) && onFetchFulltext ? <button type="button" className="menu-item" aria-label={fetchingFulltext ? t("tools.fetching") : t("tools.fetchFulltext")} title={t("tools.fetchFulltextTitle")} onClick={() => runTool(onFetchFulltext)} disabled={fetchingFulltext}><Icon name="fileText" size={15} />{fetchingFulltext ? t("tools.fetching") : t("tools.fetchFulltext")}<kbd aria-hidden="true">U</kbd></button> : null}
                 <div className="reader-tools-feedback">
-                  <button type="button" className="menu-item" aria-pressed={reader.feedback === 1} onClick={() => runTool(() => onRate(true))}><ThumbIcon />{reader.feedback === 1 ? "已赞" : "赞"}</button>
-                  <button type="button" className="menu-item" aria-pressed={reader.feedback === -1} onClick={() => runTool(() => onRate(false))}><ThumbIcon down />{reader.feedback === -1 ? "已踩" : "踩"}</button>
+                  <button type="button" className="menu-item" aria-pressed={reader.feedback === 1} onClick={() => runTool(() => onRate(true))}><ThumbIcon />{reader.feedback === 1 ? t("tools.liked") : t("ending.rating.up")}</button>
+                  <button type="button" className="menu-item" aria-pressed={reader.feedback === -1} onClick={() => runTool(() => onRate(false))}><ThumbIcon down />{reader.feedback === -1 ? t("tools.disliked") : t("ending.rating.down")}</button>
                 </div>
               </div>
             </details>
@@ -314,18 +316,18 @@ export function ReaderOverlay({
         </div>
         {translationStatus}
         {reader.translation_ready ? (
-          <div className="reader-view-rail" role="radiogroup" aria-label="译文视图">
+          <div className="reader-view-rail" role="radiogroup" aria-label={t("rail.label")}>
             <span className="reader-rail-thumb" aria-hidden="true" style={{ transform: `translateY(${READER_MODES.findIndex(m => m.id === translateMode) * 30}px)` }} />
             {READER_MODES.map((m) => (
-              <ReaderTooltip key={m.id} label={m.label} shortcut="V" placement="left" delay={300}>
+              <ReaderTooltip key={m.id} label={t(`mode.${m.id}`)} shortcut="V" placement="left" delay={300}>
                 <button
                   type="button"
                   role="radio"
-                  aria-label={m.label}
+                  aria-label={t(`mode.${m.id}`)}
                   aria-checked={translateMode === m.id}
                   onClick={() => onTranslateMode(m.id)}
                 >
-                  {m.label[0]}
+                  {t(`mode.${m.id}`)[0]}
                 </button>
               </ReaderTooltip>
             ))}
@@ -336,7 +338,7 @@ export function ReaderOverlay({
           <div className={`reader-column${origin ? " web-column" : ""}`}>
             {origin}
             <ReaderMasthead web={!!origin} reader={reader} article={article} title={title} originalTitle={translateMode === "bilingual" && reader.translated_title ? reader.title : undefined} />
-            {fetchingFulltext ? <span className="reader-progress" role="status"><Icon name="spinner" size={14} className="spin" />正在抓取全文…</span> : null}
+            {fetchingFulltext ? <span className="reader-progress" role="status"><Icon name="spinner" size={14} className="spin" />{t("body.fetchingFulltext")}</span> : null}
             {reader.translation_note ? (
               <div className="reader-notice">
                 <Icon name="info" size={15} />
@@ -345,7 +347,7 @@ export function ReaderOverlay({
                   <button
                     type="button"
                     className="reader-notice-dismiss"
-                    aria-label="关闭提示"
+                    aria-label={t("body.dismissNotice")}
                     onClick={onDismissNote}
                   >
                     <Icon name="close" size={14} />
@@ -354,23 +356,23 @@ export function ReaderOverlay({
               </div>
             ) : null}
             {reader.summary || summarizing ? <div className="reader-summary" aria-busy={summarizing}>
-              <span className="reader-summary-label" role={summarizing ? "status" : undefined}><Icon name="sparkles" size={13} />{summarizing ? "正在生成摘要…" : "摘要"}</span>
+              <span className="reader-summary-label" role={summarizing ? "status" : undefined}><Icon name="sparkles" size={13} />{summarizing ? t("body.summarizing") : t("body.summary")}</span>
               {summarizing ? <div className="reader-summary-skeleton" aria-hidden="true"><span /><span /><span /></div> : <p>{reader.summary}</p>}
             </div> : null}
             {reader.summary_stale ? <div className="reader-summary-stale" role="status">
-              <span>这份摘要是按之前的正文写的，正文已经更新。</span>
-              <button type="button" className="btn sm ghost" onClick={onSummarize} disabled={summarizing}>{summarizing ? "生成中…" : "重新生成"}</button>
+              <span>{t("body.summaryStale")}</span>
+              <button type="button" className="btn sm ghost" onClick={onSummarize} disabled={summarizing}>{summarizing ? t("body.generating") : t("body.regenerate")}</button>
             </div> : null}
             <ReasonRow reasons={reader.reasons} />
             <div className="reader-opening-rule" aria-hidden="true" />
             {reader.pruned ? (
               <div className="reader-notice reader-pruned" role="status">
                 <Icon name="info" size={15} />
-                <span>正文已按保留策略清理，这里只留标题、摘要和阅读记录。</span>
-                {reader.url ? <button type="button" className="tool-btn" onClick={() => openOriginal(reader.id, reader.url)}>打开原文</button> : null}
+                <span>{t("body.pruned")}</span>
+                {reader.url ? <button type="button" className="tool-btn" onClick={() => openOriginal(reader.id, reader.url)}>{t("body.openOriginal")}</button> : null}
                 {onFetchFulltext ? (
                   <button type="button" className="tool-btn" onClick={onFetchFulltext} disabled={fetchingFulltext}>
-                    {fetchingFulltext ? "抓取中…" : "重新抓取正文"}
+                    {fetchingFulltext ? t("tools.fetching") : t("body.refetch")}
                   </button>
                 ) : null}
               </div>
@@ -380,10 +382,10 @@ export function ReaderOverlay({
               fallback={(_, reset) => (
                 <div className="reader-body-error" role="alert">
                   <Icon name="info" size={15} />
-                  <span>正文显示不出来，可以返回列表或换一篇。</span>
-                  <button type="button" className="tool-btn" onClick={reset}>重试</button>
+                  <span>{t("body.renderError")}</span>
+                  <button type="button" className="tool-btn" onClick={reset}>{t("body.retry")}</button>
                   {reader.url ? (
-                    <button type="button" className="tool-btn" onClick={() => openOriginal(reader.id, reader.url)}>查看原文</button>
+                    <button type="button" className="tool-btn" onClick={() => openOriginal(reader.id, reader.url)}>{t("menu.viewOriginal")}</button>
                   ) : null}
                 </div>
               )}
@@ -414,11 +416,11 @@ export function ReaderOverlay({
         </ReadingPosition>
         <BackToTop body={body} />
         {searchHits && !inert ? (
-          <div className="reader-search-pill" role="status" aria-label="搜索命中">
-            <span>第 {searchHits.index + 1} 处命中（共 {searchHits.total} 处）</span>
+          <div className="reader-search-pill" role="status" aria-label={t("hits.label")}>
+            <span>{t("hits.position", { n: searchHits.index + 1, total: searchHits.total })}</span>
             {searchHits.total > 1 ? <>
-              <button type="button" onClick={() => searchHits.onStep(1)}><kbd>N</kbd>下一处</button>
-              <button type="button" onClick={() => searchHits.onStep(-1)}><kbd>⇧N</kbd>上一处</button>
+              <button type="button" onClick={() => searchHits.onStep(1)}><kbd>N</kbd>{t("hits.next")}</button>
+              <button type="button" onClick={() => searchHits.onStep(-1)}><kbd>⇧N</kbd>{t("hits.prev")}</button>
             </> : null}
           </div>
         ) : null}
@@ -431,13 +433,13 @@ export function ReaderOverlay({
           onCollect={onCollect} collecting={collecting} onContinueAsking={onContinueAsking} onCite={onCiteArticle} onStar={onStar} onTop={() => scrollReaderToTop(body)} /> : null}
       </div>
       {onDrawerOpen ? <div className="reader-drawer-edge" onMouseEnter={onDrawerEdgeEnter} onMouseLeave={onDrawerEdgeLeave} aria-hidden="true" /> : null}
-      {scrimShown && onDrawerClose ? <button type="button" className="reader-drawer-scrim" aria-label="收起篇目" data-closing={drawerClosing || undefined}
+      {scrimShown && onDrawerClose ? <button type="button" className="reader-drawer-scrim" aria-label={t("drawer.collapse")} data-closing={drawerClosing || undefined}
         tabIndex={drawerClosing ? -1 : undefined} onClick={drawerClosing ? undefined : onDrawerClose} /> : null}
       {drawerShown && onDrawerClose ? <ReaderArticleDrawer
         closing={drawerClosing}
         active={drawerOpen && !drawerClosing && dismissible && !inert}
         rows={drawerRows}
-        title={drawerTitle}
+        title={drawerTitle ?? t("drawer.defaultTitle")}
         currentId={reader.id}
         selectedId={drawerSelectedId}
         expandedCluster={drawerExpandedCluster}
@@ -484,6 +486,7 @@ function ReaderArticleDrawer({ closing, active, rows, title, currentId, selected
   onRate?: (id: number) => void;
   onLoadMore?: () => void;
 }) {
+  const { t } = useTranslation("reader");
   const listRef = useRef<HTMLDivElement>(null);
   const observe = useExposureTracker({ surface: "drawer", root: listRef, active });
   useEffect(() => {
@@ -494,16 +497,16 @@ function ReaderArticleDrawer({ closing, active, rows, title, currentId, selected
     const list = listRef.current;
     if (list && hasMore && !loadingMore && list.scrollTop + list.clientHeight >= list.scrollHeight - 80) onLoadMore?.();
   };
-  const scopes = [["all", "全部"], ["unread", "未读"], ["starred", "收藏"]] as const;
+  const scopes = ["all", "unread", "starred"] as const;
   let articlePosition = 0;
-  return <aside className="reader-article-drawer" aria-label="篇目" data-closing={closing || undefined} {...(closing ? { inert: true } : {})}>
+  return <aside className="reader-article-drawer" aria-label={t("head.drawer")} data-closing={closing || undefined} {...(closing ? { inert: true } : {})}>
     <div className="reader-article-drawer-head">
       <strong>{title}</strong><span className="reader-article-drawer-count">{rows.filter((row) => row.row_kind === 0).length}</span><span className="drawer-head-spacer" />
-      {canPin && onPin ? <button type="button" className="tool-btn icon-only" aria-label={pinned ? "取消钉住" : "钉住"} aria-pressed={pinned} title={pinned ? "取消钉住" : "钉住"} onClick={onPin}><Icon name="pin" size={15} /></button> : null}
-      <button type="button" className="tool-btn icon-only" aria-label="收起篇目" title="收起（L）" onClick={onClose}><Icon name="close" size={15} /></button>
+      {canPin && onPin ? <button type="button" className="tool-btn icon-only" aria-label={pinned ? t("drawer.unpin") : t("drawer.pin")} aria-pressed={pinned} title={pinned ? t("drawer.unpin") : t("drawer.pin")} onClick={onPin}><Icon name="pin" size={15} /></button> : null}
+      <button type="button" className="tool-btn icon-only" aria-label={t("drawer.collapse")} title={t("drawer.collapseTitle")} onClick={onClose}><Icon name="close" size={15} /></button>
     </div>
-    <Segmented className="reader-article-drawer-scopes" role="group" aria-label="筛选">
-      {scopes.map(([id, label]) => <button key={id} type="button" aria-pressed={scope === id} onClick={() => onScope?.(id)}>{label}</button>)}
+    <Segmented className="reader-article-drawer-scopes" role="group" aria-label={t("drawer.filter")}>
+      {scopes.map((id) => <button key={id} type="button" aria-pressed={scope === id} onClick={() => onScope?.(id)}>{t(`drawer.scope.${id}`)}</button>)}
     </Segmented>
     <div className="reader-article-drawer-list" ref={listRef} onScroll={onScroll}>
       {rows.map((row) => {
@@ -513,18 +516,18 @@ function ReaderArticleDrawer({ closing, active, rows, title, currentId, selected
         if (row.row_kind === 0) articlePosition++;
         // 时间与焦点列表同一种相对时间，不跟随浏览器区域格式。
         const meta = cluster
-          ? [`${row.cluster_size} 篇`, row.cluster_span].filter(Boolean).join(" · ")
+          ? [t("drawer.clusterSize", { count: row.cluster_size }), row.cluster_span].filter(Boolean).join(" · ")
           : <>{row.feed_title}{row.published_at ? <>{row.feed_title ? " · " : ""}<RelativeTime ms={row.published_at} /></> : null}</>;
-        const copy = <span className="reader-article-drawer-copy"><strong>{cluster ? <><span className="reader-article-drawer-cluster">合辑 · </span>{row.cluster_label}</> : row.title}</strong><small>{meta}</small></span>;
+        const copy = <span className="reader-article-drawer-copy"><strong>{cluster ? <><span className="reader-article-drawer-cluster">{t("drawer.cluster")}</span>{row.cluster_label}</> : row.title}</strong><small>{meta}</small></span>;
         const gutter = <span className="reader-article-drawer-gutter" aria-hidden="true"><span className="reader-article-drawer-dot" /></span>;
         return <ReaderDrawerRow key={`${row.row_kind}-${row.id}`} row={row} currentId={currentId} selectedId={selectedId} position={position} observe={observe}>
           {cluster ? <button type="button" className="reader-article-drawer-main" aria-expanded={expandedCluster === row.cluster_id} onMouseEnter={() => onSelect?.(key)} onFocus={() => onSelect?.(key)} onClick={() => onExpand?.(expandedCluster === row.cluster_id ? null : row.cluster_id)}>{gutter}{copy}</button> : <button type="button" className="reader-article-drawer-main" aria-current={row.id === currentId ? "true" : undefined} onMouseEnter={() => onSelect?.(row.id)} onFocus={() => onSelect?.(row.id)} onClick={() => onOpen?.(row.id)}>{gutter}{copy}</button>}
-          {!cluster && onRate ? <button type="button" className="reader-article-drawer-rate" aria-label={`踩「${row.title}」`} title="踩（X）" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRate(row.id); }}><ThumbIcon down /></button> : null}
+          {!cluster && onRate ? <button type="button" className="reader-article-drawer-rate" aria-label={t("drawer.rate", { title: row.title })} title={t("drawer.rateTitle")} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRate(row.id); }}><ThumbIcon down /></button> : null}
         </ReaderDrawerRow>;
       })}
-      {loadingMore ? <div className="reader-article-drawer-loading">加载中…</div> : null}
+      {loadingMore ? <div className="reader-article-drawer-loading">{t("drawer.loading")}</div> : null}
     </div>
-    <div className="reader-article-drawer-foot"><span><kbd>↑↓</kbd>移动</span><span><kbd>Enter</kbd>打开</span><span><kbd>X</kbd>踩</span><span><kbd>L</kbd>收起</span></div>
+    <div className="reader-article-drawer-foot"><span><kbd>↑↓</kbd>{t("drawer.footMove")}</span><span><kbd>Enter</kbd>{t("drawer.footOpen")}</span><span><kbd>X</kbd>{t("ending.rating.down")}</span><span><kbd>L</kbd>{t("drawer.footCollapse")}</span></div>
   </aside>;
 }
 
@@ -560,6 +563,7 @@ function useExitDelay(open: boolean, ms: number) {
 }
 
 function ReaderScrollTitle({ body, title }: { body: HTMLDivElement | null; title: string }) {
+  const { t } = useTranslation("reader");
   const [scroll, setScroll] = useState({ scrolled: false, progress: 0 });
   useEffect(() => {
     if (!body) return;
@@ -575,7 +579,7 @@ function ReaderScrollTitle({ body, title }: { body: HTMLDivElement | null; title
     return () => { resize?.disconnect(); body.removeEventListener("scroll", update); };
   }, [body]);
   return <div className="reader-scroll-heading" data-scrolled={scroll.scrolled}>
-    <button type="button" className="reader-scroll-title" aria-label={`回到顶部：${title}`} aria-hidden={!scroll.scrolled} tabIndex={scroll.scrolled ? 0 : -1} onClick={() => scrollReaderToTop(body)}>{title}</button>
+    <button type="button" className="reader-scroll-title" aria-label={t("top.titleLabel", { title })} aria-hidden={!scroll.scrolled} tabIndex={scroll.scrolled ? 0 : -1} onClick={() => scrollReaderToTop(body)}>{title}</button>
     <span className="reader-scroll-line" aria-hidden="true"><span style={{ transform: `scaleX(${scroll.progress})` }} /></span>
   </div>;
 }
@@ -585,6 +589,7 @@ export function scrollReaderToTop(body: Element | null) {
 }
 
 function BackToTop({ body }: { body: HTMLDivElement | null }) {
+  const { t } = useTranslation("reader");
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     if (!body) return;
@@ -596,7 +601,7 @@ function BackToTop({ body }: { body: HTMLDivElement | null }) {
     return () => { resize?.disconnect(); body.removeEventListener("scroll", update); };
   }, [body]);
   return <button type="button" className="reader-to-top" data-visible={visible} aria-hidden={!visible} tabIndex={visible ? 0 : -1}
-    title="回到顶部（Home）" onClick={() => scrollReaderToTop(body)}><Icon name="arrowUp" />回到顶部</button>;
+    title={t("top.title")} onClick={() => scrollReaderToTop(body)}><Icon name="arrowUp" />{t("menu.top")}</button>;
 }
 
 export type ReaderPosition = { block: string | null; offset: number };

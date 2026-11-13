@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { ChatStepView } from "../../lib/api";
+import { i18n } from "../../i18n";
 
 /** 等待过程里的一步：启动对话引擎、一次工具调用，或两者之间的「思考」。 */
 export type TraceStep = {
@@ -192,7 +193,7 @@ export function traceTimeline(turn: Timed, until: number): TraceStep[] {
   const out: TraceStep[] = [];
   const think = (from: number, to: number) => {
     if (to - from >= THINK_MIN_MS) {
-      out.push({ id: `think-${from}`, kind: "think", label: "思考", detail: "", articleId: null, server: "", serverTool: "", approval: null, startedAt: from, endedAt: to, error: false });
+      out.push({ id: `think-${from}`, kind: "think", label: i18n.t("progress.think", { ns: "chat" }), detail: "", articleId: null, server: "", serverTool: "", approval: null, startedAt: from, endedAt: to, error: false });
     }
   };
   const segments = waits(turn, until);

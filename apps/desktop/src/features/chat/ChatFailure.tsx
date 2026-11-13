@@ -1,5 +1,6 @@
 import type { ChatErrorEvent } from "../../lib/api";
 import { Icon } from "../../components/Icon";
+import { i18n, useTranslation } from "../../i18n";
 import type { ChatFailure } from "./conversationStore";
 import { TraceRow } from "./TurnProgress";
 
@@ -11,20 +12,21 @@ const DETAIL_MAX = 600;
 /** 错误类别的界面文案（阶段 18 错误分类）；`fix` 指向能修好它的设置页。 */
 export function describeChatError(event: ChatErrorEvent): ChatFailure {
   const message = event.message.trim();
+  const t = i18n.getFixedT(null, "chat");
   switch (event.kind) {
-    case "not_installed": return { title: "未找到对话引擎", detail: "可以在设置里下载。", fix: "assistant" };
-    case "version": return { title: "对话引擎版本过低", detail: "请在设置里升级。", fix: "assistant" };
-    case "config": return { title: "对话模型不可用", detail: message || "还没有可用的对话模型。", fix: "model" };
-    case "model": return { title: "模型服务出错", detail: message || "没有返回原因。" };
+    case "not_installed": return { title: t("failure.notInstalled.title"), detail: t("failure.notInstalled.detail"), fix: "assistant" };
+    case "version": return { title: t("failure.version.title"), detail: t("failure.version.detail"), fix: "assistant" };
+    case "config": return { title: t("failure.config.title"), detail: message || t("failure.config.detail"), fix: "model" };
+    case "model": return { title: t("failure.model.title"), detail: message || t("failure.model.detail") };
     // 已收到的内容照常留在上方，这里不再重复。
-    case "process_exit": return { title: "对话引擎意外退出", detail: "下次发送会自动重启。" };
-    default: return { title: message || "对话出错", detail: "" };
+    case "process_exit": return { title: t("failure.processExit.title"), detail: t("failure.processExit.detail") };
+    default: return { title: message || t("failure.default.title"), detail: "" };
   }
 }
 
 /** 没有会话位置可挂时（线程未知）退回一句话的通知。 */
 export function failureText(failure: ChatFailure) {
-  return failure.detail ? `${failure.title}：${failure.detail}` : failure.title;
+  return failure.detail ? i18n.t("failure.withDetail", { ns: "chat", title: failure.title, detail: failure.detail }) : failure.title;
 }
 
 function clip(text: string) {
@@ -36,6 +38,7 @@ function clip(text: string) {
  * 这一轮没有回复时，上方保留做过的步骤（哪个工具出错一眼可见）。
  */
 export function FailureNotice({ failure, onFix }: { failure: ChatFailure; onFix?: (tab: ChatFixTab) => void }) {
+  const { t } = useTranslation("chat");
   const fix = failure.fix;
   return (
     <div className="chat-turn chat-failure-turn">
@@ -46,7 +49,7 @@ export function FailureNotice({ failure, onFix }: { failure: ChatFailure; onFix?
           <strong>{failure.title}</strong>
           {failure.detail ? <p>{clip(failure.detail)}</p> : null}
         </div>
-        {fix && onFix ? <button type="button" className="btn sm" onClick={() => onFix(fix)}>去设置</button> : null}
+        {fix && onFix ? <button type="button" className="btn sm" onClick={() => onFix(fix)}>{t("failure.fix")}</button> : null}
       </div>
     </div>
   );

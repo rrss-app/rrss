@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from "react";
 import type { ArticleView } from "../lib/api";
 import type { RankReasonView } from "../bindings";
 import { localIconHref, sourceHue, sourceInitial } from "../lib/sourceAvatar";
+import { useTranslation } from "../i18n";
 import { Icon } from "./Icon";
 import { RelativeTime } from "./RelativeTime";
 import { ThumbIcon } from "./ThumbIcon";
@@ -42,6 +43,7 @@ export function ArticleCard({
   onRate: (row: ArticleView, up: boolean) => void;
   onStar?: (row: ArticleView) => void;
 }) {
+  const { t } = useTranslation("focus");
   const score = review?.article.score ?? row.score;
   const scoreClass = score > 0 ? "up" : "down";
   const showReasons = details && (!row.spot_check || !!review);
@@ -67,33 +69,33 @@ export function ArticleCard({
         <div className="article-footer">
           <div className="meta">
             <SourceAvatar title={row.feed_title} iconHref={row.feed_icon_href} />
-            {onSource ? <button type="button" className="article-source" title={`在订阅里打开「${row.feed_title}」`}
+            {onSource ? <button type="button" className="article-source" title={t("card.openFeed", { feed: row.feed_title })}
               onClick={(event) => { event.stopPropagation(); onSource(row.feed_id); }}>{row.feed_title}</button>
               : <span className="article-source" title={row.feed_title}>{row.feed_title}</span>}
             {row.published_at != null ? <span className="meta-sep">·</span> : null}
             {row.published_at != null ? <RelativeTime className="article-time" ms={row.published_at} /> : null}
-            {representative ? <><span className="meta-sep">·</span><span className="article-rep">代表报道</span></> : null}
+            {representative ? <><span className="meta-sep">·</span><span className="article-rep">{t("card.representative")}</span></> : null}
             {showReasons && row.interest_label ? <span className="meta-tag interest">{row.interest_label.replace(/^\s*·\s*/, "")}</span> : null}
-            {showReasons && learned ? <span className="meta-tag learned" title={row.rank_reasons?.map((r) => r.text).join("；")}>{learned.text}</span> : null}
-            {showReasons && row.noisy ? <span className="meta-tag">噪声源</span> : null}
-            {details && (row.spot_check || review) ? <span className="meta-tag" title="随机放回的一篇本该隐藏的文章，用来核对规则有没有误杀">抽查</span> : null}
-            {row.starred ? <span className="meta-tag starred"><Icon name="star" size={11} filled />已收藏</span> : null}
+            {showReasons && learned ? <span className="meta-tag learned" title={row.rank_reasons?.map((r) => r.text).join(t("card.reasonSeparator"))}>{learned.text}</span> : null}
+            {showReasons && row.noisy ? <span className="meta-tag">{t("card.noisy")}</span> : null}
+            {details && (row.spot_check || review) ? <span className="meta-tag" title={t("card.spotCheckTitle")}>{t("card.spotCheck")}</span> : null}
+            {row.starred ? <span className="meta-tag starred"><Icon name="star" size={11} filled />{t("card.starred")}</span> : null}
           </div>
-          {showReasons && score !== 0 ? <span className={`score ${scoreClass}`} title="规则与兴趣评分">{score > 0 ? "+" : ""}{score}</span> : null}
-          <div className="acts" role="group" aria-label="文章操作"
+          {showReasons && score !== 0 ? <span className={`score ${scoreClass}`} title={t("card.scoreTitle")}>{score > 0 ? "+" : ""}{score}</span> : null}
+          <div className="acts" role="group" aria-label={t("card.actions")}
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") event.stopPropagation();
             }}>
             {onStar ? (
               <button type="button" className={`star-btn${row.starred ? " on" : ""}`}
-                title={row.starred ? "取消收藏" : "收藏"}
-                aria-label={row.starred ? "取消收藏" : "收藏"} aria-pressed={row.starred}
+                title={t(row.starred ? "card.unstar" : "card.star")}
+                aria-label={t(row.starred ? "card.unstar" : "card.star")} aria-pressed={row.starred}
                 onClick={() => onStar(row)}><Icon name="star" size={15} filled={row.starred} /></button>
             ) : null}
-            <button type="button" className="cite-btn" title="引用到对话" onClick={() => onCite(row.id)}><Icon name="quote" size={14} />引用</button>
-            <button type="button" className="rate up" title="赞" aria-label="赞" onClick={() => onRate(row, true)}><ThumbIcon /></button>
-            <button type="button" className="rate down" title="踩" aria-label="踩" onClick={() => onRate(row, false)}><ThumbIcon down /></button>
+            <button type="button" className="cite-btn" title={t("card.citeTitle")} onClick={() => onCite(row.id)}><Icon name="quote" size={14} />{t("card.cite")}</button>
+            <button type="button" className="rate up" title={t("card.like")} aria-label={t("card.like")} onClick={() => onRate(row, true)}><ThumbIcon /></button>
+            <button type="button" className="rate down" title={t("card.dislike")} aria-label={t("card.dislike")} onClick={() => onRate(row, false)}><ThumbIcon down /></button>
           </div>
         </div>
         {details && review && onReview ? <SpotCheckReveal review={review} threshold={hideThreshold} busy={reviewBusy} onAction={onReview} /> : null}

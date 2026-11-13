@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { i18n } from "../../i18n";
 import { api, type ClusterSummaryView } from "../../lib/api";
 import { formatNotice } from "../../lib/notice";
 
@@ -46,7 +47,7 @@ export function createClusterSummaries(scope: () => string | undefined, onGenera
       set(id, { view, loading: false });
       return view;
     } catch (err) {
-      if (mine === epoch && latest.get(id) === ticket) set(id, { loading: false, error: formatNotice("读取综述失败：", err) });
+      if (mine === epoch && latest.get(id) === ticket) set(id, { loading: false, error: formatNotice(i18n.t("cluster.loadFailed", { ns: "focus" }), err) });
       return null;
     }
   }
@@ -64,7 +65,7 @@ export function createClusterSummaries(scope: () => string | undefined, onGenera
       set(id, { view, generating: false });
       onGenerated?.(id);
     } catch (err) {
-      if (mine === epoch) set(id, { generating: false, error: formatNotice("生成综述失败：", err) });
+      if (mine === epoch) set(id, { generating: false, error: formatNotice(i18n.t("cluster.generateFailed", { ns: "focus" }), err) });
     }
   }
 

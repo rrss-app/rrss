@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "../i18n";
 import { readGate, useEditReport, useSettingsWrite, type SettingsEditState } from "./editState";
 import { sameTranslateDraft, translateDraft, translateKeys, translateMutationOptions, translateQueryOptions,
   type TranslateAction, type TranslateDraft, type TranslateStatus } from "./translateQuery";
@@ -9,6 +10,7 @@ type Editor = { baseline: TranslateDraft; draft: TranslateDraft };
 export type InstantKey = "enabled" | "backend" | "target_lang";
 
 export function useTranslateSettings(onEditStateChange?: (state: SettingsEditState | null) => void) {
+  const { t } = useTranslation("settingsJobs");
   const client = useQueryClient();
   const { writing, run: write } = useSettingsWrite(translateMutationOptions(client));
   const [pending, setPending] = useState<TranslateAction | "pick" | null>(null);
@@ -70,7 +72,7 @@ export function useTranslateSettings(onEditStateChange?: (state: SettingsEditSta
     });
   };
 
-  useEditReport(onEditStateChange, "翻译设置", dirty, busy, () => run("save"));
+  useEditReport(onEditStateChange, t("translate.editLabel"), dirty, busy, () => run("save"));
 
   /** 读取失败时的重试；正常情况下切进来就按新鲜度重读，不再给「重新读取」按钮。 */
   const reload = () => {

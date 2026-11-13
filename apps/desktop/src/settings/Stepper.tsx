@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "../i18n";
 
 /** 输入与按住按钮只改草稿，离开输入框或结束一次按压才提交。 */
 export function Stepper({ label, value, onChange, onCommit, min, max, step = 1, disabled = false, commitOnEnter = false }: {
@@ -12,6 +13,7 @@ export function Stepper({ label, value, onChange, onCommit, min, max, step = 1, 
   disabled?: boolean;
   commitOnEnter?: boolean;
 }) {
+  const { t } = useTranslation("settingsSystem");
   const current = useRef(value);
   current.current = value;
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -33,7 +35,7 @@ export function Stepper({ label, value, onChange, onCommit, min, max, step = 1, 
   };
   const button = (direction: -1 | 1) => <button type="button" disabled={disabled}
       className={direction === -1 ? "stepper-minus" : "stepper-plus"}
-      aria-label={`${direction === -1 ? "减少" : "增加"}${label}`}
+      aria-label={t(direction === -1 ? "stepper.decrease" : "stepper.increase", { label })}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.preventDefault();

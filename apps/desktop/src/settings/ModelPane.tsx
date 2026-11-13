@@ -22,20 +22,19 @@ import type { Ask, Navigate } from "./SettingsPanel";
 import { TRANSLATE_BACKENDS, translateQueryOptions } from "./translateQuery";
 import { Pending } from "../components/Pending";
 import { embedChangeConfirm, VectorSpaceSection, vectorSpaceKey, vectorSpaceQueryOptions } from "./VectorSpaceSection";
-import { locale } from "../i18n";
+import { i18n, locale, Trans, useTranslation } from "../i18n";
 
 type Result = { tone: "ok" | "err"; text: string; detail?: string };
 
 /** 用途按功能分组显示，存储仍按用途一行（阶段 19-7）；用途常量以后端 `ALL_TASKS` 为准。 */
-export const USE_GROUPS: Array<{ id: string; title: string; hint: string; tasks: string[]; need?: Need }> = [
-  { id: "chat", title: "对话", hint: "新对话默认用它，对话里可以临时换。只列用于对话的模型。", tasks: ["chat"], need: "tools" },
-  { id: "summary", title: "摘要", hint: "本篇摘要、长文分段和相近报道综述；后台自动摘要与自动汇总另在下方「自动任务」里开关。",
-    tasks: ["focus_summary", "article_summary", "article_segment", "cluster_summary"], need: "json" },
-  { id: "digest", title: "简报", hint: "日报、周报以及它们的选题。",
-    tasks: ["digest_daily", "digest_weekly", "digest_pick_daily", "digest_pick_weekly"], need: "json" },
-  { id: "memory", title: "记忆整理", hint: "从对话里提取记忆候选、压缩对话情节。", tasks: ["memory_candidate", "episode_compress"], need: "json" },
-  { id: "translate", title: "翻译", hint: "", tasks: ["article_translate"] },
-  { id: "embed", title: "嵌入", hint: "相似文章与记忆检索用的向量。", tasks: ["embed"] },
+type UseGroupId = "chat" | "summary" | "digest" | "memory" | "translate" | "embed";
+export const USE_GROUPS: Array<{ id: UseGroupId; tasks: string[]; need?: Need }> = [
+  { id: "chat", tasks: ["chat"], need: "tools" },
+  { id: "summary", tasks: ["focus_summary", "article_summary", "article_segment", "cluster_summary"], need: "json" },
+  { id: "digest", tasks: ["digest_daily", "digest_weekly", "digest_pick_daily", "digest_pick_weekly"], need: "json" },
+  { id: "memory", tasks: ["memory_candidate", "episode_compress"], need: "json" },
+  { id: "translate", tasks: ["article_translate"] },
+  { id: "embed", tasks: ["embed"] },
 ];
 /** 一键应用默认勾选的组：翻译、嵌入通常要专用模型，对话单独选。 */
 const APPLY_DEFAULT = ["summary", "digest", "memory"];
@@ -45,6 +44,7 @@ export function ModelPane({ onAsk, onNavigate, onEditStateChange }: {
   onNavigate: Navigate;
   onEditStateChange?: (state: SettingsEditState | null) => void;
 }) {
+  const { t } = useTranslation("settingsModels");
   const { report } = useMergedEditState(onEditStateChange);
   const writing = useIsMutating({ mutationKey: aiKeys.write }) > 0;
   const page = useQuery({ ...aiQueryOptions(), ...readGate(writing) });
@@ -78,10 +78,12 @@ export function ModelPane({ onAsk, onNavigate, onEditStateChange }: {
   const summaryModel = summaryEntry ? modelName(summaryEntry) : summaryChoice?.model ?? "";
 
   const jobsSummary = () => {
-    const summary = !autoOn ? "自动摘要关" : !auto ? "自动摘要开"
-      : auto.model_ready ? `自动摘要开 · 今日 ${auto.today} / ${auto.daily_limit} 篇` : "自动摘要开 · 未选模型，暂停";
-    const cluster = clusterOn && auto ? ` · 汇总 ${auto.cluster_model_ready ? `${auto.cluster_today} / ${auto.cluster_daily_limit} 组` : "暂停"}` : "";
-    return `${summary}${cluster} · 简报每天 ${formatMinutes(Number(minutes))}`;
+    const summary = !autoOn ? t("pane.jobs.off") : !auto ? t("pane.jobs.on")
+      : auto.model_ready ? t("pane.jobs.onToday", { today: auto.today, limit: auto.daily_limit }) : t("pane.jobs.onPaused");
+    const cluster = clusterOn && auto
+      ? auto.cluster_model_ready ? t("pane.jobs.cluster", { today: auto.cluster_today, limit: auto.cluster_daily_limit }) : t("pane.jobs.clusterPaused")
+      : "";
+    return [summary, cluster, t("pane.jobs.digest", { time: formatMinutes(Number(minutes)) })].filter(Boolean).join(" · ");
   };
 
   const reload = () => {
@@ -111,9 +113,9 @@ export function ModelPane({ onAsk, onNavigate, onEditStateChange }: {
     <div className="model-pane" aria-busy={writing ? "true" : "false"}>
       {(page.isError || bindings.isError || pool.isError) && (
         <div className="notice error" role="alert">
-          <span>{formatNotice(page.data ? "刷新模型设置失败，当前显示的是上次读取的内容：" : "读取模型设置失败：",
+          <span>{formatNotice(page.data ? t("pane.refreshFailed") : t("pane.loadFailed"),
             page.error ?? bindings.error ?? pool.error)}</span>
-          <button type="button" className="btn sm" disabled={writing} onClick={reload}>重新读取</button>
+          <button type="button" className="btn sm" disabled={writing} onClick={reload}>{t("pane.reload")}</button>
         </div>
       )}
       {notice && <Feedback result={notice} />}
@@ -122,21 +124,21 @@ export function ModelPane({ onAsk, onNavigate, onEditStateChange }: {
 
       <section className="settings-group settings-section" aria-labelledby="model-connections">
         <div className="settings-section-meta">
-          <div className="settings-group-head"><h4 id="model-connections">连接 <span className="settings-count">{providers.length}</span></h4></div>
-          <p className="hint">密钥只存在本机。测试会发一条很短的请求。</p>
+          <div className="settings-group-head"><h4 id="model-connections">{t("pane.connections")} <span className="settings-count">{providers.length}</span></h4></div>
+          <p className="hint">{t("pane.connectionsHint")}</p>
         </div>
         <div className="settings-section-body">
-          {!page.data && !page.isError && <Pending>正在读取连接…</Pending>}
+          {!page.data && !page.isError && <Pending>{t("pane.loadingConnections")}</Pending>}
           {page.data && !providers.length && (
             <div className="settings-empty pool-empty">
-              <span>还没有连接。添加连接时选服务商、填 API Key，保存后直接挑要用的模型。</span>
-              <button type="button" className="btn sm primary" disabled={writing || !presetList.length} onClick={() => setConnection({})}>添加连接</button>
+              <span>{t("pane.noConnections")}</span>
+              <button type="button" className="btn sm primary" disabled={writing || !presetList.length} onClick={() => setConnection({})}>{t("pane.addConnection")}</button>
             </div>
           )}
           <ConnectionList providers={providers} pool={pool.data} disabled={writing}
             onEdit={(provider) => { setNotice(null); setConnection({ provider }); }} />
           {providers.length > 0 && <div className="settings-section-actions">
-            <button type="button" className="btn sm" disabled={writing || !presetList.length} onClick={() => { setNotice(null); setConnection({}); }}><Icon name="plus" size={14} />添加连接</button>
+            <button type="button" className="btn sm" disabled={writing || !presetList.length} onClick={() => { setNotice(null); setConnection({}); }}><Icon name="plus" size={14} />{t("pane.addConnection")}</button>
           </div>}
         </div>
       </section>
@@ -149,30 +151,35 @@ export function ModelPane({ onAsk, onNavigate, onEditStateChange }: {
       {bindings.data ? (
         <UsesSection view={bindings.data} providers={providers} pool={pool.data} onAsk={onAsk} onNavigate={onNavigate}
           onManage={() => manage("")} />
-      ) : !bindings.isError ? <Pending>正在读取模型选择…</Pending> : null}
+      ) : !bindings.isError ? <Pending>{t("pane.loadingBindings")}</Pending> : null}
 
       {bindings.data && <VectorSpaceSection onAsk={onAsk} />}
 
-      <Fold title="用量" open={!!open.usage} onToggle={() => toggle("usage")}
-        summary={schema.data ? `${tier ?? ""}档 · 生成 ${budget ? `${wan(budget)} / 天` : "不限额"} · 嵌入 ${embedBudget ? `${wan(embedBudget)} / 天` : "不限额"}${usage ? ` · 今日生成 ${wan(usage.generation.today)}` : ""}` : ""}>
-        <SettingsRows ids={["ai_input_tier", "ai_daily_budget_tokens", "ai_embed_daily_budget_tokens"]} label="用量设置"
+      <Fold title={t("pane.usage")} open={!!open.usage} onToggle={() => toggle("usage")}
+        summary={schema.data ? t(usage ? "pane.usageSummaryToday" : "pane.usageSummary", {
+          tier: tier ?? "",
+          gen: budget ? t("pane.perDay", { amount: wan(budget) }) : t("pane.unlimited"),
+          embed: embedBudget ? t("pane.perDay", { amount: wan(embedBudget) }) : t("pane.unlimited"),
+          today: usage ? wan(usage.generation.today) : "",
+        }) : ""}>
+        <SettingsRows ids={["ai_input_tier", "ai_daily_budget_tokens", "ai_embed_daily_budget_tokens"]} label={t("pane.usageSettings")}
           notes={auto ? { ai_daily_budget_tokens: budgetNote({ auto, budget, autoOn, clusterOn, tier: tier ?? "" }) } : undefined}
           onEditStateChange={report("usage")} />
         {usage && <UsageReadouts usage={usage} budget={budget} embedBudget={embedBudget} />}
       </Fold>
-      <Fold title="自动任务" open={!!open.jobs} onToggle={() => toggle("jobs")}
+      <Fold title={t("pane.jobs.title")} open={!!open.jobs} onToggle={() => toggle("jobs")}
         summary={schema.data ? jobsSummary() : ""}>
         {auto && schema.data ? (
           <AutoJobs auto={auto} usage={usage} values={{ autoOn, clusterOn, budget }} tier={tier ?? ""} modelLabel={summaryModel}
             onAsk={onAsk} onShowUses={showUses} report={report} />
-        ) : !page.isError ? <Pending>正在读取自动任务…</Pending> : null}
+        ) : !page.isError ? <Pending>{t("pane.loadingJobs")}</Pending> : null}
       </Fold>
-      <button type="button" className="link-btn to-advanced" onClick={() => onNavigate("advanced", "advanced-model")}>此页的高级设置 →</button>
+      <button type="button" className="link-btn to-advanced" onClick={() => onNavigate("advanced", "advanced-model")}>{t("pane.advanced")}</button>
 
       {connection && (
         <ConnectionDialog provider={connection.provider} presets={presetList} onAsk={onAsk} onClose={() => setConnection(null)}
           onSaved={(id, message, created) => {
-            if (created) addModels(id, `${message}勾选要用的模型。`);
+            if (created) addModels(id, t("pane.pickModels", { message }));
             else setNotice({ tone: "ok", text: message });
           }}
           onEditStateChange={report("dialog")} />
@@ -185,7 +192,7 @@ export function ModelPane({ onAsk, onNavigate, onEditStateChange }: {
         <AddModelsDialog providers={providers} pool={pool.data} initial={adding.providerId} note={adding.note} onAsk={onAsk}
           onClose={() => setAdding(null)} onEditStateChange={report("add")}
           onApplied={(message, first) => {
-            setNotice({ tone: "ok", text: `${message}新模型的能力还没测，在「管理模型」里点「测试能力」。` });
+            setNotice({ tone: "ok", text: t("pane.afterApply", { message }) });
             setFirstRun(first);
           }} />
       )}
@@ -195,9 +202,9 @@ export function ModelPane({ onAsk, onNavigate, onEditStateChange }: {
 
 const ago = (at: number) => {
   const minutes = Math.round((Date.now() - at) / 60_000);
-  if (minutes < 1) return "刚刚";
-  if (minutes < 60) return `${minutes} 分钟前`;
-  if (minutes < 24 * 60) return `${Math.round(minutes / 60)} 小时前`;
+  if (minutes < 1) return i18n.t("pane.ago.now", { ns: "settingsModels" });
+  if (minutes < 60) return i18n.t("pane.ago.minutes", { ns: "settingsModels", count: minutes });
+  if (minutes < 24 * 60) return i18n.t("pane.ago.hours", { ns: "settingsModels", count: Math.round(minutes / 60) });
   return new Date(at).toLocaleDateString(locale(), { month: "numeric", day: "numeric" });
 };
 
@@ -208,6 +215,7 @@ function ConnectionList({ providers, pool, disabled, onEdit }: {
   disabled: boolean;
   onEdit: (provider: ProviderView) => void;
 }) {
+  const { t } = useTranslation("settingsModels");
   const client = useQueryClient();
   const probe = useProbe();
   const [results, setResults] = useState<Partial<Record<number, Result>>>({});
@@ -220,7 +228,7 @@ function ConnectionList({ providers, pool, disabled, onEdit }: {
       set(describeTest(outcome.value, []));
     } catch (err) {
       const view = explainAiError(err, []);
-      set({ tone: "err", text: `测试失败。${view.title}`, detail: view.detail });
+      set({ tone: "err", text: t("connection.testFailedTitle", { title: view.title }), detail: view.detail });
     }
   };
 
@@ -240,20 +248,20 @@ function ConnectionList({ providers, pool, disabled, onEdit }: {
             <SourceAvatar title={p.name} size={24} />
             <div className="connection-main">
               <strong>{p.name}</strong>
-              <span className="hint">{!waiting && !result && last && !last.ok ? `测试失败：${last.note}` : `${host} · ${count} 个模型在池中`}</span>
-              {p.key === "missing" && <span className="hint warn">需要重新填写 API Key</span>}
+              <span className="hint">{!waiting && !result && last && !last.ok ? t("pane.conn.lastFailed", { note: last.note }) : t("pane.conn.summary", { host, count })}</span>
+              {p.key === "missing" && <span className="hint warn">{t("pane.conn.keyMissing")}</span>}
               {waiting ? <span className="hint" role="status">{probeWaitLabel(waiting)}</span>
                 : result ? <Feedback result={result} />
                 : null}
             </div>
             <div className="row connection-actions">
-              {waiting ? <button type="button" className="btn sm ghost" onClick={probe.stop}>停止等待</button> : null}
-              <button type="button" className="btn sm" disabled={disabled} onClick={() => onEdit(p)} aria-label={`编辑 ${p.name}`}>编辑</button>
-              <button type="button" className="btn sm" disabled={!!waiting} aria-label={`测试 ${p.name}`} onClick={() => void test(p)}>测试</button>
+              {waiting ? <button type="button" className="btn sm ghost" onClick={probe.stop}>{t("connection.stopWaiting")}</button> : null}
+              <button type="button" className="btn sm" disabled={disabled} onClick={() => onEdit(p)} aria-label={t("pane.conn.editAria", { name: p.name })}>{t("pane.conn.edit")}</button>
+              <button type="button" className="btn sm" disabled={!!waiting} aria-label={t("pane.conn.testAria", { name: p.name })} onClick={() => void test(p)}>{t("pane.conn.test")}</button>
             </div>
-            <span className="connection-state" data-state={state} title={result?.text ?? (last ? `${ago(last.at)} ${last.ok ? `通过 · 返回 ${last.note} 个模型` : `测试失败：${last.note}`}` : undefined)}>
+            <span className="connection-state" data-state={state} title={result?.text ?? (last ? t(last.ok ? "pane.conn.lastOk" : "pane.conn.lastFailedAt", { ago: ago(last.at), note: last.note }) : undefined)}>
               {state !== "idle" && <span className="status-dot" data-state={state} aria-hidden="true" />}
-              {waiting ? "测试中" : state === "ok" ? "可用" : state === "err" ? "失败" : "未测试"}
+              {t(waiting ? "pane.conn.stateBusy" : state === "ok" ? "pane.conn.stateOk" : state === "err" ? "pane.conn.stateErr" : "pane.conn.stateIdle")}
             </span>
           </li>
         );
@@ -271,16 +279,17 @@ function ModelsSummary({ pool, disabled, firstRun, onFirstRunDone, onAdd, onMana
   onAdd: () => void;
   onManage: (filter: ModelFilter) => void;
 }) {
+  const { t } = useTranslation("settingsModels");
   const client = useQueryClient();
   const { writing, run } = useSettingsWrite(aiMutationOptions(client));
   const [status, setStatus] = useState<Result | null>(null);
   const entries = pool?.pool ?? [];
   const chats = entries.filter((e) => e.chat);
-  const stats: Array<{ filter: ModelFilter; n: number; label: string; attn?: boolean }> = [
-    { filter: "", n: entries.length, label: "个模型" },
-    { filter: "chat", n: chats.length, label: "用于对话" },
-    { filter: "untested", n: entries.filter(untested).length, label: "能力未测", attn: entries.some(untested) },
-    { filter: "unused", n: entries.filter(unused).length, label: "没在用" },
+  const stats: Array<{ filter: ModelFilter; n: number; attn?: boolean }> = [
+    { filter: "", n: entries.length },
+    { filter: "chat", n: chats.length },
+    { filter: "untested", n: entries.filter(untested).length, attn: entries.some(untested) },
+    { filter: "unused", n: entries.filter(unused).length },
   ];
   const first = firstRun && findEntry(pool, firstRun);
   const applyAll = async () => {
@@ -288,41 +297,41 @@ function ModelsSummary({ pool, disabled, firstRun, onFirstRunDone, onAdd, onMana
     const tasks = USE_GROUPS.filter((g) => g.id !== "embed" && (g.id !== "chat" || first?.chat)).flatMap((g) => g.tasks);
     const outcome = await run({ type: "bindings", args: { bindings: tasks.map((task) => ({ task, ...firstRun })) } });
     if (outcome.status === "busy" || !outcome.mounted) return;
-    if (outcome.status === "failed") { setStatus({ tone: "err", text: formatNotice("没有应用：", outcome.error) }); return; }
-    setStatus({ tone: "ok", text: `已把 ${tasks.length} 项用途设为 ${first ? modelName(first) : firstRun.model}。嵌入需要专门的嵌入模型，请单独选。` });
+    if (outcome.status === "failed") { setStatus({ tone: "err", text: formatNotice(t("pane.applyFailed"), outcome.error) }); return; }
+    setStatus({ tone: "ok", text: t("pane.appliedAll", { count: tasks.length, name: first ? modelName(first) : firstRun.model }) });
     onFirstRunDone(null);
   };
   return (
     <section className="settings-group settings-section" id="model-pool" aria-labelledby="model-pool-title">
       <div className="settings-section-meta">
-        <div className="settings-group-head"><h4 id="model-pool-title">模型</h4></div>
+        <div className="settings-group-head"><h4 id="model-pool-title">{t("pane.models")}</h4></div>
       </div>
       <div className="settings-section-body">
         {entries.length ? <>
           <div className="model-stats">
             {stats.map((s) => (
-              <button key={s.label} type="button" className="model-stat" data-attn={s.attn ? "1" : undefined}
-                aria-label={`${s.label} ${s.n}`} onClick={() => onManage(s.filter)}>
-                <span>{s.n}</span><small>{s.label}</small>
+              <button key={s.filter} type="button" className="model-stat" data-attn={s.attn ? "1" : undefined}
+                aria-label={`${t(`pane.stat.${s.filter || "all"}`)} ${s.n}`} onClick={() => onManage(s.filter)}>
+                <span>{s.n}</span><small>{t(`pane.stat.${s.filter || "all"}`)}</small>
               </button>
             ))}
           </div>
-          <p className="hint">对话可选：{chats.length ? chats.map(modelName).join("、") : "还没有，在「管理模型」里打开「用于对话」"}。</p>
+          <p className="hint">{chats.length ? t("pane.chatChoices", { list: chats.map(modelName).join(t("pane.listSep")) }) : t("pane.chatChoicesNone")}</p>
         </> : (
           <div className="settings-empty pool-empty">
-            <span>还没有模型。先挑几个常用的加进来，之后摘要、简报、对话选模型时只会列出这些。</span>
-            <button type="button" className="btn sm primary" disabled={disabled} onClick={onAdd}>添加模型</button>
+            <span>{t("pane.noModels")}</span>
+            <button type="button" className="btn sm primary" disabled={disabled} onClick={onAdd}>{t("pane.addModels")}</button>
           </div>
         )}
         <div className="settings-section-actions">
-          <button type="button" className="btn sm" onClick={() => onManage("")}>管理模型</button>
-          {entries.length > 0 && <button type="button" className="btn sm ghost" disabled={disabled} onClick={onAdd}>添加模型</button>}
+          <button type="button" className="btn sm" onClick={() => onManage("")}>{t("pane.manage")}</button>
+          {entries.length > 0 && <button type="button" className="btn sm ghost" disabled={disabled} onClick={onAdd}>{t("pane.addModels")}</button>}
         </div>
         {first && (
           <div className="first-run" role="status">
-            <span>要把 <span className="mono">{modelName(first)}</span> 用在全部用途上吗？以后可以逐项改。</span>
-            <button type="button" className="btn sm primary" disabled={writing} onClick={() => void applyAll()}>全部用它</button>
-            <button type="button" className="btn sm ghost" onClick={() => onFirstRunDone(null)}>稍后自己选</button>
+            <span><Trans t={t} i18nKey="pane.firstRun" values={{ name: modelName(first) }} components={{ mono: <span className="mono" /> }} /></span>
+            <button type="button" className="btn sm primary" disabled={writing} onClick={() => void applyAll()}>{t("pane.useAll")}</button>
+            <button type="button" className="btn sm ghost" onClick={() => onFirstRunDone(null)}>{t("pane.later")}</button>
           </div>
         )}
         {status && <Feedback result={status} />}
@@ -340,6 +349,7 @@ function UsesSection({ view, providers, pool, onAsk, onNavigate, onManage }: {
   onNavigate: Navigate;
   onManage: () => void;
 }) {
+  const { t } = useTranslation("settingsModels");
   const client = useQueryClient();
   const { writing, run } = useSettingsWrite(aiMutationOptions(client));
   const translate = useQuery({ ...translateQueryOptions(), select: (p) => p.backend });
@@ -350,7 +360,7 @@ function UsesSection({ view, providers, pool, onAsk, onNavigate, onManage }: {
   const [scope, setScope] = useState<Record<string, boolean>>(() => Object.fromEntries(APPLY_DEFAULT.map((g) => [g, true])));
   const entries = pool?.pool ?? [];
   const applyModel = applyTo && findEntry(pool, applyTo) ? applyTo : entries[0] ?? null;
-  const title = (task: string) => view.tasks.find((t) => t.task === task)?.title ?? task;
+  const title = (task: string) => view.tasks.find((x) => x.task === task)?.title ?? task;
 
   const save = async (tasks: string[], choice: ModelChoice, done: string) => {
     setStatus(null);
@@ -359,7 +369,7 @@ function UsesSection({ view, providers, pool, onAsk, onNavigate, onManage }: {
     if (outcome.status === "failed") {
       const error = outcome.error;
       const message = error && typeof error === "object" && "message" in error ? error.message : error;
-      setStatus({ tone: "err", text: formatNotice("没有保存：", message) });
+      setStatus({ tone: "err", text: formatNotice(t("pane.saveFailed"), message) });
     }
     else {
       setStatus({ tone: "ok", text: done });
@@ -369,12 +379,12 @@ function UsesSection({ view, providers, pool, onAsk, onNavigate, onManage }: {
   const pick = (tasks: string[], choice: ModelChoice) => {
     const e = findEntry(pool, choice);
     const label = e ? modelName(e) : choice.model;
-    const done = `已保存：${tasks.length > 1 ? `${tasks.length} 项` : title(tasks[0])}改用 ${label}。`;
+    const done = tasks.length > 1 ? t("pane.savedMany", { count: tasks.length, label }) : t("pane.savedOne", { title: title(tasks[0]), label });
     const embed = taskChoice(view, "embed");
     if (tasks.includes("embed") && !(embed && sameChoice(embed, choice))) {
       const confirm = embedChangeConfirm(vectors.data, label);
       if (!confirm) {
-        setStatus({ tone: "err", text: `没有更换。本库的向量由 ${vectors.data?.effective?.model} 生成，换成 ${label} 需要重建向量库：先打开下方「允许更换嵌入模型」，再改选。` });
+        setStatus({ tone: "err", text: t("pane.embedBlocked", { from: vectors.data?.effective?.model, to: label }) });
         document.getElementById("vector-space")?.scrollIntoView({ block: "nearest" });
         return;
       }
@@ -387,32 +397,33 @@ function UsesSection({ view, providers, pool, onAsk, onNavigate, onManage }: {
   return (
     <section className="settings-group settings-section" id="model-uses" aria-labelledby="model-uses-title">
       <div className="settings-section-meta">
-        <div className="settings-group-head"><h4 id="model-uses-title">各用途</h4></div>
-        <p className="hint">对话里可以临时换模型；这里是默认值。</p>
+        <div className="settings-group-head"><h4 id="model-uses-title">{t("pane.uses")}</h4></div>
+        <p className="hint">{t("pane.usesHint")}</p>
       </div>
       <div className="settings-section-body">
         {entries.length > 0 && (
-          <div className="apply-bar" role="group" aria-label="一键应用">
+          <div className="apply-bar" role="group" aria-label={t("pane.applyBar")}>
             <div className="row">
-              <span>把</span>
-              <ModelMenu label="一键应用的模型" value={applyModel} providers={providers} pool={pool} onManage={onManage}
+              <span>{t("pane.applyPre")}</span>
+              <ModelMenu label={t("pane.applyModel")} value={applyModel} providers={providers} pool={pool} onManage={onManage}
                 disabled={writing} onPick={setApplyTo} />
-              <span>用于</span>
+              <span>{t("pane.applyPost")}</span>
               <button type="button" className="btn sm primary" disabled={writing || !applyModel || !scopedTasks.length}
-                onClick={() => applyModel && pick(scopedTasks, applyModel)}>应用到 {scopedTasks.length} 项</button>
+                onClick={() => applyModel && pick(scopedTasks, applyModel)}>{t("pane.applyTo", { count: scopedTasks.length })}</button>
             </div>
             <div className="row apply-scope">
               {USE_GROUPS.filter((g) => g.id !== "chat").map((g) => (
                 <label key={g.id}><input type="checkbox" checked={!!scope[g.id]} disabled={writing}
-                  onChange={(e) => setScope((old) => ({ ...old, [g.id]: e.target.checked }))} />{g.title}</label>
+                  onChange={(e) => setScope((old) => ({ ...old, [g.id]: e.target.checked }))} />{t(`pane.use.${g.id}.title`)}</label>
               ))}
             </div>
           </div>
         )}
         {USE_GROUPS.map((g) => {
-          const choices = g.tasks.map((t) => taskChoice(view, t));
+          const choices = g.tasks.map((task) => taskChoice(view, task));
+          const groupTitle = t(`pane.use.${g.id}.title`);
           const keys = new Set(choices.map((c) => (c ? `${c.provider_id}|${c.model}` : "")));
-          const mixed = keys.size > 1 ? `${keys.size} 种模型` : undefined;
+          const mixed = keys.size > 1 ? t("pane.mixed", { count: keys.size }) : undefined;
           const value = mixed ? null : choices[0];
           const unset = choices.filter((c) => !c).length;
           const ownConfig = g.id === "chat" && view.chat_uses_own_config;
@@ -423,32 +434,32 @@ function UsesSection({ view, providers, pool, onAsk, onNavigate, onManage }: {
           return (
             <div key={g.id} className="settings-option use-row" data-group={g.id}>
               <div>
-                <strong>{g.title}</strong>
-                {g.hint && <p className="hint">{g.hint}</p>}
-                {backend && <p className="hint">现在用 {backend} 翻译，改成「大模型」后才会用这里的模型。
-                  <button type="button" className="link-btn" onClick={() => onNavigate("translate")}>翻译设置</button></p>}
-                {!ownConfig && (unset ? <p className="hint warn">{unset === g.tasks.length ? `还没选模型，${g.title}暂停。` : `${unset} 项没选模型，这几项暂停。`}</p>
-                  : warn ? <p className="hint warn">{g.need === "tools" ? "这个模型不能调用工具，对话将无法查阅文章或读取网页。" : "这个模型不支持结构化输出，结果可能格式错乱。"}</p> : null)}
+                <strong>{groupTitle}</strong>
+                {g.id !== "translate" && <p className="hint">{t(`pane.use.${g.id}.hint`)}</p>}
+                {backend && <p className="hint">{t("pane.translateBackend", { backend })}
+                  <button type="button" className="link-btn" onClick={() => onNavigate("translate")}>{t("pane.translateSettings")}</button></p>}
+                {!ownConfig && (unset ? <p className="hint warn">{unset === g.tasks.length ? t("pane.unsetAll", { title: groupTitle }) : t("pane.unsetSome", { count: unset })}</p>
+                  : warn ? <p className="hint warn">{t(g.need === "tools" ? "pane.warnTools" : "pane.warnJson")}</p> : null)}
               </div>
               <div className="row use-control">
                 {ownConfig ? (
-                  <p className="hint">由你的 Pi 配置决定 · <button type="button" className="link-btn" onClick={() => onNavigate("assistant")}>对话助手</button></p>
+                  <p className="hint"><Trans t={t} i18nKey="pane.ownConfig" components={{ link: <button type="button" className="link-btn" onClick={() => onNavigate("assistant")} /> }} /></p>
                 ) : g.id === "chat" ? (
                   <ChatModelMenu value={value} providers={providers} pool={pool} bindings={view} disabled={writing} onManage={onManage}
                     onPick={(c) => pick(["chat"], c)} />
                 ) : (
-                  <ModelMenu label={`${g.title}的模型`} value={value} mixed={mixed} need={g.need} providers={providers} pool={pool}
+                  <ModelMenu label={t("pane.useModel", { title: groupTitle })} value={value} mixed={mixed} need={g.need} providers={providers} pool={pool}
                     disabled={writing} onManage={onManage} onPick={(c) => pick(g.tasks, c)} />
                 )}
                 {multi && <button type="button" className="link-btn" aria-expanded={!!subs[g.id]}
-                  onClick={() => setSubs((old) => ({ ...old, [g.id]: !old[g.id] }))}>{subs[g.id] ? "收起细分" : `细分（${g.tasks.length}）`}</button>}
+                  onClick={() => setSubs((old) => ({ ...old, [g.id]: !old[g.id] }))}>{subs[g.id] ? t("pane.collapse") : t("pane.expand", { count: g.tasks.length })}</button>}
               </div>
               {multi && subs[g.id] && (
                 <div className="use-subs">
                   {g.tasks.map((task) => (
                     <div key={task} className="settings-option">
                       <div><strong>{title(task)}</strong></div>
-                      <ModelMenu label={`${title(task)}的模型`} value={taskChoice(view, task)} need={g.need} providers={providers} pool={pool}
+                      <ModelMenu label={t("pane.useModel", { title: title(task) })} value={taskChoice(view, task)} need={g.need} providers={providers} pool={pool}
                         disabled={writing} onManage={onManage} onPick={(c) => pick([task], c)} />
                     </div>
                   ))}
@@ -458,7 +469,7 @@ function UsesSection({ view, providers, pool, onAsk, onNavigate, onManage }: {
           );
         })}
         {status && <Feedback result={status} />}
-        {!entries.length && <p className="hint">先添加模型，再给每件事选模型。</p>}
+        {!entries.length && <p className="hint">{t("pane.addFirst")}</p>}
       </div>
     </section>
   );

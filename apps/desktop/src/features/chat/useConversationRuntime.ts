@@ -6,6 +6,7 @@ import {
 import { trackEvent } from "../../lib/signals";
 import { thinkingLabel } from "../../settings/modelChoices";
 import { formatNotice } from "../../lib/notice";
+import { i18n } from "../../i18n";
 import { createActivityStore } from "./ChatActivity";
 import { describeChatError, failureText } from "./ChatFailure";
 import { createTurnStore } from "./turnTrace";
@@ -141,7 +142,7 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
         if (disposed) unsub();
         else unsubs.push(unsub);
       }).catch((err) => {
-        if (!disposed) callbacks.current.onError(formatNotice("聊天事件连接失败：", err));
+        if (!disposed) callbacks.current.onError(formatNotice(i18n.t("runtime.eventsFailed", { ns: "chat" }), err));
       });
     };
     subscribe(onChatStart((id) => {
@@ -169,7 +170,7 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
       };
       void loadMessages(id, true).then(bindTrace, (err) => {
         bindTrace();
-        callbacks.current.onError(formatNotice("回复加载失败：", err));
+        callbacks.current.onError(formatNotice(i18n.t("runtime.replyLoadFailed", { ns: "chat" }), err));
       });
       callbacks.current.onDone();
     }));
@@ -212,13 +213,13 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
   const chooseModel = useCallback((id: number, context: string, choice: ModelChoice | null, label: string) => {
     const key = modelKey(id, context);
     setModels((old) => ({ ...old, [key]: { ...optionsFor(old, key), model: choice } }));
-    if (id > 0) activity.set({ line: `之后的回复改用 ${label}` });
+    if (id > 0) activity.set({ line: i18n.t("runtime.modelSwitched", { ns: "chat", label }) });
   }, [activity]);
   /** 思考强度同模型：null 跟随所用模型的设置。 */
   const chooseThinking = useCallback((id: number, context: string, level: string | null, label: string) => {
     const key = modelKey(id, context);
     setModels((old) => ({ ...old, [key]: { ...optionsFor(old, key), thinking: level } }));
-    if (id > 0) activity.set({ line: level ? `之后的回复思考强度 ${thinkingLabel(level)}` : `之后的回复思考强度跟随模型（${label}）` });
+    if (id > 0) activity.set({ line: level ? i18n.t("runtime.thinkingSet", { ns: "chat", level: thinkingLabel(level) }) : i18n.t("runtime.thinkingFollow", { ns: "chat", label }) });
   }, [activity]);
   /** 新对话每次从默认开始；上一次从这里发出、已归到新线程的消息不再留在「新对话」里。 */
   const resetNewModel = useCallback((context: string) => {
@@ -237,7 +238,7 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
   const sendMessage = useCallback(async (id: number, text: string, citations: CitationView[], digestId: number | null, context = "chat") => {
     const current = store.getStatus();
     if (current.sending || current.busyThreadId !== null) {
-      throw new Error("上一条回复尚未结束，请等待或停止生成后再发送");
+      throw new Error(i18n.t("runtime.busy", { ns: "chat" }));
     }
     store.setStatus({ sending: true });
     settled.current.clear();
@@ -279,7 +280,7 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
       if (!settled.current.has(threadId)) store.setStatus({ busyThreadId: threadId });
       // 发送已被接受后，即使历史加载失败，也不能把它当成发送失败再发一遍。
       await loadMessages(threadId, settled.current.has(threadId)).catch((err) => {
-        callbacks.current.onError(formatNotice("消息加载失败：", err));
+        callbacks.current.onError(formatNotice(i18n.t("runtime.messagesLoadFailed", { ns: "chat" }), err));
       });
       callbacks.current.onDone();
       return threadId;

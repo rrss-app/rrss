@@ -1,1 +1,673 @@
-{}
+{
+  "advanced": {
+    "ui": {
+      "aria": "界面调试",
+      "head": "界面",
+      "label": "界面调试"
+    },
+    "window": {
+      "head": "窗口",
+      "label": "关闭窗口时",
+      "trayUnavailable": "这台电脑的系统托盘不可用，选「隐藏到托盘」时会改为最小化。"
+    },
+    "model": {
+      "head": "模型",
+      "hint": "各连接的地址、协议和兼容开关在模型页连接的「编辑」里；单个模型的兼容设置在「管理模型」里。",
+      "overrideLabel": "模型定义覆盖",
+      "overrideHint": "补充模型的额外参数，例如上下文长度、图片限制。地址、密钥和模型列表请在模型页修改。"
+    },
+    "engine": {
+      "head": "对话引擎与安全",
+      "hint": "这些开关会放宽助手能做的事，一般保持默认就好。",
+      "opFailed": "操作失败：",
+      "readFailed": "读取对话引擎设置失败：",
+      "reload": "重新读取",
+      "pathReport": "对话引擎路径",
+      "warming": "缓存保温",
+      "own": {
+        "title": "使用我自己的 Pi 配置",
+        "confirm": "对话将改用 ~/.pi 里的模型、密钥和扩展，RRSS 的模型设置对对话不再生效。关闭后恢复原样，之前的选择会保留。",
+        "okLabel": "改用我的配置",
+        "hint": "改用 ~/.pi 里的模型和密钥。"
+      },
+      "dev": {
+        "confirmTitle": "开启开发者工具",
+        "confirm": "助手将可以在工作目录里运行命令、读写文件。请确认你清楚这样做的后果再开启。",
+        "okLabel": "开启",
+        "label": "开发者工具",
+        "hint": "允许助手读写文件、运行命令。默认关闭。"
+      },
+      "piPath": {
+        "label": "Pi 可执行文件路径",
+        "hint": "留空时先用应用下载的版本，没有再用系统里安装的。",
+        "placeholder": "留空使用应用下载的版本",
+        "saveLabel": "Pi 路径"
+      },
+      "settingsOverrideLabel": "Pi 设置覆盖",
+      "settingsOverrideHint": "补充界面上还没有的对话引擎设置。和应用自己管理的项冲突时，以应用为准。",
+      "sessionDir": {
+        "label": "会话目录",
+        "hint": "对话记录保存的位置。"
+      },
+      "generated": {
+        "label": "生成的配置",
+        "hint": "对话引擎启动时用到的参数和配置，密钥已隐藏。",
+        "view": "查看"
+      }
+    },
+    "override": {
+      "invalid": "{{label}}不是有效的 JSON 对象，未保存；修改后再试。",
+      "saveFailed": "保存失败：",
+      "notRead": "尚未读取",
+      "badFormat": "格式错误",
+      "goodFormat": "格式正确"
+    },
+    "generated": {
+      "title": "生成的配置",
+      "close": "关闭",
+      "generating": "正在生成…",
+      "failed": "没能生成配置：",
+      "own": "正在使用你自己的 Pi 配置：模型、密钥和扩展由 ~/.pi 决定，这里只列出 RRSS 传入的部分。",
+      "ignored": "这些覆盖项由 RRSS 管理，已忽略：",
+      "args": "启动参数",
+      "env": "环境变量"
+    }
+  },
+  "backup": {
+    "title": "备份与恢复",
+    "loadFailed": "读取备份信息失败：{{message}}",
+    "dismiss": "知道了",
+    "restarting": "正在备份当前数据，完成后应用会自动重启并恢复…",
+    "report": "备份",
+    "schedule": {
+      "off": "关",
+      "daily": "每天",
+      "weekly": "每周"
+    },
+    "all": {
+      "title": "备份全部数据",
+      "hint": "文章、订阅、规则、记忆、对话和设置打包成一个文件。",
+      "withSecrets": "这次包含密钥，请妥善保管。",
+      "running": "正在备份…",
+      "action": "立即备份…"
+    },
+    "secrets": {
+      "label": "包含密钥",
+      "hint": "API Key、翻译密钥，以及外部工具的环境变量和请求头。默认不包含：备份文件放到网盘或别的电脑也不会带出密钥，恢复后重新填写即可。",
+      "toggle": "备份包含密钥",
+      "on": "包含",
+      "off": "不包含"
+    },
+    "done": {
+      "saved": "已保存到 {{path}} · {{size}}",
+      "note": "不含媒体缓存和对话引擎程序，恢复后会按需重新下载。",
+      "reveal": "打开所在文件夹",
+      "close": "完成"
+    },
+    "restore": {
+      "title": "从备份恢复",
+      "hint": "替换当前全部数据，替换前会自动备份当前数据。需要重启应用。",
+      "checking": "正在检查…",
+      "action": "选择备份文件…",
+      "okLabel": "备份当前数据并重启恢复"
+    },
+    "restoreMessage": {
+      "checked": "{{name}} 检查通过",
+      "replace": "· 当前全部数据会被这个备份替换。",
+      "autoBackup": "· 替换前会自动备份当前数据（不含密钥），从自动备份恢复时需要重新填写密钥。",
+      "restart": "· 需要重启应用。"
+    },
+    "auto": {
+      "title": "自动备份",
+      "scheduled": "定时备份",
+      "hint": "保存在数据目录的 backups 里，只保留最近 5 份。数据库升级前总会自动备份一次。自动备份始终不含密钥。",
+      "restore": "恢复",
+      "empty": "还没有自动备份。"
+    },
+    "prefs": {
+      "title": "只导出偏好",
+      "sum": "规则、兴趣、记忆",
+      "hint": "换机时只带偏好，不带文章。不含密钥。订阅请用订阅页的 OPML 导出。导入是合并，已有的不会重复。",
+      "contentAria": "导出内容",
+      "part": {
+        "rules": "规则",
+        "interests": "兴趣",
+        "memories": "记忆"
+      },
+      "count": {
+        "rules_other": "（{{count}} 条）",
+        "interests_other": "（{{count}} 个）",
+        "memories_other": "（{{count}} 条）"
+      },
+      "export": "导出…",
+      "import": "导入…",
+      "imported": "导入完成：{{summary}}",
+      "skipped_other": "以下 {{count}} 项没有导入：",
+      "exported": "偏好已导出。"
+    },
+    "err": {
+      "backup": "备份失败：",
+      "restore": "准备恢复失败，当前数据未改动：",
+      "inspect": "无法使用这个备份：",
+      "schedule": "保存定时备份失败：",
+      "notice": "操作失败：",
+      "reveal": "打开所在文件夹失败：",
+      "export": "导出失败：",
+      "import": "导入失败："
+    },
+    "preview": {
+      "lastManual": "未连接本机数据。",
+      "autoSummary": "升级前自动 · 定时关闭"
+    }
+  },
+  "diagLog": {
+    "lastEvent": {
+      "today": "今天 {{time}}",
+      "date": "{{month}} 月 {{day}} 日 {{time}}"
+    },
+    "levelFailed": "切换记录级别失败：",
+    "export": {
+      "title": "导出诊断包",
+      "confirm": "保存一个 ZIP 文件，包含最近的运行日志（导出时再次脱敏）和版本、系统与运行状态。\n不含数据库、设置和密钥。文件保存在你选择的位置，由你决定是否分享。",
+      "okLabel": "选择保存位置"
+    },
+    "title": "运行日志",
+    "hint": "自动保存在本机，旧日志会自动清理。",
+    "state": {
+      "off": "未记录",
+      "on": "正在记录"
+    },
+    "unavailable": {
+      "other_instance": {
+        "title": "另一个 RRSS 窗口正在记录日志",
+        "text": "这个窗口不写日志文件。关闭另一个窗口后重新启动 RRSS，就会恢复记录。"
+      },
+      "not_writable": {
+        "title": "日志目录无法写入",
+        "text": "检查日志目录的权限后，重新启动 RRSS。"
+      },
+      "disk_full": {
+        "title": "磁盘空间不足，日志已停止写入",
+        "text": "腾出磁盘空间后重新启动 RRSS，或在存储页清空运行日志。"
+      }
+    },
+    "unclean": {
+      "title": "上次没有正常退出",
+      "bodyAt": "最后记录于{{when}}。可以导出诊断包，帮助排查退出原因。",
+      "body": "可以导出诊断包，帮助排查退出原因。"
+    },
+    "reveal": "在文件夹中显示",
+    "copyAria": "复制日志位置",
+    "copy": "复制",
+    "size": "当前文件 {{current}} · 全部日志 {{total}}",
+    "level": {
+      "label": "记录级别",
+      "default": "默认",
+      "detailed": "详细",
+      "detailedHint": "记录更多排查细节，日志量会增加。重启后恢复默认。",
+      "defaultHint": "记录运行概况和错误。只在本次运行有效。"
+    },
+    "feedback": {
+      "label": "反馈问题",
+      "hint": "导出最近的日志与运行状态，附在反馈里更容易定位。",
+      "exporting": "正在导出…"
+    },
+    "saved": "诊断包已保存。"
+  },
+  "diag": {
+    "loadFailed": "读取诊断信息失败：{{message}}。请刷新状态重试。",
+    "busy": "正在执行维护操作…",
+    "report": "诊断维护",
+    "refreshFailed": "诊断信息没能刷新，显示的还是之前的内容；维护已经执行，刷新状态即可：",
+    "opFailed": {
+      "embed": "生成向量失败：",
+      "resetFailed": "重置失败计数失败："
+    },
+    "status": {
+      "title": "运行状态",
+      "hint": "当前数据与用量概况。点击刷新可重新读取。",
+      "refresh": "刷新状态",
+      "failed": "未能读取",
+      "loading": "读取中…"
+    },
+    "rows": {
+      "db": "数据库",
+      "vec": "向量检索",
+      "stats": "数据统计",
+      "ai": "AI 用量"
+    },
+    "index": {
+      "title": "索引维护",
+      "embed": {
+        "label": "生成文章向量",
+        "hint": "给一批还没有向量的内容补上向量，相似文章和按意思搜索会更准。用远程模型会产生费用。",
+        "done": "本轮向量处理已结束。",
+        "action": "处理一批"
+      },
+      "retry": {
+        "label": "允许失败内容重试",
+        "hint": "之前生成失败的内容会重新排队处理。不会删除文章。",
+        "done": "已重新排队，稍后会再处理这些内容。",
+        "action": "重置失败计数"
+      }
+    },
+    "preview": {
+      "vec": "浏览器预览",
+      "stats": "仅展示样例，未读取本机数据",
+      "db": "未连接本机数据库",
+      "ai": "未连接模型"
+    }
+  },
+  "panel": {
+    "navAria": "设置分类",
+    "newHint": "有新提示",
+    "dataLocal": "数据只存在本机",
+    "subscribeSummary": "{{sources}} 个源 · {{folders}} 个文件夹",
+    "tabs": {
+      "subscribe": {
+        "label": "订阅",
+        "title": "订阅",
+        "desc": "添加来源，或把已有列表导入进来。"
+      },
+      "web": {
+        "label": "网页阅读",
+        "title": "网页阅读",
+        "desc": "网页链接的打开方式与提示。"
+      },
+      "rules": {
+        "label": "规则",
+        "title": "规则",
+        "desc": "匹配到的文章加分或减分。兴趣只影响排序，不在这里改。"
+      },
+      "memory": {
+        "label": "记忆",
+        "title": "记忆",
+        "desc": "记在本机的偏好。兴趣只影响排序，不会改规则。"
+      },
+      "model": {
+        "label": "模型",
+        "title": "模型",
+        "desc": "每个用途单独指定连接和模型。没选的用途暂停。"
+      },
+      "assistant": {
+        "label": "对话助手",
+        "title": "对话助手",
+        "desc": "对话用哪个模型，以及它能调用什么。"
+      },
+      "translate": {
+        "label": "翻译",
+        "title": "翻译",
+        "desc": "阅读时点「翻译」才调用服务，不改写原文。"
+      },
+      "diagnostics": {
+        "label": "诊断",
+        "title": "本机状态与排查",
+        "desc": "查看运行状况，需要时做些维护。"
+      },
+      "storage": {
+        "label": "存储",
+        "title": "存储",
+        "desc": "清理只删缓存，不删订阅和规则。"
+      },
+      "advanced": {
+        "label": "高级",
+        "title": "高级",
+        "desc": "一般不用改这里。模型或助手出问题，先看对话助手页顶部的状态。"
+      }
+    }
+  },
+  "proxy": {
+    "title": "网络代理",
+    "hint": "文章、模型服务和对话引擎可以分别设置连接方式。一般不用改。",
+    "loading": "正在读取网络代理设置…",
+    "loadFailed": "读取网络代理设置失败：",
+    "reload": "重新读取",
+    "saved": "已保存。新的请求马上生效；正在进行的对话要等对话引擎下次启动后才用新设置。",
+    "saveFailed": "保存网络代理失败：",
+    "scope": {
+      "global": {
+        "name": "全局",
+        "hint": "下面三个用途没有单独设置时都走这里。"
+      },
+      "content": {
+        "name": "内容网络",
+        "hint": "订阅、全文、图片、网站图标、媒体与网页读取。"
+      },
+      "api": {
+        "name": "模型 API",
+        "hint": "摘要、简报、嵌入、翻译、模型列表和连接测试。"
+      },
+      "pi": {
+        "name": "Pi",
+        "hint": "对话引擎的下载、更新和对话。"
+      }
+    },
+    "mode": {
+      "inherit": "跟随全局",
+      "direct": "无代理",
+      "system": "系统代理",
+      "custom": "自定义代理"
+    },
+    "route": {
+      "customPending": "自定义代理 · 待填写地址"
+    },
+    "validate": {
+      "incompleteUrl": "请填写完整代理地址，例如 http://127.0.0.1:7890。",
+      "noProxyFormat": "不代理地址只填写域名、IP、网段或 *。"
+    },
+    "uses": {
+      "title": "按用途单独设置",
+      "summary_other": "{{count}} 项单独设置",
+      "allInherit": "全部跟随全局"
+    },
+    "scheme": {
+      "socks5h": "SOCKS5H：由代理解析目标域名。",
+      "socks5": "SOCKS5：由本机解析目标域名；需要代理解析时改用 socks5h://。",
+      "default": "支持 http、https、socks5、socks5h；推荐 socks5h:// 让代理解析域名。"
+    },
+    "rule": {
+      "globalLabel": "全局代理",
+      "modeAria": "{{name}}代理模式"
+    },
+    "custom": {
+      "url": "代理地址",
+      "urlAria": "{{name}}代理地址",
+      "noProxy": "不代理的地址",
+      "noProxyHint": "域名、IP 或网段，逗号或空格分隔；* 表示全部直连。本机地址始终直连，局域网需要在这里写网段。",
+      "noProxyAria": "{{name}}不代理地址",
+      "noProxyPlaceholder": "例如 example.com, 192.168.0.0/16"
+    },
+    "auth": {
+      "groupAria": "{{name}}代理认证",
+      "title": "代理认证",
+      "state": {
+        "clear": "保存后清除",
+        "replace": "保存后替换",
+        "enable": "保存后启用",
+        "saved": "已设置，不回显",
+        "unset": "未设置"
+      },
+      "keep": "保留原认证",
+      "noReplace": "不替换",
+      "noAuth": "不使用认证",
+      "replace": "替换",
+      "add": "添加认证",
+      "clear": "清除认证",
+      "endpointChanged": "代理协议、主机或端口已改变。为避免将已保存的认证发送到另一代理，保存后将清除原认证；如有需要，请填写新认证。",
+      "usernameAria": "{{name}}代理用户名",
+      "username": "用户名",
+      "passwordAria": "{{name}}代理密码",
+      "password": "密码",
+      "hint": "保存后不回显。粘贴含认证的地址时，认证会自动移到这两栏。"
+    },
+    "system": {
+      "noProxy": "不代理",
+      "title": "检测到的系统代理",
+      "source": "来源：{{source}}",
+      "none": "没有读到代理设置，这个模式下实际为直连。",
+      "pac": "系统还设置了自动配置脚本（PAC），RRSS 不使用它，只按上面的地址连接。"
+    },
+    "check": {
+      "title": "连接检查",
+      "hint": "按当前填写（含未保存的修改）访问 GitHub，测完不保存。",
+      "test": "测试连接",
+      "inheritRoute": "全局 · {{route}}",
+      "socksNote": "对话能否走 SOCKS 代理取决于对话引擎和模型服务；文章和图片的下载都支持。",
+      "testing": "测试中",
+      "ok": "可访问 · {{ms}} ms"
+    }
+  },
+  "registry": {
+    "web_javascript": {
+      "label": "允许原网页运行 JavaScript",
+      "hint": "更改后对新打开的原网页生效。"
+    },
+    "web_open_mode": {
+      "label": "点击外部链接",
+      "hint": "右键链接随时可以选别的方式。"
+    },
+    "web_original_tip": {
+      "label": "打开原网页前提示"
+    },
+    "web_first_tip": {
+      "label": "打开时提示不要轻信网页"
+    },
+    "allow_embedding_model_change": {
+      "label": "允许更换嵌入模型",
+      "hint": "更换需要全量重建向量库。"
+    },
+    "feed_icons_enabled": {
+      "label": "显示网站图标",
+      "hint": "图标保存在本地，关闭后不再下载。"
+    },
+    "feed_fetch_per_host": {
+      "label": "每个网站同时下载",
+      "hint": "同一网站的订阅最多同时下载几个。调高能更快刷新同站的大量订阅（如自建 RSSHub），太高可能被对方限流，限流后该网站会暂停一段时间。",
+      "control": "每个网站同时下载几个订阅（1–8）"
+    },
+    "theme_preference": {
+      "label": "外观"
+    },
+    "focus_filter": {
+      "label": "焦点筛选"
+    },
+    "focus_columns": {
+      "label": "焦点栏目"
+    },
+    "list_scope": {
+      "label": "列表范围"
+    },
+    "feeds_scope": {
+      "label": "订阅范围"
+    },
+    "feeds_list_scope": {
+      "label": "订阅列表范围"
+    },
+    "feeds_pinned": {
+      "label": "置顶"
+    },
+    "cluster_group_enabled": {
+      "label": "聚类分组"
+    },
+    "interest_boost_enabled": {
+      "label": "兴趣加权"
+    },
+    "rank_features_enabled": {
+      "label": "特征偏好"
+    },
+    "rank_source_enabled": {
+      "label": "源偏好"
+    },
+    "rank_coverage_enabled": {
+      "label": "多源报道"
+    },
+    "rank_freshness_enabled": {
+      "label": "时效衰减"
+    },
+    "rank_affinity_enabled": {
+      "label": "和常读文章相似"
+    },
+    "focus_show_details": {
+      "label": "推荐详情"
+    },
+    "hidden_spot_check_rate": {
+      "label": "隐藏抽查比例"
+    },
+    "focus_rerank_enabled": {
+      "label": "关注重排"
+    },
+    "focus_hide_noisy": {
+      "label": "隐藏噪声"
+    },
+    "hide_threshold": {
+      "label": "隐藏阈值"
+    },
+    "translate_target_lang": {
+      "label": "翻译目标"
+    },
+    "developer_tools": {
+      "label": "开发者工具"
+    },
+    "fetch_url_enabled": {
+      "label": "网页读取"
+    },
+    "ui_debug_mode": {
+      "label": "界面调试模式",
+      "hint": "显示阅读器翻译进度，固定在工具栏下方。默认关闭。",
+      "on": "已开启",
+      "off": "已关闭"
+    },
+    "focus_auto_summary": {
+      "label": "自动摘要"
+    },
+    "cluster_auto_summary": {
+      "label": "自动汇总相近报道"
+    },
+    "ai_daily_budget_tokens": {
+      "label": "生成日预算",
+      "hint": "自动摘要、自动简报等后台生成任务每天最多用这么多 token，用完当天暂停，次日恢复。手动「本篇摘要」和手动简报计入用量，但不受限。0 表示不限额。",
+      "control": "生成日预算（万 token，0 = 不限额）"
+    },
+    "ai_embed_daily_budget_tokens": {
+      "label": "嵌入日预算",
+      "hint": "只计嵌入请求（相似文章、兴趣和记忆检索用的向量）。用完只停嵌入，不影响摘要和简报；「立即嵌入」也受它限制。0 表示不限额。",
+      "control": "嵌入日预算（万 token，0 = 不限额）"
+    },
+    "focus_summary_neutral_limit": {
+      "label": "中性未读额外摘要",
+      "hint": "除高分文章外，再为这么多条中性未读文章生成摘要；同样只看最近入库的文章，计入自动摘要的每日篇数。0 表示不额外生成。",
+      "control": "中性未读额外摘要条数（0 = 关）"
+    },
+    "ai_input_tier": {
+      "label": "每次送给模型的正文",
+      "hint": "切换只影响之后生成的摘要和简报，已有摘要不会自动重跑。"
+    },
+    "digest_generate_minutes": {
+      "label": "自动生成",
+      "hint": "每天这个时间之后生成本日日报；周报在周一的这个时间之后生成。应用没开着会在下次打开时补上。简报里的「生成本期」仍可随时生成。",
+      "control": "简报自动生成时间"
+    },
+    "pi_idle_timeout_secs": {
+      "label": "空闲多久释放（分钟）",
+      "hint": "没有对话这么久后关闭对话引擎、释放内存，下次发送时自动启动；0 表示不释放。",
+      "control": "空闲多久释放（分钟）"
+    },
+    "pi_assistant_note": {
+      "label": "助手说明",
+      "hint": "每次对话都会带上，适合写回答风格、常用语言这类偏好。"
+    },
+    "pi_auto_download": {
+      "label": "自动下载",
+      "hint": "缺少对话引擎时，允许应用自动下载。",
+      "control": "自动下载对话引擎",
+      "on": "已开启",
+      "off": "已关闭"
+    },
+    "pi_auto_update": {
+      "label": "自动更新",
+      "hint": "在应用支持的版本范围内更新对话引擎。",
+      "control": "自动更新对话引擎",
+      "on": "已开启",
+      "off": "已关闭"
+    },
+    "close_action": {
+      "label": "关闭窗口时",
+      "hint": "隐藏到托盘后，RRSS 在后台继续按计划更新订阅，点托盘图标或再次打开 RRSS 就能回来。",
+      "options": {
+        "ask": "每次询问",
+        "tray": "隐藏到托盘",
+        "quit": "退出程序"
+      }
+    },
+    "pi_cache_warming": {
+      "label": "缓存保温",
+      "hint": "在对话之外保持服务商的提示缓存，可以让下次回复更快、更省，但会额外计费。"
+    }
+  },
+  "storage": {
+    "report": "存储清理",
+    "loadFailed": "统计存储占用失败：{{message}}。请点重新统计。",
+    "scanning": "正在统计",
+    "scannedAt": "统计于 {{time}}",
+    "rescan": "重新统计",
+    "cleanFailed": "{{title}}失败：",
+    "rescanFailed": "重新统计失败，仍显示上次结果；请点重新统计，无需重复清理：",
+    "parts": {
+      "articles": "文章与索引",
+      "vectors": "向量",
+      "media": "媒体",
+      "ai": "AI 缓存",
+      "translations": "翻译",
+      "recommendation_logs": "推荐日志",
+      "engine": "对话引擎",
+      "backups": "备份",
+      "logs": "运行日志",
+      "other": "其他",
+      "free": "可回收空位"
+    },
+    "composition": {
+      "aria": "已统计明细构成：{{parts}}",
+      "separator": "，",
+      "empty": "暂无存储占用",
+      "hint": "指向色条或图例查看各部分大小"
+    },
+    "location": {
+      "label": "数据位置",
+      "reveal": "在文件夹中显示",
+      "copyAria": "复制路径",
+      "copy": "复制"
+    },
+    "row": {
+      "compacting": "压缩中…",
+      "cleaning": "清理中…"
+    },
+    "group": {
+      "database": "随保留策略变小。",
+      "media": "清掉后需要时会重新生成。"
+    },
+    "total": {
+      "title": "总量",
+      "hintReady": "数据库、媒体缓存、对话引擎与自动备份的合计。",
+      "hintScanning": "统计需要读一遍数据库，大库可能要几秒，期间可以继续使用。",
+      "failed": "未能统计"
+    },
+    "preview": {
+      "dataDir": "浏览器预览",
+      "summary": "未连接本机数据"
+    }
+  },
+  "dialog": {
+    "cancel": "取消",
+    "close": "关闭",
+    "unsavedTitle": "{{title}}有未保存的修改",
+    "saveBeforeLeave": "离开前保存这些修改吗？",
+    "saveAndLeave": "保存并离开",
+    "discard": "不保存",
+    "keepEditing": "继续编辑",
+    "discardNote": "关闭后本次填写的内容不会保存。",
+    "discardAndLeave": "不保存并离开"
+  },
+  "stepper": {
+    "decrease": "减少{{label}}",
+    "increase": "增加{{label}}"
+  },
+  "rows": {
+    "problem": "「{{label}}」{{problem}}",
+    "saveFailed": "保存失败：",
+    "saveRowFailed": "没能保存「{{label}}」：",
+    "savedAffectsPi": "已保存，将在下次发送时生效。",
+    "saved": "已保存。",
+    "on": "已开启",
+    "off": "已关闭",
+    "restoreDefault": "恢复默认",
+    "loading": "正在读取设置…",
+    "loadFailed": "读取设置失败：",
+    "reload": "重新读取",
+    "wanUnit": "万 token / 天",
+    "check": {
+      "integer": "需要填写整数。",
+      "range": "需要在 {{min}} 到 {{max}} 之间。",
+      "maxLength": "不能超过 {{max}} 字。"
+    }
+  }
+}

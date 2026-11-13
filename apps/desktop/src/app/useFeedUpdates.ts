@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import { api, onFeedUpdated, onSchedulerUpdated, type SchedulerSnapshot } from "../lib/api";
 import { isTauri } from "../lib/preview";
+import { i18n } from "../i18n";
 import { feedKeys, feedQueryOptions } from "../lib/feedQuery";
 import type { FocusSession, FocusNotice } from "../features/focus";
 import type { FeedsSession } from "../features/feeds";
@@ -67,7 +68,7 @@ export function useFeedUpdates(queries: QueryClient, focus: FocusSession, column
           latest.current.columnOpen ? column.backgroundChanged(tree) : undefined,
         ]);
       } catch {
-        if (!disposed) latest.current.notify({ message: "订阅已更新，但读取失败，请刷新重试。" });
+        if (!disposed) latest.current.notify({ message: i18n.t("updates.readFailed", { ns: "feeds" }) });
       } finally {
         running = false;
         if (!disposed && dirty) timer = setTimeout(() => { void flush(); }, 100);
@@ -82,7 +83,7 @@ export function useFeedUpdates(queries: QueryClient, focus: FocusSession, column
       if (disposed) off();
       else { unlisten = off; changed(); }
     }).catch(() => {
-      if (!disposed) latest.current.notify({ message: "无法监听订阅更新，请重新打开应用后重试。" });
+      if (!disposed) latest.current.notify({ message: i18n.t("updates.listenFailed", { ns: "feeds" }) });
     });
     void onSchedulerUpdated(statusChanged).then(off => {
       if (disposed) off();

@@ -1,14 +1,20 @@
+import { i18n } from "../../i18n";
 import { api, onSchedulerUpdated, type FeedView, type RefreshOperation, type RefreshStarted } from "../../lib/api";
 
 /** 需要提醒时返回提示文字：点名前几个失败源，没有的项不写；全部成功返回 null。 */
 export function refreshProblem(result: RefreshOperation, feeds: readonly FeedView[]): string | null {
   if (!result.error && result.failed === 0 && result.skipped === 0) return null;
-  const names = result.failed_feeds.map(id => feeds.find(feed => feed.id === id)?.title || `源 #${id}`);
-  const more = result.failed > names.length ? ` 等 ${result.failed} 个源` : "";
-  const failed = result.failed > 0 ? `${result.failed} 个源失败${names.length ? `（${names.join("、")}${more}）` : ""}` : "";
-  if (result.error) return [result.error, failed].filter(Boolean).join("，");
-  const skipped = result.skipped > 0 ? `${result.skipped} 个源未完成` : "";
-  return `刷新完成，${[failed, skipped].filter(Boolean).join("，")}`;
+  const names = result.failed_feeds.map(id => feeds.find(feed => feed.id === id)?.title || i18n.t("refresh.feedFallback", { ns: "focus", id }));
+  const count = result.failed;
+  const joined = names.join(i18n.t("list.enumSeparator", { ns: "focus" }));
+  const failed = count <= 0 ? ""
+    : !names.length ? i18n.t("refresh.failed", { ns: "focus", count })
+    : count > names.length ? i18n.t("refresh.failedNamedMore", { ns: "focus", count, names: joined })
+    : i18n.t("refresh.failedNamed", { ns: "focus", count, names: joined });
+  const comma = i18n.t("list.commaSeparator", { ns: "focus" });
+  if (result.error) return [result.error, failed].filter(Boolean).join(comma);
+  const skipped = result.skipped > 0 ? i18n.t("refresh.skipped", { ns: "focus", count: result.skipped }) : "";
+  return i18n.t("refresh.doneWithProblems", { ns: "focus", parts: [failed, skipped].filter(Boolean).join(comma) });
 }
 
 /** Events invalidate; queries reconcile early/missing events and a restarted host. */
@@ -32,7 +38,7 @@ export function waitForRefresh(
       signal.removeEventListener("abort", abort);
     };
     const fail = (error: unknown) => { if (!disposed) { cleanup(); reject(error); } };
-    const abort = () => fail(new DOMException("刷新监听已结束", "AbortError"));
+    const abort = () => fail(new DOMException(i18n.t("refresh.listenEnded", { ns: "focus" }), "AbortError"));
     const read = async () => {
       timer = undefined;
       if (disposed || !operation) return;
@@ -41,11 +47,11 @@ export function waitForRefresh(
       try {
         const snapshot = await api.schedulerStatus();
         if (disposed) return;
-        if (snapshot.run_id !== operation.run_id || snapshot.stopped) throw new Error("后台运行时已重启或停止，请重新刷新");
+        if (snapshot.run_id !== operation.run_id || snapshot.stopped) throw new Error(i18n.t("refresh.runtimeStopped", { ns: "focus" }));
         if (snapshot.version >= version) {
           version = snapshot.version;
           const current = snapshot.operations.find(item => item.id === operation?.operation_id);
-          if (!current) throw new Error("刷新记录已过期，请重新刷新");
+          if (!current) throw new Error(i18n.t("refresh.recordExpired", { ns: "focus" }));
           if (current.done) { cleanup(); resolve(current); return; }
         }
       } catch (error) { fail(error); }

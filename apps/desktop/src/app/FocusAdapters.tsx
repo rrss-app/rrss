@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ReaderHost, type ReaderHostHandle } from "../features/reader";
 import { FocusScreen, useFocusRanking, useFocusSnapshot, type FocusSession } from "../features/focus";
 import { scopeTitle, scopeUnread, useFeedsSession, type FeedsSession } from "../features/feeds";
+import { useTranslation } from "../i18n";
 import { feedQueryOptions } from "../lib/feedQuery";
 import { SettingsPanel } from "../settings/SettingsPanel";
 
@@ -11,6 +12,7 @@ export type ReaderList = "focus" | "column" | "feeds";
 
 /** 跨域适配只在使用者处订阅快照，根壳不复制文章列表。 */
 export const FocusReader = forwardRef<ReaderHostHandle, Omit<ComponentProps<typeof ReaderHost>, "nav" | "listVia" | "listTitle" | "onReadChange" | "onToggleStar" | "onRate" | "onDislike"> & { focus: FocusSession; column: FocusSession; feeds: FeedsSession; list: ReaderList; columnName: string; onRateArticle: ComponentProps<typeof ReaderHost>["onRate"]; onDislikeArticle: ComponentProps<typeof ReaderHost>["onDislike"] }>(function FocusReader({ focus, column, feeds, list, columnName, onRateArticle, onDislikeArticle, ...props }, ref) {
+  const { t } = useTranslation("focus");
   useFocusSnapshot(focus);
   useFocusSnapshot(column);
   const feedsState = useFeedsSession(feeds);
@@ -28,7 +30,7 @@ export const FocusReader = forwardRef<ReaderHostHandle, Omit<ComponentProps<type
     return ok;
   };
   const listVia = list === "feeds" ? "feeds" : list === "column" ? "focus_column" : "focus";
-  const listTitle = list === "feeds" ? scopeTitle(tree, feedsState.scope).name : list === "column" ? columnName || "栏目" : "今日焦点";
+  const listTitle = list === "feeds" ? scopeTitle(tree, feedsState.scope).name : list === "column" ? columnName || t("reader.columnFallback") : t("reader.focusTitle");
   return <ReaderHost {...props} ref={ref} nav={nav} listVia={listVia} listTitle={listTitle}
     onReadChange={setRead} onToggleStar={toggleStar}
     onRate={onRateArticle} onDislike={onDislikeArticle} />;

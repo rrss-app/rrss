@@ -1,11 +1,13 @@
 import { useMemo } from "react";
 import type { ArticleView, ReaderView } from "../lib/api";
 import { openOriginal } from "../lib/signals";
+import { useTranslation } from "../i18n";
 import { readingMinutes } from "../lib/readingTime";
 import { SourceAvatar } from "./ArticleCard";
 import { RelativeTime } from "./RelativeTime";
 
 export function ReaderMasthead({ reader, article, title, originalTitle, web = false }: { reader: ReaderView; article?: ArticleView; title: string; originalTitle?: string; web?: boolean }) {
+  const { t } = useTranslation("reader");
   const parts = reader.meta.split(" · ");
   const source = article?.feed_title || parts[0];
   // ReaderView 的历史 meta 是本地 YYYY-MM-DD HH:mm；列表入口优先用结构化时间。
@@ -21,7 +23,7 @@ export function ReaderMasthead({ reader, article, title, originalTitle, web = fa
     <div className="reader-meta-bar">
       {[
         published != null ? <RelativeTime key="time" ms={published} /> : parts[1] ? <span key="time">{parts[1]}</span> : null,
-        minutes && !web ? <span key="length">约 {minutes} 分钟</span> : null,
+        minutes && !web ? <span key="length">{t("masthead.minutes", { count: minutes })}</span> : null,
         domain && !web ? <a key="domain" href={reader.url} onClick={event => { event.preventDefault(); void openOriginal(reader.id, reader.url); }}>{domain}</a> : null,
       ].filter(Boolean).flatMap((item, index) => index ? [<span key={`sep-${index}`} className="reader-meta-sep" aria-hidden="true">·</span>, item] : [item])}
     </div>

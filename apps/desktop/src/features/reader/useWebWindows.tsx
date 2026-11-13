@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, onWebClosed, onWebDownloadBlocked, onWebEscape, onWebNavigated, onWebVerifyState } from "../../lib/api";
 import { formatNotice } from "../../lib/notice";
+import { i18n, Trans, useTranslation } from "../../i18n";
 import { useSettingsWrite } from "../../settings/editState";
 import { settingsMutationOptions, settingsSchemaOptions } from "../../settings/settingsQuery";
 import { networkProxyQueryOptions, routeSummary } from "../../settings/networkProxyQuery";
@@ -16,9 +17,7 @@ type Panel = { url: string; phase: "tip" | "opening" | "opened" | "error"; error
 type Live = { label: string; openedUrl: string; url: string };
 /** 宿主 `web_view_action` 的白名单动作。 */
 export type WebViewAction = "back" | "forward" | "reload" | "copy" | "open" | "disable-js" | "clear" | "close";
-const ACTION_DONE: Partial<Record<WebViewAction, string>> = {
-  copy: "已复制当前地址", "disable-js": "已禁用本站 JavaScript，重新打开原网页后生效。", clear: "已清空原网页数据",
-};
+const ACTION_DONE = new Set<WebViewAction>(["copy", "disable-js", "clear"]);
 const sameBounds = (a: WebViewBounds, b: WebViewBounds) => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 
 export function useWebWindows({ show, close, notify, openLink, openExtracted }: {
@@ -63,7 +62,7 @@ export function useWebWindows({ show, close, notify, openLink, openExtracted }: 
     if (embeddedRef.current !== want) { embeddedRef.current = want; setEmbedded(want); }
     if (!live || closed.current.has(live.label) || visibleWanted.current === want) return;
     visibleWanted.current = want;
-    void api.setWebViewVisible(live.label, want).catch(error => callbacks.current.notify({ message: formatNotice("原网页显示失败：", error) }));
+    void api.setWebViewVisible(live.label, want).catch(error => callbacks.current.notify({ message: formatNotice(i18n.t("webWindow.showFailedPrefix", { ns: "reader" }), error) }));
   }, []);
   const receiveVerification = useCallback((event: WebVerifyStateEvent) => {
     const live = liveRef.current;
@@ -121,9 +120,9 @@ export function useWebWindows({ show, close, notify, openLink, openExtracted }: 
         callbacks.current.close();
         callbacks.current.openLink(live.url, "", "reader");
       }),
-      onWebDownloadBlocked(({ url }) => callbacks.current.notify({ message: "已拦截下载，可交给系统浏览器下载", actionLabel: "系统浏览器", onAction: () => callbacks.current.openLink(url, "", "browser") })),
+      onWebDownloadBlocked(({ url }) => callbacks.current.notify({ message: i18n.t("webWindow.downloadBlocked", { ns: "reader" }), actionLabel: i18n.t("webWindow.systemBrowser", { ns: "reader" }), onAction: () => callbacks.current.openLink(url, "", "browser") })),
     ];
-    for (const subscription of subscriptions) void subscription.then(off => { if (disposed) off(); else unlisten.push(off); }).catch(error => { if (!disposed) callbacks.current.notify({ message: formatNotice("无法接收原网页事件：", error) }); });
+    for (const subscription of subscriptions) void subscription.then(off => { if (disposed) off(); else unlisten.push(off); }).catch(error => { if (!disposed) callbacks.current.notify({ message: formatNotice(i18n.t("webWindow.eventsFailedPrefix", { ns: "reader" }), error) }); });
     return () => { disposed = true; ++requestGeneration.current; dropWait(); unlisten.forEach(off => off()); };
   }, [clearVerification, dropWait, receiveVerification]);
   const pushBounds = useCallback((bounds: WebViewBounds) => {
@@ -131,7 +130,7 @@ export function useWebWindows({ show, close, notify, openLink, openExtracted }: 
     if (!live || panelRef.current?.phase !== "opened" || closed.current.has(live.label)) return;
     if (placedBounds.current && sameBounds(placedBounds.current, bounds)) return;
     placedBounds.current = bounds;
-    void api.setWebViewBounds(live.label, bounds).catch(error => callbacks.current.notify({ message: formatNotice("原网页位置更新失败：", error) }));
+    void api.setWebViewBounds(live.label, bounds).catch(error => callbacks.current.notify({ message: formatNotice(i18n.t("webWindow.boundsFailedPrefix", { ns: "reader" }), error) }));
   }, []);
   const reportBounds = useCallback((bounds: WebViewBounds) => {
     slotReady.current = true;
@@ -228,7 +227,7 @@ export function useWebWindows({ show, close, notify, openLink, openExtracted }: 
       receiveVerification(result);
       return result;
     } catch (error) {
-      if (ticket === epoch.current && liveRef.current?.url === url) callbacks.current.notify({ message: formatNotice("抽取失败：", error) });
+      if (ticket === epoch.current && liveRef.current?.url === url) callbacks.current.notify({ message: formatNotice(i18n.t("webWindow.extractFailedPrefix", { ns: "reader" }), error) });
       return null;
     } finally { extractingRef.current = null; setExtracting(null); }
   };
@@ -249,7 +248,7 @@ export function useWebWindows({ show, close, notify, openLink, openExtracted }: 
     clearVerification(label);
     panelRef.current = null;
     setPanel(null);
-    void api.closeWebView(label).catch(error => callbacks.current.notify({ message: formatNotice("原网页关闭失败：", error) }));
+    void api.closeWebView(label).catch(error => callbacks.current.notify({ message: formatNotice(i18n.t("webWindow.closeFailedPrefix", { ns: "reader" }), error) }));
   }, [clearVerification, dropWait]);
   return {
     verification, extracting, embedded, panel, current, extract,
@@ -269,9 +268,8 @@ export function useWebWindows({ show, close, notify, openLink, openExtracted }: 
       if (!live || closed.current.has(live.label)) return;
       try {
         await api.webViewAction(live.label, action);
-        const done = ACTION_DONE[action];
-        if (done) callbacks.current.notify({ message: done });
-      } catch (error) { callbacks.current.notify({ message: formatNotice("原网页操作失败：", error) }); }
+        if (ACTION_DONE.has(action)) callbacks.current.notify({ message: i18n.t(`webWindow.actionDone.${action as "copy" | "disable-js" | "clear"}`, { ns: "reader" }) });
+      } catch (error) { callbacks.current.notify({ message: formatNotice(i18n.t("webWindow.actionFailedPrefix", { ns: "reader" }), error) }); }
     },
     backToReader: (url: string) => { callbacks.current.close(); callbacks.current.openLink(url, "", "reader"); },
     cancel: () => { ++generation.current; dropWait(); showPanel(null); syncVisible(); },
@@ -285,16 +283,16 @@ export function useWebWindows({ show, close, notify, openLink, openExtracted }: 
   };
 }
 
-const PAUSED = "菜单、对话框、toast 打开时，原生网页会挡住它们，所以先隐藏；关闭菜单后立刻恢复，不重新加载。";
-const MENU: [WebViewAction | "extract", string, Parameters<typeof Icon>[0]["name"]][] = [
-  ["copy", "复制当前地址", "copy"], ["open", "在系统浏览器打开", "external"], ["extract", "从当前页抽取正文", "fileText"],
-  ["disable-js", "禁用本站 JavaScript", "stop"], ["clear", "清空原网页数据", "trash"], ["close", "关闭原网页", "close"],
+const MENU: [Exclude<WebViewAction, "back" | "forward" | "reload"> | "extract", Parameters<typeof Icon>[0]["name"]][] = [
+  ["copy", "copy"], ["open", "external"], ["extract", "fileText"],
+  ["disable-js", "stop"], ["clear", "trash"], ["close", "close"],
 ];
 
 export function WebWindowScene({ controller, covered, onBack, onOpenLink, onProxySettings }: {
   controller: ReturnType<typeof useWebWindows>; covered: boolean; onBack: () => void;
   onOpenLink: (url: string, text?: string, mode?: WebOpenMode) => void; onProxySettings: () => void;
 }) {
+  const { t } = useTranslation("reader");
   const client = useQueryClient();
   const { writing, run } = useSettingsWrite(settingsMutationOptions(client));
   const network = useQuery(networkProxyQueryOptions());
@@ -345,7 +343,7 @@ export function WebWindowScene({ controller, covered, onBack, onOpenLink, onProx
     if (never) {
       const result = await run([{ id: "web_original_tip", value: "0" }]);
       if (result.status !== "busy" && !result.mounted) return;
-      if (result.status !== "done" || result.data.failure) { setError("没能保存提示设置，请重试。"); return; }
+      if (result.status !== "done" || result.data.failure) { setError(t("webWindow.tipSaveFailed")); return; }
     }
     void controller.launch(url);
   };
@@ -360,39 +358,39 @@ export function WebWindowScene({ controller, covered, onBack, onOpenLink, onProx
     <WebReadingBar page={{ url }} view="web" onRead={() => open("reader")} onBack={onBack} />
     <div className="drawer-body web-window-body">
       {panel.phase === "tip" ? <div className="web-tip web-original-tip" data-tone="warn" role="note">
-        <div className="web-tip-text"><strong>原网页会运行 {new URL(url).hostname} 自己的脚本。</strong>登录和验证状态只保留到这次退出 RRSS，下次启动全部清空。不要在里面输入密码、验证码或支付信息。</div>
-        <div className="web-tip-actions"><label><input type="checkbox" checked={never} disabled={writing} onChange={event => setNever(event.target.checked)} />不再显示</label><button type="button" className="btn sm primary" disabled={writing} aria-busy={writing} onClick={() => void confirm()}>打开原网页</button><button type="button" className="btn sm ghost" disabled={writing} onClick={onBack}>取消</button></div>
+        <div className="web-tip-text"><Trans t={t} i18nKey="webWindow.tip.text" values={{ host: new URL(url).hostname }} components={{ strong: <strong /> }} /></div>
+        <div className="web-tip-actions"><label><input type="checkbox" checked={never} disabled={writing} onChange={event => setNever(event.target.checked)} />{t("web.firstTip.never")}</label><button type="button" className="btn sm primary" disabled={writing} aria-busy={writing} onClick={() => void confirm()}>{t("web.openOriginal")}</button><button type="button" className="btn sm ghost" disabled={writing} onClick={onBack}>{t("webWindow.tip.cancel")}</button></div>
         {error && <small role="alert">{error}</small>}
       </div> : <div className="web-tip web-original-tip web-warning" data-tone="warn" role="alert">
-        <div className="web-tip-text"><strong>{panel.error?.includes("代理") ? "原网页用不了你现在的代理设置。" : "没能打开原网页。"}</strong><p>{panel.error}</p></div>
-        <div className="web-tip-actions"><button type="button" className="btn primary" onClick={() => open("reader")}>改用阅读视图</button><button type="button" className="btn" onClick={() => open("browser")}>在系统浏览器打开</button><button type="button" className="btn ghost" onClick={() => { onBack(); onProxySettings(); }}>查看代理设置</button></div>
-        <small>改代理设置后可再试。</small>
+        <div className="web-tip-text"><strong>{panel.error?.includes("代理") ? t("webWindow.error.proxy") : t("webWindow.error.open")}</strong><p>{panel.error}</p></div>
+        <div className="web-tip-actions"><button type="button" className="btn primary" onClick={() => open("reader")}>{t("webWindow.error.useReader")}</button><button type="button" className="btn" onClick={() => open("browser")}>{t("web.openInBrowser")}</button><button type="button" className="btn ghost" onClick={() => { onBack(); onProxySettings(); }}>{t("webWindow.error.proxySettings")}</button></div>
+        <small>{t("webWindow.error.retryHint")}</small>
       </div>}
     </div>
   </>;
   return <>
     <div className="web-bar web-embed-bar" data-tauri-drag-region="deep">
       <WebReadingNav page={{ url }} onBack={onBack} live />
-      <span className="web-embed-hint">原网页 · 站点脚本在运行 · <kbd>Esc</kbd> 回到阅读视图</span>
-      <div className="web-mode" role="group" aria-label="看法"><button type="button" aria-pressed={false} onClick={() => open("reader")}>阅读视图</button><button type="button" aria-pressed>原网页</button></div>
+      <span className="web-embed-hint"><Trans t={t} i18nKey="webWindow.hint" components={{ kbd: <kbd /> }} /></span>
+      <div className="web-mode" role="group" aria-label={t("web.viewLabel")}><button type="button" aria-pressed={false} onClick={() => open("reader")}>{t("web.readerView")}</button><button type="button" aria-pressed>{t("web.originalPage")}</button></div>
       <span className="reader-head-divider" />
-      {tool("back", "后退", "chevronLeft")}
-      {tool("forward", "前进", "chevronRight")}
-      {tool("reload", "刷新", "refresh")}
-      {tool("open", "在系统浏览器打开", "external")}
+      {tool("back", t("webWindow.tool.back"), "chevronLeft")}
+      {tool("forward", t("webWindow.tool.forward"), "chevronRight")}
+      {tool("reload", t("webWindow.tool.reload"), "refresh")}
+      {tool("open", t("web.openInBrowser"), "external")}
       <span className="reader-head-divider" />
-      <button ref={menuButton} type="button" className="web-tool" aria-label="更多" aria-haspopup="menu" aria-expanded={!!menu} disabled={!live}
+      <button ref={menuButton} type="button" className="web-tool" aria-label={t("webWindow.tool.more")} aria-haspopup="menu" aria-expanded={!!menu} disabled={!live}
         onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setMenu(menu ? null : { x: rect.right - 248, y: rect.bottom + 4 }); }}><span aria-hidden="true">⋯</span></button>
     </div>
     {verify ? <WebVerifyStrip event={verify} busy={controller.extracting === verify.label} onAbandon={controller.abandon}
       onExtract={() => void controller.extract()} onRead={() => controller.readExtracted(verify)} /> : null}
     <div className="web-embed-slot" ref={slotRef}>
-      {hidden && live ? <div className="web-embed-paused" role="status"><p>网页暂时收起</p><small>{PAUSED}</small></div>
-        : panel.phase === "opening" ? <p className="web-embed-opening" role="status">正在打开原网页…</p> : null}
+      {hidden && live ? <div className="web-embed-paused" role="status"><p>{t("webWindow.paused.title")}</p><small>{t("webWindow.paused.detail")}</small></div>
+        : panel.phase === "opening" ? <p className="web-embed-opening" role="status">{t("webWindow.opening")}</p> : null}
     </div>
-    {menu ? <FloatingMenu anchor={menu} className="menu web-embed-menu" label="原网页操作" placement="below" restoreFocusTo={menuButton.current} onClose={() => setMenu(null)}>
-      <div className="web-embed-menu-note">{route ? `内容网络 · ${routeSummary(route)}` : "内容网络 · 当前设置"} · 退出 RRSS 即清空</div>
-      {MENU.map(([action, label, icon]) => <button key={action} type="button" role="menuitem" className="menu-item" onClick={() => choose(action)}><Icon name={icon} size={15} />{label}</button>)}
+    {menu ? <FloatingMenu anchor={menu} className="menu web-embed-menu" label={t("webWindow.menu.label")} placement="below" restoreFocusTo={menuButton.current} onClose={() => setMenu(null)}>
+      <div className="web-embed-menu-note">{route ? t("webWindow.menu.noteRoute", { route: routeSummary(route) }) : t("webWindow.menu.noteDefault")}</div>
+      {MENU.map(([action, icon]) => <button key={action} type="button" role="menuitem" className="menu-item" onClick={() => choose(action)}><Icon name={icon} size={15} />{t(`webWindow.menu.${action}`)}</button>)}
     </FloatingMenu> : null}
   </>;
 }

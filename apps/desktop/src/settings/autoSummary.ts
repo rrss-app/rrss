@@ -1,5 +1,7 @@
 import type { AutoSummaryView } from "../bindings";
-import { locale } from "../i18n";
+import { i18n, locale } from "../i18n";
+
+const NS = "settingsJobs" as const;
 
 /**
  * 自动摘要与预算的估算（AI 规格 · 自动摘要与预算 · 估算）。单篇与简报两个数由后端按档位算好下发，
@@ -9,7 +11,7 @@ import { locale } from "../i18n";
 /** 「20 万」「4,000」：一万以上按万写、保留一位小数。 */
 export function wan(tokens: number): string {
   return tokens >= 10_000
-    ? `${Number((tokens / 10_000).toFixed(1)).toLocaleString(locale(), { maximumFractionDigits: 1 })} 万`
+    ? i18n.t("tenThousands", { ns: NS, n: Number((tokens / 10_000).toFixed(1)).toLocaleString(locale(), { maximumFractionDigits: 1 }) })
     : tokens.toLocaleString(locale());
 }
 
@@ -30,22 +32,25 @@ export function articlesFit(auto: AutoSummaryView, budget: number, clusterOn: bo
 export function fitText(auto: AutoSummaryView, budget: number, clusterOn: boolean): string {
   const digest = auto.digest_daily_tokens;
   const cluster = clusterDaily(auto, clusterOn);
-  const what = cluster ? `自动简报约 ${wan(digest)}、自动汇总约 ${wan(cluster)}` : `自动简报约 ${wan(digest)}`;
   if (budget <= digest + cluster) {
-    return `只够${cluster ? "自动简报和自动汇总" : "自动简报"}（约 ${wan(digest + cluster)} / 天），自动摘要基本不会运行`;
+    const total = wan(digest + cluster);
+    return cluster ? i18n.t("fit.onlyDigestCluster", { ns: NS, total }) : i18n.t("fit.onlyDigest", { ns: NS, total });
   }
   const k = articlesFit(auto, budget, clusterOn);
-  return k >= auto.daily_limit
-    ? `扣除${what}后超过每天 ${auto.daily_limit} 篇的上限，预算不是瓶颈`
-    : `扣除${what}后约够 ${k} 篇 / 天`;
+  const params = { ns: NS, digest: wan(digest), cluster: wan(cluster), limit: auto.daily_limit, n: k };
+  if (k >= auto.daily_limit) return cluster ? i18n.t("fit.overLimitCluster", params) : i18n.t("fit.overLimit", params);
+  return cluster ? i18n.t("fit.fitsCluster", params) : i18n.t("fit.fits", params);
 }
 
 /** 生成预算为 0 时，开启后每天最多约用多少：上限篇数 × 单篇 + 简报（+ 汇总）。 */
 export function unlimitedText(auto: AutoSummaryView, clusterOn: boolean): string {
   const cluster = clusterDaily(auto, clusterOn);
   const most = auto.daily_limit * auto.per_article_tokens + auto.digest_daily_tokens + cluster;
-  const extra = `加自动简报约 ${wan(auto.digest_daily_tokens)}${cluster ? `、自动汇总约 ${wan(cluster)}` : ""}`;
-  return `自动摘要每天最多约 ${wan(most)} token（${auto.daily_limit} 篇 × 约 ${digits(auto.per_article_tokens)}，${extra}，估算）`;
+  const params = {
+    ns: NS, most: wan(most), limit: auto.daily_limit, per: digits(auto.per_article_tokens),
+    digest: wan(auto.digest_daily_tokens), cluster: wan(cluster),
+  };
+  return cluster ? i18n.t("unlimited.cluster", params) : i18n.t("unlimited.plain", params);
 }
 
 /** 预算存的是 token，输入按「万 token」：库值 → 输入框文字。 */

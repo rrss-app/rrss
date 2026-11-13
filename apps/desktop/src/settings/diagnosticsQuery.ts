@@ -1,11 +1,12 @@
 import { settingsQueryPolicy } from "./queryPolicy";
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { api, type DiagnosticsPage } from "../lib/api";
+import { i18n } from "../i18n";
 import { isTauri } from "../lib/preview";
 
-const PREVIEW_DIAGNOSTICS: DiagnosticsPage = {
-  scheduler: null,
-  vec: "浏览器预览", stats: "仅展示样例，未读取本机数据", db: "未连接本机数据库", ai: "未连接模型", log: null,
+const previewDiagnostics = (): DiagnosticsPage => {
+  const t = (key: "vec" | "stats" | "db" | "ai") => i18n.t(`diag.preview.${key}`, { ns: "settingsSystem" });
+  return { scheduler: null, vec: t("vec"), stats: t("stats"), db: t("db"), ai: t("ai"), log: null };
 };
 export const diagnosticsKeys = {
   page: ["diagnostics", "page"] as const,
@@ -16,7 +17,7 @@ export function diagnosticsQueryOptions() {
     queryKey: diagnosticsKeys.page,
     queryFn: ({ signal }) => {
       void signal; // IPC 不可取消；消费 signal 让 query 取消隔离迟到快照。
-      return isTauri() ? api.diagnostics() : Promise.resolve(PREVIEW_DIAGNOSTICS);
+      return isTauri() ? api.diagnostics() : Promise.resolve(previewDiagnostics());
     },
     ...settingsQueryPolicy,
   });

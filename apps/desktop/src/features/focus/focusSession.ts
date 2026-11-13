@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { api, type ArticleView, type FeedTree, type FeedView, type FocusPage, type SearchQuery } from "../../lib/api";
 import { trackEvent } from "../../lib/signals";
 import { applyStarToFocusPage, flattenFeeds, focusExcludes, mergeFocusPage, refreshFocusRows, rowKey } from "../../lib/focusUtils";
+import { i18n } from "../../i18n";
 import { formatNotice } from "../../lib/notice";
 import { isTauri, PREVIEW_FOCUS } from "../../lib/preview";
 import { FALLBACK_RANKING, type RankingToggle } from "../../components/FocusPane";
@@ -144,7 +145,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
   async function decideSpotCheck(id: number, action: SpotAction) {
     const review = state.spotReviews[id];
     if (!active || !review || state.spotBusy) return;
-    if (action === "keep") { saveReview(id, { ...review, result: "已保持不变。", undo: undefined }); return; }
+    if (action === "keep") { saveReview(id, { ...review, result: i18n.t("session.spot.kept", { ns: "focus" }), undo: undefined }); return; }
     publish({ spotBusy: true });
     try {
       let result: string | undefined;
@@ -152,31 +153,31 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
       if (action === "undo") await review.undo?.();
       else {
         const reason = [...(review.article.hide_reasons ?? [])].sort((a, b) => a.weight - b.weight)[0];
-        if (!reason) throw new Error("没有可操作的隐藏规则。");
+        if (!reason) throw new Error(i18n.t("session.spot.noRule", { ns: "focus" }));
         if (action === "allow") {
           const added = await api.allowRuleForFeed(reason.rule_id, review.article.feed_id);
           undo = () => api.discardRule(added);
-          result = `已对「${review.article.feed_title}」放行。`;
+          result = i18n.t("session.spot.allowed", { ns: "focus", feed: review.article.feed_title });
         } else {
           const rule = (await api.rules()).rules.find(r => r.id === reason.rule_id);
-          if (!rule?.enabled) throw new Error("这条规则已停用或删除，请刷新焦点。");
+          if (!rule?.enabled) throw new Error(i18n.t("session.spot.ruleGone", { ns: "focus" }));
           if (action === "disable") {
             await api.setRuleAction(rule.id, 2);
             undo = () => api.setRuleAction(rule.id, rule.polarity === "like" ? 0 : 1);
-            result = `已停用「${reason.label}」。`;
+            result = i18n.t("session.spot.disabled", { ns: "focus", label: reason.label });
           } else {
             const original = { polarity: rule.polarity, dimension: rule.dimension_id, pattern: rule.pattern,
               weight: rule.weight, scope_kind: rule.scope_kind, scope_id: rule.scope_id };
             const weight = Math.max(1, Math.round(rule.weight / 2));
             await api.updateRule(rule.id, { ...original, weight });
             undo = () => api.updateRule(rule.id, original);
-            result = `已把「${reason.label}」的权重减半。`;
+            result = i18n.t("session.spot.halved", { ns: "focus", label: reason.label });
           }
         }
       }
       saveReview(id, { ...(state.spotReviews[id] ?? review), result, undo });
       await rulesChanged();
-    } catch (err) { notify({ message: formatNotice("规则操作失败：", err) }); }
+    } catch (err) { notify({ message: formatNotice(i18n.t("session.ruleFailed", { ns: "focus" }), err) }); }
     finally { publish({ spotBusy: false }); }
   }
 
@@ -197,7 +198,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     } catch (err) {
       if (!owns(gen)) return;
       if (!isTauri()) publish({ page: state.page ?? PREVIEW_FOCUS });
-      else notify({ message: formatNotice("加载失败：", err), actionLabel: "重试", onAction: () => void reload() });
+      else notify({ message: formatNotice(i18n.t("session.loadFailed", { ns: "focus" }), err), actionLabel: i18n.t("session.retry", { ns: "focus" }), onAction: () => void reload() });
     } finally {
       if (owns(gen)) publish({ loading: false });
     }
@@ -215,7 +216,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
         const more = await focusQuery(state.expandedCluster, { excludeIds, excludeClusterIds, more: true });
         if (owns(gen)) publish({ page: visiblePage(mergeFocusPage(state.page, more)) });
       } catch (err) {
-        if (owns(gen)) publish({ moreError: formatNotice("加载失败：", err) });
+        if (owns(gen)) publish({ moreError: formatNotice(i18n.t("session.loadFailed", { ns: "focus" }), err) });
       } finally {
         // 旧范围结束不能释放新范围的分页锁，也不能清掉它的 busy 状态。
         if (owns(gen)) { moreRequest = null; publish({ loadingMore: false }); }
@@ -227,7 +228,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
 
   function changeSetting(write: () => Promise<unknown>) {
     writes = writes.then(async () => { await write(); }).catch((err) => {
-      if (active) notify({ message: formatNotice("设置失败：", err) });
+      if (active) notify({ message: formatNotice(i18n.t("session.settingFailed", { ns: "focus" }), err) });
     });
     return reload();
   }
@@ -313,10 +314,10 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
       if (!active) return true;
       if (state.page) publish({ page: applyStarToFocusPage(state.page, id, next) });
       if (state.page?.list_scope === "starred" || (next && !state.page?.articles.some((row) => row.row_kind === 0 && row.id === id))) await reload();
-      notify({ message: next ? "已收藏" : "已取消收藏" });
+      notify({ message: i18n.t(next ? "session.starred" : "session.unstarred", { ns: "focus" }) });
       return true;
     } catch (err) {
-      if (active) notify({ message: formatNotice("收藏失败：", err) });
+      if (active) notify({ message: formatNotice(i18n.t("session.starFailed", { ns: "focus" }), err) });
       return false;
     }
   }
@@ -336,13 +337,13 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     try {
       const ids = await api.markScopeRead(feedScope || "all");
       if (!active) return;
-      if (!ids.length) { notify({ message: "没有未读条目" }); return; }
+      if (!ids.length) { notify({ message: i18n.t("session.noUnread", { ns: "focus" }) }); return; }
       options?.onMarked?.();
       await reload();
-      notify({ message: `已标记 ${ids.length} 篇为已读`, actionLabel: "撤销", onAction: () => {
-        void api.unmarkRead(ids).then(() => reload()).catch((err) => notify({ message: formatNotice("撤销失败：", err) }));
+      notify({ message: i18n.t("session.marked", { ns: "focus", count: ids.length }), actionLabel: i18n.t("session.undo", { ns: "focus" }), onAction: () => {
+        void api.unmarkRead(ids).then(() => reload()).catch((err) => notify({ message: formatNotice(i18n.t("session.undoFailed", { ns: "focus" }), err) }));
       } });
-    } catch (err) { if (active) notify({ message: formatNotice("标记已读失败：", err) }); }
+    } catch (err) { if (active) notify({ message: formatNotice(i18n.t("session.markFailed", { ns: "focus" }), err) }); }
   }
 
   /** 组尾「全部标为已读」：整组在范围内可见的未读一次标完，直接生效、不带撤销（2026-11-06 定稿）。 */
@@ -353,17 +354,17 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     try {
       ids = await (feedScope ? api.markClusterRead(clusterId, feedScope) : api.markClusterRead(clusterId));
     } catch (err) {
-      if (owns(gen)) notify({ message: formatNotice("标记已读失败：", err) });
+      if (owns(gen)) notify({ message: formatNotice(i18n.t("session.markFailed", { ns: "focus" }), err) });
       return;
     }
     if (!owns(gen)) return;
-    if (!ids.length) { notify({ message: "这组已经都读过了" }); return; }
+    if (!ids.length) { notify({ message: i18n.t("session.groupAlreadyRead", { ns: "focus" }) }); return; }
     options?.onMarked?.();
     const marked = new Set(ids);
     const page = state.page;
     if (page?.list_scope === "unread") await reload();
     else if (page) publish({ page: { ...page, articles: page.articles.map((row) => row.row_kind === 0 && marked.has(row.id) ? { ...row, read: true } : row) } });
-    notify({ message: `已把这组 ${ids.length} 篇标为已读` });
+    notify({ message: i18n.t("session.groupMarked", { ns: "focus", count: ids.length }) });
   }
 
   const refresh = () => refreshCurrent(false);
@@ -383,10 +384,10 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
       if (!active || !result || refreshController !== controller) return;
       resetNavigation();
       const problem = refreshProblem(result, state.feeds);
-      if (problem) notify({ message: problem, actionLabel: "重试", onAction: () => void refresh() });
-      else if (result.inserted > 0) notify({ message: `刷新完成，新入库 ${result.inserted} 篇` });
+      if (problem) notify({ message: problem, actionLabel: i18n.t("session.retry", { ns: "focus" }), onAction: () => void refresh() });
+      else if (result.inserted > 0) notify({ message: i18n.t("session.refreshedInserted", { ns: "focus", count: result.inserted }) });
     } catch (err) {
-      if (active && !controller.signal.aborted && !resume) notify({ message: formatNotice("刷新失败：", err), actionLabel: "重试", onAction: () => void refresh() });
+      if (active && !controller.signal.aborted && !resume) notify({ message: formatNotice(i18n.t("session.refreshFailed", { ns: "focus" }), err), actionLabel: i18n.t("session.retry", { ns: "focus" }), onAction: () => void refresh() });
     } finally {
       if (active && refreshController === controller) {
         if (state.refreshing) {
@@ -486,7 +487,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
           publish({ page: visiblePage({ ...state.page, articles }), expandedCluster: clusterId });
         } catch (err) {
           if (!owns(gen) || ticket !== expandTicket) return;
-          notify({ message: formatNotice("加载失败：", err) });
+          notify({ message: formatNotice(i18n.t("session.loadFailed", { ns: "focus" }), err) });
         }
       })();
     },

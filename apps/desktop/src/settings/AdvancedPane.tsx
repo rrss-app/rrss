@@ -11,6 +11,7 @@ import { Pending } from "../components/Pending";
 import { Dialog } from "./Dialog";
 import { readGate, useEditReport, useMergedEditState, useSettingsWrite, type SettingsEditState } from "./editState";
 import { generatedConfigOptions, piConfigOptions, piMutationOptions, piQueryOptions, type PiAction, type PiStatus } from "./piQuery";
+import { useTranslation } from "../i18n";
 import { SettingsRows } from "./SettingsRows";
 import type { Ask } from "./SettingsPanel";
 import { NetworkProxyGroup } from "./NetworkProxyGroup";
@@ -26,16 +27,17 @@ export function AdvancedPane({ onAsk, onEditStateChange }: {
   onAsk: Ask;
   onEditStateChange?: Report;
 }) {
+  const { t } = useTranslation("settingsSystem");
   const { report } = useMergedEditState(onEditStateChange);
   return (
     <div className="advanced-pane">
       <WindowGroup report={report("close-action")} />
-      <section className="settings-group settings-section" aria-label="界面调试">
+      <section className="settings-group settings-section" aria-label={t("advanced.ui.aria")}>
         <div className="settings-section-meta">
-          <div className="settings-group-head"><h4>界面</h4></div>
+          <div className="settings-group-head"><h4>{t("advanced.ui.head")}</h4></div>
         </div>
         <div className="settings-section-body">
-          <SettingsRows ids={["ui_debug_mode"]} label="界面调试" onEditStateChange={report("ui-debug")} />
+          <SettingsRows ids={["ui_debug_mode"]} label={t("advanced.ui.label")} onEditStateChange={report("ui-debug")} />
         </div>
       </section>
       <NetworkProxyGroup report={report("network-proxy")} />
@@ -47,6 +49,7 @@ export function AdvancedPane({ onAsk, onEditStateChange }: {
 
 /** 窗口组：关闭窗口时怎么做（阶段 14 · 后台驻留）。托盘不可用时提示「隐藏到托盘」会改为最小化。 */
 function WindowGroup({ report }: { report: Report }) {
+  const { t } = useTranslation("settingsSystem");
   const [tray, setTray] = useState(true);
   useEffect(() => {
     let disposed = false;
@@ -54,13 +57,13 @@ function WindowGroup({ report }: { report: Report }) {
     return () => { disposed = true; };
   }, []);
   return (
-    <section className="settings-group settings-section" aria-label="窗口">
+    <section className="settings-group settings-section" aria-label={t("advanced.window.head")}>
       <div className="settings-section-meta">
-        <div className="settings-group-head"><h4>窗口</h4></div>
+        <div className="settings-group-head"><h4>{t("advanced.window.head")}</h4></div>
       </div>
       <div className="settings-section-body">
-        <SettingsRows ids={["close_action"]} label="关闭窗口时" onEditStateChange={report}
-          notes={tray ? undefined : { close_action: "这台电脑的系统托盘不可用，选「隐藏到托盘」时会改为最小化。" }} />
+        <SettingsRows ids={["close_action"]} label={t("advanced.window.label")} onEditStateChange={report}
+          notes={tray ? undefined : { close_action: t("advanced.window.trayUnavailable") }} />
       </div>
     </section>
   );
@@ -68,15 +71,16 @@ function WindowGroup({ report }: { report: Report }) {
 
 /** 模型组：各连接的地址、协议与兼容设置在连接弹层的「高级」里（阶段 19-7），这里只剩全局的模型定义覆盖。 */
 function ModelGroup({ report }: { report: (part: string) => Report }) {
+  const { t } = useTranslation("settingsSystem");
   return (
     <section className="settings-group settings-section" id="advanced-model" aria-labelledby="advanced-model-title">
       <div className="settings-section-meta">
-        <div className="settings-group-head"><h4 id="advanced-model-title">模型</h4></div>
-        <p className="hint">各连接的地址、协议和兼容开关在模型页连接的「编辑」里；单个模型的兼容设置在「管理模型」里。</p>
+        <div className="settings-group-head"><h4 id="advanced-model-title">{t("advanced.model.head")}</h4></div>
+        <p className="hint">{t("advanced.model.hint")}</p>
       </div>
       <div className="settings-section-body">
-        <OverrideField field="models_override" label="模型定义覆盖" onEditStateChange={report("models-override")}
-          hint="补充模型的额外参数，例如上下文长度、图片限制。地址、密钥和模型列表请在模型页修改。"
+        <OverrideField field="models_override" label={t("advanced.model.overrideLabel")} onEditStateChange={report("models-override")}
+          hint={t("advanced.model.overrideHint")}
           placeholder='{ "providers": { "rrss": { "modelOverrides": {} } } }' />
       </div>
     </section>
@@ -84,6 +88,7 @@ function ModelGroup({ report }: { report: (part: string) => Report }) {
 }
 
 function EngineGroup({ onAsk, report }: { onAsk: Ask; report: (part: string) => Report }) {
+  const { t } = useTranslation("settingsSystem");
   const client = useQueryClient();
   const { writing, run: write } = useSettingsWrite(piMutationOptions(client));
   const page = useQuery({ ...piQueryOptions(), ...readGate(writing) });
@@ -101,55 +106,55 @@ function EngineGroup({ onAsk, report }: { onAsk: Ask; report: (part: string) => 
     const outcome = await write(action);
     if (outcome.status === "busy") return false;
     const result = outcome.status === "done" ? outcome.data
-      : { completed: false, status: { tone: "err" as const, text: formatNotice("操作失败：", outcome.error) } };
+      : { completed: false, status: { tone: "err" as const, text: formatNotice(t("advanced.engine.opFailed"), outcome.error) } };
     if (outcome.mounted) setStatus(result.status);
     return result.completed;
   };
   // 两项都会越过默认边界：开启前确认，关闭（回到默认）直接生效。
   const setOwn = () => own ? void run({ type: "config", args: { use_own_config: false } })
-    : onAsk("使用我自己的 Pi 配置", "对话将改用 ~/.pi 里的模型、密钥和扩展，RRSS 的模型设置对对话不再生效。关闭后恢复原样，之前的选择会保留。",
-      () => void run({ type: "config", args: { use_own_config: true } }), { okLabel: "改用我的配置" });
+    : onAsk(t("advanced.engine.own.title"), t("advanced.engine.own.confirm"),
+      () => void run({ type: "config", args: { use_own_config: true } }), { okLabel: t("advanced.engine.own.okLabel") });
   const setDeveloper = () => developer ? void run({ type: "developerTools", enabled: false })
-    : onAsk("开启开发者工具", "助手将可以在工作目录里运行命令、读写文件。请确认你清楚这样做的后果再开启。",
-      () => void run({ type: "developerTools", enabled: true }), { okLabel: "开启" });
+    : onAsk(t("advanced.engine.dev.confirmTitle"), t("advanced.engine.dev.confirm"),
+      () => void run({ type: "developerTools", enabled: true }), { okLabel: t("advanced.engine.dev.okLabel") });
   const savePath = (value: string) => run({ type: "savePath", path: value }).then((ok) => { if (ok) setPath(null); return ok; });
-  useEditReport(report("engine"), "对话引擎路径", pathDirty, writing, () => savePath((path ?? "").trim()));
+  useEditReport(report("engine"), t("advanced.engine.pathReport"), pathDirty, writing, () => savePath((path ?? "").trim()));
 
   return (
     <section className="settings-group settings-section" id="advanced-assistant" aria-labelledby="advanced-assistant-title">
       <div className="settings-section-meta">
-        <div className="settings-group-head"><h4 id="advanced-assistant-title">对话引擎与安全</h4></div>
-        <p className="hint">这些开关会放宽助手能做的事，一般保持默认就好。</p>
+        <div className="settings-group-head"><h4 id="advanced-assistant-title">{t("advanced.engine.head")}</h4></div>
+        <p className="hint">{t("advanced.engine.hint")}</p>
       </div>
       <div className="settings-section-body">
         {(page.isError || config.isError) && (
           <p className="notice error" role="alert">
-            {formatNotice("读取对话引擎设置失败：", page.error ?? config.error)}
-            <button type="button" className="btn sm" onClick={() => { void page.refetch(); void config.refetch(); }}>重新读取</button>
+            {formatNotice(t("advanced.engine.readFailed"), page.error ?? config.error)}
+            <button type="button" className="btn sm" onClick={() => { void page.refetch(); void config.refetch(); }}>{t("advanced.engine.reload")}</button>
           </p>
         )}
-        <SettingRow label="使用我自己的 Pi 配置" hint="改用 ~/.pi 里的模型和密钥。">
-          <Toggle warning label="使用我自己的 Pi 配置" on={own} onLabel="" offLabel="" disabled={writing || !config.data} onClick={setOwn} />
+        <SettingRow label={t("advanced.engine.own.title")} hint={t("advanced.engine.own.hint")}>
+          <Toggle warning label={t("advanced.engine.own.title")} on={own} onLabel="" offLabel="" disabled={writing || !config.data} onClick={setOwn} />
         </SettingRow>
-        <SettingRow label="开发者工具" hint="允许助手读写文件、运行命令。默认关闭。">
-          <Toggle warning label="开发者工具" on={developer} onLabel="" offLabel="" disabled={writing || !page.data} onClick={setDeveloper} />
+        <SettingRow label={t("advanced.engine.dev.label")} hint={t("advanced.engine.dev.hint")}>
+          <Toggle warning label={t("advanced.engine.dev.label")} on={developer} onLabel="" offLabel="" disabled={writing || !page.data} onClick={setDeveloper} />
         </SettingRow>
-        <SettingRow label="Pi 可执行文件路径" hint="留空时先用应用下载的版本，没有再用系统里安装的。">
+        <SettingRow label={t("advanced.engine.piPath.label")} hint={t("advanced.engine.piPath.hint")}>
           <span className="advanced-inline">
-            <input aria-label="Pi 可执行文件路径" value={path ?? savedPath} disabled={writing || !page.data} spellCheck={false}
-              placeholder="留空使用应用下载的版本" onChange={(e) => setPath(e.target.value)} />
+            <input aria-label={t("advanced.engine.piPath.label")} value={path ?? savedPath} disabled={writing || !page.data} spellCheck={false}
+              placeholder={t("advanced.engine.piPath.placeholder")} onChange={(e) => setPath(e.target.value)} />
           </span>
         </SettingRow>
-        {pathDirty && <SaveBar label="Pi 路径" busy={writing} onSave={() => savePath((path ?? "").trim())} onUndo={() => setPath(null)} />}
-        <SettingsRows ids={["pi_cache_warming"]} label="缓存保温" disabled={writing} onEditStateChange={report("warming")} />
-        <OverrideField field="settings_override" label="Pi 设置覆盖" onEditStateChange={report("settings-override")}
-          hint="补充界面上还没有的对话引擎设置。和应用自己管理的项冲突时，以应用为准。"
+        {pathDirty && <SaveBar label={t("advanced.engine.piPath.saveLabel")} busy={writing} onSave={() => savePath((path ?? "").trim())} onUndo={() => setPath(null)} />}
+        <SettingsRows ids={["pi_cache_warming"]} label={t("advanced.engine.warming")} disabled={writing} onEditStateChange={report("warming")} />
+        <OverrideField field="settings_override" label={t("advanced.engine.settingsOverrideLabel")} onEditStateChange={report("settings-override")}
+          hint={t("advanced.engine.settingsOverrideHint")}
           placeholder='{ "compaction": { "reserveTokens": 16000 } }' />
-        <SettingRow label="会话目录" hint="对话记录保存的位置。">
+        <SettingRow label={t("advanced.engine.sessionDir.label")} hint={t("advanced.engine.sessionDir.hint")}>
           <code className="advanced-path">{page.data?.session_dir || "—"}</code>
         </SettingRow>
-        <SettingRow label="生成的配置" hint="对话引擎启动时用到的参数和配置，密钥已隐藏。">
-          <button type="button" className="btn sm" onClick={() => setViewing(true)}>查看</button>
+        <SettingRow label={t("advanced.engine.generated.label")} hint={t("advanced.engine.generated.hint")}>
+          <button type="button" className="btn sm" onClick={() => setViewing(true)}>{t("advanced.engine.generated.view")}</button>
         </SettingRow>
         {status && <p className={status.tone === "err" ? "form-status error" : "form-status"} role={status.tone === "err" ? "alert" : "status"}>{status.text}</p>}
         {viewing && <GeneratedConfigDialog onAsk={onAsk} onClose={() => setViewing(false)} onEditStateChange={report("generated")} />}
@@ -166,6 +171,7 @@ function OverrideField({ field, label, hint, placeholder, onEditStateChange }: {
   placeholder: string;
   onEditStateChange: Report;
 }) {
+  const { t } = useTranslation("settingsSystem");
   const client = useQueryClient();
   const { writing, run } = useSettingsWrite(piMutationOptions(client));
   const config = useQuery({ ...piConfigOptions(), ...readGate(writing) });
@@ -174,12 +180,12 @@ function OverrideField({ field, label, hint, placeholder, onEditStateChange }: {
   const [result, setResult] = useState<Result | null>(null);
   const dirty = draft !== null && !sameJson(draft || "{}", saved || "{}");
   const save = async (text: string): Promise<boolean> => {
-    if (jsonObject(text) === null) { setResult({ tone: "err", text: `${label}不是有效的 JSON 对象，未保存；修改后再试。` }); return false; }
+    if (jsonObject(text) === null) { setResult({ tone: "err", text: t("advanced.override.invalid", { label }) }); return false; }
     setResult(null);
     const outcome = await run({ type: "config", args: { [field]: text } });
     if (outcome.status === "busy") return false;
     if (!outcome.mounted) return outcome.status === "done" && outcome.data.completed;
-    if (outcome.status === "failed") { setResult({ tone: "err", text: formatNotice("保存失败：", outcome.error) }); return false; }
+    if (outcome.status === "failed") { setResult({ tone: "err", text: formatNotice(t("advanced.override.saveFailed"), outcome.error) }); return false; }
     setResult(outcome.data.status);
     if (outcome.data.completed) setDraft(null);
     return outcome.data.completed;
@@ -196,7 +202,7 @@ function OverrideField({ field, label, hint, placeholder, onEditStateChange }: {
         <div className="settings-code-head">
           <code>{field === "settings_override" ? "settings.json" : "models.json"}</code>
           <span className={`code-validation${jsonObject(draft ?? saved) === null ? " error" : ""}`}>
-            {!config.data ? "尚未读取" : jsonObject(draft ?? saved) === null ? "格式错误" : "格式正确"}
+            {!config.data ? t("advanced.override.notRead") : jsonObject(draft ?? saved) === null ? t("advanced.override.badFormat") : t("advanced.override.goodFormat")}
           </span>
         </div>
         <textarea className="code" rows={4} aria-label={label} aria-invalid={jsonObject(draft ?? saved) === null} value={draft ?? saved} placeholder={placeholder} spellCheck={false}
@@ -215,20 +221,21 @@ function shownOverride(config: PiConfigView | undefined, field: "settings_overri
 }
 
 function GeneratedConfigDialog({ onAsk, onClose, onEditStateChange }: { onAsk: Ask; onClose: () => void; onEditStateChange: Report }) {
+  const { t } = useTranslation("settingsSystem");
   const query = useQuery(generatedConfigOptions());
   const data = query.data;
   return (
-    <Dialog title="生成的配置" dirty={false} busy={false} onAsk={onAsk} onClose={onClose} onEditStateChange={onEditStateChange} actions={null} cancelLabel="关闭">
-      {query.isPending && <p className="hint" role="status">正在生成…</p>}
-      {query.isError && <p className="form-status error" role="alert">{formatNotice("没能生成配置：", query.error)}</p>}
+    <Dialog title={t("advanced.generated.title")} dirty={false} busy={false} onAsk={onAsk} onClose={onClose} onEditStateChange={onEditStateChange} actions={null} cancelLabel={t("advanced.generated.close")}>
+      {query.isPending && <p className="hint" role="status">{t("advanced.generated.generating")}</p>}
+      {query.isError && <p className="form-status error" role="alert">{formatNotice(t("advanced.generated.failed"), query.error)}</p>}
       {data && (
         <div className="generated-config">
-          {data.own_config && <p className="hint">正在使用你自己的 Pi 配置：模型、密钥和扩展由 ~/.pi 决定，这里只列出 RRSS 传入的部分。</p>}
+          {data.own_config && <p className="hint">{t("advanced.generated.own")}</p>}
           {data.ignored.length > 0 && (
-            <p className="notice warn" role="status">这些覆盖项由 RRSS 管理，已忽略：{data.ignored.map((key) => <code key={key}>{key}</code>)}</p>
+            <p className="notice warn" role="status">{t("advanced.generated.ignored")}{data.ignored.map((key) => <code key={key}>{key}</code>)}</p>
           )}
-          <div><strong>启动参数</strong><pre>{[data.program, ...data.args].join(" ")}</pre></div>
-          {data.env.length > 0 && <div><strong>环境变量</strong><pre>{data.env.map(([key, value]) => `${key}=${value}`).join("\n")}</pre></div>}
+          <div><strong>{t("advanced.generated.args")}</strong><pre>{[data.program, ...data.args].join(" ")}</pre></div>
+          {data.env.length > 0 && <div><strong>{t("advanced.generated.env")}</strong><pre>{data.env.map(([key, value]) => `${key}=${value}`).join("\n")}</pre></div>}
           {data.files.map(([path, text]) => <div key={path}><strong>{path}</strong><pre>{text}</pre></div>)}
         </div>
       )}

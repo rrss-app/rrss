@@ -1,4 +1,5 @@
 import type { ReaderView, TranslationEvent, TranslationFailure, TranslationIdentity, TranslationSnapshot, TranslationUnitState } from "../../bindings";
+import { i18n } from "../../i18n";
 import { mergeDocumentPatches, parseDocument, type Block, type Document } from "../../lib/blockIr";
 
 export type TranslationData = { snapshot: TranslationSnapshot; document: Document; title: string; ready: boolean };
@@ -11,7 +12,7 @@ export const translationActive = (data: TranslationData | null) => !!data && (
 export function sameTranslation(a: TranslationIdentity, b: TranslationIdentity) {
   return a.article_id === b.article_id && a.generation === b.generation && a.source_hash === b.source_hash && a.config_hash === b.config_hash;
 }
-function requireValid(ok: boolean) { if (!ok) throw new Error("译文状态不一致，需要恢复快照"); }
+function requireValid(ok: boolean) { if (!ok) throw new Error(i18n.t("translation.inconsistent", { ns: "reader" })); }
 function validUnit(unit: TranslationUnitState) {
   return ["pending", "inflight", "done"].includes(String(unit)) || unitFailed(unit);
 }
@@ -82,11 +83,11 @@ export function translationNotes(data: TranslationData | null, original: Documen
     const block = data.snapshot.unit_map[i];
     if (block === null) return;
     if (unitFailed(unit)) {
-      const note = sameBlock(data.document.blocks[block], original.blocks[block]) ? "本处未译出 · 已保留原文" : "本次未译出 · 保留已有译文";
-      notes.set(block, debug ? `${note}（${unit.failed}）` : note);
+      const note = sameBlock(data.document.blocks[block], original.blocks[block]) ? i18n.t("translation.note.keptOriginal", { ns: "reader" }) : i18n.t("translation.note.keptTranslation", { ns: "reader" });
+      notes.set(block, debug ? i18n.t("translation.note.withReason", { ns: "reader", note, reason: unit.failed }) : note);
     }
-    else if (unit !== "done" && mode === "translated") notes.set(block, "显示原文");
-    else if (debug && unit === "inflight") notes.set(block, "翻译中");
+    else if (unit !== "done" && mode === "translated") notes.set(block, i18n.t("translation.note.showOriginal", { ns: "reader" }));
+    else if (debug && unit === "inflight") notes.set(block, i18n.t("translation.note.inflight", { ns: "reader" }));
   });
   return notes;
 }

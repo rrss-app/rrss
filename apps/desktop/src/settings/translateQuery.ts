@@ -3,6 +3,7 @@ import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react
 import type { TranslatePage } from "../bindings";
 import { api } from "../lib/api";
 import { formatNotice } from "../lib/notice";
+import { i18n } from "../i18n";
 import { redactAiText, secretsFromUrl } from "./aiError";
 import { settingsChanged } from "./editState";
 
@@ -18,12 +19,11 @@ export const translateQueryOptions = () => queryOptions({
   ...settingsQueryPolicy,
 });
 
-export const TRANSLATE_BACKENDS = [
-  { id: "complete", label: "大模型" },
-  { id: "deepl", label: "DeepL 官方" },
-  { id: "deeplx", label: "DeepLX" },
-  { id: "http", label: "HTTP 服务" },
-];
+const backendLabel = (id: "complete" | "deepl" | "deeplx" | "http"): string => i18n.t(`translate.backend.${id}`, { ns: "settingsJobs" });
+const backendOption = (id: "complete" | "deepl" | "deeplx" | "http") => ({ id, get label() { return backendLabel(id); } });
+
+/** 标签用 getter 在读取时取文案，不在模块加载时求值。 */
+export const TRANSLATE_BACKENDS = (["complete", "deepl", "deeplx", "http"] as const).map(backendOption);
 
 export function prefetchTranslateSettings(client: QueryClient) {
   if (client.isMutating({ mutationKey: translateKeys.write })) return Promise.resolve();
@@ -75,14 +75,14 @@ export function translateMutationOptions(client: QueryClient) {
         saved = true;
         if (args.action === "test") {
           const sample = await api.testTranslate();
-          status = { tone: "ok", text: "设置已保存，测试翻译：" + redactAiText(sample, [submitted.deepl_key ?? "", submitted.deeplx_token ?? "", submitted.http_key ?? ""]) };
+          status = { tone: "ok", text: i18n.t("translate.notice.testOk", { ns: "settingsJobs" }) + redactAiText(sample, [submitted.deepl_key ?? "", submitted.deeplx_token ?? "", submitted.http_key ?? ""]) };
         } else {
-          status = { tone: "ok", text: "翻译设置已保存。" };
+          status = { tone: "ok", text: i18n.t("translate.notice.saved", { ns: "settingsJobs" }) };
         }
       } catch (error) {
         const prefix = args.action === "test"
-          ? saved ? "设置已保存，但测试失败：" : "保存失败，未开始测试："
-          : "保存失败：";
+          ? saved ? i18n.t("translate.notice.testFailed", { ns: "settingsJobs" }) : i18n.t("translate.notice.saveFailedNoTest", { ns: "settingsJobs" })
+          : i18n.t("translate.notice.saveFailed", { ns: "settingsJobs" });
         status = { tone: "err", text: translateError(prefix, error, submitted) };
       }
       // 没有权威回读时不拼造页面快照。
@@ -92,8 +92,8 @@ export function translateMutationOptions(client: QueryClient) {
         try {
           page = await client.fetchQuery(translateQueryOptions());
         } catch (error) {
-          status = { tone: "err", text: status.text + " 设置已保存，但" +
-            translateError("读取翻译设置失败，当前输入已保留：", error, submitted) };
+          status = { tone: "err", text: status.text + " " + i18n.t("translate.notice.savedButReadFailed", { ns: "settingsJobs",
+              error: translateError(i18n.t("translate.notice.readFailedKept", { ns: "settingsJobs" }), error, submitted) }) };
         }
       }
       return { saved, submitted: saved ? { ...submitted, deepl_key: undefined, deeplx_token: undefined, http_key: undefined } : submitted, page, status };

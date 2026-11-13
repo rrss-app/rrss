@@ -42,6 +42,7 @@ import { WebFailure, WebFirstTip, WebOrigin, WebReadingActions, WebReadingBar, W
 import { WebLinksContext } from "../../lib/webLinks";
 import type { FulltextError, WebVerifyStateEvent } from "../../bindings";
 import type { ReadSessionVia } from "../../bindings";
+import { i18n, useTranslation } from "../../i18n";
 import { inferReadingVia, useReadingSession } from "./useReadingSession";
 
 function mergeReaderMedia(view: ReaderView, incoming: MediaRef): ReaderView {
@@ -170,10 +171,11 @@ const DRAWER_EDGE_MS = 440;
 const mediaHrefs = (view: ReaderView) => view.media.map((media) => media.href).filter(Boolean).slice(0, 6);
 
 function ReaderOpening({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation("reader");
   return <div className="overlay reader-stage" data-reader-opening="true">
-    <div className="drawer reader" role="dialog" aria-label="正在打开文章" aria-busy="true">
-      <div className="drawer-head reader-head" data-tauri-drag-region="deep"><button type="button" className="tool-btn reader-back" onClick={onClose}>返回</button></div>
-      <div className="reader-opening-body" data-reader-opening-skeleton="true" role="status" aria-label="正在打开文章">
+    <div className="drawer reader" role="dialog" aria-label={t("host.opening")} aria-busy="true">
+      <div className="drawer-head reader-head" data-tauri-drag-region="deep"><button type="button" className="tool-btn reader-back" onClick={onClose}>{t("host.back")}</button></div>
+      <div className="reader-opening-body" data-reader-opening-skeleton="true" role="status" aria-label={t("host.opening")}>
         <div className="reader-opening-source"><i /><i /></div>
         <div className="reader-opening-title"><i /></div>
         <div className="reader-opening-meta"><i /></div>
@@ -190,6 +192,7 @@ function ReaderOpening({ onClose }: { onClose: () => void }) {
  */
 export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function ReaderHost(props, ref) {
   const { open, dismissible, shortcuts, inert, style, nav, onClose, onRate } = props;
+  const { t } = useTranslation("reader");
   const webActions = useContext(WebLinksContext);
   const [extractingSession, setExtractingSession] = useState<number | null>(null);
   const [requests] = useState(createReaderRequestTracker);
@@ -478,7 +481,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
         showReader(ticket, {
           id,
           source_hash: `${PREVIEW_SOURCE}${id}`,
-          title: row?.title ?? "预览",
+          title: row?.title ?? i18n.t("host.previewTitle", { ns: "reader" }),
           meta: [row?.feed_title, formatPublishedFull(row?.published_at)].filter(Boolean).join(" · "),
           feed_icon_href: row?.feed_icon_href ?? "",
           url: row?.url ?? "",
@@ -500,7 +503,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       }
       setOpening(null);
       if (!sessionRef.current && lateTicket.current === ticket) propsRef.current.onClose();
-      propsRef.current.notify({ message: formatNotice("打开失败：", err) });
+      propsRef.current.notify({ message: formatNotice(i18n.t("host.openFailedPrefix", { ns: "reader" }), err) });
     }
   };
 
@@ -546,12 +549,12 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     try {
       const result = await webActions?.extract?.(url);
       if (!requests.owns(cur.ticket) || !result || result.url !== url) return;
-      if (result.state !== "Extracted") { propsRef.current.notify({ message: result.reason ?? "没抽到像文章的正文" }); return; }
+      if (result.state !== "Extracted") { propsRef.current.notify({ message: result.reason ?? i18n.t("host.noArticle", { ns: "reader" }) }); return; }
       if (result.article_id !== cur.view.id) return;
       const view = await api.reader(cur.view.id);
       if (requests.owns(cur.ticket)) setView(cur.view.id, () => view);
     } catch (error) {
-      if (requests.owns(cur.ticket)) propsRef.current.notify({ message: formatNotice("抽取失败：", error) });
+      if (requests.owns(cur.ticket)) propsRef.current.notify({ message: formatNotice(i18n.t("host.extractFailedPrefix", { ns: "reader" }), error) });
     } finally { setExtractingSession(old => old === cur.ticket.session ? null : old); }
   };
 
@@ -591,7 +594,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     // 收录已提交，即使用户打开了下一张网页，返回记录也必须反映它。
     markCollected(id);
   }, () => {},
-    err => propsRef.current.notify({ message: formatNotice("收录失败：", err) }));
+    err => propsRef.current.notify({ message: formatNotice(i18n.t("host.collectFailedPrefix", { ns: "reader" }), err) }));
 
   const openingTicket = opening?.ticket;
   useEffect(() => {
@@ -804,14 +807,14 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       (id) => api.fetchFulltext(id),
       (next, id) => {
         setView(id, () => next);
-        propsRef.current.notify({ message: "全文已更新" });
+        propsRef.current.notify({ message: i18n.t("host.fulltextUpdated", { ns: "reader" }) });
       },
       (err, id) => {
         const msg = formatNotice("", err);
         const url = sessionRef.current?.view.id === id ? sessionRef.current.view.url : "";
         propsRef.current.notify({
-          message: msg || "抓取全文失败",
-          actionLabel: url ? "查看原文" : undefined,
+          message: msg || i18n.t("host.fulltextFailed", { ns: "reader" }),
+          actionLabel: url ? i18n.t("host.viewOriginal", { ns: "reader" }) : undefined,
           onAction: url ? () => void openOriginal(id, url) : undefined,
         });
       },
@@ -822,13 +825,13 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       "summary",
       (id) => api.summarize(id),
       (text, id) => setView(id, (cur) => ({ ...cur, summary: text, summary_stale: false })),
-      (err) => propsRef.current.notify({ message: formatNotice("摘要生成失败：", err) }),
+      (err) => propsRef.current.notify({ message: formatNotice(i18n.t("host.summaryFailedPrefix", { ns: "reader" }), err) }),
     );
 
   const regenerate = () => {
     const current = sessionRef.current;
     if (!current || tr.busy) return;
-    propsRef.current.onAsk("重新翻译全文？", "这会重新请求翻译服务，可能产生费用。已有有效译文会保留，直到新结果可以替换。", () => {
+    propsRef.current.onAsk(i18n.t("host.regenerate.title", { ns: "reader" }), i18n.t("host.regenerate.detail", { ns: "reader" }), () => {
       if (requests.owns(current.ticket)) void translation.start("regenerate");
     });
   };
@@ -872,7 +875,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       await readOrder.write(id, () => api.markRead(id, false));
       propsRef.current.onReadChange(id, false);
     } catch (err) {
-      propsRef.current.notify({ message: formatNotice("标记未读失败：", err) });
+      propsRef.current.notify({ message: formatNotice(i18n.t("host.unreadFailedPrefix", { ns: "reader" }), err) });
     }
   };
 
@@ -1066,7 +1069,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       summarizing={!!ops.summary}
       translating={tr.busy}
       translationStatus={<TranslationStatus view={tr} debug={debug} onAction={() => void translate()} onLocate={locateFailed} />}
-      translateLabel={translationAction(tr).kind === "regenerate" ? "翻译" : translationAction(tr).label}
+      translateLabel={translationAction(tr).kind === "regenerate" ? t("status.action.start") : translationAction(tr).label}
       onRegenerate={reader.translation_ready ? regenerate : undefined}
       blockNotes={blockNotes}
       translateMode={translateMode}

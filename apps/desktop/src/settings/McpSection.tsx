@@ -1,15 +1,15 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { McpInput, McpProbeView, McpToolView, McpView } from "../bindings";
 import { useReveal } from "../lib/motion";
+import { useTranslation } from "../i18n";
 import { Toggle } from "./chips";
 import {
-  cancelLogin, clause, includeFrom, inputFromView, openTools, probeServer, sentence, startLogin, takeLogin,
+  cancelLogin, clause, includeFrom, inputFromView, openTools, probeServer, sentence, startLogin, takeLogin, transportName,
   useLogins, useProbes, type LoginEntry, type ProbeEntry,
 } from "./mcpRuntime";
 import { joinCommand } from "./mcpCommand";
 
-const TYPE: Record<string, string> = { stdio: "本地命令", http: "远程 HTTP", sse: "旧式 SSE" };
-const seconds = (ms: number) => `${(Math.max(0, ms) / 1000).toFixed(1)} 秒`;
+const seconds = (ms: number) => (Math.max(0, ms) / 1000).toFixed(1);
 
 type Props = {
   servers: McpView[];
@@ -29,6 +29,7 @@ type Props = {
  * 检测只在点按或打开开关时运行，结果默认收起；浏览器登录的结果在这里取走：成功后开启并检测一次。
  */
 export function McpSection({ servers, writing, onAdd, onImport, onEdit, onToggle, onSave, onLoginFailed }: Props) {
+  const { t } = useTranslation("settingsAssistant");
   const probes = useProbes();
   const logins = useLogins();
   const applyingLogin = useRef(false);
@@ -43,7 +44,7 @@ export function McpSection({ servers, writing, onAdd, onImport, onEdit, onToggle
       if (entry.state !== "done") continue;
       // 宿主的原因已是一句完整的话（如「登录超时，请重试」），前面只补上是哪一步。
       if (!entry.ok) {
-        if (takeLogin(id, entry)) onLoginFailed(entry.message ? `浏览器登录没有完成：${clause(entry.message)}。` : "浏览器登录没有完成。");
+        if (takeLogin(id, entry)) onLoginFailed(entry.message ? t("mcp.loginIncomplete", { reason: clause(entry.message) }) : t("mcp.loginIncompleteBare"));
         continue;
       }
       applyingLogin.current = true;
@@ -59,20 +60,20 @@ export function McpSection({ servers, writing, onAdd, onImport, onEdit, onToggle
         });
       break;
     }
-  }, [logins, servers, writing, loginSettled, onToggle, onLoginFailed]);
+  }, [logins, servers, writing, loginSettled, onToggle, onLoginFailed, t]);
 
   return <section className="settings-group settings-section" aria-labelledby="assistant-mcp">
     <div className="settings-section-meta">
-      <div className="settings-group-head"><h4 id="assistant-mcp">外部工具（MCP）</h4></div>
-      <p className="hint">让助手用上你添加的工具，比如读写本机笔记、查询在线服务。每个服务单独开关，下次对话起生效。</p>
+      <div className="settings-group-head"><h4 id="assistant-mcp">{t("mcp.title")}</h4></div>
+      <p className="hint">{t("mcp.hint")}</p>
     </div>
     <div className="settings-section-body">
       <div className="settings-group-actions">
-        <button type="button" className="btn sm ghost" disabled={writing} onClick={onImport}>从 JSON 导入</button>
-        <button type="button" className="btn sm" disabled={writing} onClick={onAdd}>添加服务</button>
+        <button type="button" className="btn sm ghost" disabled={writing} onClick={onImport}>{t("mcp.importJson")}</button>
+        <button type="button" className="btn sm" disabled={writing} onClick={onAdd}>{t("mcp.add")}</button>
       </div>
-      {servers.length === 0 ? <p className="settings-empty">还没有服务。可以添加服务，或直接粘贴服务说明里的 JSON 配置。</p>
-        : <ul className="mcp-list" aria-label="外部工具服务">{servers.map((m) => <McpRow key={m.id} server={m} writing={writing}
+      {servers.length === 0 ? <p className="settings-empty">{t("mcp.empty")}</p>
+        : <ul className="mcp-list" aria-label={t("mcp.listLabel")}>{servers.map((m) => <McpRow key={m.id} server={m} writing={writing}
           probe={probes.get(m.id)} login={logins.get(m.id)} onEdit={onEdit} onToggle={onToggle} onSave={onSave} />)}</ul>}
     </div>
   </section>;
@@ -87,6 +88,7 @@ function McpRow({ server: m, writing, probe, login, onEdit, onToggle, onSave }: 
   onToggle: Props["onToggle"];
   onSave: Props["onSave"];
 }) {
+  const { t } = useTranslation("settingsAssistant");
   const [open, setOpen] = useState(false);
   // 勾选后先按新的开放范围显示，写入失败再退回；宿主读回新值后以读回的为准。
   const [pending, setPending] = useState<string[] | null>(null);
@@ -102,7 +104,7 @@ function McpRow({ server: m, writing, probe, login, onEdit, onToggle, onSave }: 
   const result = !legacy && !needsLogin ? probe?.result ?? null : null;
   const missing = [...m.env, ...m.headers].filter((v) => !v.has_value).map((v) => v.name);
   const where = m.transport === "stdio" ? joinCommand([m.command, ...m.args]) : m.url;
-  const tag = TYPE[m.transport] ?? m.transport;
+  const tag = transportName(m.transport);
   const probeNow = () => probeServer(inputFromView(m));
   const toggle = () => {
     if (m.enabled) void onToggle(m, false);
@@ -111,39 +113,39 @@ function McpRow({ server: m, writing, probe, login, onEdit, onToggle, onSave }: 
   };
 
   const health: { tone?: "ok" | "bad" | "busy" | "warn"; text: string } =
-    legacy ? { tone: "warn", text: "这种旧式地址已连不上，换成新地址后再开启" }
-    : needsLogin ? waiting ? { tone: "busy", text: "等你在浏览器里完成登录…" } : { text: "需要登录 · 在浏览器里授权后才能使用" }
-    : busy ? { tone: "busy", text: "正在连接…" }
-    : result?.ok ? { tone: "ok", text: `已连接 · 开放 ${openTools(result.tools, include).size} / ${result.tools.length} 个工具 · ${seconds(result.elapsed_ms)}` }
-    : result ? { tone: "bad", text: `连接失败 · ${clause(result.error) || "没有连上"}` }
-    : { text: oauth ? "已登录 · 未检测" : "未检测" };
+    legacy ? { tone: "warn", text: t("mcp.health.legacy") }
+    : needsLogin ? waiting ? { tone: "busy", text: t("mcp.health.waiting") } : { text: t("mcp.health.needsLogin") }
+    : busy ? { tone: "busy", text: t("mcp.health.connecting") }
+    : result?.ok ? { tone: "ok", text: t("mcp.health.connected", { open: openTools(result.tools, include).size, total: result.tools.length, seconds: seconds(result.elapsed_ms) }) }
+    : result ? { tone: "bad", text: t("mcp.health.failed", { reason: clause(result.error) || t("mcp.health.noConnect") }) }
+    : { text: oauth ? t("mcp.health.loggedIn") : t("mcp.health.untested") };
 
   const actions = legacy
-    ? <button type="button" className="btn sm primary" disabled={writing} aria-label={`改填地址 ${m.name}`} onClick={() => onEdit(m)}>改填地址</button>
+    ? <button type="button" className="btn sm primary" disabled={writing} aria-label={t("mcp.editAddressAria", { name: m.name })} onClick={() => onEdit(m)}>{t("mcp.editAddress")}</button>
     : <>
       {result && !busy && <button type="button" className="btn sm ghost" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen((v) => !v)}>
-        {result.ok ? (open ? "收起工具" : "查看工具") : (open ? "收起详情" : "查看详情")}</button>}
+        {result.ok ? (open ? t("mcp.hideTools") : t("mcp.viewTools")) : (open ? t("mcp.hideDetails") : t("mcp.viewDetails"))}</button>}
       {needsLogin
         ? waiting
-          ? <button type="button" className="btn sm" aria-label={`取消登录 ${m.name}`} onClick={() => cancelLogin(m.id)}>取消</button>
-          : <button type="button" className="btn sm primary" disabled={writing} aria-label={`登录 ${m.name}`} onClick={() => startLogin(m.id)}>登录</button>
-        : <button type="button" className="btn sm" disabled={busy} aria-label={`检测 ${m.name}`} onClick={probeNow}>检测</button>}
-      <button type="button" className="btn sm" disabled={writing} aria-label={`编辑服务 ${m.name}`} onClick={() => onEdit(m)}>编辑</button>
+          ? <button type="button" className="btn sm" aria-label={t("mcp.cancelAria", { name: m.name })} onClick={() => cancelLogin(m.id)}>{t("mcp.cancel")}</button>
+          : <button type="button" className="btn sm primary" disabled={writing} aria-label={t("mcp.loginAria", { name: m.name })} onClick={() => startLogin(m.id)}>{t("mcp.login")}</button>
+        : <button type="button" className="btn sm" disabled={busy} aria-label={t("mcp.probeAria", { name: m.name })} onClick={probeNow}>{t("mcp.probe")}</button>}
+      <button type="button" className="btn sm" disabled={writing} aria-label={t("mcp.editAria", { name: m.name })} onClick={() => onEdit(m)}>{t("mcp.edit")}</button>
     </>;
 
   return <li className="mcp-row">
     <div className="mcp-row-head">
       <div className="mcp-row-main">
         <div className="mcp-row-title"><strong>{m.name}</strong>
-          <span className={legacy ? "meta-tag warn" : "meta-tag"}>{oauth && !legacy ? `${tag} · 浏览器登录` : tag}</span></div>
+          <span className={legacy ? "meta-tag warn" : "meta-tag"}>{oauth && !legacy ? t("mcp.oauthTag", { tag }) : tag}</span></div>
         <p className="mcp-where" title={where}>{where}</p>
         <p className="mcp-health" data-tone={health.tone} role="status">{health.text}</p>
-        {missing.length > 0 && <p className="hint warn">需要重新填写：{missing.join("、")}</p>}
+        {missing.length > 0 && <p className="hint warn">{t("mcp.missing", { names: missing.join("、") })}</p>}
       </div>
       <div className="mcp-row-actions">
         {actions}
         {/* 旧式 SSE 与没登录的服务只能关、不能开。 */}
-        <Toggle warning label={`服务 ${m.name}`} on={m.enabled} onLabel="已开启" offLabel="已关闭"
+        <Toggle warning label={t("mcp.toggle", { name: m.name })} on={m.enabled} onLabel={t("mcp.on")} offLabel={t("mcp.off")}
           disabled={writing || (!m.enabled && (legacy || needsLogin))} onClick={toggle} />
       </div>
     </div>
@@ -164,12 +166,13 @@ export function McpPanel({ id, open, result, include, disabled, onInclude }: {
   disabled: boolean;
   onInclude: (include: string[]) => void;
 }) {
+  const { t } = useTranslation("settingsAssistant");
   const reveal = useReveal(open, { openMs: 240, closeMs: 180 });
   return <div className="mcp-reveal" data-state={reveal} id={id}>
     <div className="mcp-reveal-clip">
       {result.ok ? <McpToolList tools={result.tools} include={include} disabled={disabled} onChange={onInclude} />
         : <div className="mcp-error">
-          <p><strong>{sentence(result.error) || "没有连上。"}</strong>{result.hint ? ` ${sentence(result.hint)}` : ""}</p>
+          <p><strong>{sentence(result.error) || t("mcp.errorFallback")}</strong>{result.hint ? ` ${sentence(result.hint)}` : ""}</p>
           {result.output && <pre>{result.output}</pre>}
         </div>}
     </div>
@@ -183,8 +186,9 @@ export function McpToolList({ tools, include, disabled, onChange }: {
   disabled: boolean;
   onChange: (include: string[]) => void;
 }) {
+  const { t } = useTranslation("settingsAssistant");
   const chosen = openTools(tools, include);
-  if (tools.length === 0) return <div className="mcp-tools"><p className="hint">这个服务没有提供工具。</p></div>;
+  if (tools.length === 0) return <div className="mcp-tools"><p className="hint">{t("mcp.noTools")}</p></div>;
   const set = (name: string, on: boolean) => {
     const next = new Set(chosen);
     if (on) next.add(name); else next.delete(name);
@@ -192,10 +196,10 @@ export function McpToolList({ tools, include, disabled, onChange }: {
   };
   return <div className="mcp-tools">
     <div className="mcp-tools-head">
-      <span>勾选的工具会开放给助手；会改文件的默认不勾，勾上后每次调用前先问你。</span>
-      <button type="button" className="btn sm ghost" disabled={disabled || chosen.size === tools.length} onClick={() => onChange([])}>全选</button>
+      <span>{t("mcp.toolsHead")}</span>
+      <button type="button" className="btn sm ghost" disabled={disabled || chosen.size === tools.length} onClick={() => onChange([])}>{t("mcp.selectAll")}</button>
     </div>
-    <ul aria-label="开放给助手的工具">{tools.map((tool) => {
+    <ul aria-label={t("mcp.toolsLabel")}>{tools.map((tool) => {
       const on = chosen.has(tool.name);
       return <li key={tool.name}>
         <label className="mcp-tool">
@@ -203,9 +207,9 @@ export function McpToolList({ tools, include, disabled, onChange }: {
           <span className="mcp-tool-text">
             <code>{tool.name}</code>
             {tool.description && <span className="mcp-tool-desc">{tool.description}</span>}
-            {tool.writes && <span className="mcp-tool-ask" data-on={on ? "" : undefined}><span>调用前会先问你</span></span>}
+            {tool.writes && <span className="mcp-tool-ask" data-on={on ? "" : undefined}><span>{t("mcp.ask")}</span></span>}
           </span>
-          {tool.writes && <span className="meta-tag warn">会改文件</span>}
+          {tool.writes && <span className="meta-tag warn">{t("mcp.writes")}</span>}
         </label>
       </li>;
     })}</ul>

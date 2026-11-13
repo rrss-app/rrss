@@ -5,6 +5,7 @@ import { formatNotice } from "../../lib/notice";
 import { FloatingMenu, type MenuAnchor } from "../../components/FloatingMenu";
 import { Icon } from "../../components/Icon";
 import { RelativeTime } from "../../components/RelativeTime";
+import { useTranslation } from "../../i18n";
 
 /**
  * 左栏「会话」（阶段 14 · 会话文件夹与归档）：新对话 → 各文件夹（可折叠）→ 没归类的会话，底部「已归档 N」。
@@ -37,6 +38,7 @@ export function ThreadList({ list, active, fresh, onThread, onChanged, onArchive
   onArchived: () => void;
   notify: (notice: ThreadNotice) => void;
 }) {
+  const { t: tr } = useTranslation("chat");
   const [menu, setMenu] = useState<Menu | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
   // 折叠先在本地生效，写入失败再退回。
@@ -70,21 +72,21 @@ export function ThreadList({ list, active, fresh, onThread, onChanged, onArchive
       await run(async () => {
         const created = await api.createThreadFolder(text.slice(0, FOLDER_MAX));
         if (edit.move) await api.setThreadFolder(edit.move, created.id);
-      }, "没能新建文件夹：");
+      }, tr("thread.failure.createFolder"));
     } else if (edit.key.startsWith("t:")) {
       const id = Number(edit.key.slice(2));
       if (text === thread(id)?.title) return;
       // 清空就回到自动标题。
-      await run(() => api.renameThread(id, text.slice(0, TITLE_MAX)), "没能重命名：");
+      await run(() => api.renameThread(id, text.slice(0, TITLE_MAX)), tr("thread.failure.rename"));
     } else {
       const id = Number(edit.key.slice(2));
       if (!text || text === folder(id)?.name) return;
-      await run(() => api.renameThreadFolder(id, text.slice(0, FOLDER_MAX)), "没能重命名文件夹：");
+      await run(() => api.renameThreadFolder(id, text.slice(0, FOLDER_MAX)), tr("thread.failure.renameFolder"));
     }
   };
   const renameInput = (label: string, initial: string) => (
     <input className="thread-rename" aria-label={label} defaultValue={initial} autoFocus maxLength={editing?.key.startsWith("t:") ? TITLE_MAX : FOLDER_MAX}
-      placeholder={editing?.key === "new" ? "文件夹名称" : editing?.key.startsWith("t:") ? "留空恢复自动标题" : undefined}
+      placeholder={editing?.key === "new" ? tr("thread.placeholder.folderName") : editing?.key.startsWith("t:") ? tr("thread.placeholder.autoTitle") : undefined}
       onFocus={(event) => event.currentTarget.select()}
       onBlur={(event) => void commit(event.currentTarget.value)}
       onKeyDown={(event) => {
@@ -99,13 +101,13 @@ export function ThreadList({ list, active, fresh, onThread, onChanged, onArchive
     return <div key={t.id} className="thread-row" data-depth={depth} data-new={fresh.has(t.id) ? "" : undefined}
       data-menu={menu?.kind === "thread" && menu.id === t.id ? "" : undefined}
       onContextMenu={(event) => { event.preventDefault(); openMenu({ kind: "thread", id: t.id, step: "root", anchor: { x: event.clientX, y: event.clientY } }); }}>
-      {editing?.key === key ? <div className="thread-item thread-editing">{renameInput("会话标题", t.title)}</div> : <>
-        <button type="button" className="thread-item" title={t.title} data-on={active === t.id ? "1" : "0"} aria-description={t.pinned ? "已置顶" : undefined}
+      {editing?.key === key ? <div className="thread-item thread-editing">{renameInput(tr("thread.label.title"), t.title)}</div> : <>
+        <button type="button" className="thread-item" title={t.title} data-on={active === t.id ? "1" : "0"} aria-description={t.pinned ? tr("thread.pinned") : undefined}
           onClick={() => onThread(t.id, t)}>
           <span className="thread-title">{t.title}</span>
-          {t.pinned ? <span className="thread-pin" title="已置顶" aria-hidden="true"><Icon name="pin" size={12} /></span> : null}
+          {t.pinned ? <span className="thread-pin" title={tr("thread.pinned")} aria-hidden="true"><Icon name="pin" size={12} /></span> : null}
         </button>
-        <button type="button" className="thread-more" aria-label={`${t.title} 的操作`} aria-haspopup="menu"
+        <button type="button" className="thread-more" aria-label={tr("thread.actionsFor", { title: t.title })} aria-haspopup="menu"
           aria-expanded={menu?.kind === "thread" && menu.id === t.id}
           onClick={(event) => openMenu({ kind: "thread", id: t.id, step: "root", anchor: anchorOf(event.currentTarget) })}>⋯</button>
       </>}
@@ -119,47 +121,47 @@ export function ThreadList({ list, active, fresh, onThread, onChanged, onArchive
     return <div key={key} className="thread-folder-group" role="group" aria-label={f.name}>
       <div className="thread-row thread-folder-row" data-menu={menu?.kind === "folder" && menu.id === f.id ? "" : undefined}
         onContextMenu={(event) => { event.preventDefault(); openMenu({ kind: "folder", id: f.id, step: "root", anchor: { x: event.clientX, y: event.clientY } }); }}>
-        {editing?.key === key ? <div className="thread-item thread-folder thread-editing"><Icon name="folder" size={14} />{renameInput("文件夹名称", f.name)}</div> : <>
+        {editing?.key === key ? <div className="thread-item thread-folder thread-editing"><Icon name="folder" size={14} />{renameInput(tr("thread.label.folderName"), f.name)}</div> : <>
           <button type="button" className="thread-item thread-folder" aria-expanded={!shut}
             onClick={() => {
               setCollapsed((old) => ({ ...old, [f.id]: !shut }));
               void api.setThreadFolderCollapsed(f.id, !shut).catch((err) => {
                 setCollapsed((old) => ({ ...old, [f.id]: shut }));
-                notify({ message: formatNotice("没能折叠文件夹：", err) });
+                notify({ message: formatNotice(tr("thread.failure.collapse"), err) });
               });
             }}>
             <Icon name="chevronDown" size={12} className="thread-folder-twist" /><Icon name="folder" size={14} />
             <span className="thread-title">{f.name}</span><span className="thread-folder-count">{items.length}</span>
           </button>
-          <button type="button" className="thread-more" aria-label={`${f.name} 文件夹的操作`} aria-haspopup="menu"
+          <button type="button" className="thread-more" aria-label={tr("thread.folderActionsFor", { name: f.name })} aria-haspopup="menu"
             aria-expanded={menu?.kind === "folder" && menu.id === f.id}
             onClick={(event) => openMenu({ kind: "folder", id: f.id, step: "root", anchor: anchorOf(event.currentTarget) })}>⋯</button>
         </>}
       </div>
-      {shut ? null : items.length ? items.map((t) => row(t, 1)) : <p className="thread-empty">空文件夹</p>}
+      {shut ? null : items.length ? items.map((t) => row(t, 1)) : <p className="thread-empty">{tr("thread.emptyFolder")}</p>}
     </div>;
   });
 
   return <>
     <div className="section-label thread-section">
-      <span>会话</span>
-      <button type="button" className="thread-section-add" title="新建文件夹" aria-label="新建文件夹" onClick={() => { setMenu(null); setEditing({ key: "new" }); }}>
+      <span>{tr("thread.section")}</span>
+      <button type="button" className="thread-section-add" title={tr("thread.newFolder")} aria-label={tr("thread.newFolder")} onClick={() => { setMenu(null); setEditing({ key: "new" }); }}>
         <Icon name="folder" size={13} /><Icon name="plus" size={9} />
       </button>
     </div>
     <div className="thread-list">
-      <button type="button" className="thread-item new-thread" onClick={() => onThread(0)}><Icon name="plus" size={14} />新对话</button>
+      <button type="button" className="thread-item new-thread" onClick={() => onThread(0)}><Icon name="plus" size={14} />{tr("thread.newThread")}</button>
       {folders}
-      {editing?.key === "new" ? <div className="thread-row"><div className="thread-item thread-folder thread-editing"><Icon name="folder" size={14} />{renameInput("新文件夹名称", "")}</div></div> : null}
+      {editing?.key === "new" ? <div className="thread-row"><div className="thread-item thread-folder thread-editing"><Icon name="folder" size={14} />{renameInput(tr("thread.label.newFolderName"), "")}</div></div> : null}
       {list.threads.filter((t) => t.folder_id == null || !folder(t.folder_id)).map((t) => row(t, 0))}
       {list.archived_count > 0 ? (
         <button type="button" className="thread-item thread-archived-entry" onClick={onArchived}>
-          <Icon name="inbox" size={14} /><span className="thread-title">已归档</span><span className="thread-folder-count">{list.archived_count}</span>
+          <Icon name="inbox" size={14} /><span className="thread-title">{tr("thread.archived")}</span><span className="thread-folder-count">{list.archived_count}</span>
         </button>
       ) : null}
     </div>
     {menu ? <FloatingMenu key={`${menu.kind}:${menu.id}:${menu.step}`} anchor={menu.anchor} placement="below"
-      role={menu.step === "delete" ? "dialog" : "menu"} label={menu.step === "delete" ? "确认删除" : menu.kind === "folder" ? "文件夹操作" : "会话操作"}
+      role={menu.step === "delete" ? "dialog" : "menu"} label={menu.step === "delete" ? tr("thread.menu.confirmDelete") : menu.kind === "folder" ? tr("thread.menu.folder") : tr("thread.menu.thread")}
       className="reader-context-menu menu-list thread-menu" onClose={() => setMenu(null)}>
       {menu.kind === "thread" ? threadMenu(menu) : menu.kind === "folder" ? folderMenu(menu) : null}
     </FloatingMenu> : null}
@@ -170,34 +172,34 @@ export function ThreadList({ list, active, fresh, onThread, onChanged, onArchive
     if (!t) return null;
     const close = () => setMenu(null);
     if (m.step === "delete") return <DeleteConfirm title={t.title} onCancel={() => setMenu({ ...m, step: "root" })}
-      onDelete={() => { close(); void run(async () => { await api.deleteThread(t.id); if (active === t.id) onThread(0); }, "没能删除：", { message: `已删除「${t.title}」` }); }} />;
+      onDelete={() => { close(); void run(async () => { await api.deleteThread(t.id); if (active === t.id) onThread(0); }, tr("thread.failure.delete"), { message: tr("thread.notice.deleted", { title: t.title }) }); }} />;
     if (m.step === "move") return <>
-      <button type="button" role="menuitem" className="thread-menu-back" onClick={() => setMenu({ ...m, step: "root" })}><Icon name="chevronLeft" size={13} />移到文件夹</button>
+      <button type="button" role="menuitem" className="thread-menu-back" onClick={() => setMenu({ ...m, step: "root" })}><Icon name="chevronLeft" size={13} />{tr("thread.menu.moveTo")}</button>
       <hr />
       {list.folders.map((f) => (
         <button key={f.id} type="button" role="menuitem" disabled={t.folder_id === f.id}
-          onClick={() => { close(); void run(() => api.setThreadFolder(t.id, f.id), "没能移动：", { message: `已移到「${f.name}」` }); }}>
+          onClick={() => { close(); void run(() => api.setThreadFolder(t.id, f.id), tr("thread.failure.move"), { message: tr("thread.notice.movedTo", { name: f.name }) }); }}>
           <Icon name="folder" size={14} />{f.name}{t.folder_id === f.id ? <Icon name="check" size={13} className="thread-menu-check" /> : null}
         </button>
       ))}
-      <button type="button" role="menuitem" onClick={() => { close(); setEditing({ key: "new", move: t.id }); }}><Icon name="plus" size={14} />新建文件夹并移入</button>
+      <button type="button" role="menuitem" onClick={() => { close(); setEditing({ key: "new", move: t.id }); }}><Icon name="plus" size={14} />{tr("thread.menu.newFolderAndMove")}</button>
       {t.folder_id != null ? <><hr /><button type="button" role="menuitem"
-        onClick={() => { close(); void run(() => api.setThreadFolder(t.id, null), "没能移动：", { message: "已移出文件夹" }); }}>移出文件夹</button></> : null}
+        onClick={() => { close(); void run(() => api.setThreadFolder(t.id, null), tr("thread.failure.move"), { message: tr("thread.notice.movedOut") }); }}>{tr("thread.menu.moveOut")}</button></> : null}
     </>;
     return <>
-      <button type="button" role="menuitem" onClick={() => { close(); setEditing({ key: `t:${t.id}` }); }}><Icon name="edit" size={14} />重命名</button>
-      <button type="button" role="menuitem" onClick={() => { close(); void run(() => api.setThreadPinned(t.id, !t.pinned), t.pinned ? "没能取消置顶：" : "没能置顶："); }}>
-        <Icon name="pin" size={14} />{t.pinned ? "取消置顶" : "置顶"}</button>
-      <button type="button" role="menuitem" onClick={() => setMenu({ ...m, step: "move" })}><Icon name="folder" size={14} />移到文件夹…</button>
+      <button type="button" role="menuitem" onClick={() => { close(); setEditing({ key: `t:${t.id}` }); }}><Icon name="edit" size={14} />{tr("thread.menu.rename")}</button>
+      <button type="button" role="menuitem" onClick={() => { close(); void run(() => api.setThreadPinned(t.id, !t.pinned), t.pinned ? tr("thread.failure.unpin") : tr("thread.failure.pin")); }}>
+        <Icon name="pin" size={14} />{t.pinned ? tr("thread.menu.unpin") : tr("thread.menu.pin")}</button>
+      <button type="button" role="menuitem" onClick={() => setMenu({ ...m, step: "move" })}><Icon name="folder" size={14} />{tr("thread.menu.moveToEllipsis")}</button>
       <hr />
       <button type="button" role="menuitem" onClick={() => {
         close();
-        void run(() => api.archiveThread(t.id), "没能归档：", {
-          message: `已归档「${t.title}」`, actionLabel: "撤销",
-          onAction: () => void run(() => api.unarchiveThread(t.id), "没能撤销归档："),
+        void run(() => api.archiveThread(t.id), tr("thread.failure.archive"), {
+          message: tr("thread.notice.archived", { title: t.title }), actionLabel: tr("thread.notice.undo"),
+          onAction: () => void run(() => api.unarchiveThread(t.id), tr("thread.failure.undoArchive")),
         });
-      }}><Icon name="inbox" size={14} />归档</button>
-      <button type="button" role="menuitem" className="danger" onClick={() => setMenu({ ...m, step: "delete" })}><Icon name="trash" size={14} />删除…</button>
+      }}><Icon name="inbox" size={14} />{tr("thread.menu.archive")}</button>
+      <button type="button" role="menuitem" className="danger" onClick={() => setMenu({ ...m, step: "delete" })}><Icon name="trash" size={14} />{tr("thread.menu.delete")}</button>
     </>;
   }
 
@@ -211,18 +213,18 @@ export function ThreadList({ list, active, fresh, onThread, onChanged, onArchive
       const ids = list.folders.map((x) => x.id);
       [ids[index], ids[index + delta]] = [ids[index + delta], ids[index]];
       close();
-      void run(() => api.reorderThreadFolders(ids), "没能调整顺序：");
+      void run(() => api.reorderThreadFolders(ids), tr("thread.failure.reorder"));
     };
     if (m.step === "delete") return <DeleteConfirm title={f.name} folder
-      note={count ? `里面的 ${count} 条会话回到未归类，不会删除。` : "这是空文件夹。"}
+      note={count ? tr("thread.confirm.noteThreads", { count }) : tr("thread.confirm.noteEmpty")}
       onCancel={() => setMenu({ ...m, step: "root" })}
-      onDelete={() => { close(); void run(() => api.deleteThreadFolder(f.id), "没能删除文件夹：", { message: `已删除文件夹「${f.name}」${count ? "，里面的会话回到未归类" : ""}` }); }} />;
+      onDelete={() => { close(); void run(() => api.deleteThreadFolder(f.id), tr("thread.failure.deleteFolder"), { message: count ? tr("thread.notice.deletedFolderWithThreads", { name: f.name }) : tr("thread.notice.deletedFolder", { name: f.name }) }); }} />;
     return <>
-      <button type="button" role="menuitem" onClick={() => { close(); setEditing({ key: `f:${f.id}` }); }}><Icon name="edit" size={14} />重命名</button>
-      <button type="button" role="menuitem" disabled={index === 0} onClick={() => move(-1)}>上移</button>
-      <button type="button" role="menuitem" disabled={index === list.folders.length - 1} onClick={() => move(1)}>下移</button>
+      <button type="button" role="menuitem" onClick={() => { close(); setEditing({ key: `f:${f.id}` }); }}><Icon name="edit" size={14} />{tr("thread.menu.rename")}</button>
+      <button type="button" role="menuitem" disabled={index === 0} onClick={() => move(-1)}>{tr("thread.menu.moveUp")}</button>
+      <button type="button" role="menuitem" disabled={index === list.folders.length - 1} onClick={() => move(1)}>{tr("thread.menu.moveDown")}</button>
       <hr />
-      <button type="button" role="menuitem" className="danger" onClick={() => setMenu({ ...m, step: "delete" })}><Icon name="trash" size={14} />删除文件夹…</button>
+      <button type="button" role="menuitem" className="danger" onClick={() => setMenu({ ...m, step: "delete" })}><Icon name="trash" size={14} />{tr("thread.menu.deleteFolder")}</button>
     </>;
   }
 }
@@ -231,12 +233,13 @@ export function ThreadList({ list, active, fresh, onThread, onChanged, onArchive
 export function DeleteConfirm({ title, folder = false, note, onCancel, onDelete }: {
   title: string; folder?: boolean; note?: string; onCancel: () => void; onDelete: () => void;
 }) {
+  const { t: tr } = useTranslation("chat");
   return <div className="thread-confirm">
-    <p>删除{folder ? "文件夹" : ""}「{title}」？</p>
-    <small>{note ?? "消息和 Pi 会话记录一起删掉，不能恢复。只是不想在侧栏看到，可以归档。"}</small>
+    <p>{folder ? tr("thread.confirm.askFolder", { title }) : tr("thread.confirm.askThread", { title })}</p>
+    <small>{note ?? tr("thread.confirm.noteThread")}</small>
     <div className="row thread-confirm-actions">
-      <button type="button" className="btn sm ghost" autoFocus onClick={onCancel}>取消</button>
-      <button type="button" className="btn sm danger" onClick={onDelete}>{folder ? "删除文件夹" : "删除"}</button>
+      <button type="button" className="btn sm ghost" autoFocus onClick={onCancel}>{tr("thread.confirm.cancel")}</button>
+      <button type="button" className="btn sm danger" onClick={onDelete}>{folder ? tr("thread.confirm.deleteFolder") : tr("thread.confirm.delete")}</button>
     </div>
   </div>;
 }
@@ -253,6 +256,7 @@ export function ArchivedThreads({ threads, active, onBack, onThread, onChanged, 
   onChanged: () => void;
   notify: (notice: ThreadNotice) => void;
 }) {
+  const { t: tr } = useTranslation("chat");
   const [menu, setMenu] = useState<Extract<Menu, { kind: "archived" }> | null>(null);
   const run = async (work: () => Promise<unknown>, failure: string, done: string) => {
     try { await work(); notify({ message: done }); } catch (err) { notify({ message: formatNotice(failure, err) }); }
@@ -261,8 +265,8 @@ export function ArchivedThreads({ threads, active, onBack, onThread, onChanged, 
   const target = menu ? threads?.find((t) => t.id === menu.id) : undefined;
   return <>
     <div className="feeds-mode-head thread-archived-head" data-tauri-drag-region="deep">
-      <button type="button" className="feeds-back" onClick={onBack} title="回到会话（Esc）"><Icon name="chevronLeft" size={14} />会话</button>
-      <strong>已归档</strong>
+      <button type="button" className="feeds-back" onClick={onBack} title={tr("thread.archivedView.backTitle")}><Icon name="chevronLeft" size={14} />{tr("thread.archivedView.back")}</button>
+      <strong>{tr("thread.archived")}</strong>
     </div>
     <div className="thread-list" aria-busy={threads ? undefined : "true"}>
       {threads?.map((t) => (
@@ -272,21 +276,21 @@ export function ArchivedThreads({ threads, active, onBack, onThread, onChanged, 
             <span className="thread-title">{t.title}</span>
             {t.archived_at ? <RelativeTimeLabel ms={t.archived_at} /> : null}
           </button>
-          <button type="button" className="thread-more" aria-label={`${t.title} 的操作`} aria-haspopup="menu" aria-expanded={menu?.id === t.id}
+          <button type="button" className="thread-more" aria-label={tr("thread.actionsFor", { title: t.title })} aria-haspopup="menu" aria-expanded={menu?.id === t.id}
             onClick={(event) => { const r = event.currentTarget.getBoundingClientRect(); setMenu((old) => old?.id === t.id ? null : { kind: "archived", id: t.id, step: "root", anchor: { x: r.left, y: r.bottom + 4 } }); }}>⋯</button>
         </div>
       ))}
-      {threads && !threads.length ? <p className="thread-empty">没有归档的会话。</p> : null}
-      <p className="thread-empty">归档的会话不在侧栏、不进搜索。打开后发新消息会自动取消归档。</p>
+      {threads && !threads.length ? <p className="thread-empty">{tr("thread.archivedView.none")}</p> : null}
+      <p className="thread-empty">{tr("thread.archivedView.note")}</p>
     </div>
     {menu && target ? <FloatingMenu key={`${menu.id}:${menu.step}`} anchor={menu.anchor} placement="below" role={menu.step === "delete" ? "dialog" : "menu"}
-      label={menu.step === "delete" ? "确认删除" : "会话操作"} className="reader-context-menu menu-list thread-menu" onClose={() => setMenu(null)}>
+      label={menu.step === "delete" ? tr("thread.menu.confirmDelete") : tr("thread.menu.thread")} className="reader-context-menu menu-list thread-menu" onClose={() => setMenu(null)}>
       {menu.step === "delete" ? <DeleteConfirm title={target.title} onCancel={() => setMenu({ ...menu, step: "root" })}
-        onDelete={() => { setMenu(null); void run(async () => { await api.deleteThread(target.id); if (active === target.id) onThread(0); }, "没能删除：", `已删除「${target.title}」`); }} /> : <>
-        <button type="button" role="menuitem" onClick={() => { setMenu(null); void run(() => api.unarchiveThread(target.id), "没能取消归档：", `已取消归档「${target.title}」`); }}>
-          <Icon name="inbox" size={14} />取消归档</button>
+        onDelete={() => { setMenu(null); void run(async () => { await api.deleteThread(target.id); if (active === target.id) onThread(0); }, tr("thread.failure.delete"), tr("thread.notice.deleted", { title: target.title })); }} /> : <>
+        <button type="button" role="menuitem" onClick={() => { setMenu(null); void run(() => api.unarchiveThread(target.id), tr("thread.failure.unarchive"), tr("thread.notice.unarchived", { title: target.title })); }}>
+          <Icon name="inbox" size={14} />{tr("thread.menu.unarchive")}</button>
         <hr />
-        <button type="button" role="menuitem" className="danger" onClick={() => setMenu({ ...menu, step: "delete" })}><Icon name="trash" size={14} />删除…</button>
+        <button type="button" role="menuitem" className="danger" onClick={() => setMenu({ ...menu, step: "delete" })}><Icon name="trash" size={14} />{tr("thread.menu.delete")}</button>
       </>}
     </FloatingMenu> : null}
   </>;

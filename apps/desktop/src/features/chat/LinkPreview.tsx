@@ -5,7 +5,7 @@ import { useLingering } from "../../lib/motion";
 import { WebLinksContext } from "../../lib/webLinks";
 import { sourceStatusNote } from "../../components/DigestSourcePreview";
 import { localArticleId } from "./ChatMessages";
-import { locale } from "../../i18n";
+import { locale, useTranslation } from "../../i18n";
 
 /** 停多久才弹：擦过不弹。 */
 const SHOW_MS = 350;
@@ -96,6 +96,7 @@ export type LinkPreviewProps = {
  * 本地文章显示来源、日期、已读、标题与摘要；外部链接只显示地址与站点，不发任何请求。
  */
 export function LinkPreview({ onOpenArticle, onCite, notify }: LinkPreviewProps) {
+  const { t } = useTranslation("chat");
   const [target, setTarget] = useState<Target | null>(null);
   const shown = useLingering(target, 100);
   const [style, setStyle] = useState<CSSProperties>({ visibility: "hidden" });
@@ -216,31 +217,31 @@ export function LinkPreview({ onOpenArticle, onCite, notify }: LinkPreviewProps)
     close();
   };
   return createPortal(
-    <div ref={card} className="digest-source-card chat-link-card" role="dialog" aria-label={view.kind === "local" ? "文章预览" : "链接预览"}
+    <div ref={card} className="digest-source-card chat-link-card" role="dialog" aria-label={view.kind === "local" ? t("linkPreview.articleDialog") : t("linkPreview.linkDialog")}
       style={style} data-up={above ? "" : undefined} data-leaving={shown.leaving ? "" : undefined} inert={shown.leaving}
       onPointerEnter={cancel} onPointerLeave={hideSoon} onFocus={cancel}>
       {view.kind === "local" ? <>
         <div className="digest-source-card-meta">
-          <span>{local?.feed_title || (local ? "未知来源" : "")}{local?.published_at != null ? ` · ${formatDay(local.published_at)}` : ""}</span>
-          {local && local.status === "available" ? (local.read ? <span>已读</span> : <span className="chat-link-unread" aria-label="未读" />) : null}
+          <span>{local?.feed_title || (local ? t("linkPreview.unknownSource") : "")}{local?.published_at != null ? ` · ${formatDay(local.published_at)}` : ""}</span>
+          {local && local.status === "available" ? (local.read ? <span>{t("linkPreview.read")}</span> : <span className="chat-link-unread" aria-label={t("linkPreview.unread")} />) : null}
         </div>
         <p className="digest-source-card-title">{local?.title || view.label.replace(/^《|》$/g, "")}</p>
         {local && local.status !== "available" ? <p className="digest-source-card-note">{sourceStatusNote(local.status)}</p>
           : local?.summary ? <p className="digest-source-card-summary">{local.summary}</p>
-          : !local ? <p className="digest-source-card-note">正在读取…</p> : null}
+          : !local ? <p className="digest-source-card-note">{t("linkPreview.loading")}</p> : null}
         <div className="chat-link-actions">
-          <button type="button" onClick={() => { close(); onOpenArticle(view.id); }} disabled={local?.status === "removed"}>打开<kbd>Enter</kbd></button>
-          <button type="button" onClick={() => local && cite(local)} disabled={!local || local.status !== "available"}>引用到输入框</button>
+          <button type="button" onClick={() => { close(); onOpenArticle(view.id); }} disabled={local?.status === "removed"}>{t("linkPreview.open")}<kbd>Enter</kbd></button>
+          <button type="button" onClick={() => local && cite(local)} disabled={!local || local.status !== "available"}>{t("linkPreview.cite")}</button>
         </div>
       </> : <>
         <div className="digest-source-card-meta"><span>{view.site}</span></div>
         <p className="chat-link-url">{view.href}</p>
         <div className="chat-link-actions">
-          <button type="button" onClick={() => { close(); webLinks?.open(view.href, view.anchor.textContent ?? ""); }}>在原网页打开</button>
+          <button type="button" onClick={() => { close(); webLinks?.open(view.href, view.anchor.textContent ?? ""); }}>{t("linkPreview.openWeb")}</button>
           <button type="button" onClick={() => {
             close();
-            void copyText(view.href).then(() => notify({ message: "已复制链接" }), () => notify({ message: "复制失败" }));
-          }}>复制链接</button>
+            void copyText(view.href).then(() => notify({ message: t("linkPreview.copied") }), () => notify({ message: t("linkPreview.copyFailed") }));
+          }}>{t("linkPreview.copy")}</button>
         </div>
       </>}
     </div>,

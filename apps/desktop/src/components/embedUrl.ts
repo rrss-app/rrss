@@ -1,5 +1,7 @@
 /** 与 `crates/rrss-render/src/embed.rs` 同一套主机名 / 路径规则。不要用子串匹配 youtube.com。 */
 
+import { i18n } from "../i18n";
+
 export type EmbedPresentation =
   | { kind: "youtube" | "bilibili"; openUrl: string }
   | { kind: "video" | "audio"; openUrl: string }
@@ -41,7 +43,7 @@ export function formatDuration(secs: number): string {
 }
 
 export function coverMeta(site: string, author: string, durationSecs: number | null | undefined): string {
-  const name = site === "bilibili" ? "哔哩哔哩" : "YouTube";
+  const name = site === "bilibili" ? i18n.t("embed.bilibili", { ns: "reader" }) : "YouTube";
   const parts = [name];
   if (author.trim()) parts.push(author.trim());
   if (site === "bilibili" && durationSecs != null && Number.isFinite(durationSecs)) {
@@ -52,9 +54,9 @@ export function coverMeta(site: string, author: string, durationSecs: number | n
 
 export function siteLabel(raw: string): string {
   const url = parseHttp(normalize(raw));
-  if (!url) return "在浏览器打开";
+  if (!url) return i18n.t("embed.openInBrowser", { ns: "reader" });
   const host = url.hostname.replace(/^www\./i, "");
-  return host || "在浏览器打开";
+  return host || i18n.t("embed.openInBrowser", { ns: "reader" });
 }
 
 function officialOf(url: URL): EmbedPresentation | null {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { SELECTION_TRANSLATE_MAX_CHARS, type SelectionTranslation, type SelectionTranslationConfig, type TranslationCommandError } from "../bindings";
 import { api, copyText } from "../lib/api";
+import { i18n, useTranslation } from "../i18n";
 import type { ReaderSelection } from "./BlockView";
 import { FloatingMenu } from "./FloatingMenu";
 import { Icon } from "./Icon";
@@ -53,7 +54,7 @@ export function resetSelectionTranslations() {
 async function translate(text: string, configured: (config: SelectionTranslationConfig) => void) {
   // 每次点击只读当前身份，不依赖设置页是否挂载、预载是否过期或写入从哪里发生。
   const { selection_config: config } = await api.translatePage();
-  if (!config) throw { kind: "configuration", message: "翻译服务还没配置" } satisfies TranslationCommandError;
+  if (!config) throw { kind: "configuration", message: i18n.t("selection.notConfigured", { ns: "reader" }) } satisfies TranslationCommandError;
   configured(config);
   const key = JSON.stringify([config.identity, text]);
   return rememberSelectionTranslation(key, () => api.translateSelection(text, config.identity));
@@ -65,6 +66,7 @@ export function ReaderSelectionTranslation({ selection, onClose, onCite, onSetti
   onCite: (excerpt: string, blockId: number) => void;
   onSettings: () => void;
 }) {
+  const { t } = useTranslation("reader");
   const tooLong = [...selection.excerpt].length > SELECTION_TRANSLATE_MAX_CHARS;
   const [config, setConfig] = useState<SelectionTranslationConfig | null>(null);
   const [result, setResult] = useState<SelectionTranslation | null>(null);
@@ -79,33 +81,33 @@ export function ReaderSelectionTranslation({ selection, onClose, onCite, onSetti
         if (!active) return;
         setError(reason && typeof reason === "object" && "kind" in reason && "message" in reason
           ? reason as TranslationCommandError
-          : { kind: "network", message: "翻译服务连接失败，请稍后再试" });
+          : { kind: "network", message: i18n.t("selection.networkFailed", { ns: "reader" }) });
       },
     );
     return () => { active = false; };
   }, [selection, tooLong]);
   const loading = !tooLong && !result && !error;
   return <FloatingMenu anchor={anchor} boundary={selection.boundary} placement="below" role="dialog"
-    label="划词翻译" className="reader-selection-translation" onClose={onClose} restoreFocusTo={selection.opener}>
+    label={t("selection.label")} className="reader-selection-translation" onClose={onClose} restoreFocusTo={selection.opener}>
     <div className="reader-selection-translation-head">
-      <span><Icon name="translate" size={14} />译文</span>
+      <span><Icon name="translate" size={14} />{t("selection.head")}</span>
       {config ? <span className="reader-selection-service">{config.service}</span> : null}
-      <button type="button" aria-label="关闭划词翻译" onClick={onClose}><Icon name="close" size={14} /></button>
+      <button type="button" aria-label={t("selection.close")} onClick={onClose}><Icon name="close" size={14} /></button>
     </div>
     <div className="reader-selection-translation-content" aria-live="polite" aria-busy={loading}>
-      {loading ? <div className="reader-selection-skeleton" role="status" aria-label="翻译中"><i /><i /></div> : null}
+      {loading ? <div className="reader-selection-skeleton" role="status" aria-label={t("selection.translating")}><i /><i /></div> : null}
       {result ? <p className="reader-selection-result">{result.text}</p> : null}
-      {tooLong ? <p role="alert">选中文字超过 {SELECTION_TRANSLATE_MAX_CHARS} 字，请改用全文翻译。</p> : null}
-      {error ? <p role="alert">{error.kind === "configuration" && !config ? "翻译服务还没配置。" : error.message}
-        {error.kind === "configuration" || error.kind === "authentication" ? <button type="button" className="reader-selection-settings" onClick={() => { onClose(); onSettings(); }}>去设置</button> : null}
+      {tooLong ? <p role="alert">{t("selection.tooLong", { max: SELECTION_TRANSLATE_MAX_CHARS })}</p> : null}
+      {error ? <p role="alert">{error.kind === "configuration" && !config ? t("selection.notConfiguredNotice") : error.message}
+        {error.kind === "configuration" || error.kind === "authentication" ? <button type="button" className="reader-selection-settings" onClick={() => { onClose(); onSettings(); }}>{t("selection.goSettings")}</button> : null}
       </p> : null}
     </div>
     <div className="reader-selection-translation-footer">
       <div className="reader-selection-translation-actions">
-        <button type="button" disabled={!result} onClick={() => { if (result) void copyText(result.text); }}><Icon name="copy" size={14} />复制译文</button>
-        <button type="button" onClick={() => { onClose(); window.getSelection()?.removeAllRanges(); onCite(selection.excerpt, selection.blockId); }}><Icon name="quote" size={14} />引用原句</button>
+        <button type="button" disabled={!result} onClick={() => { if (result) void copyText(result.text); }}><Icon name="copy" size={14} />{t("selection.copy")}</button>
+        <button type="button" onClick={() => { onClose(); window.getSelection()?.removeAllRanges(); onCite(selection.excerpt, selection.blockId); }}><Icon name="quote" size={14} />{t("selection.citeOriginal")}</button>
       </div>
-      <small className="reader-selection-note">只翻这一段，不写入全文译文</small>
+      <small className="reader-selection-note">{t("selection.note")}</small>
     </div>
   </FloatingMenu>;
 }

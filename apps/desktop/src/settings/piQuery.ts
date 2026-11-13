@@ -5,6 +5,7 @@ import { api, type SavePiConfigArgs, type SkillDraft } from "../lib/api";
 import { settingsChanged } from "./editState";
 import { formatNotice } from "../lib/notice";
 import { forgetServer } from "./mcpRuntime";
+import { i18n } from "../i18n";
 
 export const piKeys = {
   page: ["settings", "pi", "page"] as const,
@@ -38,13 +39,7 @@ export type PiAction =
   | { type: "mcpImport"; json: string }
   | { type: "config"; args: SavePiConfigArgs }
   | { type: "restart" };
-const LABELS: Record<PiAction["type"], string> = {
-  savePath: "保存路径", developerTools: "更新开发者工具", fetchUrl: "更新网页读取",
-  tool: "更新工具", toolDescription: "保存工具说明", skill: "更新技能", skillSave: "保存技能", skillDelete: "删除技能",
-  mcpImport: "导入外部工具服务",
-  mcpToggle: "更新外部工具服务", mcpDelete: "删除外部工具服务", mcpSave: "保存外部工具服务",
-  config: "保存对话引擎配置", restart: "重启引擎",
-};
+const label = (type: PiAction["type"]) => i18n.t(`pi.label.${type}`, { ns: "settingsAssistant" });
 export type PiStatus = { tone: "ok" | "err"; text: string };
 
 async function perform(action: PiAction): Promise<string> {
@@ -67,10 +62,10 @@ async function perform(action: PiAction): Promise<string> {
     }
     case "mcpImport": {
       const entries = await api.importMcp(action.json);
-      return `已导入 ${entries.filter((e) => !e.skipped).length} 个服务，同名跳过 ${entries.filter((e) => e.skipped).length} 个。新服务默认关闭。`;
+      return i18n.t("pi.imported", { ns: "settingsAssistant", imported: entries.filter((e) => !e.skipped).length, skipped: entries.filter((e) => e.skipped).length });
     }
     case "config": await api.savePiConfig(action.args); return "";
-    case "restart": await api.restartPi(); return "对话引擎已重启。";
+    case "restart": await api.restartPi(); return i18n.t("pi.restarted", { ns: "settingsAssistant" });
   }
 }
 
@@ -89,9 +84,9 @@ export function piMutationOptions(client: QueryClient) {
       try {
         const message = await perform(action);
         completed = true;
-        status = { tone: "ok", text: message || "已更新，将在下次发送时生效。" };
+        status = { tone: "ok", text: message || i18n.t("pi.updated", { ns: "settingsAssistant" }) };
       } catch (error) {
-        return { completed, status: { tone: "err", text: formatNotice(LABELS[action.type] + "失败：", error) } };
+        return { completed, status: { tone: "err", text: formatNotice(i18n.t("pi.failed", { ns: "settingsAssistant", label: label(action.type) }), error) } };
       }
       // 探测要跑 `pi --version`，不在锁内重读：随全部设置读取标记过期，页面解锁后自行重读。
       await settingsChanged(client);
@@ -99,7 +94,7 @@ export function piMutationOptions(client: QueryClient) {
       if (action.type === "config") reads.push(client.fetchQuery({ ...piConfigOptions(), staleTime: 0 }));
       const failed = (await Promise.allSettled(reads)).find((r) => r.status === "rejected");
       if (failed) {
-        status = { tone: "err", text: status.text + " " + formatNotice("但读取最新设置失败，请重新读取：", (failed as PromiseRejectedResult).reason) };
+        status = { tone: "err", text: status.text + " " + formatNotice(i18n.t("pi.refreshFailed", { ns: "settingsAssistant" }), (failed as PromiseRejectedResult).reason) };
       }
       return { completed, status };
     },

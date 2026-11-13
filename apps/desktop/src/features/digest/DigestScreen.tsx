@@ -4,6 +4,7 @@ import { Icon } from "../../components/Icon";
 import { MainViewFrame } from "../../components/MainViewFrame";
 import { api, openExternal, type CitationView, type DigestView } from "../../lib/api";
 import { formatNotice } from "../../lib/notice";
+import { i18n, useTranslation } from "../../i18n";
 import { isTauri } from "../../lib/preview";
 import type { SelectedBlock } from "../../lib/selection";
 import { ChatActivity, ChatContextMeter, ChatModelChip, Composer, useConversation, type ChatFixTab, type DraftStore, type useConversationRuntime } from "../chat";
@@ -32,6 +33,7 @@ export function DigestScreen({ active, topmost = true, chat, drafts, onContext, 
   onFixChat?: (tab: ChatFixTab) => void;
   notify: (notice: Notice) => void;
 }) {
+  const { t } = useTranslation("digest");
   const [digest, setDigest] = useState<DigestView | null>(null);
   const [discussion, setDiscussion] = useState({ digestId: 0, threadId: 0, loading: false, error: "" });
   const [retry, setRetry] = useState(0);
@@ -72,7 +74,7 @@ export function DigestScreen({ active, topmost = true, chat, drafts, onContext, 
       setDiscussion({ digestId, threadId: data.thread_id, loading: false, error: "" });
     }).catch((err) => {
       if (cancelled || gen !== generation.current) return;
-      setDiscussion({ digestId, threadId: 0, loading: false, error: isTauri() ? formatNotice("追问记录加载失败：", err) : "" });
+      setDiscussion({ digestId, threadId: 0, loading: false, error: isTauri() ? formatNotice(i18n.t("discussion.loadFailed", { ns: "digest" }), err) : "" });
     });
     return () => { cancelled = true; };
   }, [digestId, retry, hydrate, seedThread, drafts, discussionRevision]);
@@ -123,11 +125,11 @@ export function DigestScreen({ active, topmost = true, chat, drafts, onContext, 
       if (latest.current.digest?.id !== source.id || latest.current.digest.revision !== source.revision) return;
       drafts.setCitations(`digest:${source.id}`, (existing) => [...existing, ...incoming.filter((citation) =>
         !existing.some((item) => item.kind === citation.kind && item.article_id === citation.article_id && item.excerpt === citation.excerpt))]);
-      notify({ message: `已添加简报摘录，关联 ${new Set(incoming.map((item) => item.article_id)).size} 篇来源` });
+      notify({ message: i18n.t("cite.added", { ns: "digest", count: new Set(incoming.map((item) => item.article_id)).size }) });
       if (latest.current.active) root.current?.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus();
     } catch (err) {
       if (latest.current.digest?.id === source.id && latest.current.digest.revision === source.revision) {
-        notify({ message: formatNotice("引用失败：", err) });
+        notify({ message: formatNotice(i18n.t("cite.failed", { ns: "digest" }), err) });
       }
     }
     finally { citingRef.current = false; setCiting(false); }
@@ -144,7 +146,7 @@ export function DigestScreen({ active, topmost = true, chat, drafts, onContext, 
         setScroll((value) => value + 1);
       }
       return true;
-    } catch (err) { notify({ message: formatNotice("发送失败：", err) }); return false; }
+    } catch (err) { notify({ message: formatNotice(i18n.t("send.failed", { ns: "digest" }), err) }); return false; }
   };
 
   return <MainViewFrame visible={active} rootRef={root}>
@@ -152,19 +154,22 @@ export function DigestScreen({ active, topmost = true, chat, drafts, onContext, 
       onCiteSelection={chat.sending || citing ? undefined : (source, blocks) => void citeSelection(source, blocks)}
       initialDigest={lastDigest.current} onCurrentChange={onCurrentChange}>
       {discussion.error && discussion.digestId === digestId ? (
-        <section className="digest-discussion reader-column" aria-label="当期简报追问">
+        <section className="digest-discussion reader-column" aria-label={t("discussion.region")}>
           <div className="notice error digest-thread-error" role="alert"><Icon name="info" size={15} /><span>{discussion.error}</span>
-            <button type="button" className="btn sm" onClick={() => setRetry((value) => value + 1)}>重试加载追问</button>
+            <button type="button" className="btn sm" onClick={() => setRetry((value) => value + 1)}>{t("discussion.retry")}</button>
           </div>
         </section>
       ) : ready ? <DigestDiscussion store={chat.store} turns={chat.turns} threadId={threadId} context={`digest:${digestId}`} busy={chat.busyThreadId !== null && chat.busyThreadId === threadId}
         scrollRequest={scroll} onLoadOlder={chat.loadOlder} onOpenUrl={onOpenUrl} onOpenArticle={onOpenArticle} onFix={onFixChat} /> : null}
     </DigestPane>
-    <Composer drafts={drafts} context={`digest:${digestId}`} ariaLabel="追问当前简报" placeholder="追问当前简报，例如：展开第二条…"
-      contextLabel={!digest ? "打开一期简报后即可追问" : `追问 ${digest.date_label} · ${digest.period_label}${discussion.error && discussion.digestId === digestId ? " · 追问记录未加载" : !ready ? " · 正在加载追问记录…" : ""}`}
+    <Composer drafts={drafts} context={`digest:${digestId}`} ariaLabel={t("composer.aria")} placeholder={t("composer.placeholder")}
+      contextLabel={!digest ? t("composer.noDigest") : discussion.error && discussion.digestId === digestId
+        ? t("composer.contextNotLoaded", { date: digest.date_label, period: digest.period_label })
+        : !ready ? t("composer.contextLoading", { date: digest.date_label, period: digest.period_label })
+        : t("composer.context", { date: digest.date_label, period: digest.period_label })}
       otherThreadBusy={chat.busyThreadId !== null && chat.busyThreadId !== threadId} generating={chat.busyThreadId !== null}
       sending={chat.sending} disabled={!digest} ready={!citing && ready} collapsible atBottom={atBottom}
-      dockLabel={<><Icon name="chat" size={14} />追问本期{asked ? <span className="composer-dock-count"> · {asked} 条</span> : null}</>}
+      dockLabel={<><Icon name="chat" size={14} />{t("composer.dock")}{asked ? <span className="composer-dock-count"> · {t("composer.dockCount", { count: asked })}</span> : null}</>}
       forceExpanded={chat.busyThreadId !== null || !digest} showWhenEmpty onSend={send}
       activity={active ? <ChatActivity store={chat.activity} /> : null}
       model={<ChatModelChip value={chat.modelFor(threadId, `digest:${digestId}`)} thinking={chat.thinkingFor(threadId, `digest:${digestId}`)}
@@ -172,6 +177,6 @@ export function DigestScreen({ active, topmost = true, chat, drafts, onContext, 
         onChange={(choice, label) => chat.chooseModel(threadId, `digest:${digestId}`, choice, label)}
         onThinking={(level, label) => chat.chooseThinking(threadId, `digest:${digestId}`, level, label)} />}
       meter={digest ? <ChatContextMeter value={chat.modelFor(threadId, `digest:${digestId}`)} usage={chat.contextFor(threadId)} /> : null}
-      onStop={() => void api.abort().catch((err) => notify({ message: formatNotice("停止失败：", err) }))} onOpenArticle={onOpenArticle} />
+      onStop={() => void api.abort().catch((err) => notify({ message: formatNotice(i18n.t("send.stopFailed", { ns: "digest" }), err) }))} onOpenArticle={onOpenArticle} />
   </MainViewFrame>;
 }

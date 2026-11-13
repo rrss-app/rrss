@@ -4,6 +4,7 @@ import { api, type NewRuleSpec, type RulesPage } from "../lib/api";
 import { formatNotice } from "../lib/notice";
 import { readGate, settingsChanged, useEditReport, useSettingsWrite, type SettingsEditState } from "./editState";
 import { rulesKeys, rulesQueryOptions } from "./rulesQuery";
+import { useTranslation } from "../i18n";
 
 const emptySpec = (): NewRuleSpec => ({
   polarity: "like", dimension: "title_kw", pattern: "", weight: 10, scope_kind: "global", scope_id: 0,
@@ -12,6 +13,7 @@ type Write = { label: string; run: () => Promise<unknown>; focus?: boolean };
 type WriteResult = { ok: boolean; tone: "ok" | "err"; text: string; value?: unknown; page?: RulesPage };
 
 export function useRulesSettings(onChanged?: () => void, onEditStateChange?: (state: SettingsEditState | null) => void) {
+  const { t } = useTranslation("settingsContent");
   const client = useQueryClient();
   const [filter, setFilter] = useState("all");
   const changed = useRef(onChanged);
@@ -22,15 +24,15 @@ export function useRulesSettings(onChanged?: () => void, onEditStateChange?: (st
       await client.cancelQueries({ queryKey: rulesKeys.pages });
       let value: unknown;
       try { value = await run(); }
-      catch (error) { return { ok: false, tone: "err", text: formatNotice(label + "失败：", error) }; }
+      catch (error) { return { ok: false, tone: "err", text: formatNotice(t("rules.write.failed", { label }), error) }; }
       await settingsChanged(client);
       let page: RulesPage | undefined;
       let tone: "ok" | "err" = "ok";
-      let text = label + "已完成。";
+      let text = t("rules.write.done", { label });
       try { page = await client.fetchQuery(rulesQueryOptions(filter)); }
       catch (error) {
         tone = "err";
-        text += " " + formatNotice("规则列表没能刷新，显示的还是之前的内容；刚才的修改已保存，重新读取即可：", error);
+        text += " " + formatNotice(t("rules.write.refreshFailed"), error);
       }
       if (focus) changed.current?.();
       return { ok: true, tone, text, value, page };
@@ -45,7 +47,7 @@ export function useRulesSettings(onChanged?: () => void, onEditStateChange?: (st
   const [status, setStatus] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const thresholdDirty = threshold !== thresholdBaseline;
   const formDirty = JSON.stringify(spec) !== formBaseline;
-  useEditReport(onEditStateChange, "规则设置", thresholdDirty || formDirty, busy);
+  useEditReport(onEditStateChange, t("rules.editLabel"), thresholdDirty || formDirty, busy);
   useEffect(() => {
     // 回读失败或切换到已失效的筛选缓存时，旧快照不能覆盖已提交基线。
     if (!query.isSuccess || query.isFetching || query.isStale || busy || thresholdDirty) return;
@@ -73,17 +75,17 @@ export function useRulesSettings(onChanged?: () => void, onEditStateChange?: (st
   const save = () => {
     const payload = { ...spec, pattern: spec.pattern.trim(), weight: Number.isFinite(spec.weight) && spec.weight !== 0 ? spec.weight : 10,
       scope_id: spec.scope_kind === "global" ? 0 : spec.scope_id };
-    if (!payload.pattern) { setStatus({ tone: "err", text: "请填写匹配内容" }); return; }
-    void run(editId > 0 ? "保存规则" : "创建规则", () => editId > 0 ? api.updateRule(editId, payload) : api.createRule(payload), closeForm);
+    if (!payload.pattern) { setStatus({ tone: "err", text: t("rules.write.patternRequired") }); return; }
+    void run(editId > 0 ? t("rules.action.save") : t("rules.action.create"), () => editId > 0 ? api.updateRule(editId, payload) : api.createRule(payload), closeForm);
   };
   const saveThreshold = (nextThreshold = threshold) => {
     if (nextThreshold === thresholdBaseline || busy) return;
     const value = Number(nextThreshold);
     if (!nextThreshold.trim() || !Number.isFinite(value)) {
-      setStatus({ tone: "err", text: "请填写有效的隐藏阈值，不能为空。" });
+      setStatus({ tone: "err", text: t("rules.write.thresholdInvalid") });
       return;
     }
-    void run("保存隐藏阈值", () => api.setSetting("hide_threshold", String(value)), (_value, page) => {
+    void run(t("rules.action.saveThreshold"), () => api.setSetting("hide_threshold", String(value)), (_value, page) => {
       // 写入已成功：优先采用回读值；回读失败则保留已提交值，不伪造规则快照。
       const next = String(page?.hide_threshold ?? value);
       setThreshold(next);

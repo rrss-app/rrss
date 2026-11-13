@@ -4,11 +4,12 @@ import type { McpImportEntry, McpInput, McpProbeView, McpView } from "../binding
 import { api } from "../lib/api";
 import { formatNotice } from "../lib/notice";
 import { Icon } from "../components/Icon";
+import { Trans, useTranslation } from "../i18n";
 import { ChipBar, Field } from "./chips";
 import { Dialog } from "./Dialog";
 import type { SettingsEditState } from "./editState";
 import { McpPanel } from "./McpSection";
-import { clause, connectionKey, forgetProbe, guessHostName, includeFrom, openTools, probeDraft, startLogin } from "./mcpRuntime";
+import { clause, connectionKey, forgetProbe, guessHostName, includeFrom, openTools, probeDraft, startLogin, transportName } from "./mcpRuntime";
 import { guessName, joinCommand, parseCommand } from "./mcpCommand";
 import { piKeys, type PiAction, type PiStatus } from "./piQuery";
 import type { Ask } from "./SettingsPanel";
@@ -20,9 +21,6 @@ type Props = {
   onClose: () => void;
   onEditStateChange: (state: SettingsEditState | null) => void;
 };
-const TYPE: Record<string, string> = { stdio: "本地命令", http: "远程 HTTP", sse: "旧式 SSE" };
-const AUTHS = [{ id: "none", label: "不需要" }, { id: "token", label: "访问令牌" }, { id: "oauth", label: "浏览器登录" }];
-const SAVED = "已保存，留空不变";
 
 type Kind = "stdio" | "http";
 type Auth = "none" | "token" | "oauth";
@@ -55,6 +53,8 @@ function draftFrom(server?: McpView): Draft {
  * 「检测连接」用还没保存的内容连一次，不保存、不开启；检测后勾好的工具随保存写入。浏览器登录的服务保存后直接开始登录。
  */
 export function McpDialog({ server, run, status, onPaste, ...props }: Props & { server?: McpView; onPaste: () => void }) {
+  const { t } = useTranslation("settingsAssistant");
+  const auths = [{ id: "none", label: t("mcpDialog.auth.none") }, { id: "token", label: t("mcpDialog.auth.token") }, { id: "oauth", label: t("mcpDialog.auth.oauth") }];
   const [base] = useState(() => draftFrom(server));
   const [d, setDraft] = useState(base);
   const [probe, setProbe] = useState<Probe>({ busy: false, result: null, open: false });
@@ -132,62 +132,62 @@ export function McpDialog({ server, run, status, onPaste, ...props }: Props & { 
   };
   const paste = () => {
     if (!dirty) return onPaste();
-    props.onAsk("添加外部工具有未保存的修改", "换成粘贴 JSON 后，这里填的内容不会保存。", onPaste, { okLabel: "不保存并继续", cancelLabel: "继续编辑" });
+    props.onAsk(t("mcpDialog.pasteConfirm.title"), t("mcpDialog.pasteConfirm.message"), onPaste, { okLabel: t("mcpDialog.pasteConfirm.ok"), cancelLabel: t("mcpDialog.pasteConfirm.cancel") });
   };
-  const title = server ? "编辑外部工具" : "添加外部工具";
+  const title = server ? t("mcpDialog.titleEdit") : t("mcpDialog.titleAdd");
 
   return <Dialog {...props} className="wide mcp-dialog" title={title} dirty={dirty} busy={writing} onSave={save}
-    subtitle={!server && <>有现成的 JSON 配置？<button type="button" className="link-btn" disabled={writing} onClick={paste}>直接粘贴</button></>}
+    subtitle={!server && <>{t("mcpDialog.subtitle")}<button type="button" className="link-btn" disabled={writing} onClick={paste}>{t("mcpDialog.paste")}</button></>}
     leading={<>
-      {server && <button type="button" className="btn ghost danger" disabled={writing} onClick={() => props.onAsk("删除外部工具服务", `删除「${server.name}」？`,
-        () => { void run({ type: "mcpDelete", id: server.id }).then((ok) => { if (ok) props.onClose(); }); }, { okLabel: "删除" })}>删除</button>}
-      {!oauth && <button type="button" className="btn" disabled={writing || probe.busy || !valid} aria-busy={probe.busy || undefined} onClick={runProbe}>检测连接</button>}
+      {server && <button type="button" className="btn ghost danger" disabled={writing} onClick={() => props.onAsk(t("mcpDialog.deleteConfirm.title"), t("mcpDialog.deleteConfirm.message", { name: server.name }),
+        () => { void run({ type: "mcpDelete", id: server.id }).then((ok) => { if (ok) props.onClose(); }); }, { okLabel: t("action.delete") })}>{t("action.delete")}</button>}
+      {!oauth && <button type="button" className="btn" disabled={writing || probe.busy || !valid} aria-busy={probe.busy || undefined} onClick={runProbe}>{t("mcpDialog.probeButton")}</button>}
     </>}
-    actions={<button type="button" className="btn primary" disabled={writing || !valid} onClick={() => void save()}>{loginAfterSave ? "保存并登录" : "保存"}</button>}>
+    actions={<button type="button" className="btn primary" disabled={writing || !valid} onClick={() => void save()}>{loginAfterSave ? t("mcpDialog.saveAndLogin") : t("action.save")}</button>}>
     {status?.tone === "err" && <p className="notice error" role="alert">{status.text}</p>}
     {legacy && <div className="notice warn mcp-legacy" role="note">
-      <div><strong>这个地址已经连不上</strong>多数服务另有新地址，通常是把结尾的 <code>/sse</code> 换成 <code>/mcp</code>，以服务说明为准。改好后保存，再回列表里开启。</div>
+      <div><strong>{t("mcpDialog.legacyTitle")}</strong><Trans t={t} i18nKey="mcpDialog.legacyBody" components={{ code: <code /> }} /></div>
       <button type="button" className="btn sm" disabled={writing || !/\/sse\/?$/.test(d.url.trim())}
-        onClick={() => patch({ url: d.url.trim().replace(/\/sse\/?$/, "/mcp") })}>换成 …/mcp</button>
+        onClick={() => patch({ url: d.url.trim().replace(/\/sse\/?$/, "/mcp") })}>{t("mcpDialog.legacySwap")}</button>
     </div>}
-    <div className="mcp-kinds" role="radiogroup" aria-label="类型">
-      {([["stdio", "terminal", "本机程序", "在你电脑上运行的命令，例如 npx、uvx"], ["http", "globe", "在线服务", "通过网址连接"]] as const).map(([kind, icon, label, desc]) =>
+    <div className="mcp-kinds" role="radiogroup" aria-label={t("mcpDialog.kindsLabel")}>
+      {([["stdio", "terminal"], ["http", "globe"]] as const).map(([kind, icon]) =>
         <button key={kind} type="button" role="radio" className="mcp-kind" aria-checked={d.kind === kind} disabled={writing}
           onClick={() => { if (d.kind !== kind) patch({ kind, auth: "none" }); }}>
-          <Icon name={icon} size={18} /><span><strong>{label}</strong><small>{desc}</small></span>
+          <Icon name={icon} size={18} /><span><strong>{t(`mcpDialog.kind.${kind}.label`)}</strong><small>{t(`mcpDialog.kind.${kind}.desc`)}</small></span>
         </button>)}
     </div>
     <div className="mcp-form">
-      <label className="mcp-label" htmlFor={ids.name}>名称</label>
+      <label className="mcp-label" htmlFor={ids.name}>{t("mcpDialog.name")}</label>
       <input id={ids.name} value={d.name} readOnly={writing} placeholder={guessed || (local ? "filesystem" : "linear")} onChange={(e) => patch({ name: e.target.value })} />
       {local ? <>
-        <label className="mcp-label" htmlFor={ids.line}>启动命令</label>
+        <label className="mcp-label" htmlFor={ids.line}>{t("mcpDialog.line")}</label>
         <div>
           <input id={ids.line} className="mono" value={d.line} readOnly={writing} spellCheck={false} autoComplete="off" aria-invalid={!command.complete || undefined}
             placeholder="npx -y @modelcontextprotocol/server-filesystem ~/notes" onChange={(e) => patch({ line: e.target.value })} />
-          {!command.complete && <p className="hint warn">启动命令的引号尚未闭合。</p>}
+          {!command.complete && <p className="hint warn">{t("mcpDialog.lineIncomplete")}</p>}
         </div>
-        <span className="mcp-label">环境变量</span>
-        <KeyValues title="环境变量" example="ALLOWED_DIRS" items={d.env} busy={writing} addLabel="添加变量" onChange={(env) => patch({ env })} />
+        <span className="mcp-label">{t("mcpDialog.env")}</span>
+        <KeyValues kind="env" example="ALLOWED_DIRS" items={d.env} busy={writing} addLabel={t("mcpDialog.addVar")} onChange={(env) => patch({ env })} />
       </> : <>
-        <label className="mcp-label" htmlFor={ids.url}>地址</label>
+        <label className="mcp-label" htmlFor={ids.url}>{t("mcpDialog.url")}</label>
         <input id={ids.url} className="mono" value={d.url} readOnly={writing} spellCheck={false} autoComplete="off"
           placeholder="https://mcp.example.com/mcp" onChange={(e) => patch({ url: e.target.value })} />
-        <span className="mcp-label" id={ids.auth}>登录</span>
+        <span className="mcp-label" id={ids.auth}>{t("mcpDialog.authLabel")}</span>
         <div role="group" aria-labelledby={ids.auth}>
-          <ChipBar className="segmented" value={d.auth} options={AUTHS} disabled={writing} onChange={(auth) => patch({ auth: auth as Auth })} />
+          <ChipBar className="segmented" value={d.auth} options={auths} disabled={writing} onChange={(auth) => patch({ auth: auth as Auth })} />
         </div>
         {d.auth === "token" && <>
-          <label className="mcp-label" htmlFor={ids.token}>令牌</label>
+          <label className="mcp-label" htmlFor={ids.token}>{t("mcpDialog.token")}</label>
           <div className="mcp-token">
             <div className="mcp-secret">
               <input id={ids.token} className="mono" type={showToken ? "text" : "password"} autoComplete="off" spellCheck={false} value={d.token} readOnly={writing}
-                placeholder={authorization?.has_value ? SAVED : "访问令牌"} onChange={(e) => patch({ token: e.target.value })} />
-              <button type="button" className="icon-btn" aria-pressed={showToken} aria-label={showToken ? "遮盖令牌" : "显示令牌"} onClick={() => setShowToken((v) => !v)}><Icon name="eye" size={14} /></button>
+                placeholder={authorization?.has_value ? t("mcpDialog.saved") : t("mcpDialog.tokenPlaceholder")} onChange={(e) => patch({ token: e.target.value })} />
+              <button type="button" className="icon-btn" aria-pressed={showToken} aria-label={showToken ? t("mcpDialog.hideToken") : t("mcpDialog.showToken")} onClick={() => setShowToken((v) => !v)}><Icon name="eye" size={14} /></button>
             </div>
             {d.headers.length > 0
-              ? <KeyValues title="请求头" example="X-Workspace" items={d.headers} busy={writing} addLabel="再加一个" onChange={(headers) => patch({ headers })} />
-              : <button type="button" className="mcp-add" disabled={writing} onClick={() => patch({ headers: [blank()] })}><Icon name="plus" size={12} />其他请求头</button>}
+              ? <KeyValues kind="header" example="X-Workspace" items={d.headers} busy={writing} addLabel={t("mcpDialog.addHeader")} onChange={(headers) => patch({ headers })} />
+              : <button type="button" className="mcp-add" disabled={writing} onClick={() => patch({ headers: [blank()] })}><Icon name="plus" size={12} />{t("mcpDialog.otherHeaders")}</button>}
           </div>
         </>}
       </>}
@@ -195,12 +195,12 @@ export function McpDialog({ server, run, status, onPaste, ...props }: Props & { 
     {!oauth && (probe.busy || probe.result) && <div className="mcp-probe">
       <div className="mcp-probe-bar">
         <p className="mcp-health" role="status" data-tone={probe.busy ? "busy" : probe.result?.ok ? "ok" : "bad"}>
-          {probe.busy ? "正在连接…" : probe.result?.ok ? `能连上 · ${probe.result.tools.length} 个工具 · ${(probe.result.elapsed_ms / 1000).toFixed(1)} 秒`
-            : `连不上 · ${clause(probe.result?.error ?? "") || "没有连上"}`}
+          {probe.busy ? t("mcp.health.connecting") : probe.result?.ok ? t("mcpDialog.probe.ok", { count: probe.result.tools.length, seconds: (probe.result.elapsed_ms / 1000).toFixed(1) })
+            : t("mcpDialog.probe.failed", { reason: clause(probe.result?.error ?? "") || t("mcpDialog.probe.noConnect") })}
         </p>
         {probe.result && !probe.busy && <button type="button" className="btn sm ghost" aria-expanded={probe.open} aria-controls={panelId}
           onClick={() => setProbe((old) => ({ ...old, open: !old.open }))}>
-          {probe.result.ok ? (probe.open ? "收起工具" : "查看工具") : (probe.open ? "收起详情" : "查看详情")}</button>}
+          {probe.result.ok ? (probe.open ? t("mcp.hideTools") : t("mcp.viewTools")) : (probe.open ? t("mcp.hideDetails") : t("mcp.viewDetails"))}</button>}
       </div>
       {probe.result && <McpPanel id={panelId} open={probe.open} result={probe.result} disabled={writing}
         include={probe.result.ok && chosen ? includeFrom(probe.result.tools, chosen) : server?.include_tools ?? []}
@@ -210,22 +210,23 @@ export function McpDialog({ server, run, status, onPaste, ...props }: Props & { 
 }
 
 /** 键值行：一行一对，值默认遮盖，眼睛图标显示。宿主按名称保留旧值，已保存的行不能改名（删掉重加）。 */
-function KeyValues({ title, example, items, busy, addLabel, onChange }: {
-  title: string; example: string; items: Row[]; busy: boolean; addLabel: string; onChange: (items: Row[]) => void;
+function KeyValues({ kind, example, items, busy, addLabel, onChange }: {
+  kind: "env" | "header"; example: string; items: Row[]; busy: boolean; addLabel: string; onChange: (items: Row[]) => void;
 }) {
+  const { t } = useTranslation("settingsAssistant");
   const [shown, setShown] = useState<Record<number, boolean>>({});
   const change = (index: number, key: "name" | "value", value: string) => onChange(items.map((item, i) => i === index ? { ...item, [key]: value } : item));
   return <div className="mcp-kv">
     {items.map((item, index) => <div className="mcp-kv-row" key={index}>
-      <input className="mono" aria-label={`${title}名称 ${index + 1}`} placeholder={example} value={item.name} readOnly={busy || item.saved}
+      <input className="mono" aria-label={t(`mcpDialog.kv.${kind}.name`, { n: index + 1 })} placeholder={example} value={item.name} readOnly={busy || item.saved}
         spellCheck={false} autoComplete="off" onChange={(e) => change(index, "name", e.target.value)} />
       <div className="mcp-secret">
-        <input className="mono" aria-label={`${title}值 ${index + 1}`} type={shown[index] ? "text" : "password"} autoComplete="off" spellCheck={false}
-          value={item.value} readOnly={busy} placeholder={item.saved ? SAVED : "值"} onChange={(e) => change(index, "value", e.target.value)} />
-        <button type="button" className="icon-btn" disabled={busy} aria-pressed={!!shown[index]} aria-label={`${shown[index] ? "遮盖" : "显示"}${title}值 ${index + 1}`}
+        <input className="mono" aria-label={t(`mcpDialog.kv.${kind}.value`, { n: index + 1 })} type={shown[index] ? "text" : "password"} autoComplete="off" spellCheck={false}
+          value={item.value} readOnly={busy} placeholder={item.saved ? t("mcpDialog.saved") : t("mcpDialog.valuePlaceholder")} onChange={(e) => change(index, "value", e.target.value)} />
+        <button type="button" className="icon-btn" disabled={busy} aria-pressed={!!shown[index]} aria-label={t(shown[index] ? `mcpDialog.kv.${kind}.hide` : `mcpDialog.kv.${kind}.show`, { n: index + 1 })}
           onClick={() => setShown({ ...shown, [index]: !shown[index] })}><Icon name="eye" size={14} /></button>
       </div>
-      <button type="button" className="icon-btn mcp-del" disabled={busy} aria-label={`删除${title} ${index + 1}`}
+      <button type="button" className="icon-btn mcp-del" disabled={busy} aria-label={t(`mcpDialog.kv.${kind}.remove`, { n: index + 1 })}
         onClick={() => { setShown({}); onChange(items.filter((_, i) => i !== index)); }}><Icon name="close" size={14} /></button>
     </div>)}
     <button type="button" className="mcp-add" disabled={busy} onClick={() => { setShown({}); onChange([...items, blank()]); }}><Icon name="plus" size={12} />{addLabel}</button>
@@ -234,6 +235,7 @@ function KeyValues({ title, example, items, busy, addLabel, onChange }: {
 
 /** 粘贴即预览（停顿后交给宿主解析），预览与当前文本一致时才能导入。 */
 export function McpImportDialog({ run, status, ...props }: Props) {
+  const { t } = useTranslation("settingsAssistant");
   const [raw, setRaw] = useState("");
   const [preview, setPreview] = useState<McpImportEntry[] | null>(null);
   const [error, setError] = useState("");
@@ -251,16 +253,16 @@ export function McpImportDialog({ run, status, ...props }: Props) {
   }, [raw]);
   const adds = preview?.filter((e) => !e.skipped).length ?? 0;
   const apply = async () => { if (await run({ type: "mcpImport", json: raw })) props.onClose(); };
-  return <Dialog {...props} className="wide" title="从 JSON 导入外部工具" dirty={!!raw} busy={writing}
-    actions={<button type="button" className="btn primary" disabled={writing || !adds} onClick={() => void apply()}>{adds ? `导入 ${adds} 个` : "导入"}</button>}>
-    <Field label="粘贴配置" hint="支持 Claude Desktop、Cursor 等常见格式：mcpServers 那一段，或整个配置文件。">
+  return <Dialog {...props} className="wide" title={t("mcpDialog.import.title")} dirty={!!raw} busy={writing}
+    actions={<button type="button" className="btn primary" disabled={writing || !adds} onClick={() => void apply()}>{adds ? t("mcpDialog.import.apply", { count: adds }) : t("mcpDialog.import.applyNone")}</button>}>
+    <Field label={t("mcpDialog.import.field")} hint={t("mcpDialog.import.hint")}>
       <textarea className="mono" rows={10} value={raw} readOnly={writing} autoComplete="off" spellCheck={false} onChange={(e) => setRaw(e.target.value)} />
     </Field>
     {(error || status?.tone === "err") && <p className="notice error" role="alert">{error || status?.text}</p>}
-    {preview && <ul className="settings-list mcp-import-list" aria-label="将导入的服务">{preview.map((entry, i) => <li className="settings-list-row" key={i}>
-      <div><strong>{entry.name}</strong><span className={entry.transport === "sse" ? "meta-tag warn" : "meta-tag"}>{TYPE[entry.transport] ?? entry.transport}</span>
-        <p className="hint">{[entry.secret_count ? `${entry.secret_count} 个密钥项` : "",
-          entry.skipped ? "同名服务已存在，跳过" : entry.transport === "sse" ? "将添加，要改填新地址后才能开启" : "将添加，默认关闭"].filter(Boolean).join(" · ")}</p></div>
+    {preview && <ul className="settings-list mcp-import-list" aria-label={t("mcpDialog.import.listLabel")}>{preview.map((entry, i) => <li className="settings-list-row" key={i}>
+      <div><strong>{entry.name}</strong><span className={entry.transport === "sse" ? "meta-tag warn" : "meta-tag"}>{transportName(entry.transport)}</span>
+        <p className="hint">{[entry.secret_count ? t("mcpDialog.import.secrets", { count: entry.secret_count }) : "",
+          entry.skipped ? t("mcpDialog.import.skipped") : entry.transport === "sse" ? t("mcpDialog.import.sseAdd") : t("mcpDialog.import.add")].filter(Boolean).join(" · ")}</p></div>
     </li>)}</ul>}
   </Dialog>;
 }

@@ -1,19 +1,20 @@
 import { settingsQueryPolicy } from "./queryPolicy";
 import { queryOptions } from "@tanstack/react-query";
 import { api, type BackupPage } from "../lib/api";
+import { i18n } from "../i18n";
 import { isTauri } from "../lib/preview";
 
 // 浏览器预览只展示结构，不代表本机数据。
-const PREVIEW_BACKUP: BackupPage = {
-  last_manual: "未连接本机数据。",
+const previewBackup = (): BackupPage => ({
+  last_manual: i18n.t("backup.preview.lastManual", { ns: "settingsSystem" }),
   schedule: "off",
-  auto_summary: "升级前自动 · 定时关闭",
+  auto_summary: i18n.t("backup.preview.autoSummary", { ns: "settingsSystem" }),
   entries: [],
   restore_notice: null,
   rules: 0,
   interests: 0,
   memories: 0,
-};
+});
 export const backupKeys = {
   page: ["storage", "backup"] as const,
   write: ["storage", "backup", "write"] as const,
@@ -24,7 +25,7 @@ export function backupQueryOptions() {
     queryKey: backupKeys.page,
     queryFn: ({ signal }) => {
       void signal; // IPC 不可取消；消费 signal 让 query 取消隔离迟到快照。
-      return isTauri() ? api.backupPage() : Promise.resolve(PREVIEW_BACKUP);
+      return isTauri() ? api.backupPage() : Promise.resolve(previewBackup());
     },
     ...settingsQueryPolicy,
   });

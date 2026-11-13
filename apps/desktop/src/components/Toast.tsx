@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Icon } from "./Icon";
+import { useTranslation } from "../i18n";
 
 export function Toast({
   message,
@@ -17,6 +18,7 @@ export function Toast({
   /** 已关掉、正在播退场（200ms 下沉淡出）：不再计时、不可交互。 */
   leaving?: boolean;
 }) {
+  const { t } = useTranslation("shell");
   const onDismissRef = useRef(onDismiss);
   onDismissRef.current = onDismiss;
   useEffect(() => {
@@ -32,7 +34,7 @@ export function Toast({
           {actionLabel}
         </button>
       ) : null}
-      <button type="button" className="toast-dismiss" aria-label="关闭通知" onClick={onDismiss}>
+      <button type="button" className="toast-dismiss" aria-label={t("toast.dismiss")} onClick={onDismiss}>
         <Icon name="close" size={14} />
       </button>
     </div>

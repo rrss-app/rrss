@@ -12,19 +12,13 @@ import { useSettingsWrite, type SettingsEditState } from "./editState";
 import { chatDefault, choiceKey, modelName, sameChoice, thinkingOptions } from "./modelChoices";
 import { piQueryOptions } from "./piQuery";
 import type { Ask } from "./SettingsPanel";
-import { locale } from "../i18n";
+import { locale, useTranslation } from "../i18n";
 
 export type ModelFilter = "" | "chat" | "untested" | "unused";
-const FILTERS: Array<{ id: ModelFilter; label: string }> = [
-  { id: "", label: "全部" }, { id: "chat", label: "对话" }, { id: "untested", label: "能力未测" }, { id: "unused", label: "没在用" },
+const FILTERS: ModelFilter[] = ["", "chat", "untested", "unused"];
+const CAPS: Array<keyof CapsOverrideView & ("tool_calling" | "structured_output" | "image_input" | "reasoning")> = [
+  "tool_calling", "structured_output", "image_input", "reasoning",
 ];
-const CAPS: Array<{ key: keyof CapsOverrideView; label: string; hint: string }> = [
-  { key: "tool_calling", label: "工具调用", hint: "对话查阅文章、读取网页、调用外部工具都要它。" },
-  { key: "structured_output", label: "结构化输出", hint: "摘要、简报、记忆整理按固定格式返回结果。" },
-  { key: "image_input", label: "图片输入", hint: "对话里可以带上文章配图。不会自动测试。" },
-  { key: "reasoning", label: "推理（思考）", hint: "模型支持时才能选思考强度。" },
-];
-const SUPPORT: Record<CapabilitySupport, string> = { supported: "支持", unsupported: "不支持", unknown: "未测" };
 
 export const untested = (e: PoolEntryView) => !e.tested_at;
 export const unused = (e: PoolEntryView) => !e.uses.length && !e.chat;
@@ -47,6 +41,8 @@ export function ManageModels({ providers, initialFilter, initialModel, onAsk, on
   onShowUses: () => void;
   onEditStateChange?: (state: SettingsEditState | null) => void;
 }) {
+  const { t } = useTranslation("settingsModels");
+  const support = (state: CapabilitySupport) => t(`manage.support.${state}`);
   const client = useQueryClient();
   const { writing, run } = useSettingsWrite(aiMutationOptions(client));
   const pool = useQuery(poolQueryOptions()).data;
@@ -61,7 +57,7 @@ export function ManageModels({ providers, initialFilter, initialModel, onAsk, on
   const [removing, setRemoving] = useState(false);
 
   const entries = pool?.pool ?? [];
-  const name = (id: number) => providers.find((p) => p.id === id)?.name ?? "已删除的连接";
+  const name = (id: number) => providers.find((p) => p.id === id)?.name ?? t("manage.deletedConnection");
   const q = query.trim();
   const shown = entries.filter((e) => choiceKey(e) === selected || (
     (!q || fuzzyMatch(modelName(e), q) || fuzzyMatch(e.model, q) || fuzzyMatch(name(e.provider_id), q))
@@ -71,13 +67,13 @@ export function ManageModels({ providers, initialFilter, initialModel, onAsk, on
   const draft = text?.key === key ? text.value : current ? textOf(current) : { name: "", ctx: "", out: "" };
   const dirty = !!current && text?.key === key && JSON.stringify(text.value) !== JSON.stringify(textOf(current));
 
-  const write = async (args: Omit<UpdatePoolModelArgs, "provider_id" | "model">, done = "已保存。") => {
+  const write = async (args: Omit<UpdatePoolModelArgs, "provider_id" | "model">, done?: string) => {
     if (!current) return false;
     setStatus(null);
     const outcome = await run({ type: "model", args: { provider_id: current.provider_id, model: current.model, ...args } });
     if (outcome.status === "busy" || !outcome.mounted) return outcome.status === "done";
-    if (outcome.status === "failed") { setStatus({ tone: "err", text: formatNotice("没有保存：", outcome.error) }); return false; }
-    setStatus({ tone: "ok", text: done });
+    if (outcome.status === "failed") { setStatus({ tone: "err", text: formatNotice(t("manage.saveFailed"), outcome.error) }); return false; }
+    setStatus({ tone: "ok", text: done ?? t("manage.saved") });
     return true;
   };
   const saveText = async () => {
@@ -85,11 +81,11 @@ export function ManageModels({ providers, initialFilter, initialModel, onAsk, on
     const count = (raw: string, label: string) => {
       if (!raw.trim()) return 0;
       const n = Number(raw);
-      if (!Number.isInteger(n) || n <= 0) { setStatus({ tone: "err", text: `${label}要填正整数，或留空。` }); return null; }
+      if (!Number.isInteger(n) || n <= 0) { setStatus({ tone: "err", text: t("manage.positiveInt", { label }) }); return null; }
       return n;
     };
-    const ctx = count(draft.ctx, "上下文长度");
-    const out = count(draft.out, "单次最多输出");
+    const ctx = count(draft.ctx, t("manage.ctxLabel"));
+    const out = count(draft.out, t("manage.outLabel"));
     if (ctx === null || out === null) return false;
     const ok = await write({ display_name: draft.name.trim(), context_window: ctx, max_output: out });
     if (ok) setText(null);
@@ -110,9 +106,9 @@ export function ManageModels({ providers, initialFilter, initialModel, onAsk, on
     const outcome = await run({ type: "probe", providerId: current.provider_id, model: current.model });
     setProbing(false);
     if (outcome.status === "busy" || !outcome.mounted) return;
-    if (outcome.status === "failed") { setStatus({ tone: "err", text: formatNotice("测试没有完成：", outcome.error) }); return; }
+    if (outcome.status === "failed") { setStatus({ tone: "err", text: formatNotice(t("manage.probeFailed"), outcome.error) }); return; }
     const e = outcome.data.pool?.pool.find((x) => choiceKey(x) === key);
-    setStatus({ tone: "ok", text: e ? `测试完成：${CAPS.filter((c) => c.key !== "image_input").map((c) => `${c.label}${SUPPORT[e.detected[c.key]]}`).join("，")}。结果不准时可以在下面手动改。` : "测试完成。" });
+    setStatus({ tone: "ok", text: e ? t("manage.probeDone", { caps: CAPS.filter((c) => c !== "image_input").map((c) => t("manage.capResult", { label: t(`manage.cap.${c}.label`), support: support(e.detected[c]) })).join(t("manage.capSep")) }) : t("manage.probeDoneBare") });
   };
 
   const remove = async (replace?: ModelChoice | null) => {
@@ -121,30 +117,32 @@ export function ManageModels({ providers, initialFilter, initialModel, onAsk, on
     const outcome = await run({ type: "pool", args: { add: [], remove: [{ provider_id: current.provider_id, model: current.model }], replace: replace ?? undefined } });
     if (outcome.status === "busy" || !outcome.mounted) return;
     setRemoving(false);
-    if (outcome.status === "failed") { setStatus({ tone: "err", text: formatNotice("没有移出：", outcome.error) }); return; }
+    if (outcome.status === "failed") { setStatus({ tone: "err", text: formatNotice(t("manage.removeFailed"), outcome.error) }); return; }
     const view = outcome.data.pool;
     setSelected(null);
     setShowDetail(false);
-    setStatus({ tone: "ok", text: `已移出 ${modelName(current)}${view?.replaced.length ? `，${view.replaced.length} 项用途改用替换模型` : view?.unset.length ? `，${view.unset.length} 项用途暂停，等你另选` : ""}。` });
+    setStatus({ tone: "ok", text: view?.replaced.length ? t("manage.removedReplaced", { name: modelName(current), count: view.replaced.length })
+      : view?.unset.length ? t("manage.removedUnset", { name: modelName(current), count: view.unset.length })
+      : t("manage.removed", { name: modelName(current) }) });
   };
 
   const isDefault = !!current && sameChoice(chatDefault(bindings), current);
-  const uses = current ? current.uses.map((t) => bindings?.tasks.find((x) => x.task === t)?.title ?? t) : [];
+  const uses = current ? current.uses.map((use) => bindings?.tasks.find((x) => x.task === use)?.title ?? use) : [];
   const reasoningOff = current?.effective.reasoning === "unsupported";
   // 引擎握手报告过的更高档位；只读缓存，不为它发请求。
   const reported = useQuery({ ...piQueryOptions(), enabled: false }).data?.thinking_levels;
 
   return (
-    <Dialog title="管理模型" dirty={dirty} busy={writing} onAsk={onAsk} onClose={onClose} onSave={saveText} className="page"
-      onEditStateChange={onEditStateChange} cancelLabel="完成" actions={null}
-      leading={<span className="hint">改动立即保存。</span>}>
+    <Dialog title={t("manage.title")} dirty={dirty} busy={writing} onAsk={onAsk} onClose={onClose} onSave={saveText} className="page"
+      onEditStateChange={onEditStateChange} cancelLabel={t("manage.done")} actions={null}
+      leading={<span className="hint">{t("manage.autosave")}</span>}>
       <div className="manage-models" data-detail={showDetail ? "1" : "0"}>
         <div className="manage-list">
           <div className="manage-list-tools">
-            <input type="search" value={query} placeholder="搜索模型或连接" aria-label="搜索模型" onChange={(e) => setQuery(e.target.value)} />
-            <ChipBar value={filter} options={FILTERS} onChange={(v) => setFilter(v as ModelFilter)} />
+            <input type="search" value={query} placeholder={t("manage.searchPlaceholder")} aria-label={t("manage.searchAria")} onChange={(e) => setQuery(e.target.value)} />
+            <ChipBar value={filter} options={FILTERS.map((id) => ({ id, label: t(`manage.filter.${id || "all"}`) }))} onChange={(v) => setFilter(v as ModelFilter)} />
           </div>
-          <ul className="manage-items" aria-label="加进来的模型">
+          <ul className="manage-items" aria-label={t("manage.listAria")}>
             {shown.map((e, i) => {
               const group = i === 0 || shown[i - 1].provider_id !== e.provider_id ? name(e.provider_id) : null;
               const limited = e.effective.tool_calling === "unsupported" || e.effective.structured_output === "unsupported";
@@ -155,32 +153,32 @@ export function ManageModels({ providers, initialFilter, initialModel, onAsk, on
                     onClick={() => { if (dirty) void saveText(); setSelected(choiceKey(e)); setShowDetail(true); setStatus(null); setRemoving(false); }}>
                     <span className="mono">{modelName(e)}</span>
                     <span className="manage-meta">
-                      {e.chat && <span className="dot-chat" title="用于对话" />}
-                      {untested(e) ? <span className="warn">能力未测</span> : limited ? <span className="warn">能力受限</span> : null}
-                      {e.uses.length > 0 && <span>{e.uses.length} 项</span>}
+                      {e.chat && <span className="dot-chat" title={t("manage.forChat")} />}
+                      {untested(e) ? <span className="warn">{t("manage.untested")}</span> : limited ? <span className="warn">{t("manage.limited")}</span> : null}
+                      {e.uses.length > 0 && <span>{t("manage.usesCount", { count: e.uses.length })}</span>}
                     </span>
                   </button>
                 </li>
               );
             })}
-            {!shown.length && <li className="hint">{entries.length ? "没有符合的模型。" : "还没有加进来的模型。"}</li>}
+            {!shown.length && <li className="hint">{t(entries.length ? "manage.noMatch" : "manage.noModels")}</li>}
           </ul>
           <div className="manage-list-foot">
-            <button type="button" className="btn sm" onClick={onAddModels}>添加模型</button>
-            <span className="hint">{entries.length} 个</span>
+            <button type="button" className="btn sm" onClick={onAddModels}>{t("manage.add")}</button>
+            <span className="hint">{t("manage.count", { count: entries.length })}</span>
           </div>
         </div>
 
         <div className="manage-detail">
-          {!current ? <p className="settings-empty">选一个模型查看和修改它的设置。</p> : <>
-            <button type="button" className="link-btn manage-back" onClick={() => setShowDetail(false)}>← 模型列表</button>
+          {!current ? <p className="settings-empty">{t("manage.pickOne")}</p> : <>
+            <button type="button" className="link-btn manage-back" onClick={() => setShowDetail(false)}>{t("manage.back")}</button>
             <div className="manage-detail-head">
               <div>
                 <h4 className="mono">{current.model}</h4>
                 <span className="hint"><span className="model-picker-tag">{name(current.provider_id)}</span>
-                  {current.tested_at ? ` 能力 ${new Date(current.tested_at).toLocaleString(locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 测试` : " 能力还没测试"}</span>
+                  {current.tested_at ? t("manage.testedAt", { time: new Date(current.tested_at).toLocaleString(locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) }) : t("manage.neverTested")}</span>
               </div>
-              <button type="button" className="btn sm" disabled={writing} aria-busy={probing || undefined} onClick={() => void probe()}>测试能力</button>
+              <button type="button" className="btn sm" disabled={writing} aria-busy={probing || undefined} onClick={() => void probe()}>{t("manage.probe")}</button>
             </div>
             {status && <p className={status.tone === "err" ? "form-status error" : "form-status"} role={status.tone === "err" ? "alert" : "status"}>{status.text}</p>}
             {removing && (
@@ -188,68 +186,68 @@ export function ManageModels({ providers, initialFilter, initialModel, onAsk, on
                 onConfirm={(r) => void remove(r)} onCancel={() => setRemoving(false)} />
             )}
 
-            <section className="manage-section" aria-label="使用">
-              <h5>使用</h5>
+            <section className="manage-section" aria-label={t("manage.useSection")}>
+              <h5>{t("manage.useSection")}</h5>
               <div className="settings-option">
-                <div><strong>用于对话</strong>
-                  <p className="hint">打开后出现在对话的模型列表里。{isDefault ? "它是对话默认模型，要关掉先在模型页「对话」里改选别的。" : ""}</p></div>
-                <Toggle label="用于对话" on={current.chat} onLabel="已开启" offLabel="已关闭" disabled={writing || (current.chat && isDefault)}
+                <div><strong>{t("manage.forChat")}</strong>
+                  <p className="hint">{t(isDefault ? "manage.chatHintDefault" : "manage.chatHint")}</p></div>
+                <Toggle label={t("manage.forChat")} on={current.chat} onLabel={t("toggle.on")} offLabel={t("toggle.off")} disabled={writing || (current.chat && isDefault)}
                   onClick={() => void write({ chat: !current.chat })} />
               </div>
               <div className="settings-option">
-                <div><strong>用在这些地方</strong><p className="hint">{uses.length ? uses.join("、") : "还没有用途选它。"}</p></div>
-                <button type="button" className="link-btn" onClick={onShowUses}>去改用途</button>
+                <div><strong>{t("manage.usedAt")}</strong><p className="hint">{uses.length ? uses.join(t("manage.listSep")) : t("manage.noUses")}</p></div>
+                <button type="button" className="link-btn" onClick={onShowUses}>{t("manage.editUses")}</button>
               </div>
               <div className="settings-option">
-                <div><strong>显示名称</strong><p className="hint">选择列表和对话输入区显示它；留空显示模型 id。</p></div>
-                <input value={draft.name} aria-label="显示名称" placeholder={current.model} readOnly={writing}
+                <div><strong>{t("manage.displayName")}</strong><p className="hint">{t("manage.displayNameHint")}</p></div>
+                <input value={draft.name} aria-label={t("manage.displayName")} placeholder={current.model} readOnly={writing}
                   onChange={(e) => setText({ key, value: { ...draft, name: e.target.value } })} onBlur={() => void saveText()} onKeyDown={enterSaves} />
               </div>
             </section>
 
-            <section className="manage-section" aria-label="能力">
-              <h5>能力</h5>
-              <p className="hint">「测试能力」会实际调用一次模型；结果不准可以手动改，以手动设置为准。</p>
+            <section className="manage-section" aria-label={t("manage.capSection")}>
+              <h5>{t("manage.capSection")}</h5>
+              <p className="hint">{t("manage.capIntro")}</p>
               {CAPS.map((c) => {
-                const over = current.overrides[c.key];
+                const over = current.overrides[c];
                 return (
-                  <div className="settings-option" key={c.key}>
-                    <div><strong>{c.label}</strong><p className="hint">{c.hint}</p></div>
+                  <div className="settings-option" key={c}>
+                    <div><strong>{t(`manage.cap.${c}.label`)}</strong><p className="hint">{t(`manage.cap.${c}.hint`)}</p></div>
                     <ChipBar className="segmented" disabled={writing}
                       value={over === true ? "yes" : over === false ? "no" : "auto"}
-                      options={[{ id: "auto", label: `按测试（${SUPPORT[current.detected[c.key]]}）` }, { id: "yes", label: "支持" }, { id: "no", label: "不支持" }]}
-                      onChange={(v) => void write({ overrides: { ...current.overrides, [c.key]: v === "auto" ? undefined : v === "yes" } })} />
+                      options={[{ id: "auto", label: t("manage.byTest", { support: support(current.detected[c]) }) }, { id: "yes", label: t("manage.support.supported") }, { id: "no", label: t("manage.support.unsupported") }]}
+                      onChange={(v) => void write({ overrides: { ...current.overrides, [c]: v === "auto" ? undefined : v === "yes" } })} />
                   </div>
                 );
               })}
             </section>
 
-            <section className="manage-section" aria-label="对话参数">
-              <h5>对话参数</h5>
+            <section className="manage-section" aria-label={t("manage.chatSection")}>
+              <h5>{t("manage.chatSection")}</h5>
               <div className="settings-option">
-                <div><strong>思考强度</strong>
-                  <p className="hint">{reasoningOff ? "这个模型不支持推理，对话时不思考。" : "在对话里用这个模型时的默认档位；单条对话可以在输入区另选。"}</p></div>
+                <div><strong>{t("manage.thinking")}</strong>
+                  <p className="hint">{t(reasoningOff ? "manage.thinkingOff" : "manage.thinkingHint")}</p></div>
                 {!reasoningOff && <ChipBar className="segmented" value={current.thinking} options={thinkingOptions(reported)} disabled={writing}
                   onChange={(v) => void write({ thinking: v })} />}
               </div>
               <div className="settings-option">
-                <div><strong>上下文长度</strong><p className="hint">单位 token；留空按模型默认{current.engine_context_window ? "" : "（开始一次对话后显示）"}。</p></div>
-                <input value={draft.ctx} aria-label="上下文长度" inputMode="numeric" readOnly={writing}
-                  placeholder={current.engine_context_window ? `默认 ${current.engine_context_window.toLocaleString("en-US")}` : "默认"}
+                <div><strong>{t("manage.ctxLabel")}</strong><p className="hint">{t(current.engine_context_window ? "manage.ctxHint" : "manage.ctxHintPending")}</p></div>
+                <input value={draft.ctx} aria-label={t("manage.ctxLabel")} inputMode="numeric" readOnly={writing}
+                  placeholder={current.engine_context_window ? t("manage.ctxDefaultN", { n: current.engine_context_window.toLocaleString("en-US") }) : t("manage.ctxDefault")}
                   onChange={(e) => setText({ key, value: { ...draft, ctx: e.target.value } })} onBlur={() => void saveText()} onKeyDown={enterSaves} />
               </div>
               <div className="settings-option">
-                <div><strong>单次最多输出</strong><p className="hint">单位 token；留空不限制。</p></div>
-                <input value={draft.out} aria-label="单次最多输出" inputMode="numeric" placeholder="例如 8192" readOnly={writing}
+                <div><strong>{t("manage.outLabel")}</strong><p className="hint">{t("manage.outHint")}</p></div>
+                <input value={draft.out} aria-label={t("manage.outLabel")} inputMode="numeric" placeholder={t("manage.outPlaceholder")} readOnly={writing}
                   onChange={(e) => setText({ key, value: { ...draft, out: e.target.value } })} onBlur={() => void saveText()} onKeyDown={enterSaves} />
               </div>
             </section>
 
             <ModelCompat key={key} entry={current} connection={name(current.provider_id)} disabled={writing}
-              onSave={(compat) => write({ compat_json: compat }, compat ? "已保存这个模型的兼容设置。" : "已改回用连接的兼容设置。")} />
+              onSave={(compat) => write({ compat_json: compat }, compat ? t("manage.compatSaved") : t("manage.compatReset"))} />
 
             <div className="manage-detail-foot">
-              <button type="button" className="btn danger" disabled={writing} onClick={() => void remove()}>从模型列表移出</button>
+              <button type="button" className="btn danger" disabled={writing} onClick={() => void remove()}>{t("manage.removeBtn")}</button>
             </div>
           </>}
         </div>
@@ -265,21 +263,22 @@ function ModelCompat({ entry, connection, disabled, onSave }: {
   disabled: boolean;
   onSave: (compat: string) => Promise<boolean>;
 }) {
+  const { t } = useTranslation("settingsModels");
   const own = !!entry.compat_json;
   const [text, setText] = useState(prettyJson(entry.compat_json ?? entry.recommended_compat_json ?? "{}"));
   const valid = jsonObject(text) !== null;
   return (
     <details className="manage-section advanced-fold" open={own || undefined}>
-      <summary>高级：兼容设置</summary>
-      <p className="hint">默认用连接「{connection}」的兼容设置。{entry.recommended_compat_json ? "测试能力给出了推荐值，已填在下面。" : ""}</p>
+      <summary>{t("manage.compatAdvanced")}</summary>
+      <p className="hint">{t(entry.recommended_compat_json ? "manage.compatDefaultRecommended" : "manage.compatDefault", { connection })}</p>
       <div className="settings-option">
-        <div><strong>只对这个模型单独设置</strong></div>
-        <Toggle label="单独设置兼容" on={own} onLabel="已开启" offLabel="已关闭" disabled={disabled || (!own && !valid)}
+        <div><strong>{t("manage.compatOwn")}</strong></div>
+        <Toggle label={t("manage.compatToggle")} on={own} onLabel={t("toggle.on")} offLabel={t("toggle.off")} disabled={disabled || (!own && !valid)}
           onClick={() => void onSave(own ? "" : text)} />
       </div>
       {own && <>
-        <CompatEditor value={text} onChange={setText} disabled={disabled} label={`${entry.model}的兼容设置`} />
-        <button type="button" className="btn sm" disabled={disabled || !valid} onClick={() => void onSave(text)}>保存兼容设置</button>
+        <CompatEditor value={text} onChange={setText} disabled={disabled} label={t("manage.compatLabel", { model: entry.model })} />
+        <button type="button" className="btn sm" disabled={disabled || !valid} onClick={() => void onSave(text)}>{t("manage.compatSave")}</button>
       </>}
     </details>
   );

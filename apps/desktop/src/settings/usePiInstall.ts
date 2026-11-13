@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api, onPiInstall, type PiInstallView } from "../lib/api";
 import { formatNotice } from "../lib/notice";
 import { piKeys } from "./piQuery";
+import { i18n } from "../i18n";
 
 export const piInstalling = (view: PiInstallView | null | undefined) =>
   view?.state === "downloading" || view?.state === "installing";
@@ -34,7 +35,7 @@ export function usePiInstallNotice(notify: (notice: { message: string }) => void
     const unlisten = onPiInstall((view) => {
       if (view.state !== "done" && view.state !== "failed") return;
       void client.invalidateQueries({ queryKey: piKeys.probe });
-      notify({ message: view.state === "done" ? `对话引擎已就绪（${view.message}）` : `对话引擎下载失败：${view.message}` });
+      notify({ message: i18n.t(view.state === "done" ? "install.done" : "install.failed", { ns: "settingsAssistant", message: view.message }) });
     }).catch(() => () => {});
     return () => { void unlisten.then((stop) => stop()); };
   }, [client, notify]);
@@ -44,7 +45,9 @@ const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 /** 进度一句话：有总大小时给百分比，没有时只报已下载。 */
 export function installProgressText(view: PiInstallView) {
-  if (view.state === "installing") return "正在校验并安装对话引擎…";
-  if (!view.received) return "正在连接下载地址…";
-  return view.total ? `正在下载对话引擎 ${mb(view.received)} / ${mb(view.total)}` : `正在下载对话引擎 ${mb(view.received)}`;
+  if (view.state === "installing") return i18n.t("install.installing", { ns: "settingsAssistant" });
+  if (!view.received) return i18n.t("install.connecting", { ns: "settingsAssistant" });
+  return view.total
+    ? i18n.t("install.downloading", { ns: "settingsAssistant", received: mb(view.received), total: mb(view.total) })
+    : i18n.t("install.downloadingNoTotal", { ns: "settingsAssistant", received: mb(view.received) });
 }

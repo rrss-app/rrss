@@ -1,1 +1,358 @@
-{}
+{
+  "rules": {
+    "polarity": { "like": "加", "dislike": "减" },
+    "dimension": {
+      "title_kw": "标题",
+      "title_re": "标题正则",
+      "author": "作者",
+      "tag": "标签",
+      "url_phrase": "URL",
+      "url_re": "URL 正则",
+      "body_phrase": "正文",
+      "body_re": "正文正则"
+    },
+    "scopeKind": { "global": "全局", "folder": "文件夹", "feed": "订阅源" },
+    "filter": {
+      "summary": "筛选规则",
+      "all": "全部",
+      "like": "加分",
+      "dislike": "减分",
+      "pending": "待确认"
+    },
+    "verb": { "regex": "匹配正则", "contains": "包含" },
+    "loading": "正在读取规则…",
+    "readFailed": "读取规则失败，当前表单未被覆盖：{{error}}",
+    "retryRead": "重试读取",
+    "editLabel": "规则设置",
+    "composer": {
+      "editTitle": "修改规则",
+      "newTitle": "新建规则",
+      "hint": "读起来像一句话：当什么包含什么，就加减多少分。",
+      "when": "当",
+      "position": "匹配位置",
+      "pattern": "匹配内容",
+      "patternPlaceholder": "词或短语",
+      "weight": "评分权重",
+      "points": "分",
+      "saveEdit": "保存修改",
+      "add": "添加",
+      "more": "更多",
+      "scope": "生效范围",
+      "cancel": "取消"
+    },
+    "group": {
+      "suggested": { "title": "建议规则", "hint": "建议只在这里等待确认，不会自动启用。" },
+      "existing": { "title": "已有规则", "hint": "停用的规则保留，可以随时再打开。" }
+    },
+    "empty": {
+      "all": "还没有规则。可以新建规则，或启用下方预设。",
+      "filtered": "此分类下没有规则。可以切换到「全部」查看其他规则。"
+    },
+    "meta": {
+      "preset": "来自预设",
+      "manual": "手动添加",
+      "suggest": "建议",
+      "pending": "待确认建议",
+      "disabled": "已停用"
+    },
+    "stats": {
+      "hits": "近 30 天命中 {{hits}} 篇 · 最近 {{last}}",
+      "withHidden": "近 30 天命中 {{hits}} 篇 · 最近 {{last}} · 经它隐藏 {{hidden}} 篇",
+      "none": "暂无"
+    },
+    "advice": {
+      "stale": "90 天没有命中，可以清理",
+      "broad": "命中较宽",
+      "disable": "停用",
+      "narrow": "收窄…"
+    },
+    "row": {
+      "edit": "编辑",
+      "editAria": "编辑规则 {{pattern}}",
+      "confirm": "确认",
+      "discard": "丢弃",
+      "delete": "删除",
+      "deleteConfirm": "删除「{{pattern}}」这条规则？",
+      "enableAria": "启用规则 {{pattern}}"
+    },
+    "action": {
+      "disable": "停用规则",
+      "confirm": "确认规则",
+      "discard": "丢弃规则",
+      "delete": "删除规则",
+      "update": "更新规则",
+      "save": "保存规则",
+      "create": "创建规则",
+      "saveThreshold": "保存隐藏阈值",
+      "saveSpotRate": "保存隐藏抽查比例",
+      "rescore": "重新评分",
+      "removePreset": "移除预设",
+      "applyPreset": "启用预设"
+    },
+    "write": {
+      "failed": "{{label}}失败：",
+      "done": "{{label}}已完成。",
+      "refreshFailed": "规则列表没能刷新，显示的还是之前的内容；刚才的修改已保存，重新读取即可：",
+      "patternRequired": "请填写匹配内容",
+      "thresholdInvalid": "请填写有效的隐藏阈值，不能为空。"
+    },
+    "hidden": {
+      "title": "隐藏",
+      "threshold": "隐藏阈值",
+      "thresholdHint": "分数低于这个值的文章不出现在焦点里。",
+      "spot": "隐藏抽查",
+      "spotHint": "随机放回少量本该隐藏的文章，看规则有没有误杀。",
+      "spotOff": "关",
+      "statsLoading": "正在读取隐藏抽查统计…",
+      "statsFailed": "读取抽查设置或统计失败。",
+      "spotStats": "近 30 天放回 {{exposed}} 篇：你打开或赞了 {{liked}} 篇，踩了 {{disliked}} 篇。",
+      "insufficient": "样本还少，暂不估计误杀率",
+      "estimate": "估计误杀约 {{percent}}%",
+      "viewLiked": "查看你赞过的 {{liked}} 篇",
+      "spotNote": "放回的文章和普通文章看起来一样；打开「推荐详情」后才标出「抽查」并在反馈后说明原因。",
+      "history": "历史文章",
+      "historyHint": "修改规则后，可重新计算已有文章的评分。",
+      "rescore": "重新评分"
+    },
+    "presets": {
+      "summary": "预设",
+      "none": "没有可用预设。",
+      "enabledOf": "已启用 {{enabled}} / {{total}} 条",
+      "notInstalled_other": "{{count}} 条规则，未安装",
+      "remove": "移除",
+      "apply": "启用"
+    },
+    "scopeList": {
+      "failed": "生效范围读取失败，请重试读取规则。",
+      "loading": "正在读取生效范围…",
+      "empty": "暂无可选范围，请先在「订阅」中添加订阅源或文件夹。",
+      "aria": "选择生效范围"
+    }
+  },
+  "subscribe": {
+    "aria": "订阅设置",
+    "editLabel": "订阅设置",
+    "uncategorized": "未分类",
+    "retentionMode": {
+      "follow": "跟随全局设置",
+      "keep": "永久保留",
+      "custom": "自定义天数"
+    },
+    "action": {
+      "unsubscribe": "退订",
+      "add": "添加",
+      "newFolder": "新建文件夹",
+      "import": "导入",
+      "export": "导出",
+      "save": "保存",
+      "delete": "删除",
+      "dismiss": "忽略"
+    },
+    "write": {
+      "failed": "{{label}}失败：",
+      "done": "{{label}}已完成。",
+      "refreshFailed": "订阅列表没能刷新，显示的还是之前的内容；刚才的修改已保存，重新读取即可：",
+      "stale": "订阅列表还没刷新，请先点「重新读取」，确认后再操作。"
+    },
+    "batch": {
+      "title": "退订长期失败的源",
+      "warning": "这些源的文章会一起删除（收藏的也会删除）。",
+      "done_other": "已退订 {{count}} 个源。",
+      "ok_other": "退订 {{count}} 个源"
+    },
+    "add": {
+      "title": "添加订阅",
+      "hint": "粘贴订阅地址，添加你关注的来源。",
+      "urlAria": "订阅地址",
+      "urlPlaceholder": "粘贴订阅地址，例如 https://example.com/feed.xml",
+      "button": "添加",
+      "success": "添加成功：{{message}}",
+      "formats": "支持 RSS、Atom 和 JSON Feed。"
+    },
+    "display": {
+      "title": "显示",
+      "hint": "来源在焦点卡片和订阅列表里的样子。",
+      "icons": "网站图标"
+    },
+    "fetch": {
+      "title": "抓取",
+      "hint": "刷新时怎样从各个网站下载订阅。",
+      "label": "抓取"
+    },
+    "organize": {
+      "title": "整理",
+      "hint": "文件夹只影响侧栏分组，不改变排序。",
+      "newFolder": "新建文件夹",
+      "folderNameAria": "新文件夹名称",
+      "folderPlaceholder": "例如：技术、设计、生活",
+      "created": "已新建文件夹「{{name}}」",
+      "create": "新建"
+    },
+    "opml": {
+      "hint": "只包含订阅列表，不含文章正文。",
+      "import": "导入",
+      "export": "导出"
+    },
+    "loadFailed": "加载订阅失败，请重新读取后再操作：",
+    "list": {
+      "title": "我的订阅",
+      "hint": "按文件夹分组。",
+      "reload": "重新读取",
+      "loading": "正在读取订阅…",
+      "empty": "还没有订阅。在上方添加一个来源，或导入已有的订阅列表。"
+    },
+    "health": {
+      "issues_other": "{{count}} 个源需要处理：长期失败、长期没有新文章或大部分内容被隐藏。",
+      "showAll": "显示全部",
+      "onlyThese": "只看这些",
+      "unsubscribeFailing": "退订长期失败的源…"
+    },
+    "edit": "编辑",
+    "delete": "删除",
+    "cancel": "取消",
+    "saveEdit": "保存修改",
+    "folder": {
+      "name": "文件夹名称",
+      "missing": "此文件夹已不在订阅列表中，未保存的输入仍保留。",
+      "deleteTitle": "删除文件夹",
+      "deleteConfirm": "删除「{{name}}」？其中的订阅会移到「未分类」。"
+    },
+    "feed": {
+      "deleteTitle": "删除订阅",
+      "deleteConfirm": "退订「{{title}}」？相关文章会一并删除。",
+      "dismiss": "忽略",
+      "dismissed": "已忽略「{{title}}」的提示，30 天内不再提示。",
+      "unsubscribe": "退订",
+      "refreshFailed": "刷新失败",
+      "name": "订阅名称",
+      "namePlaceholder": "留空使用来源的默认名称",
+      "folder": "所属文件夹",
+      "folderGone": "原文件夹已不可用",
+      "url": "订阅地址",
+      "retention": "保留文章正文",
+      "retentionDays": "保留天数",
+      "retentionHint": "收录满这么多天的文章会清掉正文，只留标题、链接和阅读记录。所有源的默认值在「存储」里设置。",
+      "missing": "此订阅已不在列表中，未保存的输入仍保留。"
+    }
+  },
+  "siteRule": {
+    "title": "站点规则",
+    "save": "保存",
+    "domainRequired": "请填写域名。",
+    "saveFailed": "保存失败：",
+    "testFailed": "测试失败：",
+    "field": {
+      "domain": "域名",
+      "body": "正文",
+      "title": "标题",
+      "author": "作者",
+      "date": "时间"
+    },
+    "fieldPlaceholder": "留空则用通用识别",
+    "strip": "删除",
+    "stripPlaceholder": "一行一个 CSS 选择器",
+    "disableJs": "在原网页禁用本站 JavaScript",
+    "hintStored": "要换域名请新建规则。",
+    "hint": "用 CSS 选择器指定正文和要删掉的部分。「*.example.com」匹配所有子域名，不含 example.com 本身。",
+    "testUrl": "测试链接",
+    "test": "测试",
+    "result": {
+      "userHit": "你的规则 · 命中",
+      "userMiss": "你的规则 · 未命中",
+      "builtinUnused": "内置规则 · 未用",
+      "layerHit": "{{name}} · 命中",
+      "layerUnused": "{{name}} · 未用",
+      "generic": "通用识别",
+      "fallbackTag": "（回退）",
+      "summary": "标题「{{title}}」 · 作者 {{author}} · {{date}} · 正文 {{chars}} 字 · {{images}} 张图 · {{seconds}} 秒",
+      "noAuthor": "未提取",
+      "noDate": "未提取时间",
+      "stripped_other": "删除规则去掉了 {{count}} 处。"
+    }
+  },
+  "siteRules": {
+    "title": "站点规则",
+    "new": "新建规则",
+    "writeFailed": "修改失败：",
+    "readFailed": "无法读取站点规则。",
+    "retry": "重试",
+    "loading": "正在读取站点规则…",
+    "row": {
+      "user": "你的规则",
+      "body": "正文 {{body}}",
+      "strip": "删除 {{selectors}}",
+      "updated": "更新 {{date}}",
+      "enableAria": "启用 {{domain}}",
+      "edit": "编辑",
+      "delete": "删除",
+      "deleteTitle": "删除站点规则？",
+      "deleteConfirm": "删除 {{domain}} 的规则后，将使用内置规则或通用识别。"
+    },
+    "builtin": {
+      "title_other": "内置规则 {{count, number}} 条",
+      "detail": "来自 {{source}}（公有领域） · 版本 {{commit}} · 随 RRSS 更新 · 中文网站收录较少，多数靠自动识别"
+    },
+    "refreshFailed": "列表没能刷新，刚才的修改已经保存，重新读取即可。",
+    "hint": "取正文时先用你的规则，没有就用内置规则，再没有就自动识别。"
+  },
+  "webReading": {
+    "editLabel": "网页阅读",
+    "saveFailed": "保存失败：",
+    "firstTipReset": "下次打开阅读视图或原网页时会重新显示首次提示。",
+    "clearFailed": "清空失败：",
+    "cleared": "原网页数据已清空。",
+    "readFailed": "无法读取网页阅读设置。",
+    "retry": "重试",
+    "loading": "正在读取网页阅读设置…",
+    "intro": "文章里的外部链接先在 RRSS 里打开。打开的网页默认不进库。",
+    "open": {
+      "title": "打开方式",
+      "click": "点击外部链接",
+      "clickHint": "右键链接随时可以选别的方式。",
+      "optionHint": "（{{hint}}）"
+    },
+    "tip": {
+      "label": "首次提示",
+      "hint": "仿冒域名、链接文字与地址不符、非 HTTPS 的提示总会出现。",
+      "reset": "重新显示首次提示"
+    },
+    "page": {
+      "title": "原网页",
+      "js": "允许网页运行 JavaScript",
+      "jsHint": "关掉更安全，但很多网站会显示不全。更改后对新打开的原网页生效，也可以在站点规则里只对某个站点关闭。",
+      "jsAria": "允许 JavaScript",
+      "data": "浏览数据只保留到退出 RRSS",
+      "dataHint": "这次运行里，原网页共用登录、Cookie 和缓存，通过一次人机验证就不用反复验证；关掉主窗口退出后全部删除，下次启动是全新状态。摄像头、麦克风、定位、通知一律拒绝；下载会被拦截，可交给系统浏览器。",
+      "clearTitle": "立即清空原网页数据？",
+      "clearBody": "这会关闭当前原网页，并清除这次运行保存的登录、Cookie 和缓存。",
+      "clear": "立即清空"
+    }
+  },
+  "retention": {
+    "title": "保留策略",
+    "saveFailed": "保存保留设置失败：",
+    "cleanFailed": "清理失败：",
+    "savedDays_other": "已设为保留 {{count}} 天。",
+    "savedOff": "已关闭保留策略，不再清理文章。",
+    "daysInvalid": "保留天数需要是大于 0 的整数。",
+    "readFailed": "读取保留设置失败：{{error}}",
+    "fold": "旧文章正文",
+    "foldOn_other": "保留 {{count}} 天",
+    "foldOff": "关闭",
+    "keep": "保留文章正文",
+    "keepOnHint_other": "入库满 {{count}} 天的文章会清掉正文、向量、译文和配图，只留标题、链接和阅读记录。",
+    "keepOffHint": "关闭时不清理任何文章。开启后按文章收录的时间计算，单个源可以在订阅页单独设置或永久保留。",
+    "toggleOn": "已开启",
+    "toggleOff": "已关闭",
+    "days": "保留天数",
+    "daysHint": "按文章收录的时间计算。",
+    "customFeeds_other": "有 {{count}} 个源单独设置了保留。",
+    "daysUnit": "天",
+    "protectedA": "不会清理：已收藏的、被对话引用的、出现在简报来源里的文章。",
+    "protectedB": "未读文章同样按天数清理；清理后仍能按标题搜到，打开时可以重新抓取正文。",
+    "cleaning": "清理中…",
+    "cleanNow": "立即清理",
+    "previewConfirmTitle": "立即清理旧文章正文",
+    "previewConfirmOk": "清理"
+  }
+}

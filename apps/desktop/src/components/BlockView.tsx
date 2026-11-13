@@ -1,6 +1,7 @@
 import { memo, useContext, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { DigestLineView, MediaRef } from "../bindings";
+import { i18n, useTranslation } from "../i18n";
 import { WebLinksContext } from "../lib/webLinks";
 import { api, copyText, isSafeHttpUrl, openExternal } from "../lib/api";
 import { formatNotice } from "../lib/notice";
@@ -126,7 +127,7 @@ function renderBlock(
     case "p":
       return (
         <p key={key} {...id} className={digest?.summary ? "digest-closing" : undefined}>
-          {digest?.summary === "start" ? <span className="digest-closing-label" data-selection-ignore>小结</span> : null}
+          {digest?.summary === "start" ? <span className="digest-closing-label" data-selection-ignore>{i18n.t("block.summary", { ns: "reader" })}</span> : null}
           {renderInlines(block.inlines, onOpenUrl)}
         </p>
       );
@@ -142,8 +143,8 @@ function renderBlock(
     case "pre":
       return (
         <pre key={key} {...id}>
-          {readerAppearance ? <span className="reader-code-tools" data-selection-ignore><span>{block.lang}</span><button type="button" aria-label="复制代码" onClick={() => void copyText(block.text)}>复制</button></span> : <button type="button" style={{ float: "right" }} onClick={() => copyText(block.text)}>
-            复制
+          {readerAppearance ? <span className="reader-code-tools" data-selection-ignore><span>{block.lang}</span><button type="button" aria-label={i18n.t("block.copyCode", { ns: "reader" })} onClick={() => void copyText(block.text)}>{i18n.t("block.copy", { ns: "reader" })}</button></span> : <button type="button" style={{ float: "right" }} onClick={() => copyText(block.text)}>
+            {i18n.t("block.copy", { ns: "reader" })}
           </button>}
           <CodeText text={block.text} lang={block.lang} />
         </pre>
@@ -276,14 +277,15 @@ function SelectionMenu({ menu, menuRef, onCopy, onCite, onClose, onTranslate }: 
   menu: SelMenu; menuRef: RefObject<HTMLDivElement | null>; onCopy: () => void; onCite: () => void; onClose: () => void;
   onTranslate?: () => void;
 }) {
+  const { t } = useTranslation("reader");
   const icons = !!menu.boundary;
   const items = <>
-    <button type="button" role="menuitem" onClick={onCopy}>{icons ? <Icon name="copy" size={16} /> : null}复制</button>
-    <button type="button" role="menuitem" onClick={onCite}>{icons ? <Icon name="quote" size={16} /> : null}引用</button>
-    {icons && onTranslate ? <button type="button" role="menuitem" onClick={onTranslate}><Icon name="translate" size={16} />翻译</button> : null}
+    <button type="button" role="menuitem" onClick={onCopy}>{icons ? <Icon name="copy" size={16} /> : null}{t("block.copy")}</button>
+    <button type="button" role="menuitem" onClick={onCite}>{icons ? <Icon name="quote" size={16} /> : null}{t("block.cite")}</button>
+    {icons && onTranslate ? <button type="button" role="menuitem" onClick={onTranslate}><Icon name="translate" size={16} />{t("block.translate")}</button> : null}
   </>;
   if (menu.boundary) {
-    return <FloatingMenu anchor={{ x: menu.x, y: menu.y + 12, selection: menu.selection }} boundary={menu.boundary} label="选区" className="sel-menu reader-selection-menu" onClose={onClose}>
+    return <FloatingMenu anchor={{ x: menu.x, y: menu.y + 12, selection: menu.selection }} boundary={menu.boundary} label={t("block.selection")} className="sel-menu reader-selection-menu" onClose={onClose}>
       {items}
     </FloatingMenu>;
   }
@@ -318,6 +320,7 @@ export function BlockView({
   readerAppearance = false,
   digestAppearance = false,
 }: Props) {
+  const { t } = useTranslation("reader");
   const digestUnsafe = sources !== undefined && !digestBlockPositionsIntact(document);
   const digestSources = digestUnsafe ? undefined : sources;
   const digestSelectable = !digestUnsafe && selectable;
@@ -407,7 +410,7 @@ export function BlockView({
         if (keepsNativeContextMenu(event.target)) return;
         showSelectionMenu(event, true);
       }}>
-      {digestUnsafe ? <p className="notice error" role="alert">这期简报的排版有问题，来源标记和划词引用暂时不可用。</p> : null}
+      {digestUnsafe ? <p className="notice error" role="alert">{t("block.digestUnsafe")}</p> : null}
       {display.blocks.map((block, i) => <RenderedBlock key={i} block={block} index={i}
         original={showBilingual ? doc.blocks[i] : undefined} alternate={showBilingual ? tr.blocks[i] ?? doc.blocks[i] : undefined}
         mediaOf={mediaOf} mediaLoading={mediaLoading} onOpenUrl={onOpenUrl} onMediaRef={onMediaRef} source={block.t === "li" ? byBlockId.get(i) : undefined}
@@ -425,6 +428,7 @@ export function BlockView({
 function ImageFallback({ alt, src, error, loading, articleId, onMediaRef }: {
   alt: string; src: string; error: string; loading: boolean; articleId?: number; onMediaRef?: (media: MediaRef) => void;
 }) {
+  const { t } = useTranslation("reader");
   const [busy, setBusy] = useState(false);
   const [retryError, setRetryError] = useState("");
   const canRetry = typeof articleId === "number" && !!onMediaRef;
@@ -434,17 +438,17 @@ function ImageFallback({ alt, src, error, loading, articleId, onMediaRef }: {
     setRetryError("");
     void api.retryImage(articleId, src).then((ref) => {
       onMediaRef(ref);
-    }).catch((err) => setRetryError(formatNotice("重试失败：", err))).finally(() => setBusy(false));
+    }).catch((err) => setRetryError(formatNotice(t("image.retryFailed"), err))).finally(() => setBusy(false));
   };
-  if (loading) return <>配图加载中…</>;
+  if (loading) return <>{t("image.loading")}</>;
   const label = alt || src;
   const reason = retryError || error;
   return (
     <>
-      {reason ? `图片未能缓存（${reason}）：${label}` : `图片未能缓存：${label}`}
+      {reason ? t("image.cacheFailedReason", { reason, label }) : t("image.cacheFailed", { label })}
       <span className="image-cache-actions" data-selection-ignore>
-        {canRetry ? <button type="button" className="tool-btn" aria-busy={busy || undefined} onClick={retry}>重试</button> : null}
-        <button type="button" className="tool-btn" onClick={() => void openExternal(src)}>在浏览器打开图片</button>
+        {canRetry ? <button type="button" className="tool-btn" aria-busy={busy || undefined} onClick={retry}>{t("image.retry")}</button> : null}
+        <button type="button" className="tool-btn" onClick={() => void openExternal(src)}>{t("image.openInBrowser")}</button>
       </span>
     </>
   );
@@ -455,6 +459,7 @@ function ImageFallback({ alt, src, error, loading, articleId, onMediaRef }: {
  * 已预热（解码好）的图片挂上就显示；还要读盘解码的到了再淡入，不从空白一下跳出来。
  */
 function CachedImage({ src, alt, fallback, width, height }: { src: string; alt: string; fallback: string; width?: number | null; height?: number | null }) {
+  const { t } = useTranslation("reader");
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const image = useRef<HTMLImageElement>(null);
@@ -465,7 +470,7 @@ function CachedImage({ src, alt, fallback, width, height }: { src: string; alt: 
     setLoaded(!!node && node.complete && node.naturalWidth > 0);
   }, [src]);
   if (failed) {
-    return <span className="embed">图片未能显示：{fallback}</span>;
+    return <span className="embed">{t("image.failed", { fallback })}</span>;
   }
   return (
     <img

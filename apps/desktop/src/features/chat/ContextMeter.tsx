@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ContextUsageView, ModelChoice } from "../../lib/api";
 import { usePresence } from "../../lib/motion";
+import { useTranslation } from "../../i18n";
 import { chatDefault, findEntry, modelName, usePoolChoices } from "../../settings/modelChoices";
 
 /** 上限从哪来：设置里填的、引擎给的默认值、上次发送时记下的。 */
@@ -25,6 +26,7 @@ export function ContextMeter({ usage, limit, source, model }: {
   source: WindowSource | null;
   model: string;
 }) {
+  const { t } = useTranslation("chat");
   const [open, setOpen] = useState(false);
   // 详情卡从圆环一角展开，收起留 100ms 退场。
   const presence = usePresence(open, 100);
@@ -47,14 +49,17 @@ export function ContextMeter({ usage, limit, source, model }: {
 
   const r = 6.5;
   const c = 2 * Math.PI * r;
-  const label = !usage ? "上下文用量：还没有" : pct === null ? `上下文用量 ${k(usage.used)}` : `上下文用量 ${pct}%`;
-  const limitText = !limit ? "还不知道上下文上限；对话引擎启动过一次后会显示。"
-    : source === "user" ? `上限 ${k(limit)} 取 ${model} 的上下文长度（设置里填的）。`
-    : source === "engine" ? `上限 ${k(limit)} 是对话引擎给 ${model} 的默认值（设置里留空）。`
-    : `上限 ${k(limit)} 按上次发送时的模型计算。`;
+  const label = !usage ? t("meter.usageNone") : pct === null ? t("meter.usageTokens", { used: k(usage.used) }) : t("meter.usagePercent", { pct });
+  const limitText = !limit ? t("meter.limitUnknown")
+    : source === "user" ? t("meter.limitUser", { limit: k(limit), model })
+    : source === "engine" ? t("meter.limitEngine", { limit: k(limit), model })
+    : t("meter.limitLast", { limit: k(limit) });
+  const heading = !usage ? t("meter.headingNone")
+    : limit ? (pct === null ? t("meter.headingLimit", { used: k(usage.used), limit: k(limit) }) : t("meter.headingLimitPercent", { used: k(usage.used), limit: k(limit), pct }))
+    : (pct === null ? t("meter.headingUsed", { used: k(usage.used) }) : t("meter.headingUsedPercent", { used: k(usage.used), pct }));
   return (
     <span className="context-meter" ref={root}>
-      <button type="button" ref={trigger} className="context-meter-ring" data-tone={tone} aria-label={`${label}，点开看详情`}
+      <button type="button" ref={trigger} className="context-meter-ring" data-tone={tone} aria-label={t("meter.ariaLabel", { label })}
         aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <svg viewBox="0 0 16 16" aria-hidden="true">
           <circle className="track" cx="8" cy="8" r={r} />
@@ -62,13 +67,13 @@ export function ContextMeter({ usage, limit, source, model }: {
         </svg>
       </button>
       {presence.mounted && (
-        <div className="context-meter-tip" role="dialog" aria-label="上下文用量" data-tone={tone}
+        <div className="context-meter-tip" role="dialog" aria-label={t("meter.dialog")} data-tone={tone}
           data-leaving={presence.leaving ? "" : undefined} inert={presence.leaving} aria-hidden={presence.leaving || undefined}>
-          <strong>{!usage ? "上下文 —" : `上下文 ${k(usage.used)}${limit ? ` / ${k(limit)}` : ""}${pct === null ? "" : ` · ${pct}%`}`}</strong>
+          <strong>{heading}</strong>
           {pct !== null && <div className="context-meter-bar"><i style={{ width: `${pct}%` }} /></div>}
-          <p>{usage ? "上一轮结束时这条对话占用的上下文。" : "这条对话还没有用量记录，发一条之后显示。"}{limitText}</p>
+          <p>{usage ? t("meter.noteUsage") : t("meter.noteNoRecord")}{limitText}</p>
           {pct !== null && pct >= 80 && (
-            <p>{pct >= 95 ? "已接近上限：" : "快到上限了："}对话引擎会自动压缩较早的内容，细节可能丢失。需要完整上下文时可以新开对话并引用这条的要点。</p>
+            <p>{pct >= 95 ? t("meter.warnNear") : t("meter.warnSoon")}</p>
           )}
         </div>
       )}
@@ -78,11 +83,12 @@ export function ContextMeter({ usage, limit, source, model }: {
 
 /** 按这条对话当前选的模型定上限：设置里填的优先，其次引擎握手报告的默认值，都没有用上次发送时记下的。 */
 export function ChatContextMeter({ value, usage }: { value: ModelChoice | null; usage: ContextUsageView | null }) {
+  const { t } = useTranslation("chat");
   const { pool, bindings } = usePoolChoices();
   const current = value ?? (bindings?.chat_uses_own_config ? null : chatDefault(bindings));
   const entry = findEntry(pool, current);
   const [limit, source]: [number | null, WindowSource | null] = entry?.context_window ? [entry.context_window, "user"]
     : entry?.engine_context_window ? [entry.engine_context_window, "engine"]
     : usage?.window ? [usage.window, "last"] : [null, null];
-  return <ContextMeter usage={usage} limit={limit} source={source} model={entry ? modelName(entry) : current?.model ?? "这个模型"} />;
+  return <ContextMeter usage={usage} limit={limit} source={source} model={entry ? modelName(entry) : current?.model ?? t("meter.thisModel")} />;
 }

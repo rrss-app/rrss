@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FeedCountsView, FeedTree } from "../../lib/api";
+import { i18n } from "../../i18n";
 import { formatNotice } from "../../lib/notice";
 import { feedQueryOptions } from "../../lib/feedQuery";
 import { settingsMutationOptions, settingsSchemaOptions } from "../../settings/settingsQuery";
@@ -32,7 +33,7 @@ export function useFocusColumns(counts: FeedCountsView | null, activeId: string 
   notifyRef.current = notify;
   const write = useCallback((ids: string[]) => {
     void mutateAsync([{ id: "focus_columns", value: ids.join(",") }]).then((result) => {
-      if (result.failure) notifyRef.current(formatNotice("栏目没有保存：", result.failure.error));
+      if (result.failure) notifyRef.current(formatNotice(i18n.t("columns.saveFailed", { ns: "focus" }), result.failure.error));
     });
   }, [mutateAsync]);
 

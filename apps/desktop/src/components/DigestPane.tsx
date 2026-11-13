@@ -8,11 +8,12 @@ import { Icon } from "./Icon";
 import type { SelectedBlock } from "../lib/selection";
 import { Segmented } from "./Segmented";
 import { useDelayed } from "./Pending";
-import { locale } from "../i18n";
+import { i18n, locale, useTranslation } from "../i18n";
 
 function DigestSkeleton() {
+  const { t } = useTranslation("digest");
   const late = useDelayed(250);
-  return late ? <div className="digest-doc reader digest-skeleton" role="status" aria-label="正在加载简报" data-loading-skeleton="digest">
+  return late ? <div className="digest-doc reader digest-skeleton" role="status" aria-label={t("pane.loading")} data-loading-skeleton="digest">
     <div className="reader-column" aria-hidden="true">
       <div className="digest-doc-head"><i className="digest-skeleton-period" /><i className="digest-skeleton-date" /></div>
       <i className="digest-skeleton-title" />
@@ -64,6 +65,7 @@ export function DigestPane({
   /** 当期追问区等随简报正文一起滚动的内容；由调用方决定是否渲染。 */
   children?: ReactNode;
 }) {
+  const { t } = useTranslation("digest");
   const [period, setPeriod] = useState<Period>(initialDigest?.period === "weekly" ? "weekly" : "daily");
   const scrollRoot = useRef<HTMLDivElement>(null);
   const [rows, setRows] = useState<DigestSummary[]>([]);
@@ -110,8 +112,8 @@ export function DigestPane({
     api.digests(period).then(apply).catch((err) => {
       if (cancelled || gen !== listGen.current) return;
       if (!isTauri()) apply(fallbackDigests(period));
-      else if (cached) setRefreshError(`期列表刷新失败：${errorText(err)}`);
-      else setLoadError(`加载简报失败：${errorText(err)}`);
+      else if (cached) setRefreshError(i18n.t("pane.refreshFailed", { ns: "digest", message: errorText(err) }));
+      else setLoadError(i18n.t("pane.loadFailed", { ns: "digest", message: errorText(err) }));
     }).finally(() => { if (!cancelled && gen === listGen.current) setFetching(false); });
     return () => { cancelled = true; };
   }, [period, reloadKey]);
@@ -132,7 +134,7 @@ export function DigestPane({
       setIndex(next >= 0 ? next : 0);
       if (list.length === 0) setCurrent(null);
     }).catch((err) => {
-      if (gen === listGen.current) setRefreshError(`期列表刷新失败：${errorText(err)}`);
+      if (gen === listGen.current) setRefreshError(i18n.t("pane.refreshFailed", { ns: "digest", message: errorText(err) }));
     });
   }, []);
 
@@ -166,7 +168,7 @@ export function DigestPane({
       docs.current.set(view.id, view);
       setCurrent((cur) => sameDigest(cur, view) ? cur : view);
     }).catch((err) => {
-      if (!cancelled && !cached) setLoadError(`加载简报失败：${errorText(err)}`);
+      if (!cancelled && !cached) setLoadError(i18n.t("pane.loadFailed", { ns: "digest", message: errorText(err) }));
     });
     return () => { cancelled = true; };
   }, [selectedId, period, documentKey, reloadKey]);
@@ -205,10 +207,10 @@ export function DigestPane({
       setDocumentKey((key) => key + 1);
       onChange?.();
       if (list.length === 0) {
-        setError("这期没有生成：暂时没有符合条件的未读文章。");
+        setError(i18n.t("pane.noneGenerated", { ns: "digest" }));
       }
     } catch (err) {
-      setError(`生成失败：${errorText(err)}`);
+      setError(i18n.t("pane.generateFailed", { ns: "digest", message: errorText(err) }));
     } finally {
       setLoading(false);
     }
@@ -220,7 +222,7 @@ export function DigestPane({
   return (
     <div className="digest">
       <div className="toolbar" data-tauri-drag-region="deep">
-        <Segmented className="toolbar-group segmented" role="group" aria-label="简报周期">
+        <Segmented className="toolbar-group segmented" role="group" aria-label={t("pane.periodGroup")}>
           <button
             type="button"
             className="tab"
@@ -228,7 +230,7 @@ export function DigestPane({
             disabled={loading}
             onClick={() => changePeriod("daily")}
           >
-            日报
+            {t("pane.daily")}
           </button>
           <button
             type="button"
@@ -237,26 +239,26 @@ export function DigestPane({
             disabled={loading}
             onClick={() => changePeriod("weekly")}
           >
-            周报
+            {t("pane.weekly")}
           </button>
         </Segmented>
-        <div className="digest-pager" role="group" aria-label="翻期">
+        <div className="digest-pager" role="group" aria-label={t("pane.pager")}>
           <button
             type="button"
             className="tool-btn icon-only"
-            aria-label="上期"
-            title="上一期"
+            aria-label={t("pane.prevAria")}
+            title={t("pane.prevTitle")}
             disabled={atOldest}
             onClick={() => setIndex((i) => Math.min(i + 1, rows.length - 1))}
           >
             <Icon name="chevronLeft" size={16} />
           </button>
-          <span className="digest-date">{selected?.date_label ?? (fetching ? "" : "这期还没有")}</span>
+          <span className="digest-date">{selected?.date_label ?? (fetching ? "" : t("pane.noneYet"))}</span>
           <button
             type="button"
             className="tool-btn icon-only"
-            aria-label="下期"
-            title="下一期"
+            aria-label={t("pane.nextAria")}
+            title={t("pane.nextTitle")}
             disabled={atNewest}
             onClick={() => setIndex((i) => Math.max(i - 1, 0))}
           >
@@ -265,7 +267,7 @@ export function DigestPane({
         </div>
         <span className="toolbar-spacer" />
         <button type="button" className="btn sm" disabled={loading || fetching || !!loadError} onClick={() => void handleGenerate()}>
-          <Icon name={loading ? "spinner" : "sparkles"} size={14} className={loading ? "spin" : undefined} />{loading ? "生成本期…" : "生成本期"}
+          <Icon name={loading ? "spinner" : "sparkles"} size={14} className={loading ? "spin" : undefined} />{loading ? t("pane.generating") : t("pane.generate")}
         </button>
       </div>
 
@@ -279,7 +281,7 @@ export function DigestPane({
         <div className="notice error digest-error" role="alert">
           <Icon name="info" size={15} />
           <span>{refreshError}</span>
-          <button type="button" className="btn sm" onClick={refreshList}>重试</button>
+          <button type="button" className="btn sm" onClick={refreshList}>{t("pane.retry")}</button>
         </div>
       ) : null}
 
@@ -288,13 +290,13 @@ export function DigestPane({
         {loadError ? (
           <div className="digest-notice" role="alert">
             <p>{loadError}</p>
-            <button type="button" className="btn sm" onClick={() => setReloadKey((key) => key + 1)}>重试加载</button>
+            <button type="button" className="btn sm" onClick={() => setReloadKey((key) => key + 1)}>{t("pane.retryLoad")}</button>
           </div>
         ) : null}
         {!selected && !loading && !fetching && !loadError ? (
           <div className="empty digest-empty">
             <span className="empty-icon"><Icon name="digest" size={22} /></span>
-            <p>这期还没有。点「生成本期」就会生成。</p>
+            <p>{t("pane.emptyHint")}</p>
           </div>
         ) : null}
 
@@ -315,8 +317,8 @@ export function DigestPane({
                     fallback={(_, reset) => (
                       <div className="notice error digest-doc-error" role="alert">
                         <Icon name="info" size={15} />
-                        <span>这期正文显示不出来，来源和翻页仍可使用。</span>
-                        <button type="button" className="btn sm" onClick={reset}>重试</button>
+                        <span>{t("pane.renderFailed")}</span>
+                        <button type="button" className="btn sm" onClick={reset}>{t("pane.retry")}</button>
                       </div>
                     )}
                   >

@@ -1,1 +1,147 @@
-{}
+{
+  "view": {
+    "focus": "今日焦点",
+    "column": "栏目",
+    "feeds": "订阅",
+    "digest": "简报",
+    "chat": "深度对话"
+  },
+  "sidebar": {
+    "archivedLabel": "已归档的会话",
+    "settings": "设置",
+    "about": "关于",
+    "aboutTitle": "关于 RRSS",
+    "searchTitle": "搜索标题与正文（Ctrl+K）",
+    "searchLabel": "搜索文章",
+    "navLabel": "主视图",
+    "unreadCount_other": "{{count}} 篇未读",
+    "newThread": "新对话",
+    "feedsLabel": "订阅",
+    "back": "回到{{name}}（Esc）"
+  },
+  "column": {
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "remove": "移出焦点栏目",
+    "menuLabel": "{{name}}栏目菜单",
+    "menuTitle": "栏目菜单",
+    "add": "添加栏目",
+    "added": "（已添加）"
+  },
+  "updates": {
+    "readFailed": "订阅已更新，但读取失败，请刷新重试。",
+    "listenFailed": "无法监听订阅更新，请重新打开应用后重试。"
+  },
+  "session": {
+    "setFailed": "设置失败：",
+    "loadFailed": "加载失败：",
+    "markReadFailed": "标记已读失败："
+  },
+  "screen": {
+    "scopeLabel": "阅读范围",
+    "scope": {
+      "all": "全部",
+      "unread": "未读",
+      "starred": "收藏"
+    },
+    "markReadTitle": "把当前范围内可见的未读标为已读",
+    "markRead": "标为已读",
+    "fetchTitle": "抓取全部订阅源",
+    "refresh": "刷新",
+    "path": "订阅",
+    "pathNested": "订阅 · {{path}}",
+    "unreadLine_other": "{{count}} 篇未读 · 按时间",
+    "empty": "这个范围没有文章",
+    "troubled": "{{title}}：{{reason}}",
+    "read": "已读",
+    "unread": "未读",
+    "retryMore": "重试加载更多",
+    "hidden_other": "另有 {{count}} 篇被规则隐藏"
+  },
+  "scope": {
+    "all": "全部订阅"
+  },
+  "move": {
+    "where": {
+      "root": "移到根层",
+      "top": "移到最上面",
+      "rootTop": "移到根层最上面",
+      "folder": "移到「{{name}}」"
+    },
+    "doneOne": "已把「{{name}}」{{where}}",
+    "doneMany_other": "已把 {{count}} 项{{where}}",
+    "undo": "撤销"
+  },
+  "tree": {
+    "label": "订阅",
+    "filterPlaceholder": "筛选源…",
+    "filterLabel": "按名称筛选订阅源",
+    "filterEmpty": "没有名称含「{{query}}」的文件夹或源",
+    "rowActions": "{{name}} 的操作",
+    "fetchError": "抓取失败：{{error}}",
+    "picked_other": "已选 {{count}} 个",
+    "done": "完成",
+    "newFolderLabel": "新文件夹名称",
+    "folderName": "文件夹名称",
+    "secPinned": "置顶",
+    "secAll": "全部",
+    "renameLabel": "重命名{{name}}",
+    "organize": "整理",
+    "settings": "设置",
+    "moveTo": "移到…",
+    "error": {
+      "move": "移动失败：",
+      "newFolder": "新建文件夹失败：",
+      "undo": "撤销失败：",
+      "pin": "置顶失败：",
+      "column": "设置焦点栏目失败：",
+      "rename": "重命名失败："
+    },
+    "limit": {
+      "pinned": "置顶最多 10 个",
+      "columns": "最多 5 个焦点栏目"
+    },
+    "menu": {
+      "add": "新建",
+      "newFolder": "新建文件夹",
+      "newSubfolder": "新建子文件夹",
+      "rename": "重命名",
+      "moveFolder": "移到文件夹",
+      "row": "行操作",
+      "unpin": "取消置顶",
+      "reveal": "在树中显示",
+      "addFeed": "添加订阅…",
+      "noFolder": "不放文件夹（最上面）",
+      "addSource": "添加源…",
+      "toTop": "移到最上面",
+      "up": "上移",
+      "down": "下移",
+      "toFolder": "移到文件夹…",
+      "pin": "置顶",
+      "unsetColumn": "移出焦点栏目",
+      "setColumn": "设为焦点栏目"
+    }
+  },
+  "picker": {
+    "label": "把订阅放进{{name}}",
+    "title": "把订阅放进「{{name}}」",
+    "introFresh": "文件夹已建好。勾选要放进去的源，也可以稍后把源拖到文件夹上。",
+    "intro": "勾选后一次放进去，原来所在的文件夹里就不再有它们。",
+    "close": "关闭",
+    "search": "搜索源",
+    "searchLabel": "搜索要放进文件夹的源",
+    "looseOnly": "只看没放进文件夹的",
+    "empty": "没有名称含「{{query}}」的源",
+    "unselectAll": "全不选",
+    "selectAll": "全选",
+    "here": "已在这里",
+    "selected_other": "已选 {{count}} 个",
+    "selectedMoving_other": "已选 {{count}} 个，其中 {{moving}} 个会从原文件夹移出",
+    "none": "还没选",
+    "skip": "跳过",
+    "cancel": "取消",
+    "apply_other": "放进 {{count}} 个",
+    "applyNone": "放进  个",
+    "loose": "未放进文件夹"
+  }
+}

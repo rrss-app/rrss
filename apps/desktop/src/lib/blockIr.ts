@@ -3,6 +3,7 @@
  * `parseDocument` 是渲染前唯一的校验入口：逐节点检查形状，丢弃无法识别的块 / 行内节点，
  * 顶层不是文档时降级为空文档。校验只做形状，不改内容，不重建 HTML。
  */
+import { i18n } from "../i18n";
 
 export const IR_VERSION = 1;
 
@@ -174,12 +175,12 @@ function validPatchBlock(node: unknown): boolean {
 export function mergeDocumentPatches(base: unknown, patches: ReadonlyArray<{ index: number; ir: unknown }>): Document {
   const doc = parseDocument(base);
   if (!isRecord(base) || base.v !== IR_VERSION || !Array.isArray(base.blocks) || base.blocks.length !== doc.blocks.length) {
-    throw new Error("正文块位置无效");
+    throw new Error(i18n.t("blockIr.invalidPosition", { ns: "shell" }));
   }
   const seen = new Set<number>();
   const updates = patches.map(({ index, ir }) => {
     if (!Number.isInteger(index) || index < 0 || index >= doc.blocks.length || seen.has(index) || !validPatchBlock(ir)) {
-      throw new Error("译文补丁无效");
+      throw new Error(i18n.t("blockIr.invalidPatch", { ns: "shell" }));
     }
     seen.add(index);
     return { index, block: parseBlock(ir)! };

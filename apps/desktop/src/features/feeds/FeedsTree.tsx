@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type FeedCountsView, type FeedTree, type TreeLayout } from "../../lib/api";
 import { feedKeys } from "../../lib/feedQuery";
 import { formatNotice } from "../../lib/notice";
+import { useTranslation } from "../../i18n";
 import { Icon } from "../../components/Icon";
 import { FloatingMenu, type MenuAnchor } from "../../components/FloatingMenu";
 import { SourceAvatar } from "../../components/ArticleCard";
@@ -38,6 +39,7 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
   onSettings: () => void;
   notify: (notice: TreeNotice) => void;
 }) {
+  const { t } = useTranslation("feeds");
   const client = useQueryClient();
   const [open, setOpen] = useState<ReadonlySet<number>>(() => new Set(ancestorFolders(tree, scope)));
   const [filter, setFilter] = useState("");
@@ -122,16 +124,15 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
         await refreshTree();
         return layout;
       });
-      const who = plan.items.length > 1 ? ` ${plan.items.length} 项` : `「${plan.name}」`;
       notify({
-        message: `已把${who}${plan.where}`,
+        message: plan.items.length > 1 ? t("move.doneMany", { count: plan.items.length, where: plan.where }) : t("move.doneOne", { name: plan.name, where: plan.where }),
         holdMs: 4000,
-        actionLabel: "撤销",
+        actionLabel: t("move.undo"),
         onAction: () => { void undo(layout); },
       });
       exitPick();
     } catch (err) {
-      notify({ message: formatNotice("移动失败：", err) });
+      notify({ message: formatNotice(t("tree.error.move"), err) });
     }
   };
   const exitPick = () => { setPicking(false); setPicked(new Set()); anchorRef.current = null; };
@@ -157,10 +158,10 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
       if (current.picked?.length) {
         const items = orderedKeys(tree, current.picked);
         exitPick();
-        await runMove({ items, parentFolderId: id, before: null, name: itemNameOf(tree, items[0]) ?? name, where: `移到「${name}」`, expand: id }, true);
+        await runMove({ items, parentFolderId: id, before: null, name: itemNameOf(tree, items[0]) ?? name, where: t("move.where.folder", { name }), expand: id }, true);
       } else setPicker({ folderId: id, name, fresh: true });
     } catch (err) {
-      notify({ message: formatNotice("新建文件夹失败：", err) });
+      notify({ message: formatNotice(t("tree.error.newFolder"), err) });
     }
   };
   const undo = async (layout: TreeLayout[]) => {
@@ -170,7 +171,7 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
         await refreshTree();
       });
     } catch (err) {
-      notify({ message: formatNotice("撤销失败：", err) });
+      notify({ message: formatNotice(t("tree.error.undo"), err) });
     }
   };
   const reveal = (key: string) => {
@@ -184,16 +185,16 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
     setMenu(null);
     try {
       if (pinned.includes(key)) await writeSetting("feeds_pinned", pinned.filter((item) => item !== key).join(","));
-      else if (pinned.length >= 10) notify({ message: "置顶最多 10 个" });
+      else if (pinned.length >= 10) notify({ message: t("tree.limit.pinned") });
       else await writeSetting("feeds_pinned", [...pinned, key].join(","));
-    } catch (err) { notify({ message: formatNotice("置顶失败：", err) }); }
+    } catch (err) { notify({ message: formatNotice(t("tree.error.pin"), err) }); }
   };
   const setColumn = async (key: string) => {
     setMenu(null);
     const on = columns.includes(key);
-    if (!on && columns.length >= 5) { notify({ message: "最多 5 个焦点栏目" }); return; }
+    if (!on && columns.length >= 5) { notify({ message: t("tree.limit.columns") }); return; }
     try { await writeSetting("focus_columns", (on ? columns.filter((item) => item !== key) : [...columns, key]).join(",")); }
-    catch (err) { notify({ message: formatNotice("设置焦点栏目失败：", err) }); }
+    catch (err) { notify({ message: formatNotice(t("tree.error.column"), err) }); }
   };
   const commitRename = async (row: TreeRow, raw: string) => {
     if (editingRef.current !== row.key) return;
@@ -207,7 +208,7 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
         await refreshTree();
       });
     } catch (err) {
-      notify({ message: formatNotice("重命名失败：", err) });
+      notify({ message: formatNotice(t("tree.error.rename"), err) });
     }
   };
 
@@ -216,12 +217,12 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
     const moving = item.fromPin ? [item.key.slice(4)] : item.items;
     if (moving.includes(target.targetKey)) return;
     const rest = pinned.filter((key) => !moving.includes(key));
-    if (rest.length + moving.length > 10) { notify({ message: "置顶最多 10 个" }); return; }
+    if (rest.length + moving.length > 10) { notify({ message: t("tree.limit.pinned") }); return; }
     let index = rest.indexOf(target.targetKey);
     if (index < 0) index = rest.length;
     if (target.zone === "after") index += 1;
     try { await writeSetting("feeds_pinned", [...rest.slice(0, index), ...moving, ...rest.slice(index)].slice(0, 10).join(",")); }
-    catch (err) { notify({ message: formatNotice("置顶失败：", err) }); }
+    catch (err) { notify({ message: formatNotice(t("tree.error.pin"), err) }); }
   };
   const openMenu = (key: string, anchor: MenuAnchor, mode: RowMenu["mode"] = "actions") => setMenu({ key, mode, anchor });
   const pickedItems = (key: string) => picking && picked.has(key) && picked.size > 1 ? orderedKeys(tree, [...picked]) : [key];
@@ -340,7 +341,7 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
   const editor = draft && draftAt >= 0 ? <div key="draft" className="feeds-row" style={{ "--depth": draftDepth } as CSSProperties}>
     <span className="feeds-twist" data-leaf="1" aria-hidden="true"><Icon name="chevronDown" size={14} /></span>
     <Icon name="folder" size={16} />
-    <input className="feeds-rename" aria-label="新文件夹名称" placeholder="文件夹名称" autoFocus
+    <input className="feeds-rename" aria-label={t("tree.newFolderLabel")} placeholder={t("tree.folderName")} autoFocus
       onClick={(event) => event.stopPropagation()}
       onBlur={(event) => void finishDraft(event.currentTarget.value)}
       onKeyDown={(event) => {
@@ -352,14 +353,14 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
     <div className="feeds-tools">
       <label className="feeds-filter">
         <Icon name="search" size={14} />
-        <input ref={inputRef} value={filter} placeholder="筛选源…" aria-label="按名称筛选订阅源" autoComplete="off"
+        <input ref={inputRef} value={filter} placeholder={t("tree.filterPlaceholder")} aria-label={t("tree.filterLabel")} autoComplete="off"
           onChange={(event) => { setFilter(event.target.value); setCursor(""); }}
           onKeyDown={(event) => {
             if (event.key === "ArrowDown" && rows.length) { event.preventDefault(); moveTo(rows[0]); }
             if (event.key === "Escape" && filter) { event.preventDefault(); setFilter(""); }
           }} />
       </label>
-      <button type="button" className="feeds-add" aria-label="新建" aria-haspopup="menu" aria-expanded={menu?.key === "add"}
+      <button type="button" className="feeds-add" aria-label={t("tree.menu.add")} aria-haspopup="menu" aria-expanded={menu?.key === "add"}
         onClick={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
           openMenu("add", { x: rect.left, y: rect.bottom + 4 }, "add");
@@ -367,7 +368,7 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
     </div>
     <div className="feeds-tree-scroll" ref={scrollRef} data-dragging={drag ? "1" : undefined}>
       {drag?.line ? <div className="feeds-drop-line" style={{ top: drag.line.top, left: drag.line.left }} /> : null}
-      {showPins ? <div className="feeds-sec">置顶</div> : null}
+      {showPins ? <div className="feeds-sec">{t("tree.secPinned")}</div> : null}
       {showPins ? pinned.map((key) => {
         const name = itemNameOf(tree, key) ?? "";
         const count = key.startsWith("folder:")
@@ -381,13 +382,13 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
           <span className="feeds-row-name">{name}</span>
           <Icon name="pin" size={13} />
           <span className="feeds-row-count">{count || ""}</span>
-          <button type="button" className="feeds-row-more" aria-label={`${name} 的操作`} aria-haspopup="menu"
+          <button type="button" className="feeds-row-more" aria-label={t("tree.rowActions", { name })} aria-haspopup="menu"
             onClick={(event) => { event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); openMenu(`pin:${key}`, { x: rect.left, y: rect.bottom + 4 }); }}>⋯</button>
         </div>;
       }) : null}
-      {showPins ? <div className="feeds-sec">全部</div> : null}
-      {rows.length === 0 ? <div className="feeds-tree-empty">没有名称含「{filter.trim()}」的文件夹或源</div>
-        : <div className="feeds-tree" role="tree" aria-label="订阅" onKeyDown={onKeyDown}>
+      {showPins ? <div className="feeds-sec">{t("tree.secAll")}</div> : null}
+      {rows.length === 0 ? <div className="feeds-tree-empty">{t("tree.filterEmpty", { query: filter.trim() })}</div>
+        : <div className="feeds-tree" role="tree" aria-label={t("tree.label")} onKeyDown={onKeyDown}>
           {rows.map((row, index) => {
             const selected = row.key === scope;
             const renaming = editing === row.key;
@@ -412,7 +413,7 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
                 </span>}
               {row.kind === "feed" ? <SourceAvatar title={row.name} iconHref={row.feed?.icon_href} />
                 : <Icon name={row.kind === "all" ? "rss" : "folder"} size={16} />}
-              {renaming ? <input className="feeds-rename" aria-label={`重命名${row.name}`} defaultValue={row.name} autoFocus
+              {renaming ? <input className="feeds-rename" aria-label={t("tree.renameLabel", { name: row.name })} defaultValue={row.name} autoFocus
                 onClick={(event) => event.stopPropagation()}
                 onFocus={(event) => event.currentTarget.select()}
                 onBlur={(event) => void commitRename(row, event.currentTarget.value)}
@@ -421,9 +422,9 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
                   if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setEditing(null); }
                 }} />
                 : <span className="feeds-row-name"><Highlight text={row.name} query={filter} /></span>}
-              {row.feed?.error ? <span className="feeds-row-flag" title={row.feed.error} aria-label={`抓取失败：${row.feed.error}`} /> : null}
+              {row.feed?.error ? <span className="feeds-row-flag" title={row.feed.error} aria-label={t("tree.fetchError", { error: row.feed.error })} /> : null}
               <span className="feeds-row-count">{row.kind === "folder" && row.open ? "" : row.count || ""}</span>
-              {row.kind === "all" || renaming ? null : <button type="button" className="feeds-row-more" aria-label={`${row.name} 的操作`} aria-haspopup="menu"
+              {row.kind === "all" || renaming ? null : <button type="button" className="feeds-row-more" aria-label={t("tree.rowActions", { name: row.name })} aria-haspopup="menu"
                 aria-expanded={menu?.key === row.key}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -437,40 +438,40 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
         </div>}
     </div>
     {picking ? <div className="sidebar-foot feeds-select-foot">
-      <div className="feeds-select-lead"><span>已选 {picked.size} 个</span><button type="button" onClick={exitPick}>完成</button></div>
+      <div className="feeds-select-lead"><span>{t("tree.picked", { count: picked.size })}</span><button type="button" onClick={exitPick}>{t("tree.done")}</button></div>
       <div className="feeds-select-acts">
-        <button type="button" disabled={picked.size === 0} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); openMenu("bulk", { x: rect.left, y: rect.top - 8 }, "bulk"); }}>移到…</button>
-        <button type="button" disabled={picked.size === 0} onClick={() => { setMenu(null); setDraft({ parent: null, picked: [...picked] }); }}>新建文件夹</button>
+        <button type="button" disabled={picked.size === 0} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); openMenu("bulk", { x: rect.left, y: rect.top - 8 }, "bulk"); }}>{t("tree.moveTo")}</button>
+        <button type="button" disabled={picked.size === 0} onClick={() => { setMenu(null); setDraft({ parent: null, picked: [...picked] }); }}>{t("tree.menu.newFolder")}</button>
       </div>
     </div> : <div className="sidebar-foot">
-      <button type="button" onClick={() => { setPicking(true); setPicked(new Set()); }}><Icon name="folder" size={15} />整理</button>
-      <button type="button" onClick={onSettings}><Icon name="settings" size={15} />设置</button>
+      <button type="button" onClick={() => { setPicking(true); setPicked(new Set()); }}><Icon name="folder" size={15} />{t("tree.organize")}</button>
+      <button type="button" onClick={onSettings}><Icon name="settings" size={15} />{t("tree.settings")}</button>
     </div>}
-    {menu ? <FloatingMenu key={menu.mode + menu.key} anchor={menu.anchor} label={menu.mode === "add" ? "新建" : menu.mode === "move" || menu.mode === "bulk" ? "移到文件夹" : "行操作"} className="feeds-row-menu" onClose={() => setMenu(null)}>
+    {menu ? <FloatingMenu key={menu.mode + menu.key} anchor={menu.anchor} label={menu.mode === "add" ? t("tree.menu.add") : menu.mode === "move" || menu.mode === "bulk" ? t("tree.menu.moveFolder") : t("tree.menu.row")} className="feeds-row-menu" onClose={() => setMenu(null)}>
       {menu.key.startsWith("pin:") ? <>
-        <button type="button" role="menuitem" onClick={() => { setMenu(null); void writeSetting("feeds_pinned", pinned.filter((item) => item !== menu.key.slice(4)).join(",")).catch((err) => notify({ message: formatNotice("置顶失败：", err) })); }}>取消置顶</button>
-        <button type="button" role="menuitem" onClick={() => reveal(menu.key.slice(4))}>在树中显示</button>
+        <button type="button" role="menuitem" onClick={() => { setMenu(null); void writeSetting("feeds_pinned", pinned.filter((item) => item !== menu.key.slice(4)).join(",")).catch((err) => notify({ message: formatNotice(t("tree.error.pin"), err) })); }}>{t("tree.menu.unpin")}</button>
+        <button type="button" role="menuitem" onClick={() => reveal(menu.key.slice(4))}>{t("tree.menu.reveal")}</button>
       </> : menu.mode === "add" ? <>
-        <button type="button" role="menuitem" onClick={() => { setMenu(null); setDraft({ parent: null, picked: null }); }}>新建文件夹</button>
-        <button type="button" role="menuitem" onClick={() => { setMenu(null); onAddFeed(); }}>添加订阅…</button>
+        <button type="button" role="menuitem" onClick={() => { setMenu(null); setDraft({ parent: null, picked: null }); }}>{t("tree.menu.newFolder")}</button>
+        <button type="button" role="menuitem" onClick={() => { setMenu(null); onAddFeed(); }}>{t("tree.menu.addFeed")}</button>
       </> : menu.mode === "move" || menu.mode === "bulk" ? <>
-        <button type="button" role="menuitem" onClick={() => void runMove(planIntoFolder(tree, menuKeys, null))}>不放文件夹（最上面）</button>
+        <button type="button" role="menuitem" onClick={() => void runMove(planIntoFolder(tree, menuKeys, null))}>{t("tree.menu.noFolder")}</button>
         <hr />
         {folderMoveTargets(tree, menuKeys).map((folder) => <button key={folder.id} type="button" role="menuitem" style={{ paddingLeft: 8 + folder.depth * 16 }}
           onClick={() => void runMove(planIntoFolder(tree, menuKeys, folder.id))}>{folder.name}</button>)}
       </> : menuRow ? <>
-        {menuRow.kind === "folder" ? <button type="button" role="menuitem" onClick={() => { setMenu(null); setPicker({ folderId: Number(menu.key.slice(7)), name: menuRow.name, fresh: false }); }}>添加源…</button> : null}
-        {menuRow.kind === "folder" ? <button type="button" role="menuitem" onClick={() => { setMenu(null); setOpen((prev) => new Set(prev).add(Number(menu.key.slice(7)))); setDraft({ parent: Number(menu.key.slice(7)), picked: null }); }}>新建子文件夹</button> : null}
+        {menuRow.kind === "folder" ? <button type="button" role="menuitem" onClick={() => { setMenu(null); setPicker({ folderId: Number(menu.key.slice(7)), name: menuRow.name, fresh: false }); }}>{t("tree.menu.addSource")}</button> : null}
+        {menuRow.kind === "folder" ? <button type="button" role="menuitem" onClick={() => { setMenu(null); setOpen((prev) => new Set(prev).add(Number(menu.key.slice(7)))); setDraft({ parent: Number(menu.key.slice(7)), picked: null }); }}>{t("tree.menu.newSubfolder")}</button> : null}
         {menuRow.kind === "folder" ? <hr /> : null}
-        <button type="button" role="menuitem" disabled={!planToTop(tree, menu.key)} onClick={() => void runMove(planToTop(tree, menu.key))}>移到最上面</button>
-        <button type="button" role="menuitem" disabled={!planShift(tree, menu.key, -1)} onClick={() => void runMove(planShift(tree, menu.key, -1))}>上移<kbd>Alt ↑</kbd></button>
-        <button type="button" role="menuitem" disabled={!planShift(tree, menu.key, 1)} onClick={() => void runMove(planShift(tree, menu.key, 1))}>下移<kbd>Alt ↓</kbd></button>
-        <button type="button" role="menuitem" onClick={() => setMenu({ ...menu, mode: "move" })}>移到文件夹…</button>
-        <button type="button" role="menuitem" onClick={() => void togglePin(menu.key)}>{pinned.includes(menu.key) ? "取消置顶" : "置顶"}</button>
+        <button type="button" role="menuitem" disabled={!planToTop(tree, menu.key)} onClick={() => void runMove(planToTop(tree, menu.key))}>{t("tree.menu.toTop")}</button>
+        <button type="button" role="menuitem" disabled={!planShift(tree, menu.key, -1)} onClick={() => void runMove(planShift(tree, menu.key, -1))}>{t("tree.menu.up")}<kbd>Alt ↑</kbd></button>
+        <button type="button" role="menuitem" disabled={!planShift(tree, menu.key, 1)} onClick={() => void runMove(planShift(tree, menu.key, 1))}>{t("tree.menu.down")}<kbd>Alt ↓</kbd></button>
+        <button type="button" role="menuitem" onClick={() => setMenu({ ...menu, mode: "move" })}>{t("tree.menu.toFolder")}</button>
+        <button type="button" role="menuitem" onClick={() => void togglePin(menu.key)}>{pinned.includes(menu.key) ? t("tree.menu.unpin") : t("tree.menu.pin")}</button>
         <hr />
-        <button type="button" role="menuitem" onClick={() => { setMenu(null); setEditing(menu.key); }}>重命名</button>
-        {menuRow.kind === "folder" ? <button type="button" role="menuitem" disabled={!columns.includes(menu.key) && columns.length >= 5} title={!columns.includes(menu.key) && columns.length >= 5 ? "最多 5 个焦点栏目" : undefined}
-          onClick={() => void setColumn(menu.key)}>{columns.includes(menu.key) ? "移出焦点栏目" : "设为焦点栏目"}</button> : null}
+        <button type="button" role="menuitem" onClick={() => { setMenu(null); setEditing(menu.key); }}>{t("tree.menu.rename")}</button>
+        {menuRow.kind === "folder" ? <button type="button" role="menuitem" disabled={!columns.includes(menu.key) && columns.length >= 5} title={!columns.includes(menu.key) && columns.length >= 5 ? t("tree.limit.columns") : undefined}
+          onClick={() => void setColumn(menu.key)}>{columns.includes(menu.key) ? t("tree.menu.unsetColumn") : t("tree.menu.setColumn")}</button> : null}
       </> : null}
     </FloatingMenu> : null}
     {picker ? createPortal(<FeedPicker tree={tree} folderId={picker.folderId} folderName={picker.name} fresh={picker.fresh} onClose={() => setPicker(null)}

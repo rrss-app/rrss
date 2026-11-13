@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { api, type ArticleView, type FeedCountsView, type FeedsCursor, type FeedsPage } from "../../lib/api";
 import { formatNotice } from "../../lib/notice";
+import { i18n } from "../../i18n";
 
 export type FeedsNotice = { message: string };
 
@@ -56,7 +57,7 @@ export function createFeedsSession(notify: (notice: FeedsNotice) => void) {
       try {
         await api.setSetting(id, value);
       } catch (err) {
-        if (current(gen)) notify({ message: formatNotice("设置失败：", err) });
+        if (current(gen)) notify({ message: formatNotice(i18n.t("session.setFailed", { ns: "feeds" }), err) });
       }
     });
   }
@@ -109,7 +110,7 @@ export function createFeedsSession(notify: (notice: FeedsNotice) => void) {
         if (moved) scrollTop = 0;
       }
     } catch (err) {
-      if (current(gen)) notify({ message: formatNotice("加载失败：", err) });
+      if (current(gen)) notify({ message: formatNotice(i18n.t("session.loadFailed", { ns: "feeds" }), err) });
     } finally {
       if (current(gen)) publish({ loading: false });
     }
@@ -120,7 +121,7 @@ export function createFeedsSession(notify: (notice: FeedsNotice) => void) {
       const counts = await api.feedCounts();
       if (current(gen)) publish({ counts });
     } catch (err) {
-      if (current(gen)) notify({ message: formatNotice("加载失败：", err) });
+      if (current(gen)) notify({ message: formatNotice(i18n.t("session.loadFailed", { ns: "feeds" }), err) });
     }
   }
 
@@ -133,7 +134,7 @@ export function createFeedsSession(notify: (notice: FeedsNotice) => void) {
       publish({ scope: scope ?? value("feeds_scope"), listScope: value("feeds_list_scope") });
     } catch (err) {
       if (!current(gen)) return;
-      notify({ message: formatNotice("加载失败：", err) });
+      notify({ message: formatNotice(i18n.t("session.loadFailed", { ns: "feeds" }), err) });
       publish({ scope: scope ?? "all", listScope: "all" });
     }
     await Promise.all([loadPage(gen), loadCounts(gen)]);
@@ -157,7 +158,7 @@ export function createFeedsSession(notify: (notice: FeedsNotice) => void) {
           hasMore: page.has_more, nextCursor: page.next_cursor, hiddenCount: page.hidden_count,
         });
       } catch (err) {
-        if (current(gen)) publish({ moreError: formatNotice("加载失败：", err) });
+        if (current(gen)) publish({ moreError: formatNotice(i18n.t("session.loadFailed", { ns: "feeds" }), err) });
       } finally {
         if (current(gen)) { moreRequest = null; publish({ loadingMore: false }); }
       }
@@ -199,7 +200,7 @@ export function createFeedsSession(notify: (notice: FeedsNotice) => void) {
       publish({ articles: state.articles.map((row) => ids.has(row.id) ? { ...row, read: true } : row) });
       await loadCounts(gen);
     } catch (err) {
-      if (current(gen)) notify({ message: formatNotice("标记已读失败：", err) });
+      if (current(gen)) notify({ message: formatNotice(i18n.t("session.markReadFailed", { ns: "feeds" }), err) });
     }
   }
 

@@ -7,26 +7,27 @@ import { useMergedEditState, type SettingsEditState } from "./editState";
 import type { Ask } from "./SettingsPanel";
 import { useStorageSettings } from "./useStorageSettings";
 import { useDelayed } from "../components/Pending";
-import { locale } from "../i18n";
+import { locale, useTranslation } from "../i18n";
 
 function scannedAt(ms: number) {
   if (!ms) return "";
   return new Date(ms).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
-const PARTS = [
-  { id: "articles", label: "文章与索引", keys: ["articles", "search_index"] },
-  { id: "vectors", label: "向量", keys: ["vectors"] },
-  { id: "media", label: "媒体", keys: ["images", "videos", "media_other", "untracked_media"] },
-  { id: "ai", label: "AI 缓存", keys: ["ai_cache"] },
-  { id: "translations", label: "翻译", keys: ["translations"] },
-  { id: "recommendation_logs", label: "推荐日志", keys: ["recommendation_logs"] },
-  { id: "engine", label: "对话引擎", keys: ["pi_program", "pi_sessions"] },
-  { id: "backups", label: "备份", keys: ["auto_backups"] },
-  { id: "logs", label: "运行日志", keys: ["logs"] },
-  { id: "other", label: "其他", keys: [] },
+type PartId = "articles" | "vectors" | "media" | "ai" | "translations" | "recommendation_logs" | "engine" | "backups" | "logs" | "other" | "free";
+const PARTS: ReadonlyArray<{ id: PartId; keys: readonly string[] }> = [
+  { id: "articles", keys: ["articles", "search_index"] },
+  { id: "vectors", keys: ["vectors"] },
+  { id: "media", keys: ["images", "videos", "media_other", "untracked_media"] },
+  { id: "ai", keys: ["ai_cache"] },
+  { id: "translations", keys: ["translations"] },
+  { id: "recommendation_logs", keys: ["recommendation_logs"] },
+  { id: "engine", keys: ["pi_program", "pi_sessions"] },
+  { id: "backups", keys: ["auto_backups"] },
+  { id: "logs", keys: ["logs"] },
+  { id: "other", keys: [] },
   // 库文件里删数据后留下的空位：确实占着磁盘，压缩数据库可以还回去，所以画斜纹、单列一项。
-  { id: "free", label: "可回收空位", keys: ["free"] },
+  { id: "free", keys: ["free"] },
 ];
 const partId = (key: string) => PARTS.find((part) => part.keys.includes(key))?.id ?? "other";
 
@@ -45,6 +46,7 @@ function formatBytes(bytes: number) {
 const HOVER_SETTLE_MS = 120;
 
 function Composition({ parts }: { parts: Array<{ id: string; label: string; bytes: number }> }) {
+  const { t } = useTranslation("settingsSystem");
   const [hot, setHotNow] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -58,12 +60,12 @@ function Composition({ parts }: { parts: Array<{ id: string; label: string; byte
   const current = shown.find((part) => part.id === hot);
   const share = (bytes: number) => `${(bytes / total * 100).toFixed(bytes / total < 0.1 ? 1 : 0)}%`;
   return <div className="storage-composition-wrap" data-hot={hot ?? undefined} onMouseLeave={() => setHot(null)}>
-    <div className="storage-composition" role="img" aria-label={total ? `已统计明细构成：${shown.map((p) => `${p.label} ${share(p.bytes)}`).join("，")}` : "暂无存储占用"}>
+    <div className="storage-composition" role="img" aria-label={total ? t("storage.composition.aria", { parts: shown.map((p) => `${p.label} ${share(p.bytes)}`).join(t("storage.composition.separator")) }) : t("storage.composition.empty")}>
       {shown.map((part) => <i key={part.id} data-part={part.id} data-on={part.id === hot || undefined} style={{ width: `${part.bytes / total * 100}%` }}
         onMouseEnter={() => hover(part.id)} />)}
     </div>
     <p className="storage-readout" aria-live="polite">
-      {current ? <><strong>{current.label}</strong>{formatBytes(current.bytes)} · {share(current.bytes)}</> : <span className="hint">指向色条或图例查看各部分大小</span>}
+      {current ? <><strong>{current.label}</strong>{formatBytes(current.bytes)} · {share(current.bytes)}</> : <span className="hint">{t("storage.composition.hint")}</span>}
     </p>
     <div className="storage-legend">{shown.map((part) => (
       <button key={part.id} type="button" data-on={part.id === hot || undefined}
@@ -76,20 +78,22 @@ function Composition({ parts }: { parts: Array<{ id: string; label: string; byte
 
 /** 数据目录：完整路径用等宽字，可在文件管理器里显示或复制。 */
 function DataLocation({ path }: { path: string }) {
+  const { t } = useTranslation("settingsSystem");
   const [copied, setCopied] = useState(false);
   return <div className="storage-location">
-    <span className="storage-location-label">数据位置</span>
+    <span className="storage-location-label">{t("storage.location.label")}</span>
     <code title={path}>{path}</code>
-    <button type="button" className="btn sm" onClick={() => void api.backupReveal(path)}><Icon name="folder" size={14} />在文件夹中显示</button>
-    <button type="button" className="btn sm" aria-label="复制路径" onClick={() => void copyText(path).then(() => setCopied(true))}>
-      <Icon name={copied ? "check" : "copy"} size={14} />复制
+    <button type="button" className="btn sm" onClick={() => void api.backupReveal(path)}><Icon name="folder" size={14} />{t("storage.location.reveal")}</button>
+    <button type="button" className="btn sm" aria-label={t("storage.location.copyAria")} onClick={() => void copyText(path).then(() => setCopied(true))}>
+      <Icon name={copied ? "check" : "copy"} size={14} />{t("storage.location.copy")}
     </button>
   </div>;
 }
 
 /** 统计没回来时的总量卡片骨架：和真实内容同高，数据到了原地替换。 */
 function StorageSkeleton() {
-  return <div className="storage-skeleton" role="status" aria-label="正在统计">
+  const { t } = useTranslation("settingsSystem");
+  return <div className="storage-skeleton" role="status" aria-label={t("storage.scanning")}>
     <div className="storage-total"><i style={{ width: 140, height: 34 }} /><i style={{ width: 280 }} /></div>
     <i className="storage-skeleton-bar" />
     <div className="storage-skeleton-legend">{[0, 1, 2, 3, 4].map((n) => <i key={n} />)}</div>
@@ -102,11 +106,12 @@ function StorageRow({ item, disabled, pending, onClean }: {
   pending: boolean;
   onClean: (item: StorageItemView) => void;
 }) {
+  const { t } = useTranslation("settingsSystem");
   return <div className="storage-row" data-storage-item={item.key}>
     <i className="storage-swatch" data-part={partId(item.key)} aria-hidden="true" />
     <div className="storage-name"><strong>{item.label}</strong>{item.hint && <span className="hint">{item.hint}</span>}</div>
     <div className="storage-act">
-      {pending ? <span className="storage-busy" role="status"><Icon name="spinner" size={14} className="spin" />{item.action === "vacuum" ? "压缩中…" : "清理中…"}</span>
+      {pending ? <span className="storage-busy" role="status"><Icon name="spinner" size={14} className="spin" />{item.action === "vacuum" ? t("storage.row.compacting") : t("storage.row.cleaning")}</span>
         : item.action ? <button type="button" className={`btn sm${item.action === "vacuum" ? "" : " danger"}`} disabled={disabled} onClick={() => onClean(item)}>{item.action_label}</button>
         : item.passive && <span className="storage-passive">{item.passive}</span>}
     </div>
@@ -120,10 +125,11 @@ function StorageGroup({ group, disabled, pending, onClean }: {
   pending: string;
   onClean: (item: StorageItemView) => void;
 }) {
+  const { t } = useTranslation("settingsSystem");
   return <section className="storage-group settings-card settings-section" aria-label={group.label}>
     <div className="settings-section-meta">
       <h4>{group.label} <span className="settings-count">{group.size}</span></h4>
-      <p className="hint">{group.key === "database" ? "随保留策略变小。" : group.key === "media" ? "清掉后需要时会重新生成。" : group.note}</p>
+      <p className="hint">{group.key === "database" ? t("storage.group.database") : group.key === "media" ? t("storage.group.media") : group.note}</p>
       {group.note && group.key === "database" && <p className="hint">{group.note}</p>}
     </div>
     <div className="settings-section-body">{group.items.map((item) => <StorageRow key={item.key} item={item} disabled={disabled}
@@ -136,15 +142,16 @@ export function StoragePane({ onAsk, onEditStateChange, onChanged }: {
   onEditStateChange?: (state: SettingsEditState | null) => void;
   onChanged?: () => void;
 }) {
+  const { t } = useTranslation("settingsSystem");
   const { report: part, busy: parts } = useMergedEditState(onEditStateChange);
   const report = { storage: part("storage"), retention: part("retention"), backup: part("backup") };
   const backupBusy = parts.backup || parts.retention;
   const { query, busy, pending, status, clean, refresh } = useStorageSettings(onAsk, report.storage, onChanged);
   const data = query.data;
   const refreshing = query.isFetching;
-  const error = status?.tone === "err" ? status.text : query.isError ? "统计存储占用失败：" + String(query.error) + "。请点重新统计。" : "";
+  const error = status?.tone === "err" ? status.text : query.isError ? t("storage.loadFailed", { message: String(query.error) }) : "";
   const items = data?.groups.flatMap((g) => g.items) ?? [];
-  const composition = PARTS.map((part) => ({ ...part, bytes: items.filter((i) => partId(i.key) === part.id).reduce((sum, i) => sum + Math.max(0, i.bytes), 0) }));
+  const composition = PARTS.map((part) => ({ ...part, label: t(`storage.parts.${part.id}`), bytes: items.filter((i) => partId(i.key) === part.id).reduce((sum, i) => sum + Math.max(0, i.bytes), 0) }));
   // 首次统计：先整页留白等一小会儿，统计快就一次出全；慢了才画同形状的骨架，
   // 不让保留 / 备份先出来、再被晚到的占用分组整片推下去。
   const settled = !!data || query.isError;
@@ -155,16 +162,16 @@ export function StoragePane({ onAsk, onEditStateChange, onChanged }: {
       {error && <p className="notice error" role="alert"><Icon name="info" size={14} />{error}</p>}
       {status?.tone === "ok" && <p className="form-status" role="status">{status.text}</p>}
       <section className="settings-card settings-section">
-        <div className="settings-section-meta"><h4>总量</h4><p className="hint">{data ? "数据库、媒体缓存、对话引擎与自动备份的合计。" : "统计需要读一遍数据库，大库可能要几秒，期间可以继续使用。"}</p></div>
+        <div className="settings-section-meta"><h4>{t("storage.total.title")}</h4><p className="hint">{data ? t("storage.total.hintReady") : t("storage.total.hintScanning")}</p></div>
         <div className="settings-section-body">
           {data ? <>
             <div className="storage-total"><span className="storage-total-num">{data.total}</span><span className="hint">{data.summary}</span></div>
             <Composition parts={composition} />
-          </> : query.isError ? <p className="hint" role="status">未能统计</p> : <StorageSkeleton />}
+          </> : query.isError ? <p className="hint" role="status">{t("storage.total.failed")}</p> : <StorageSkeleton />}
           <div className="storage-scan">
-            {data?.scanned_at ? <span className="hint">统计于 {scannedAt(data.scanned_at)}</span> : null}
+            {data?.scanned_at ? <span className="hint">{t("storage.scannedAt", { time: scannedAt(data.scanned_at) })}</span> : null}
             <button type="button" className="btn sm" disabled={refreshing || busy || backupBusy} onClick={() => void refresh()}>
-              <Icon name="refresh" size={14} className={refreshing ? "spin" : undefined} />重新统计
+              <Icon name="refresh" size={14} className={refreshing ? "spin" : undefined} />{t("storage.rescan")}
             </button>
           </div>
           {data ? <DataLocation path={data.data_dir} /> : null}

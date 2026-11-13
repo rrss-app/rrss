@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Icon } from "../../components/Icon";
+import { useTranslation } from "../../i18n";
 import { ChatMessages, createTurnStore, threadSlot, useConversation, useFailure, useLiveTurn, useOutgoing, useReleaseOutgoing, useTraces, type ChatFixTab, type ConversationStore, type TurnStore } from "../chat";
 
 export type DigestDiscussionProps = {
@@ -25,6 +26,7 @@ const NO_TURNS = createTurnStore();
 
 /** 当期追问区：只订阅自己线程；没有消息、没有流式正文也不在生成时整段不渲染。 */
 export function DigestDiscussion({ store, turns, threadId, context, busy, scrollRequest, onLoadOlder, onOpenUrl, onOpenArticle, onFix }: DigestDiscussionProps) {
+  const { t } = useTranslation("digest");
   const conversation = useConversation(store, threadId);
   const slot = threadSlot(threadId, context);
   const outgoing = useOutgoing(store, slot);
@@ -45,9 +47,9 @@ export function DigestDiscussion({ store, turns, threadId, context, busy, scroll
 
   if (!active) return null;
   return (
-    <section ref={section} className="digest-discussion reader-column" aria-label="当期简报追问">
+    <section ref={section} className="digest-discussion reader-column" aria-label={t("discussion.region")}>
       <div className="chat-column">
-        <h2><Icon name="chat" size={15} />当期追问</h2>
+        <h2><Icon name="chat" size={15} />{t("discussion.title")}</h2>
         <ChatMessages
           messages={conversation.messages}
           stream={conversation.stream}

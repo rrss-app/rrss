@@ -1,5 +1,6 @@
 import { api } from "../lib/api";
 import { Icon } from "../components/Icon";
+import { useTranslation } from "../i18n";
 import { SettingRow } from "./chips";
 import { DiagLogSection } from "./DiagLogSection";
 import type { Ask } from "./SettingsPanel";
@@ -7,42 +8,38 @@ import type { SettingsEditState } from "./editState";
 import { useDiagnosticsSettings } from "./useDiagnosticsSettings";
 
 // 存储页只给用户看的数据位置；库文件、版本、日志模式等技术细节在这里（冒烟脚本也读 `db` 核对连的是哪个库）。
-const ROWS: Array<{ key: "db" | "vec" | "stats" | "ai"; label: string }> = [
-  { key: "db", label: "数据库" },
-  { key: "vec", label: "向量检索" },
-  { key: "stats", label: "数据统计" },
-  { key: "ai", label: "AI 用量" },
-];
+const ROWS: Array<"db" | "vec" | "stats" | "ai"> = ["db", "vec", "stats", "ai"];
 
 export function DiagPane({ onAsk, onEditStateChange, onChanged }: {
   onAsk: Ask;
   onEditStateChange?: (state: SettingsEditState | null) => void;
   onChanged?: () => void;
 }) {
+  const { t } = useTranslation("settingsSystem");
   const { query, busy, pending, status, maintain, refresh } = useDiagnosticsSettings(onEditStateChange, onChanged);
   const data = query.data;
   const refreshing = query.isFetching;
-  const error = status?.tone === "err" ? status.text : query.isError ? "读取诊断信息失败：" + String(query.error) + "。请刷新状态重试。" : "";
+  const error = status?.tone === "err" ? status.text : query.isError ? t("diag.loadFailed", { message: String(query.error) }) : "";
   return (
     <div className="diag-pane">
       {error && <p className="notice error" role="alert"><Icon name="info" size={14} />{error}</p>}
-      {busy && <p className="form-status" role="status">正在执行维护操作…</p>}
+      {busy && <p className="form-status" role="status">{t("diag.busy")}</p>}
       <section className="settings-card settings-section">
         <div className="settings-section-meta">
           <div className="settings-section-head">
-            <div><h4>运行状态</h4><p className="hint">当前数据与用量概况。点击刷新可重新读取。</p></div>
+            <div><h4>{t("diag.status.title")}</h4><p className="hint">{t("diag.status.hint")}</p></div>
           </div>
         </div>
         <div className="settings-section-body">
           <div className="settings-group-actions">
             <button type="button" className="btn sm" disabled={refreshing || busy} onClick={() => void refresh()}>
-              <Icon name="refresh" size={14} className={refreshing ? "spin" : undefined} />刷新状态
+              <Icon name="refresh" size={14} className={refreshing ? "spin" : undefined} />{t("diag.status.refresh")}
             </button>
           </div>
           <dl className="diag-list">
-            {ROWS.map((row) => (
-              <div key={row.key} className="diag-row">
-                <dt>{row.label}</dt><dd>{data ? data[row.key] || "—" : query.isError ? "未能读取" : "读取中…"}</dd>
+            {ROWS.map((key) => (
+              <div key={key} className="diag-row">
+                <dt>{t(`diag.rows.${key}`)}</dt><dd>{data ? data[key] || "—" : query.isError ? t("diag.status.failed") : t("diag.status.loading")}</dd>
               </div>
             ))}
           </dl>
@@ -51,17 +48,17 @@ export function DiagPane({ onAsk, onEditStateChange, onChanged }: {
       {data?.log && <DiagLogSection log={data.log} onAsk={onAsk} disabled={busy || refreshing} />}
       <section className="settings-card settings-section">
         <div className="settings-section-meta">
-          <h4>索引维护</h4>
+          <h4>{t("diag.index.title")}</h4>
         </div>
         <div className="settings-section-body">
-          <SettingRow label="生成文章向量" hint="给一批还没有向量的内容补上向量，相似文章和按意思搜索会更准。用远程模型会产生费用。">
-            <button type="button" className="btn" disabled={busy || refreshing} aria-busy={pending === "生成向量" || undefined} onClick={() => void maintain("生成向量", () => api.embedNow(), "本轮向量处理已结束。", true)}>
-              <Icon name="cpu" size={14} />处理一批
+          <SettingRow label={t("diag.index.embed.label")} hint={t("diag.index.embed.hint")}>
+            <button type="button" className="btn" disabled={busy || refreshing} aria-busy={pending === "embed" || undefined} onClick={() => void maintain("embed", () => api.embedNow(), t("diag.index.embed.done"), true)}>
+              <Icon name="cpu" size={14} />{t("diag.index.embed.action")}
             </button>
           </SettingRow>
-          <SettingRow label="允许失败内容重试" hint="之前生成失败的内容会重新排队处理。不会删除文章。">
-            <button type="button" className="btn" disabled={busy || refreshing} aria-busy={pending === "重置失败计数" || undefined} onClick={() => void maintain("重置失败计数", () => api.resetFailed(), "已重新排队，稍后会再处理这些内容。")}>
-              <Icon name="refresh" size={14} />重置失败计数
+          <SettingRow label={t("diag.index.retry.label")} hint={t("diag.index.retry.hint")}>
+            <button type="button" className="btn" disabled={busy || refreshing} aria-busy={pending === "resetFailed" || undefined} onClick={() => void maintain("resetFailed", () => api.resetFailed(), t("diag.index.retry.done"))}>
+              <Icon name="refresh" size={14} />{t("diag.index.retry.action")}
             </button>
           </SettingRow>
           {status?.tone === "ok" && <p className="form-status" role="status">{status.text}</p>}

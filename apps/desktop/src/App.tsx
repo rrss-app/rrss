@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Ref } from "react";
+import { useTranslation } from "./i18n";
 import { useFeedUpdates } from "./app/useFeedUpdates";
 import { readingMinutes } from "./lib/readingTime";
 import { api, onWindowCloseRequested, onWindowRestored, type ArticleView, type CitationView, type ThreadView } from "./lib/api";
@@ -12,7 +13,7 @@ import { useModalFocus, type ModalLayerId } from "./lib/useModalFocus";
 import { useOverlayStack } from "./lib/useOverlayStack";
 import { useWindowKeydown } from "./lib/useWindowKeydown";
 import { ConfirmBar } from "./components/ConfirmBar";
-import { CloseAskDialog, TRAY_LABELS } from "./app/CloseAskDialog";
+import { CloseAskDialog, trayLabels } from "./app/CloseAskDialog";
 import { AboutOverlay } from "./components/AboutOverlay";
 import { Toast } from "./components/Toast";
 import { ProbePage, RenderFixture } from "./components/DevPages";
@@ -49,11 +50,7 @@ import { useReaderCitations } from "./app/useReaderCitations";
 import { Sidebar, type MainView, type SidebarHandle } from "./app/Sidebar";
 import { WindowControls } from "./app/WindowControls";
 
-const THEMES = [
-  { id: "system", label: "跟随系统" },
-  { id: "light", label: "浅色" },
-  { id: "dark", label: "深色" },
-];
+const THEMES = ["system", "light", "dark"] as const;
 
 /**
  * 设置各分类共用查询层预载。只预热还没读过的查询：已有快照的页面打开时按新鲜度自己重读，
@@ -87,6 +84,7 @@ export function App() {
 }
 
 function DesktopShell() {
+  const { t } = useTranslation("shell");
   const queries = useQueryClient();
   const [view, setViewState] = useState<MainView>("focus");
   // 进入订阅之前的视图。只在从别的视图切进来时记下，已在订阅里不覆盖；按钮和 Esc 都回到这里。
@@ -101,7 +99,7 @@ function DesktopShell() {
     setVisited((seen) => (seen.has(next) ? seen : new Set([...seen, next])));
   }, []);
   const [threadId, setThreadId] = useState(0);
-  const [threadHeading, setThreadHeading] = useState({ id: 0, title: "新对话", archived: false });
+  const [threadHeading, setThreadHeading] = useState({ id: 0, title: t("chat.newThread"), archived: false });
   const onThreadTitle = useCallback((id: number, title: string, archived: boolean) => {
     setThreadHeading(previous => previous.id === id && previous.title === title && previous.archived === archived ? previous : { id, title, archived });
   }, []);
@@ -155,7 +153,7 @@ function DesktopShell() {
       const edit = settingsEditState.current;
       return edit?.busy ? "busy" : edit?.dirty ? "dirty" : "ok";
     },
-    onBusy: () => setToast({ message: "正在保存或测试" + (settingsEditState.current?.label ?? "设置") + "，请等本次操作完成后再离开。" }),
+    onBusy: () => setToast({ message: t("settingsBusy", { label: settingsEditState.current?.label ?? t("settings.title") }) }),
     onDiscard: () => {
       if (settingsEditState.current) settingsEditState.current.dirty = false;
     },
@@ -178,7 +176,7 @@ function DesktopShell() {
   // 能在设置里修好的对话错误带一个「去设置」，直接打开对应分类。
   const openChatFix = useCallback((tab: SettingsTabId) => { setSettingsTab(tab); open("settings"); }, [open]);
   function showChatError(message: string, fix?: SettingsTabId) {
-    setToast(fix ? { message, actionLabel: "去设置", onAction: () => openChatFix(fix) } : { message });
+    setToast(fix ? { message, actionLabel: t("settingsFix.action"), onAction: () => openChatFix(fix) } : { message });
   }
   const layer = (id: Overlay) => ({ zIndex: 20 + Math.max(0, stack.indexOf(id)) });
   const openSearch = useCallback(() => {
@@ -230,8 +228,8 @@ function DesktopShell() {
   const conversationSource = useCallback(() => {
     const { view, threadId } = current.current;
     if (view !== "chat") return undefined;
-    return { kind: "thread" as const, threadId, title: sidebarRef.current?.getThreads().find(t => t.id === threadId)?.title ?? "新对话" };
-  }, []);
+    return { kind: "thread" as const, threadId, title: sidebarRef.current?.getThreads().find(thread => thread.id === threadId)?.title ?? t("chat.newThread") };
+  }, [t]);
   const openArticleFromMessage = useCallback((id: number, anchor?: ReaderOpenOptions["anchor"]) => {
     void openArticle(id, { skipNav: true, anchor, citationSource: conversationSource() });
   }, [openArticle, conversationSource]);
@@ -269,8 +267,8 @@ function DesktopShell() {
   // 阅读器 `x` / 篇目里的踩只记反馈，不弹规则建议，便于连续丢弃；规则建议留给阅读工具和列表里的踩。
   const dislikeArticle = useCallback(async (row: ArticleView) => {
     try { await ratings.write(row.id, () => api.rate(row.id, false)); trackEvent(row.id, "down"); return true; }
-    catch (err) { setToast({ message: formatNotice("评分失败：", err) }); return false; }
-  }, [ratings]);
+    catch (err) { setToast({ message: formatNotice(t("notice.rateFailed"), err) }); return false; }
+  }, [ratings, t]);
   const addCitation = useCallback((citation: CitationView) => {
     drafts.addCitations(current.current.view === "digest" ? digestContext.current : drafts.threadContext(current.current.threadId), [citation]);
   }, [drafts]);
@@ -288,7 +286,7 @@ function DesktopShell() {
   const openOverlay = useRef(open);
   openOverlay.current = open;
   useEffect(() => {
-    void api.trayInstall(TRAY_LABELS).catch((error) => console.error("tray unavailable", error));
+    void api.trayInstall(trayLabels()).catch((error) => console.error("tray unavailable", error));
     let disposed = false;
     const stops: Array<() => void> = [];
     const keep = (subscription: Promise<() => void>) => void subscription
@@ -338,16 +336,16 @@ function DesktopShell() {
     setView("chat");
     if (id > 0) {
       seedThread(id, saved);
-      void loadMessages(id).catch((err) => setToast({ message: formatNotice("会话加载失败：", err) }));
+      void loadMessages(id).catch((err) => setToast({ message: formatNotice(t("notice.threadLoadFailed"), err) }));
     } else resetNewModel("chat");
-  }, [loadMessages, resetNewModel, seedThread, setView]);
+  }, [t, loadMessages, resetNewModel, seedThread, setView]);
   // 搜索里打开一条会话：载入最新一页，向前翻到命中的消息，滚到它并短暂高亮（N4 · 搜索对话）。
   const { loadOlder } = chat;
   const openThreadHit = useCallback(async (id: number, messageId: number | null) => {
     setThreadId(id);
     setView("chat");
     seedThread(id, sidebarRef.current?.getThreads().find((thread) => thread.id === id));
-    try { await loadMessages(id); } catch (err) { setToast({ message: formatNotice("会话加载失败：", err) }); return; }
+    try { await loadMessages(id); } catch (err) { setToast({ message: formatNotice(t("notice.threadLoadFailed"), err) }); return; }
     if (messageId == null) return;
     for (let page = 0; page < 50; page += 1) {
       const loaded = chat.store.get(id);
@@ -362,12 +360,12 @@ function DesktopShell() {
       node.setAttribute("data-flash", "");
       window.setTimeout(() => node.removeAttribute("data-flash"), 1600);
     }));
-  }, [chat.store, loadMessages, loadOlder, seedThread, setView]);
+  }, [t, chat.store, loadMessages, loadOlder, seedThread, setView]);
   // 相近报道「引用整组到对话」：放进新对话的输入区，不打断当前对话的草稿。
   const citeGroup = useCallback((citations: CitationView[]) => {
     drafts.addCitations(drafts.threadContext(0), citations);
-    setToast({ message: `已把这组 ${citations.length} 篇引用到新对话`, actionLabel: "去对话", onAction: () => selectThread(0) });
-  }, [drafts, selectThread]);
+    setToast({ message: t("citeGroup.done", { count: citations.length }), actionLabel: t("citeGroup.action"), onAction: () => selectThread(0) });
+  }, [drafts, selectThread, t]);
   const managePool = useCallback(() => { setSettingsTab("model"); open("settings"); }, [open]);
   // 只在换线程时回收上一条；切栏目不清当前对话，生成中的回复仍归原线程。
   useEffect(() => {
@@ -384,7 +382,7 @@ function DesktopShell() {
         if (current.current.view === sentView) setView("chat");
       }
       return true;
-    } catch (err) { setToast({ message: formatNotice("发送失败：", err) }); return false; }
+    } catch (err) { setToast({ message: formatNotice(t("notice.sendFailed"), err) }); return false; }
   };
 
   const webCovered = top !== "web-warning" || commandPaletteOpen || !!webLinks.menu || !!pendingLeave || stack.includes("confirm");
@@ -395,7 +393,7 @@ function DesktopShell() {
     <main className="main" inert={trapBackground}>
       <FocusScreen session={focus} active={view === "focus"} shortcuts={view === "focus" && stack.length === 0 && !commandPaletteOpen && !pendingLeave}
         onOpen={openFocusArticle} onCite={addCitation} onCiteGroup={citeGroup} onRate={rateArticle} onOpenDigest={openDigest} onOpenSearch={openSearch} onOpenFeed={openFeedFromCard} onManageModels={managePool} notify={setToast} />
-      {columnId ? <FocusColumnScreen feeds={feedsSession} session={column} active={view === "column"} scope={columnId} name={columnTitle || "栏目"}
+      {columnId ? <FocusColumnScreen feeds={feedsSession} session={column} active={view === "column"} scope={columnId} name={columnTitle || t("column.fallbackName")}
         shortcuts={view === "column" && stack.length === 0 && !commandPaletteOpen && !pendingLeave}
         onOpen={openColumnArticle} onCite={addCitation} onCiteGroup={citeGroup} onRate={rateArticle} onOpenDigest={openDigest} onOpenSearch={openSearch} onOpenFeed={openFeedFromCard} onManageModels={managePool} notify={setToast} /> : null}
       {visited.has("feeds") ? <FeedsScreen session={feedsSession} active={view === "feeds"} onOpen={openFeedsArticle} onFetch={focus.refresh} /> : null}
@@ -404,21 +402,21 @@ function DesktopShell() {
         onChange={focus.reload} onOpenUrl={openContentLink} onOpenArticle={openArticleFromMessage} onManagePool={managePool} onFixChat={openChatFix} notify={setToast} /> : null}
       {visited.has("chat") ? <MainViewFrame visible={view === "chat"}>
         <header className="chat-header" data-tauri-drag-region="deep">
-          {origin ? <button type="button" className="chat-backchip" onClick={backToArticle} title={`回到原文 · ${origin.title}`}>
-            <Icon name="arrowLeft" size={13} /><span>回到原文 ·</span><em>{origin.title}</em><kbd>Esc</kbd>
-          </button> : null}<h1 title={threadHeading.id === threadId ? threadHeading.title : "新对话"}>{threadHeading.id === threadId ? threadHeading.title : "新对话"}</h1></header>
+          {origin ? <button type="button" className="chat-backchip" onClick={backToArticle} title={t("chat.backToArticleTitle", { title: origin.title })}>
+            <Icon name="arrowLeft" size={13} /><span>{t("chat.backToArticle")}</span><em>{origin.title}</em><kbd>Esc</kbd>
+          </button> : null}<h1 title={threadHeading.id === threadId ? threadHeading.title : t("chat.newThread")}>{threadHeading.id === threadId ? threadHeading.title : t("chat.newThread")}</h1></header>
         {threadHeading.id === threadId && threadHeading.archived ? <div className="notice chat-archived" role="status">
-          <Icon name="inbox" size={14} /><span>这条会话已归档。发送新消息会自动取消归档。</span>
+          <Icon name="inbox" size={14} /><span>{t("chat.archivedNotice")}</span>
           <button type="button" className="btn sm" onClick={() => void api.unarchiveThread(threadId).then(reloadThreads,
-            (err) => setToast({ message: formatNotice("没能取消归档：", err) }))}>取消归档</button>
+            (err) => setToast({ message: formatNotice(t("notice.unarchiveFailed"), err) }))}>{t("chat.unarchive")}</button>
         </div> : null}
         <ChatPane store={chat.store} turns={chat.turns} threadId={threadId} busy={chat.busyThreadId === threadId} jump={jump}
           onLoadOlder={chat.loadOlder} onOpenUrl={openContentLink} onOpenArticle={openArticleFromMessage} onFix={openChatFix} />
       </MainViewFrame> : null}
-      {view !== "digest" ? <Composer drafts={drafts} context={drafts.threadContext(threadId)} ariaLabel="对话消息" placeholder="针对引用提问，或自由探索…"
+      {view !== "digest" ? <Composer drafts={drafts} context={drafts.threadContext(threadId)} ariaLabel={t("chat.composerLabel")} placeholder={t("chat.composerPlaceholder")}
         otherThreadBusy={chat.busyThreadId !== null && chat.busyThreadId !== threadId} generating={chat.busyThreadId !== null}
         sending={chat.sending} disabled={false} ready collapsible={false} forceExpanded={chat.busyThreadId !== null} showWhenEmpty={view !== "focus" && view !== "column" && view !== "feeds"}
-        onSend={send} onStop={() => void api.abort().catch((err) => setToast({ message: formatNotice("停止失败：", err) }))}
+        onSend={send} onStop={() => void api.abort().catch((err) => setToast({ message: formatNotice(t("notice.stopFailed"), err) }))}
         onOpenArticle={openArticleFromMessage} activity={<ChatActivity store={chat.activity} />}
         jump={view === "chat" ? <JumpToLatest controller={jump} /> : null}
         model={<ChatModelChip value={chat.modelFor(threadId, "chat")} thinking={chat.thinkingFor(threadId, "chat")} disabled={chat.sending} onManagePool={managePool}
@@ -435,9 +433,9 @@ function DesktopShell() {
       <div ref={settingsRootRef} className="drawer settings settings-drawer" role="dialog" aria-modal={modalTop === "settings" && !commandPaletteOpen}
         aria-labelledby="settings-title" aria-describedby="settings-desc">
         <FocusSettings focus={focus} siteRuleSeed={siteRuleSeed} onSiteRuleSeedUsed={() => setSiteRuleSeed(undefined)} navigationHead={<div className="settings-nav-head" data-tauri-drag-region="deep">
-          <button type="button" className="tool-btn" data-settings-back onClick={closeTop}><Icon name="arrowLeft" size={16} />返回阅读</button>
-          <h2 id="settings-title">设置</h2><span id="settings-desc" hidden>订阅、规则、模型与本机诊断</span>
-        </div>} navigationFoot={<div className="settings-theme"><span>外观</span><ChipBar className="segmented" value={theme} options={THEMES} onChange={(next) => {
+          <button type="button" className="tool-btn" data-settings-back onClick={closeTop}><Icon name="arrowLeft" size={16} />{t("settings.backToReader")}</button>
+          <h2 id="settings-title">{t("settings.title")}</h2><span id="settings-desc" hidden>{t("settings.description")}</span>
+        </div>} navigationFoot={<div className="settings-theme"><span>{t("settings.theme")}</span><ChipBar className="segmented" value={theme} options={THEMES.map((id) => ({ id, label: t(`theme.${id}`) }))} onChange={(next) => {
             setTheme(next); document.documentElement.dataset.theme = next; void api.setSetting("theme_preference", next).catch(() => {});
           }} /></div>} tab={settingsTab} onTab={(next) => {
           if (next !== settingsTab) overlays.requestLeave("settings", () => setSettingsTab(next));
@@ -456,7 +454,7 @@ function DesktopShell() {
       onChoose={(choice, remember) => {
         closeTop();
         void api.windowCloseChoice(choice, remember).then(() => { if (remember) void settingsChanged(queries); })
-          .catch((err) => setToast({ message: formatNotice("没能关闭窗口：", err) }));
+          .catch((err) => setToast({ message: formatNotice(t("notice.closeWindowFailed"), err) }));
       }} />}
     {pendingLeave && <LeaveConfirm rootRef={confirmRootRef} inert={commandPaletteOpen} edit={settingsEditState.current} saving={leaveSaving}
       onSave={async () => {
@@ -471,7 +469,7 @@ function DesktopShell() {
       onDiscard={overlays.confirmLeave} onCancel={overlays.cancelLeave} />}
     {webLinks.menu}
     {stack.includes("web-warning") && (webLinks.warning || webLinks.windows.panel) ? <div className="overlay reader-stage" style={layer("web-warning")} inert={webCovered}>
-      <div className="drawer reader" ref={webWarningRootRef} role="dialog" aria-modal="true" aria-label={webLinks.warning ? "链接安全提示" : "原网页"}>
+      <div className="drawer reader" ref={webWarningRootRef} role="dialog" aria-modal="true" aria-label={webLinks.warning ? t("web.warningLabel") : t("web.label")}>
         {webLinks.warning ? <WebSafetyWarning warning={webLinks.warning} onCancel={closeTop} onContinue={webLinks.proceed} />
           : <WebWindowScene controller={webLinks.windows} covered={webCovered} onBack={closeTop} onOpenLink={openContentLink} onProxySettings={() => { setSettingsTab("advanced"); open("settings"); }} />}
       </div>
@@ -504,11 +502,12 @@ function LeaveConfirm({ edit, saving, onSave, onDiscard, onCancel, rootRef, iner
   rootRef: Ref<HTMLDivElement>;
   inert: boolean;
 }) {
-  const title = `${edit?.label ?? "设置"}有未保存的修改`;
+  const { t } = useTranslation("shell");
+  const title = t("leave.title", { label: edit?.label ?? t("settings.title") });
   return edit?.save
-    ? <ConfirmBar rootRef={rootRef} inert={inert} title={title} message={saving ? "正在保存…" : "离开前保存这些修改吗？"}
-      okLabel={saving ? "保存中…" : "保存并离开"} secondary={{ label: "不保存", onClick: onDiscard }} cancelLabel="继续编辑"
+    ? <ConfirmBar rootRef={rootRef} inert={inert} title={title} message={saving ? t("leave.saving") : t("leave.askSave")}
+      okLabel={saving ? t("leave.savingOk") : t("leave.saveAndLeave")} secondary={{ label: t("leave.discard"), onClick: onDiscard }} cancelLabel={t("leave.keepEditing")}
       style={{ zIndex: 40 }} onOk={onSave} onCancel={onCancel} />
-    : <ConfirmBar rootRef={rootRef} inert={inert} title={title} message="离开会丢弃这些修改。"
-      okLabel="不保存并离开" cancelLabel="继续编辑" style={{ zIndex: 40 }} onOk={onDiscard} onCancel={onCancel} />;
+    : <ConfirmBar rootRef={rootRef} inert={inert} title={title} message={t("leave.willDiscard")}
+      okLabel={t("leave.discardAndLeave")} cancelLabel={t("leave.keepEditing")} style={{ zIndex: 40 }} onOk={onDiscard} onCancel={onCancel} />;
 }

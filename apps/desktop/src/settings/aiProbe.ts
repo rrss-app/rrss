@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { i18n } from "../i18n";
 
 /** 测通 / 取模型列表的前端等待上限。现有 IPC 无取消，停止只是不再等待，后台请求可能继续。 */
 export const AI_PROBE_SLOW_MS = 10_000;
@@ -8,8 +9,8 @@ export type ProbeWait = { key: string; seconds: number } | null;
 /** `note` 为空表示被新的请求取代，调用方不必提示。 */
 export type ProbeOutcome<T> = { done: true; value: T } | { done: false; note: string };
 
-const STOPPED = "已停止等待。后台请求可能仍在继续。";
-const TIMEOUT = `已等待 ${AI_PROBE_CAP_MS / 1000} 秒，暂未收到结果。已停止等待，后台请求可能仍在继续。`;
+const stoppedNote = () => i18n.t("probe.stopped", { ns: "settingsModels" });
+const timeoutNote = () => i18n.t("probe.timeout", { ns: "settingsModels", count: AI_PROBE_CAP_MS / 1000 });
 
 /**
  * 同一时刻只等一个请求；新请求、停止、超时或卸载都会让旧请求的结果作废。
@@ -44,15 +45,15 @@ export function useProbe() {
         fn();
       };
       const stop = (note: string) => finish(() => resolve({ done: false, note }));
-      const cap = window.setTimeout(() => stop(TIMEOUT), AI_PROBE_CAP_MS);
+      const cap = window.setTimeout(() => stop(timeoutNote()), AI_PROBE_CAP_MS);
       abandon.current = stop;
       work(() => live).then((value) => finish(() => resolve({ done: true, value })), (error) => finish(() => reject(error)));
     });
   };
 
-  return { wait, run, stop: () => abandon.current?.(STOPPED) };
+  return { wait, run, stop: () => abandon.current?.(stoppedNote()) };
 }
 
 export function probeWaitLabel(wait: NonNullable<ProbeWait>) {
-  return `已等待 ${wait.seconds} 秒${wait.seconds * 1000 >= AI_PROBE_SLOW_MS ? "，连接较慢，可以停止等待。" : ""}`;
+  return i18n.t(wait.seconds * 1000 >= AI_PROBE_SLOW_MS ? "probe.waitedSlow" : "probe.waited", { ns: "settingsModels", count: wait.seconds });
 }

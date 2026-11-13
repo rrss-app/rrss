@@ -1,1 +1,387 @@
-{}
+{
+  "action": {
+    "save": "保存",
+    "delete": "删除",
+    "edit": "编辑"
+  },
+  "assistant": {
+    "editLabel": "对话助手设置",
+    "actionFailed": "操作失败：",
+    "loadFailed": "读取对话助手设置失败：",
+    "reload": "重新读取",
+    "abilities": {
+      "title": "模型与能力",
+      "hint": "默认模型和模型页的「对话」是同一项。",
+      "localArticles": {
+        "label": "查阅本地文章",
+        "hint": "搜索和阅读已订阅的文章、简报与记忆。",
+        "always": "始终可用"
+      },
+      "fetchUrl": {
+        "label": "读取网页",
+        "hint": "每次打开链接仍要在对话里确认。"
+      }
+    },
+    "note": {
+      "title": "助手说明",
+      "hint": "每次对话都会带上。适合写回答风格、常用语言这类偏好。",
+      "rowsLabel": "助手说明",
+      "viewPrompt": "查看固定提示"
+    },
+    "tools": {
+      "title": "工具",
+      "hint": "关掉的工具助手看不到。",
+      "confirm": "需确认",
+      "edited": "已改说明",
+      "edit": "编辑说明",
+      "editAria": "编辑说明 {{label}}",
+      "toggle": "工具 {{label}}"
+    },
+    "extensions": "扩展",
+    "skills": {
+      "title": "技能",
+      "summary": "{{total}} 个 · {{enabled}} 个已启用",
+      "bundled": "内置",
+      "custom": "自定义",
+      "editAria": "编辑技能 {{name}}",
+      "toggle": "技能 {{name}}",
+      "create": "新建技能"
+    },
+    "mcpFold": {
+      "title": "外部工具",
+      "count_other": "{{count}} 个",
+      "none": "未添加"
+    },
+    "advanced": "此页的高级设置 →"
+  },
+  "chatModel": {
+    "defaultModel": "默认模型",
+    "hint": {
+      "own": "已开启「使用我自己的 Pi 配置」，这里列出 Pi 可用的模型。",
+      "chosen": "新对话默认用它。对话里可以临时换成其他用于对话的模型。",
+      "none": "还没选对话模型，对话暂停。"
+    },
+    "noTools": "这个模型不能调用工具，对话将无法查阅文章或读取网页。",
+    "saveFailed": "保存失败：",
+    "thinking": "思考强度",
+    "thinkingHint": "在每个模型的设置里调；某条对话想换，可以在输入框旁临时改。",
+    "reasoningUnsupported": "不支持推理",
+    "changeInModels": "在模型设置里改"
+  },
+  "engine": {
+    "title": "对话引擎",
+    "restart": "重启引擎",
+    "idle": "空闲多久释放",
+    "version": "版本",
+    "source": "来源",
+    "autoUpdate": "对话引擎下载与更新",
+    "downloadFailed": "下载失败：{{message}}",
+    "redownload": "重新下载",
+    "detectFailed": "没能检测对话引擎。",
+    "redetect": "重新检测",
+    "detecting": "正在检测对话引擎…",
+    "missing": "未找到对话引擎。",
+    "download": "下载对话引擎",
+    "tooOld": "对话引擎版本过低（{{version}}）。",
+    "upgrade": "升级对话引擎",
+    "setModel": "去设置对话模型",
+    "ready": "引擎就绪",
+    "progressLabel": "对话引擎下载进度",
+    "versionNote": {
+      "unverified": "Pi {{version}} · 未验证版本，可能有兼容问题",
+      "ok": "Pi {{version}} · 已校验",
+      "tooOld": "Pi {{version}} · 版本过低",
+      "other": "Pi {{version}} · "
+    },
+    "recheck": "重新检查",
+    "installBackground": "在后台下载，可以离开这页，完成后会提示。",
+    "installNote": "对话引擎会装在 RRSS 自己的目录里，不影响你电脑上已有的 Pi。",
+    "installNoteDir": "对话引擎会装在 RRSS 自己的目录里（<code>{{dir}}</code>），不影响你电脑上已有的 Pi。"
+  },
+  "install": {
+    "installing": "正在校验并安装对话引擎…",
+    "connecting": "正在连接下载地址…",
+    "downloading": "正在下载对话引擎 {{received}} / {{total}}",
+    "downloadingNoTotal": "正在下载对话引擎 {{received}}",
+    "done": "对话引擎已就绪（{{message}}）",
+    "failed": "对话引擎下载失败：{{message}}"
+  },
+  "pi": {
+    "label": {
+      "savePath": "保存路径",
+      "developerTools": "更新开发者工具",
+      "fetchUrl": "更新网页读取",
+      "tool": "更新工具",
+      "toolDescription": "保存工具说明",
+      "skill": "更新技能",
+      "skillSave": "保存技能",
+      "skillDelete": "删除技能",
+      "mcpImport": "导入外部工具服务",
+      "mcpToggle": "更新外部工具服务",
+      "mcpDelete": "删除外部工具服务",
+      "mcpSave": "保存外部工具服务",
+      "config": "保存对话引擎配置",
+      "restart": "重启引擎"
+    },
+    "failed": "{{label}}失败：",
+    "updated": "已更新，将在下次发送时生效。",
+    "imported": "已导入 {{imported}} 个服务，同名跳过 {{skipped}} 个。新服务默认关闭。",
+    "restarted": "对话引擎已重启。",
+    "refreshFailed": "但读取最新设置失败，请重新读取："
+  },
+  "toolDialog": {
+    "title": "编辑说明：{{label}}",
+    "restoreDefault": "恢复默认",
+    "field": "工具说明",
+    "hint": "助手按这段说明决定何时调用这个工具。"
+  },
+  "skillDialog": {
+    "edit": "编辑技能",
+    "create": "新建技能",
+    "delete": "删除技能",
+    "confirmMessage": "删除「{{name}}」？删除后不能恢复。",
+    "loadFailed": "读取技能失败：",
+    "loading": "正在读取…",
+    "name": "名称",
+    "nameHint": "小写字母、数字和连字符，例如 weekly-notes。",
+    "when": "什么时候用",
+    "whenHint": "一句话说明，助手据此判断是否使用这个技能。",
+    "body": "内容"
+  },
+  "mcp": {
+    "loginIncomplete": "浏览器登录没有完成：{{reason}}。",
+    "loginIncompleteBare": "浏览器登录没有完成。",
+    "title": "外部工具（MCP）",
+    "hint": "让助手用上你添加的工具，比如读写本机笔记、查询在线服务。每个服务单独开关，下次对话起生效。",
+    "importJson": "从 JSON 导入",
+    "add": "添加服务",
+    "empty": "还没有服务。可以添加服务，或直接粘贴服务说明里的 JSON 配置。",
+    "listLabel": "外部工具服务",
+    "transport": {
+      "stdio": "本地命令",
+      "http": "远程 HTTP",
+      "sse": "旧式 SSE"
+    },
+    "oauthTag": "{{tag}} · 浏览器登录",
+    "health": {
+      "legacy": "这种旧式地址已连不上，换成新地址后再开启",
+      "waiting": "等你在浏览器里完成登录…",
+      "needsLogin": "需要登录 · 在浏览器里授权后才能使用",
+      "connecting": "正在连接…",
+      "connected": "已连接 · 开放 {{open}} / {{total}} 个工具 · {{seconds}} 秒",
+      "failed": "连接失败 · {{reason}}",
+      "noConnect": "没有连上",
+      "loggedIn": "已登录 · 未检测",
+      "untested": "未检测"
+    },
+    "editAddress": "改填地址",
+    "editAddressAria": "改填地址 {{name}}",
+    "viewTools": "查看工具",
+    "hideTools": "收起工具",
+    "viewDetails": "查看详情",
+    "hideDetails": "收起详情",
+    "cancel": "取消",
+    "cancelAria": "取消登录 {{name}}",
+    "login": "登录",
+    "loginAria": "登录 {{name}}",
+    "probe": "检测",
+    "probeAria": "检测 {{name}}",
+    "edit": "编辑",
+    "editAria": "编辑服务 {{name}}",
+    "missing": "需要重新填写：{{names}}",
+    "toggle": "服务 {{name}}",
+    "on": "已开启",
+    "off": "已关闭",
+    "errorFallback": "没有连上。",
+    "probeIncomplete": "检测没有完成",
+    "noTools": "这个服务没有提供工具。",
+    "toolsHead": "勾选的工具会开放给助手；会改文件的默认不勾，勾上后每次调用前先问你。",
+    "selectAll": "全选",
+    "toolsLabel": "开放给助手的工具",
+    "ask": "调用前会先问你",
+    "writes": "会改文件"
+  },
+  "mcpDialog": {
+    "auth": {
+      "none": "不需要",
+      "token": "访问令牌",
+      "oauth": "浏览器登录"
+    },
+    "saved": "已保存，留空不变",
+    "pasteConfirm": {
+      "title": "添加外部工具有未保存的修改",
+      "message": "换成粘贴 JSON 后，这里填的内容不会保存。",
+      "ok": "不保存并继续",
+      "cancel": "继续编辑"
+    },
+    "titleEdit": "编辑外部工具",
+    "titleAdd": "添加外部工具",
+    "subtitle": "有现成的 JSON 配置？",
+    "paste": "直接粘贴",
+    "deleteConfirm": {
+      "title": "删除外部工具服务",
+      "message": "删除「{{name}}」？"
+    },
+    "probeButton": "检测连接",
+    "saveAndLogin": "保存并登录",
+    "legacyTitle": "这个地址已经连不上",
+    "legacyBody": "多数服务另有新地址，通常是把结尾的 <code>/sse</code> 换成 <code>/mcp</code>，以服务说明为准。改好后保存，再回列表里开启。",
+    "legacySwap": "换成 …/mcp",
+    "kindsLabel": "类型",
+    "kind": {
+      "stdio": {
+        "label": "本机程序",
+        "desc": "在你电脑上运行的命令，例如 npx、uvx"
+      },
+      "http": {
+        "label": "在线服务",
+        "desc": "通过网址连接"
+      }
+    },
+    "name": "名称",
+    "line": "启动命令",
+    "lineIncomplete": "启动命令的引号尚未闭合。",
+    "env": "环境变量",
+    "addVar": "添加变量",
+    "url": "地址",
+    "authLabel": "登录",
+    "token": "令牌",
+    "tokenPlaceholder": "访问令牌",
+    "hideToken": "遮盖令牌",
+    "showToken": "显示令牌",
+    "addHeader": "再加一个",
+    "otherHeaders": "其他请求头",
+    "valuePlaceholder": "值",
+    "kv": {
+      "env": {
+        "name": "环境变量名称 {{n}}",
+        "value": "环境变量值 {{n}}",
+        "hide": "遮盖环境变量值 {{n}}",
+        "show": "显示环境变量值 {{n}}",
+        "remove": "删除环境变量 {{n}}"
+      },
+      "header": {
+        "name": "请求头名称 {{n}}",
+        "value": "请求头值 {{n}}",
+        "hide": "遮盖请求头值 {{n}}",
+        "show": "显示请求头值 {{n}}",
+        "remove": "删除请求头 {{n}}"
+      }
+    },
+    "probe": {
+      "ok_other": "能连上 · {{count}} 个工具 · {{seconds}} 秒",
+      "failed": "连不上 · {{reason}}",
+      "noConnect": "没有连上"
+    },
+    "import": {
+      "title": "从 JSON 导入外部工具",
+      "field": "粘贴配置",
+      "hint": "支持 Claude Desktop、Cursor 等常见格式：mcpServers 那一段，或整个配置文件。",
+      "listLabel": "将导入的服务",
+      "secrets_other": "{{count}} 个密钥项",
+      "skipped": "同名服务已存在，跳过",
+      "sseAdd": "将添加，要改填新地址后才能开启",
+      "add": "将添加，默认关闭",
+      "apply_other": "导入 {{count}} 个",
+      "applyNone": "导入"
+    }
+  },
+  "memory": {
+    "loading": "正在读取记忆…",
+    "loadFailed": "读取记忆失败：",
+    "retry": "重试读取",
+    "interestLoadFailed": "读取兴趣失败：",
+    "processing": "正在处理操作…",
+    "hitsFailed": "读取相关文章失败：",
+    "editReport": "记忆与兴趣",
+    "opDone": "{{label}}已完成。",
+    "opFailed": "{{label}}失败：",
+    "opDoneRefreshFailed": "{{label}}已完成；记忆列表没能刷新，显示的还是之前的内容；刚才的操作已完成，重新读取即可：",
+    "discardEdit": {
+      "title": "放弃记忆修改",
+      "message": "当前记忆有未保存的修改，放弃后继续？"
+    },
+    "op": {
+      "pin": "更新置顶",
+      "memoryAsInterest": "添加为兴趣",
+      "discard": "丢弃记忆",
+      "confirm": "确认记忆",
+      "delete": "删除记忆",
+      "updateInterest": "更新兴趣",
+      "deleteInterest": "删除兴趣",
+      "export": "导出记忆",
+      "clear": "清空记忆",
+      "updateRanking": "更新排序设置",
+      "save": "保存记忆",
+      "addInterest": "添加兴趣"
+    },
+    "content": {
+      "title": "内容",
+      "hint": "对话里提到的偏好会先放在「待确认」，确认后才生效。"
+    },
+    "tabsLabel": "记忆设置分类",
+    "tab": {
+      "memory": "记忆",
+      "interest": "兴趣"
+    },
+    "searchPlaceholder": "搜索记忆，回车查找",
+    "searchLabel": "搜索记忆",
+    "noMatch": "没有匹配的记忆。",
+    "empty": "还没有记忆。对话中确认的偏好会出现在这里。",
+    "editLabel": "记忆内容",
+    "save": "保存",
+    "cancel": "取消",
+    "pendingTag": "待确认",
+    "pinned": "置顶",
+    "unpin": "取消置顶",
+    "pin": "置顶",
+    "edit": "编辑",
+    "addAsInterest": "添加为兴趣",
+    "ignore": "忽略",
+    "confirm": "确认",
+    "delete": "删除",
+    "deleteConfirm": {
+      "title": "删除记忆",
+      "message": "删除「{{content}}」？"
+    },
+    "interest": {
+      "newLabel": "新兴趣标签",
+      "newPlaceholder": "新兴趣标签，例如「本地优先」",
+      "add": "添加",
+      "confirmed": "已确认兴趣",
+      "empty": "还没有兴趣标签。可以在上方添加，也可以将待确认的记忆添加为兴趣。",
+      "embeddingReady": "语义匹配已就绪",
+      "embeddingNot": "语义匹配尚未就绪",
+      "hits_other": "{{count}} 篇相关内容",
+      "loadingHits": "读取中…",
+      "collapse": "收起文章",
+      "related": "相关文章",
+      "toggle": "兴趣 {{label}}",
+      "on": "已启用",
+      "off": "已停用",
+      "deleteAria": "删除兴趣 {{label}}",
+      "delete": "删除",
+      "hitsAria": "兴趣相关文章",
+      "hitsTitle": "{{label}} · 相关文章",
+      "loadingHitsStatus": "正在读取相关文章…",
+      "noHits": "暂时没有匹配的文章。"
+    },
+    "exportFold": {
+      "summary": "导出与清空记忆",
+      "hint": "导出为 JSON 文件以便留存。清空会永久删除全部记忆，操作前会再次确认。",
+      "export": "导出记忆",
+      "clear": "清空全部记忆",
+      "clearTitle": "清空记忆",
+      "clearMessage": "删除全部记忆条目？此操作不可恢复。"
+    },
+    "ranking": {
+      "title": "排序",
+      "hint": "只影响焦点里的先后，不会隐藏文章。",
+      "boost": "兴趣加分",
+      "boostHint": "为与你已确认兴趣相关的可见文章加分。",
+      "rerank": "用兴趣重排焦点",
+      "rerankHint": "关闭后只按时间和规则分数排。",
+      "note": "兴趣只影响可见文章的评分与排序，不会取消规则隐藏。"
+    }
+  }
+}

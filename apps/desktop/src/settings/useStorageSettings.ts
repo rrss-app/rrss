@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type StorageItemView } from "../lib/api";
+import { i18n, useTranslation } from "../i18n";
 import { formatNotice } from "../lib/notice";
 import { readGate, settingsChanged, useEditReport, useSettingsWrite, type SettingsEditState } from "./editState";
 import { storageKeys, storageQueryOptions } from "./storageQuery";
@@ -15,6 +16,7 @@ export function useStorageSettings(
   onEditStateChange?: (state: SettingsEditState | null) => void,
   onChanged?: () => void,
 ) {
+  const { t } = useTranslation("settingsSystem");
   const client = useQueryClient();
   const changed = useRef(onChanged);
   changed.current = onChanged;
@@ -24,14 +26,14 @@ export function useStorageSettings(
       await client.cancelQueries({ queryKey: storageKeys.page, exact: true });
       let done: string;
       try { done = await api.storageClean(item.action); }
-      catch (error) { return { tone: "err", text: formatNotice(item.confirm_title + "失败：", error) }; }
+      catch (error) { return { tone: "err", text: formatNotice(i18n.t("storage.cleanFailed", { ns: "settingsSystem", title: item.confirm_title }), error) }; }
       await settingsChanged(client);
       if (INDEX_ACTIONS.has(item.action)) changed.current?.();
       try {
         await client.fetchQuery(storageQueryOptions());
         return { tone: "ok", text: done };
       } catch (error) {
-        return { tone: "err", text: done + " " + formatNotice("重新统计失败，仍显示上次结果；请点重新统计，无需重复清理：", error) };
+        return { tone: "err", text: done + " " + formatNotice(i18n.t("storage.rescanFailed", { ns: "settingsSystem" }), error) };
       }
     },
   });
@@ -39,7 +41,7 @@ export function useStorageSettings(
   const busy = writing || !!pending;
   const query = useQuery({ ...storageQueryOptions(), ...readGate(busy) });
   const [status, setStatus] = useState<Status | null>(null);
-  useEditReport(onEditStateChange, "存储清理", false, busy);
+  useEditReport(onEditStateChange, t("storage.report"), false, busy);
 
   const run = async (item: StorageItemView) => {
     if (client.isMutating({ mutationKey: storageKeys.write })) return;

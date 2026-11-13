@@ -1,4 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "../i18n";
 import { getFocusableElements } from "../lib/useModalFocus";
 import { useEditReport, type SettingsEditState } from "./editState";
 import type { Ask } from "./SettingsPanel";
@@ -9,7 +10,7 @@ import type { Ask } from "./SettingsPanel";
  * Esc 与「取消」有未保存修改时先确认：给了 `onSave` 是「保存并离开 / 不保存 / 继续编辑」三选，否则二选。
  * 草稿与保存逻辑留在各自的弹层里；`onSave` 成功时由弹层自己关闭并返回 true，失败留在弹层里并返回 false。
  */
-export function Dialog({ title, subtitle, dirty, busy, onAsk, onClose, onSave, onEditStateChange, leading, actions, closeInHeader = false, cancelLabel = "取消", className, children }: {
+export function Dialog({ title, subtitle, dirty, busy, onAsk, onClose, onSave, onEditStateChange, leading, actions, closeInHeader = false, cancelLabel, className, children }: {
   title: string;
   /** 标题下的一行小字，例如另一种填写方式的入口。 */
   subtitle?: ReactNode;
@@ -30,6 +31,8 @@ export function Dialog({ title, subtitle, dirty, busy, onAsk, onClose, onSave, o
   className?: string;
   children: ReactNode;
 }) {
+  const { t } = useTranslation("settingsSystem");
+  const cancelText = cancelLabel ?? t("dialog.cancel");
   const root = useRef<HTMLDivElement>(null);
   const [opener] = useState(() => (document.activeElement instanceof HTMLElement ? document.activeElement : null));
   const titleId = useId();
@@ -64,9 +67,9 @@ export function Dialog({ title, subtitle, dirty, busy, onAsk, onClose, onSave, o
     if (busy) return;
     if (!dirty) onClose();
     else if (onSave) {
-      onAsk(`${title}有未保存的修改`, "离开前保存这些修改吗？", () => void onSave(),
-        { okLabel: "保存并离开", secondary: { label: "不保存", onClick: onClose }, cancelLabel: "继续编辑" });
-    } else onAsk(`${title}有未保存的修改`, "关闭后本次填写的内容不会保存。", onClose, { okLabel: "不保存并离开", cancelLabel: "继续编辑" });
+      onAsk(t("dialog.unsavedTitle", { title }), t("dialog.saveBeforeLeave"), () => void onSave(),
+        { okLabel: t("dialog.saveAndLeave"), secondary: { label: t("dialog.discard"), onClick: onClose }, cancelLabel: t("dialog.keepEditing") });
+    } else onAsk(t("dialog.unsavedTitle", { title }), t("dialog.discardNote"), onClose, { okLabel: t("dialog.discardAndLeave"), cancelLabel: t("dialog.keepEditing") });
   };
 
   return (
@@ -76,13 +79,13 @@ export function Dialog({ title, subtitle, dirty, busy, onAsk, onClose, onSave, o
         onKeyDown={(event) => {
           if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); cancel(); }
         }}>
-        {closeInHeader ? <div className="row settings-dialog-head"><h3 id={titleId}>{title}</h3><span className="spacer" /><button type="button" className="btn sm ghost" disabled={busy} onClick={cancel}>关闭</button></div> : <h3 id={titleId}>{title}</h3>}
+        {closeInHeader ? <div className="row settings-dialog-head"><h3 id={titleId}>{title}</h3><span className="spacer" /><button type="button" className="btn sm ghost" disabled={busy} onClick={cancel}>{t("dialog.close")}</button></div> : <h3 id={titleId}>{title}</h3>}
         {subtitle ? <p className="settings-dialog-sub">{subtitle}</p> : null}
         <div className="settings-dialog-body">{children}</div>
         <div className="row settings-dialog-actions">
           {leading}
           <span className="spacer" />
-          <button type="button" className="btn ghost" disabled={busy} onClick={cancel}>{cancelLabel}</button>
+          <button type="button" className="btn ghost" disabled={busy} onClick={cancel}>{cancelText}</button>
           {actions}
         </div>
       </div>
