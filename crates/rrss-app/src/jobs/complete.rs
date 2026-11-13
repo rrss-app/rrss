@@ -6,6 +6,7 @@ use rrss_ai::{CompleteRequest, complete::complete_admitted_until};
 use rrss_core::Error as CoreError;
 use rrss_core::ai_store::{self, ResolvedTask};
 use serde_json::Value;
+use tracing::{Instrument, instrument::WithSubscriber};
 
 use super::spawn_db;
 
@@ -188,17 +189,21 @@ pub(crate) async fn execute_prepared_with_policy<T>(
     let usage_path = path.clone();
     // 独立持有已收到的计数：网络总期限取消调用者时仍完成有界数据库写入。
     let settling = crate::scheduler::model_capacity::Capacity::for_database(db_path).work();
-    let usage_task = tokio::spawn(async move {
-        let _settling = settling;
-        while let Some((prompt, completion)) = usage_receive.recv().await {
-            let day = ai_store::local_day();
-            spawn_db(usage_path.clone(), move |conn| {
-                ai_store::add_usage(conn, &day, i64::from(prompt), i64::from(completion))
-            })
-            .await?;
+    let usage_task = tokio::spawn(
+        async move {
+            let _settling = settling;
+            while let Some((prompt, completion)) = usage_receive.recv().await {
+                let day = ai_store::local_day();
+                spawn_db(usage_path.clone(), move |conn| {
+                    ai_store::add_usage(conn, &day, i64::from(prompt), i64::from(completion))
+                })
+                .await?;
+            }
+            Ok::<_, anyhow::Error>(())
         }
-        Ok::<_, anyhow::Error>(())
-    });
+        .in_current_span()
+        .with_current_subscriber(),
+    );
     let admission = RequestAdmission::new(
         db_path,
         &prepared.provider.base_url,
@@ -314,16 +319,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.db");
         let conn = db::open_at(&path).unwrap();
-        let provider = ai_store::insert_provider(
-            &conn,
-            &ai_store::NewProvider {
-                name: "mock".into(),
-                base_url: server.uri(),
-                api_key: None,
-                protocol: "chat".into(),
-            },
-        )
-        .unwrap();
+        let provider = crate::test_net::fake_provider(&conn, "mock", server.uri());
         ai_store::set_task_binding(
             &conn,
             ai_store::TASK_FOCUS_SUMMARY,
@@ -382,16 +378,7 @@ mod tests {
                 ai_store::set_daily_budget_tokens(&conn, 1).unwrap();
                 ai_store::add_usage(&conn, &ai_store::local_day(), 1, 0).unwrap();
             } else if reason == "provider" {
-                let pid = ai_store::insert_provider(
-                    &conn,
-                    &ai_store::NewProvider {
-                        name: "empty endpoint".into(),
-                        base_url: String::new(),
-                        api_key: None,
-                        protocol: "openai".into(),
-                    },
-                )
-                .unwrap();
+                let pid = crate::test_net::fake_provider(&conn, "empty endpoint", String::new());
                 ai_store::set_task_binding(&conn, task, Some(pid), Some("m")).unwrap();
             }
             let err = complete_task(
@@ -432,16 +419,7 @@ mod tests {
         let task = ai_store::TASK_DIGEST_DAILY;
         let key = {
             let conn = db::open_at(&path).unwrap();
-            let pid = ai_store::insert_provider(
-                &conn,
-                &ai_store::NewProvider {
-                    name: "mock".into(),
-                    base_url: server.uri(),
-                    api_key: None,
-                    protocol: "openai".into(),
-                },
-            )
-            .unwrap();
+            let pid = crate::test_net::fake_provider(&conn, "mock", server.uri());
             ai_store::set_task_binding(&conn, task, Some(pid), Some("m")).unwrap();
             let resolved = ai_store::resolve_task(&conn, task).unwrap();
             prepare_resolved(&conn, resolved, "input", false)

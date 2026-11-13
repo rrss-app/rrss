@@ -22,6 +22,13 @@ struct Collect {
 
 impl ChatSink for Collect {
     fn emit(&self, event: ChatEvent) {
+        if let ChatEvent::Start(thread_id) | ChatEvent::Done(thread_id) = &event {
+            tracing::warn!(
+                thread_id = rrss_core::logsafe::unless_in_span("thread_id", *thread_id),
+                error_kind = "fixture",
+                "turn fixture boundary"
+            );
+        }
         self.events.lock().unwrap().push(event);
         self.notify.notify_waiters();
     }
@@ -276,6 +283,61 @@ fn steps(events: &[ChatEvent]) -> Vec<(String, bool)> {
             _ => None,
         })
         .collect()
+}
+
+#[tokio::test]
+async fn turn_events_keep_their_thread_from_send_through_settlement() {
+    use tracing::instrument::WithSubscriber;
+
+    let _peer = tracing::Dispatch::new(tracing_subscriber::Registry::default());
+
+    let dir = tempfile::tempdir().unwrap();
+    let (subscriber, log) = rrss_app::log::subscriber(
+        rrss_app::log::Mode::Desktop {
+            log_dir: dir.path().into(),
+        },
+        "rrss=warn",
+    );
+    let thread_id = async {
+        let h = setup(0);
+        let thread_id = h.chat.send(args(0, "turn-content-canary")).await.unwrap();
+        h.sink.done().await;
+        h.sink.clear();
+        h.chat
+            .send(args(thread_id, "next-turn-content-canary"))
+            .await
+            .unwrap();
+        h.sink.done().await;
+        h.chat.stop_engine().await;
+        tracing::warn!(error_kind = "fixture", "outside turn fixture");
+        thread_id
+    }
+    .with_subscriber(subscriber)
+    .await;
+    log.end();
+    let text = std::fs::read_to_string(dir.path().join("rrss.log")).unwrap();
+    let boundaries: Vec<_> = text
+        .lines()
+        .filter(|line| line.contains("turn fixture boundary"))
+        .collect();
+    assert_eq!(boundaries.len(), 4, "{text}");
+    for line in boundaries {
+        assert!(line.contains(" pi_turn: "), "{line}");
+        assert_eq!(
+            line.matches(&format!("thread_id={thread_id}")).count(),
+            1,
+            "{line}"
+        );
+    }
+    let outside = text
+        .lines()
+        .find(|line| line.contains("outside turn fixture"))
+        .unwrap();
+    assert!(
+        !outside.contains("pi_turn") && !outside.contains("thread_id="),
+        "{outside}"
+    );
+    assert!(!text.contains("turn-content-canary"));
 }
 
 #[tokio::test]

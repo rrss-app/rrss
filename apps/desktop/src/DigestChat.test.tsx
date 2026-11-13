@@ -1,3 +1,4 @@
+import { deferred } from "./test/deferred";
 import { digestThreadFixture, threadFixture } from "./test/fixtures/chat";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -18,8 +19,8 @@ vi.mock("./lib/api", async (importOriginal) => {
     ...actual,
     api: {
       ...actual.api,
-      focus: vi.fn(), feeds: vi.fn(), threads: vi.fn(), threadList: vi.fn(), archivedThreads: vi.fn(), messages: vi.fn(), digests: vi.fn(), digest: vi.fn(),
-      digestThread: vi.fn(), sendMessage: vi.fn(), reader: vi.fn(), openArticle: vi.fn(), newThread: vi.fn(), abort: vi.fn(), citeDigestSelection: vi.fn(),
+      focus: vi.fn(), feeds: vi.fn(), threadList: vi.fn(), archivedThreads: vi.fn(), messages: vi.fn(), digests: vi.fn(), digest: vi.fn(),
+      digestThread: vi.fn(), sendMessage: vi.fn(), reader: vi.fn(), openArticle: vi.fn(), abort: vi.fn(), citeDigestSelection: vi.fn(),
     },
     onChatStart: listen("start"), onChatDelta: listen("delta"), onChatDone: listen("done"),
     onChatError: listen("error"), onMediaReady: async () => () => {},
@@ -36,13 +37,6 @@ const message = (id: number, text: string, role = "assistant"): ChatMessageView 
   id, text, role, streaming: false, cite_article_id: 0, cite_title: "", citations: [], document: null,
 });
 const stream = (thread_id: number, text: string): ChatStreamEvent => ({ thread_id, text, document: null });
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
-  return { promise, resolve, reject };
-}
 
 let host: HTMLDivElement;
 let root: Root;
@@ -87,7 +81,6 @@ beforeEach(() => {
   listeners.clear();
   vi.mocked(api.focus).mockResolvedValue(PREVIEW_FOCUS);
   vi.mocked(api.feeds).mockResolvedValue(PREVIEW_FEEDS);
-  vi.mocked(api.threads).mockResolvedValue([]);
   vi.mocked(api.threadList).mockResolvedValue({ folders: [], threads: [], archived_count: 0 });
   vi.mocked(api.archivedThreads).mockResolvedValue([]);
   vi.mocked(api.messages).mockResolvedValue({ messages: [], has_more: false });
@@ -264,7 +257,6 @@ describe("Digest 页内追问", () => {
     expect(host.querySelector('.thread-item[data-on="1"]')!.textContent).toBe("普通会话");
     await click("简报");
     expect(host.querySelector(".digest-date")!.textContent).toBe(previous.date_label);
-    expect(api.newThread).not.toHaveBeenCalled();
   });
 
   it("中文输入法确认不发送，发送失败保留草稿并允许重试", async () => {
@@ -329,7 +321,6 @@ describe("Digest 页内追问", () => {
     await click("发送");
     expect(api.sendMessage).not.toHaveBeenCalled();
     expect(api.digestThread).not.toHaveBeenCalled();
-    expect(api.newThread).not.toHaveBeenCalled();
     expect(host.textContent).toContain("打开一期简报后即可追问");
   });
 

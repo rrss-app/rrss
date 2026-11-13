@@ -123,7 +123,7 @@ export function readerRefineFixture() {
     { t: "hr" as const },
   ] });
   return { ...view, id: 1, title: "Opening Day", translated_title: "开馆日",
-    media: [{ src: "cover.png", media_id: 1, href: "/reader-refine-cover.png", width: 480, height: 240, error: "" }],
+    media: [{ src: "cover.png", href: "/reader-refine-cover.png", width: 480, height: 240, error: "" }],
     document: decorate(view.translated_document), translated_document: decorate(view.document) };
 }
 

@@ -811,7 +811,7 @@ mod tests {
             .unwrap();
         let estimate = crate::queries::vector_space_status(&conn).unwrap();
         assert_eq!(estimate.estimate_chunks, 1);
-        assert!(estimate.estimate_chars > 0);
+        assert!(estimate.estimate_tokens > 0);
         assert!(estimate.effective.is_none());
         assert!(!estimate.allow_model_change);
         rrss_core::model_pool::update_pool(

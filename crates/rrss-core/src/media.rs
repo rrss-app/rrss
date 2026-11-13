@@ -563,7 +563,7 @@ pub fn read_file_span(path: &Path, start: u64, end: u64) -> std::io::Result<Vec<
     Ok(buf)
 }
 
-fn mime_for_ext(ext: &str) -> Option<&'static str> {
+pub(crate) fn mime_for_ext(ext: &str) -> Option<&'static str> {
     Some(match ext {
         "png" => "image/png",
         "jpg" => "image/jpeg",

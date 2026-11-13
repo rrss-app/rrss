@@ -26,6 +26,29 @@ const SCOPE_TEXT: Record<ProxyScope, { name: string; hint: string }> = {
 const MODE_LABEL: Record<NetworkProxyMode, string> = { inherit: "跟随全局", direct: "无代理", system: "系统代理", custom: "自定义代理" };
 const globalModes = (["direct", "system", "custom"] as const).map((value) => ({ value, label: MODE_LABEL[value] }));
 const useModes = (["inherit", "direct", "system", "custom"] as const).map((value) => ({ value, label: MODE_LABEL[value] }));
+const AUTH_TEXT = {
+  clear: "保存后清除",
+  replace: "保存后替换",
+  enable: "保存后启用",
+  saved: "已设置，不回显",
+  unset: "未设置",
+  endpointChanged:
+    "代理协议、主机或端口已改变。为避免将已保存的认证发送到另一代理，保存后将清除原认证；如有需要，请填写新认证。",
+};
+
+function sameProxyEndpoint(draft: string, saved: string): boolean {
+  try {
+    const next = new URL(draft.trim());
+    const old = new URL(saved.trim());
+    return (
+      next.protocol === old.protocol &&
+      next.hostname.toLowerCase() === old.hostname.toLowerCase() &&
+      next.port === old.port
+    );
+  } catch {
+    return false;
+  }
+}
 
 /**
  * 网络代理（规格 23 · P3）：全局一行 + 折叠的三个用途覆盖，模式的细节在所属行下的子面板里；
@@ -100,11 +123,11 @@ export function NetworkProxyGroup({ report }: { report: Report }) {
           </p>
         )}
         {current && <>
-          <ProxyRuleEditor scope="global" rule={current.global} system={system} disabled={busy} onChange={(rule) => update("global", rule)} />
+          <ProxyRuleEditor scope="global" rule={current.global} savedUrl={saved?.global.url ?? ""} system={system} disabled={busy} onChange={(rule) => update("global", rule)} />
           <Fold className="proxy-uses" title="按用途单独设置" summary={overrides ? `${overrides} 项单独设置` : "全部跟随全局"}
             open={open} onToggle={() => setOpen((value) => !value)}>
             {PROXY_USES.map((use) => (
-              <ProxyRuleEditor key={use} scope={use} rule={current[use]} system={system} disabled={busy} onChange={(rule) => update(use, rule)} />
+              <ProxyRuleEditor key={use} scope={use} rule={current[use]} savedUrl={saved?.[use].url ?? ""} system={system} disabled={busy} onChange={(rule) => update(use, rule)} />
             ))}
           </Fold>
           <ProxyCheck draft={current} checks={checks} testing={testing} disabled={writing} onTest={() => void test()} />
@@ -122,8 +145,8 @@ function schemeHint(url: string): string {
   return "支持 http、https、socks5、socks5h；推荐 socks5h:// 让代理解析域名。";
 }
 
-function ProxyRuleEditor({ scope, rule, system, disabled, onChange }: {
-  scope: ProxyScope; rule: NetworkProxyDraftRule; system: SystemProxyView | null; disabled: boolean;
+function ProxyRuleEditor({ scope, rule, savedUrl, system, disabled, onChange }: {
+  scope: ProxyScope; rule: NetworkProxyDraftRule; savedUrl: string; system: SystemProxyView | null; disabled: boolean;
   onChange: (rule: NetworkProxyDraftRule) => void;
 }) {
   const { name, hint } = SCOPE_TEXT[scope];
@@ -133,14 +156,14 @@ function ProxyRuleEditor({ scope, rule, system, disabled, onChange }: {
         <MenuSelect label={`${name}代理模式`} value={rule.mode} options={scope === "global" ? globalModes : useModes} disabled={disabled}
           onChange={(mode) => onChange({ ...rule, mode })} />
       </SettingRow>
-      {rule.mode === "custom" && <CustomProxyFields name={name} rule={rule} disabled={disabled} onChange={onChange} />}
+      {rule.mode === "custom" && <CustomProxyFields name={name} rule={rule} savedUrl={savedUrl} disabled={disabled} onChange={onChange} />}
       {rule.mode === "system" && system && <SystemProxyDetails system={system} />}
     </div>
   );
 }
 
-function CustomProxyFields({ name, rule, disabled, onChange }: {
-  name: string; rule: NetworkProxyDraftRule; disabled: boolean; onChange: (rule: NetworkProxyDraftRule) => void;
+function CustomProxyFields({ name, rule, savedUrl, disabled, onChange }: {
+  name: string; rule: NetworkProxyDraftRule; savedUrl: string; disabled: boolean; onChange: (rule: NetworkProxyDraftRule) => void;
 }) {
   const typed = !!(rule.username || rule.password);
   const [editingAuth, setEditingAuth] = useState(false);
@@ -148,13 +171,14 @@ function CustomProxyFields({ name, rule, disabled, onChange }: {
   const showAuth = editingAuth || typed;
   // 保存后认证状态翻转（新设 / 清除），输入栏收起。
   useEffect(() => { setEditingAuth(false); }, [rule.has_auth]);
-  const authState = rule.clear_auth ? "保存后清除" : typed ? (rule.has_auth ? "保存后替换" : "保存后启用")
-    : rule.has_auth ? "已设置，不回显" : "未设置";
+  const endpointChanged = rule.has_auth && !typed && !sameProxyEndpoint(rule.url, savedUrl);
+  const authState = rule.clear_auth || endpointChanged ? "clear" : typed ? (rule.has_auth ? "replace" : "enable")
+    : rule.has_auth ? "saved" : "unset";
   const closeAuth = () => { setEditingAuth(false); onChange({ ...rule, username: "", password: "" }); };
   return (
     <div className="proxy-detail">
       <Field label="代理地址" hint={schemeHint(rule.url)}>
-        <input aria-label={`${name}代理地址`} className="mono" value={rule.url} disabled={disabled} spellCheck={false} autoComplete="off"
+        <input data-proxy-field="url" aria-label={`${name}代理地址`} className="mono" value={rule.url} disabled={disabled} spellCheck={false} autoComplete="off"
           placeholder="http://127.0.0.1:7890" onChange={(e) => onChange(withPastedAuth(rule, e.target.value))} />
       </Field>
       <Field label="不代理的地址" hint="域名、IP 或网段，逗号或空格分隔；* 表示全部直连。本机地址始终直连，局域网需要在这里写网段。">
@@ -164,7 +188,7 @@ function CustomProxyFields({ name, rule, disabled, onChange }: {
       <div className="proxy-auth" role="group" aria-label={`${name}代理认证`}>
         <div className="proxy-auth-head">
           <span className="proxy-auth-title">代理认证</span>
-          <span className="proxy-auth-state" data-auth-state>{authState}</span>
+          <span className="proxy-auth-state" data-auth-state={authState}>{AUTH_TEXT[authState]}</span>
           <span className="proxy-auth-actions">
             {rule.clear_auth ? (
               <button type="button" className="btn sm ghost" disabled={disabled} onClick={() => onChange({ ...rule, clear_auth: false })}>保留原认证</button>
@@ -179,6 +203,7 @@ function CustomProxyFields({ name, rule, disabled, onChange }: {
             </>}
           </span>
         </div>
+        {endpointChanged && <p className="hint" data-auth-clear-reason="endpoint-changed">{AUTH_TEXT.endpointChanged}</p>}
         {showAuth && !rule.clear_auth && <>
           <div className="proxy-auth-fields">
             <input aria-label={`${name}代理用户名`} value={rule.username} disabled={disabled} autoComplete="off" spellCheck={false}

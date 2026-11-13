@@ -168,23 +168,9 @@ pub async fn fetch_model_catalog(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rrss_core::ai_store::NewProvider;
     use rrss_core::db;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    fn provider(conn: &Connection, base_url: String) -> i64 {
-        ai_store::insert_provider(
-            conn,
-            &NewProvider {
-                name: "p".into(),
-                base_url,
-                api_key: None,
-                protocol: "chat".into(),
-            },
-        )
-        .unwrap()
-    }
 
     #[tokio::test]
     async fn a_failed_fetch_keeps_the_remembered_catalog() {
@@ -192,7 +178,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("rrss.db");
         let conn = db::open_at(&db_path).unwrap();
-        let id = provider(&conn, format!("{}/v1", server.uri()));
+        let id = crate::test_net::fake_provider(&conn, "p", format!("{}/v1", server.uri()));
         let client = Client::new();
         Mock::given(method("GET"))
             .and(path("/v1/models"))
@@ -219,7 +205,7 @@ mod tests {
     fn the_view_lists_uses_and_edits_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let conn = db::open_at(&dir.path().join("rrss.db")).unwrap();
-        let id = provider(&conn, "http://p/v1".into());
+        let id = crate::test_net::fake_provider(&conn, "p", "http://model.example/v1".into());
         let choice = |m: &str| ModelChoice {
             provider_id: id,
             model: m.into(),

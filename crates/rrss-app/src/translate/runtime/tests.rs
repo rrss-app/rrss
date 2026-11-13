@@ -80,7 +80,7 @@ impl Harness {
         conn.execute("INSERT INTO articles (id,feed_id,title,content_html,hash,created_at) VALUES (7,1,'English title','<p>The first paragraph.</p><p>The last paragraph.</p>','feed-hash',1)", []).unwrap();
         translations::set_enabled(&conn, true).unwrap();
         translations::set_backend(&conn, "http").unwrap();
-        translations::set_http_config(&conn, Some("http://mock.test"), None).unwrap();
+        translations::set_http_config(&conn, Some("http://model.example"), None).unwrap();
         let (send, calls) = mpsc::unbounded_channel();
         let (events_send, events) = mpsc::unbounded_channel();
         let runtime = Runtime::build(
@@ -833,16 +833,7 @@ fn setting_revisions_cover_provider_pool_and_binding_changes_and_roll_back_atomi
     use rrss_core::{ai_store, model_pool};
     let h = Harness::new();
     let conn = h.conn();
-    let pid = ai_store::insert_provider(
-        &conn,
-        &ai_store::NewProvider {
-            name: "mock".into(),
-            base_url: "http://mock.test".into(),
-            api_key: None,
-            protocol: "chat".into(),
-        },
-    )
-    .unwrap();
+    let pid = crate::test_net::fake_provider(&conn, "mock", "http://model.example".into());
     translations::set_backend(&conn, "complete").unwrap();
     model_pool::update_pool(
         &conn,
@@ -880,7 +871,7 @@ fn setting_revisions_cover_provider_pool_and_binding_changes_and_roll_back_atomi
             id: pid,
             kind: None,
             name: "renamed".into(),
-            base_url: "http://mock.test".into(),
+            base_url: "http://model.example".into(),
             api_key: None,
             clear_key: None,
             protocol: "chat".into(),
@@ -964,7 +955,7 @@ async fn credential_revision_invalidates_work_but_preserves_completed_cache() {
     let mut h = Harness::new();
     h.complete().await;
     crate::configuration::write(&h.conn(), |tx| {
-        translations::set_http_config(tx, Some("http://mock.test"), Some("new-key"))
+        translations::set_http_config(tx, Some("http://model.example"), Some("new-key"))
     })
     .unwrap();
     let snapshot = h.runtime.snapshot(7, None).await.unwrap().unwrap();

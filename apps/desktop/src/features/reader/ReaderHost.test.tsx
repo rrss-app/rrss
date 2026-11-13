@@ -135,7 +135,7 @@ describe("ReaderHost standalone", () => {
     act(() => { void ref.current!.openWebLink("https://web.example.test/story"); });
     expect(title(host)).toBe("甲文");
     act(() => { expect(ref.current!.back()).toBe(true); });
-    pending.resolve({ article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: "https://web.example.test/story", layer: "General" as const, suspicious: [], text_chars: 100, image_count: 0 });
+    pending.resolve({ article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: "https://web.example.test/story", layer: "General" as const, text_chars: 100, image_count: 0 });
     await harness.flush();
     expect(title(host)).toBe("甲文");
     expect(box.stub!.callCount("openArticle")).toBe(1);
@@ -156,7 +156,7 @@ describe("ReaderHost standalone", () => {
   it("a late collection updates the saved web page in the return stack", async () => {
     box.stub!.handle("openArticle", id => readerView(id));
     box.stub!.handle("openWebLink", url => ({ article_id: url.endsWith("/one") ? 10 : 11, temporary: true,
-      actual_host: "web.example.test", actual_url: "https://web.example.test/story", layer: "General" as const, suspicious: [], text_chars: 100, image_count: 0 }));
+      actual_host: "web.example.test", actual_url: "https://web.example.test/story", layer: "General" as const, text_chars: 100, image_count: 0 }));
     const { ref, host } = setup();
     await act(async () => { await ref.current!.openWebLink("https://web.example.test/one"); });
     const pending = box.stub!.deferNext("collectArticle");
@@ -273,7 +273,7 @@ describe("ReaderHost standalone", () => {
     pendingA.resolve(readerView(ARTICLE_A, { summary: "迟到的新快照" }));
     await harness.flush();
     // 乙文尚未返回，旧甲文还在屏幕上。配图只合入缓存自己的最新数据。
-    act(() => box.events!.emit("media:ready", { article_id: ARTICLE_A, media: { src: "photo.png", media_id: 1, href: "rrss://media/photo", width: null, height: null, error: "" } }));
+    act(() => box.events!.emit("media:ready", { article_id: ARTICLE_A, media: { src: "photo.png", href: "rrss://media/photo", width: null, height: null, error: "" } }));
     await harness.flush();
     expect(summary(host)).not.toContain("迟到的新快照");
     pendingB.resolve(readerView(ARTICLE_B));
@@ -350,7 +350,7 @@ describe("ReaderHost standalone", () => {
       current = { ...current, document: { v: 1, blocks: [{ t: "img", src: "photo.png", alt: "图片" }] } };
       box.stub!.handle("fetchFulltext", () => current);
       key("u"); await harness.flush();
-      act(() => box.events!.emit("media:ready", { article_id: ARTICLE_A, media: { src: "photo.png", media_id: 1, href: "rrss://media/photo", width: null, height: null, error: "" } }));
+      act(() => box.events!.emit("media:ready", { article_id: ARTICLE_A, media: { src: "photo.png", href: "rrss://media/photo", width: null, height: null, error: "" } }));
     } else {
       current = { ...current, document: { v: 1, blocks: [{ t: "embed", url: "https://www.youtube.com/watch?v=example", kind: "youtube" }] } };
       box.stub!.handle("fetchFulltext", () => current);
@@ -586,7 +586,11 @@ describe("ReaderHost standalone", () => {
 
   it("drops every in-flight result once the shell closes the reader", async () => {
     const gates: Array<{ id: number; resolve: (v: ReturnType<typeof readerView>) => void }> = [];
-    box.stub!.handle("openArticle", (id: number) => new Promise<ReturnType<typeof readerView>>((resolve) => gates.push({ id, resolve })));
+    box.stub!.handle("openArticle", (id: number) => {
+      const pending = deferred<ReturnType<typeof readerView>>();
+      gates.push({ id, resolve: pending.resolve });
+      return pending.promise;
+    });
     const { ref, calls, host } = setup();
 
     void ref.current!.openArticle(ARTICLE_A);

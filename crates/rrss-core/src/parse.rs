@@ -12,6 +12,7 @@ use crate::url_norm::canonical_article_url;
 #[derive(Debug, Clone)]
 pub struct ParsedFeed {
     pub title: Option<String>,
+    pub updated_at: Option<i64>,
     pub site_url: Option<String>,
     pub wire_kind: FeedKind,
     pub entries: Vec<ParsedEntry>,
@@ -42,6 +43,17 @@ pub fn parse_feed_bytes(bytes: &[u8], source_uri: Option<&str>) -> Result<Parsed
 }
 
 fn from_feed(feed: Feed, source_uri: Option<&str>) -> ParsedFeed {
+    let updated_at = feed
+        .updated
+        .into_iter()
+        .chain(feed.published)
+        .chain(
+            feed.entries
+                .iter()
+                .filter_map(|entry| entry.updated.or(entry.published)),
+        )
+        .max()
+        .map(datetime_ms);
     let site_url = homepage_link(&feed.links).or_else(|| source_uri.map(str::to_string));
     let title = feed.title.as_ref().map(|t| t.content.clone());
     let wire_kind = FeedKind::from_wire(&feed.feed_type);
@@ -52,6 +64,7 @@ fn from_feed(feed: Feed, source_uri: Option<&str>) -> ParsedFeed {
         .collect();
     ParsedFeed {
         title,
+        updated_at,
         site_url,
         wire_kind,
         entries,

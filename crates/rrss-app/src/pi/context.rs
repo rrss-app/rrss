@@ -78,7 +78,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(window(&conn, "rrss-1/sample").unwrap(), Some(32000));
-        conn.execute("INSERT INTO ai_providers (id, name, base_url, api_key, protocol, model, created_at) VALUES (1,'test','http://localhost','','chat','',1)", []).unwrap();
+        crate::test_net::fake_provider(&conn, "test", "http://model.example".into());
         rrss_core::model_pool::update_pool(
             &conn,
             &[rrss_core::model_pool::ModelRef::new(1, "sample")],

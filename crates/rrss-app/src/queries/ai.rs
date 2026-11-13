@@ -1,7 +1,6 @@
 use rusqlite::Connection;
 
 use rrss_core::ai_store::{self, ALL_TASKS};
-use rrss_core::model_pool;
 use rrss_core::translations;
 use rrss_render::document_to_json;
 
@@ -14,26 +13,19 @@ pub fn model_bindings(conn: &Connection) -> rrss_core::Result<ModelBindingsView>
     })
 }
 
-/// 每个用途选的模型与它的生效能力（阶段 19-7：没有继承）。
+/// 每个用途选的模型（阶段 19-7：没有继承）。
 fn task_bindings(conn: &Connection) -> rrss_core::Result<Vec<TaskBindView>> {
-    let pool = model_pool::pool(conn)?;
     ALL_TASKS
         .iter()
         .map(|task| {
             let b = ai_store::get_task_binding(conn, task)?;
             let chosen = ai_store::resolve_binding_model(conn, &b)?;
-            let capabilities = chosen.as_ref().and_then(|(p, m)| {
-                pool.iter()
-                    .find(|e| e.provider_id == p.id && e.model == *m)
-                    .map(|e| e.effective().into())
-            });
             let (provider_id, model) = chosen.map(|(p, m)| (p.id, m)).unwrap_or_default();
             Ok(TaskBindView {
                 task: (*task).into(),
                 title: ai_store::task_title(task).into(),
                 provider_id,
                 model,
-                capabilities,
             })
         })
         .collect()

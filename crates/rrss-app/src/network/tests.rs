@@ -118,16 +118,7 @@ async fn adding_a_feed_and_its_summary_use_content_and_api_routes_separately() {
     db::set_setting(&conn, rrss_core::ai_store::FOCUS_AUTO_SUMMARY.id, "1").unwrap();
     rrss_core::pi_store::set_pi_auto_download(&conn, false).unwrap();
     rrss_core::ai_store::set_daily_budget_tokens(&conn, 100).unwrap();
-    let provider = rrss_core::ai_store::insert_provider(
-        &conn,
-        &rrss_core::ai_store::NewProvider {
-            name: "local".into(),
-            base_url: "http://model.invalid/v1".into(),
-            api_key: None,
-            protocol: "chat".into(),
-        },
-    )
-    .unwrap();
+    let provider = crate::test_net::fake_provider(&conn, "local", "http://model.example/v1".into());
     rrss_core::ai_store::set_task_binding(
         &conn,
         rrss_core::TASK_FOCUS_SUMMARY,
@@ -168,7 +159,7 @@ async fn adding_a_feed_and_its_summary_use_content_and_api_routes_separately() {
         &db_path,
         &clients.client(NetworkScope::Api).await.unwrap(),
         provider,
-        "http://model.invalid/v1",
+        "http://model.example/v1",
         None,
     )
     .await

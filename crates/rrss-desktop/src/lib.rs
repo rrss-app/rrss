@@ -174,6 +174,7 @@ pub fn run() -> anyhow::Result<()> {
                 db_path,
                 data_dir,
                 network,
+                discovery: rrss_app::discover::Runtime::default(),
                 scheduler,
                 chat,
                 translation,

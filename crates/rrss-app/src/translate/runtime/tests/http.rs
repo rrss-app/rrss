@@ -17,16 +17,7 @@ impl Harness {
             }
             "deepl" => translations::set_deepl_config(&conn, Some(url), Some("local-key")).unwrap(),
             "complete" => {
-                let pid = ai_store::insert_provider(
-                    &conn,
-                    &ai_store::NewProvider {
-                        name: "local mock".into(),
-                        base_url: url.into(),
-                        api_key: None,
-                        protocol: "chat".into(),
-                    },
-                )
-                .unwrap();
+                let pid = crate::test_net::fake_provider(&conn, "local mock", url.into());
                 ai_store::set_task_binding(
                     &conn,
                     ai_store::TASK_ARTICLE_TRANSLATE,

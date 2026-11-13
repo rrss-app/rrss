@@ -199,16 +199,7 @@ async fn complete_windows_keep_the_original_model_and_refuse_changed_binding_at_
     let server = MockServer::start().await;
     let (_dir, path) = article_db(&server.uri());
     let conn = db::open_at(&path).unwrap();
-    let pid = ai_store::insert_provider(
-        &conn,
-        &ai_store::NewProvider {
-            name: "fixed".into(),
-            base_url: server.uri(),
-            api_key: None,
-            protocol: "chat".into(),
-        },
-    )
-    .unwrap();
+    let pid = crate::test_net::fake_provider(&conn, "fixed", server.uri());
     ai_store::set_task_binding(
         &conn,
         TASK_ARTICLE_TRANSLATE,

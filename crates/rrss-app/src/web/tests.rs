@@ -134,7 +134,7 @@ async fn open_deduplicates_extends_collects_and_refreshes_reader_source() {
     );
     let media = crate::queries::article_media(&conn, first.article_id).unwrap();
     assert_eq!(media.len(), 1);
-    assert!(media[0].media_id.is_none() && media[0].href.is_empty());
+    assert!(media[0].href.is_empty());
     crate::jobs::media::prefetch_images(&path, dir.path(), &network, first.article_id, |_| {})
         .await
         .unwrap();
@@ -143,7 +143,10 @@ async fn open_deduplicates_extends_collects_and_refreshes_reader_source() {
     assert_eq!(article.published_at, Some(1792490400000));
     let media = crate::queries::article_media(&conn, first.article_id).unwrap();
     assert_eq!(media.len(), 1);
-    let media_id = media[0].media_id.unwrap();
+    let media_id = rrss_core::media::lookup(&conn, first.article_id, &media[0].src)
+        .unwrap()
+        .unwrap()
+        .id;
     assert!(
         media[0]
             .href

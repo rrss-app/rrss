@@ -71,7 +71,6 @@ pub fn vector_space_status(conn: &Connection) -> Result<VectorSpaceStatusView> {
         allow_model_change: db::setting_enabled(conn, spaces::ALLOW_MODEL_CHANGE, false)?,
         dims_setting: spaces::dims_setting(conn)?,
         estimate_chunks: chunks,
-        estimate_chars: chars,
         estimate_tokens: (chars * 3 + 3) / 4,
         local,
     })

@@ -72,7 +72,7 @@ describe("ModelPane", () => {
     stub.handle("translatePage", () => translatePageFixture({ backend: "deepl" }));
     stub.handle("vectorSpaceStatus", () => ({
       effective: { id: 1, model: "old", provider_name: "OpenAI", dims: 3, source_dims: 3, state: "active", chunks: 10, stale_reason: null, checked_at: null },
-      building: null, allow_model_change: true, dims_setting: "auto", estimate_chunks: 10, estimate_chars: 1000, estimate_tokens: 500, local: false,
+      building: null, allow_model_change: true, dims_setting: "auto", estimate_chunks: 10, estimate_tokens: 500, local: false,
     }));
     stub.handle("saveAiSettings", (args) => {
       saves.push(structuredClone(args));

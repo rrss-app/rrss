@@ -4,7 +4,7 @@
 //! 删行还会级联删掉赞踩。年龄按入库时间 `created_at` 计算。全局 `retention_days` 为 0 表示关闭；
 //! 源上的 `retention_days` 为 NULL 时跟随全局，为 0 时永久保留。
 
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, params};
 
 use crate::db;
 use crate::error::{Error, Result};
@@ -30,17 +30,6 @@ pub fn set_global_days(conn: &Connection, days: i64) -> Result<()> {
         )));
     }
     db::set_setting(conn, SETTING, &days.to_string())
-}
-
-/// `None` 跟随全局，`Some(0)` 永久保留。
-pub fn feed_days(conn: &Connection, feed_id: i64) -> Result<Option<i64>> {
-    conn.query_row(
-        "SELECT retention_days FROM feeds WHERE id = ?1",
-        [feed_id],
-        |r| r.get(0),
-    )
-    .optional()?
-    .ok_or(Error::FeedNotFound)
 }
 
 pub fn set_feed_days(conn: &Connection, feed_id: i64, days: Option<i64>) -> Result<()> {
@@ -195,6 +184,7 @@ pub fn delete_expired(conn: &Connection, now_ms: i64) -> Result<i64> {
 }
 
 /// 手动重新抓取正文后调用：清掉标记，之后照常参与保留判断。
+#[cfg(test)]
 pub fn clear_pruned(conn: &Connection, article_id: i64) -> Result<()> {
     conn.execute(
         "UPDATE articles SET pruned_at = NULL WHERE id = ?1",

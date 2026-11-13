@@ -8,6 +8,7 @@ pub struct AppState {
     pub data_dir: PathBuf,
     pub scheduler: rrss_app::scheduler::Scheduler,
     pub network: rrss_app::network::NetworkClients,
+    pub discovery: rrss_app::discover::Runtime,
     pub chat: Arc<ChatRuntime>,
     pub translation: Arc<rrss_app::translate::runtime::Runtime>,
 }

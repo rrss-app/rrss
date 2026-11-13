@@ -35,11 +35,16 @@ test("shared host fixtures, styles, unknown files or a missing record leave the 
   assert.deepEqual(e2e(["apps/desktop/src/App.tsx"], { coverage: null, full: true }), ["e2e（全量：还没有 e2e 覆盖记录）"]);
 });
 
-test("rust changes test the crate and its dependents; docs alone only check docs", () => {
-  assert.deepEqual(plan(["crates/rrss-app/src/actions.rs"]), [["Rust", "rrss-app -p rrss-desktop"]]);
-  const core = planAffected({ changed: ["crates/rrss-core/src/db/mod.rs"], coverage, crates }).at(-1);
-  assert.deepEqual(core.cmd, ["cargo", "test", "--locked", "-p", "rrss-app", "-p", "rrss-core", "-p", "rrss-desktop"]);
-  assert.deepEqual(plan(["crates/rrss-app/src/views.rs"]).map(([name]) => name), ["前端检查", "Rust"]);
+test("rust changes test only the changed modules and integration files; dependents are left to CI", () => {
+  const rust = (changed) => planAffected({ changed, coverage, crates }).filter((s) => s.name.startsWith("Rust")).map((s) => s.cmd?.join(" ") ?? s.name);
+  assert.deepEqual(rust(["crates/rrss-core/src/network.rs", "crates/rrss-core/src/network/tests.rs", "crates/rrss-core/src/db/migrations.rs"]),
+    ["cargo test --locked -p rrss-core --lib -- db::migrations:: network::"]);
+  assert.deepEqual(rust(["crates/rrss-core/src/rank/mod.rs", "crates/rrss-app/tests/pi_runtime.rs"]),
+    ["cargo test --locked -p rrss-app --test pi_runtime", "cargo test --locked -p rrss-core --lib -- rank::"]);
+  // 入口与非 Rust 文件看不出范围：整个库测试，但仍不带依赖它的 crate。
+  assert.deepEqual(rust(["crates/rrss-core/src/schema.sql"]), ["cargo test --locked -p rrss-core --lib"]);
+  assert.deepEqual(rust(["crates/rrss-desktop/src/commands/feeds.rs"]), ["Rust rrss-desktop 只有 check，留给 CI"]);
+  assert.deepEqual(plan(["crates/rrss-app/src/views.rs"]).map(([name]) => name), ["前端检查", "Rust rrss-app（改动模块）"]);
   assert.deepEqual(plan(["doc/architecture.md"]), [["文档", "node scripts/check-docs.mjs"]]);
   // 删掉的 spec 不交给 Playwright。
   assert.deepEqual(plan(["apps/desktop/e2e/old.spec.ts"], { exists: () => false }), [["前端检查", "pnpm run check:frontend"]]);

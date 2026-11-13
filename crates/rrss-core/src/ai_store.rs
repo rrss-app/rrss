@@ -106,7 +106,6 @@ pub const TASK_DIGEST_DAILY: &str = "digest_daily";
 pub const TASK_DIGEST_WEEKLY: &str = "digest_weekly";
 pub const TASK_DIGEST_PICK_DAILY: &str = "digest_pick_daily";
 pub const TASK_DIGEST_PICK_WEEKLY: &str = "digest_pick_weekly";
-pub const TASK_CITE_SUMMARIZE: &str = "cite_summarize";
 /// 相近报道综述：手动或显式开启的后台汇总，按簇存库。默认沿用本篇摘要的模型。
 pub const TASK_CLUSTER_SUMMARY: &str = "cluster_summary";
 pub const TASK_MEMORY_CANDIDATE: &str = "memory_candidate";
@@ -123,7 +122,6 @@ pub const ALL_TASKS: &[&str] = &[
     TASK_DIGEST_WEEKLY,
     TASK_DIGEST_PICK_DAILY,
     TASK_DIGEST_PICK_WEEKLY,
-    TASK_CITE_SUMMARIZE,
     TASK_CLUSTER_SUMMARY,
     TASK_MEMORY_CANDIDATE,
     TASK_EPISODE_COMPRESS,
@@ -139,7 +137,6 @@ pub const SLUG_DAILY_DIGEST: &str = "daily-digest";
 pub const SLUG_WEEKLY_DIGEST: &str = "weekly-digest";
 pub const SLUG_DAILY_DIGEST_PICK: &str = "daily-digest-pick";
 pub const SLUG_WEEKLY_DIGEST_PICK: &str = "weekly-digest-pick";
-pub const SLUG_CITE_SUMMARIZE: &str = "cite-summarize";
 pub const SLUG_CLUSTER_SUMMARY: &str = "cluster-summary";
 pub const SLUG_MEMORY_CANDIDATE: &str = "memory-candidate";
 pub const SLUG_EPISODE_COMPRESS: &str = "episode-compress";
@@ -182,11 +179,6 @@ const SEED_TEMPLATES: &[(&str, &str, &str)] = &[
         "你是本地 RSS 编辑，为本周周报挑选日报之外的补充文章。输入是候选目录，按话题分组，每篇以 [id:N] 开头，含标题、一句话与要点。本周已有日报时，候选都是日报没收的文章；没有日报时就是本周的全部候选。\n\n规则：\n- 篇数以输入开头要求的为上限，质量不够可以更少甚至不选，禁止凑数\n- 同一 cluster 默认只选 1 篇；仅当第二篇有互补事实才再选 1 篇，最多 2 篇\n- 优先：本周有明确变化、影响或延续性的报道，能串成线索的优先\n- 次选：有具体数据或方法的深度内容\n- 最后才考虑：纯个人经历分享、无具体信息的社区讨论、标题党合集；无正文/纯标题降权\n- 兼顾领域分布，不要一个话题占掉大半\n- 文末「噪声源」只用于降权，成稿不会提及这些源名\n\nreason 仅供你内部判断，读者看不到。只输出 JSON：{\"picks\":[{\"article_id\":123,\"reason\":\"简短理由\"}]}",
     ),
     (
-        SLUG_CITE_SUMMARIZE,
-        "总结这些",
-        "根据用户给出的引用（标题、源、摘录或已有短摘要）写一段中文总结。不要编造引用里没有的事实。只输出 JSON：{\"summary\":\"...\"}",
-    ),
-    (
         SLUG_CLUSTER_SUMMARY,
         "相近报道综述",
         "你是新闻编辑。用户给出同一事件的几篇报道，每篇带〈序号〉、来源、时间、标题，以及已有的一句话、要点、关键事实或正文摘录。只依据这些内容写综述，不补充外部信息，不评价报道本身。〈序号〉只填在 ref / refs 里；正文里任何地方都不写〈序号〉，要提到某篇报道就写它的来源名。\n\n只输出 JSON：{\"overview\":\"...\",\"additions\":[{\"ref\":2,\"text\":\"...\"}],\"conflicts\":[{\"refs\":[1,3],\"text\":\"...\"}]}\n- overview：2–4 句中文，讲清发生了什么：谁、做了什么、何时、影响是什么。可以用 **粗体** 点出事件主体。不写来源名。\n- additions：只列提供了其他报道都没有的信息的那几篇，每篇至多一条，一句话写出它多出来的信息（数字、细节、背景、各方回应）。ref 填这篇的序号；正文不写来源名，界面会另外标出。没有多说什么的报道不要列；都没有就给 []。\n- conflicts：只收同一件事上数字或事实互相矛盾的情况，例如一篇说 3 月上市、另一篇说 5 月上市。一篇提到而另一篇没提、详略不同、统计口径不同、时间说得粗细不同，都不算分歧：有独有信息就写进 additions，否则不写。每条一句话写清各家分别怎么说，点名时写来源名；refs 填相关报道的序号。最多 3 条，没有就给 []。",
@@ -216,7 +208,6 @@ const SEED_BINDINGS: &[(&str, &str)] = &[
     (TASK_DIGEST_WEEKLY, SLUG_WEEKLY_DIGEST),
     (TASK_DIGEST_PICK_DAILY, SLUG_DAILY_DIGEST_PICK),
     (TASK_DIGEST_PICK_WEEKLY, SLUG_WEEKLY_DIGEST_PICK),
-    (TASK_CITE_SUMMARIZE, SLUG_CITE_SUMMARIZE),
     (TASK_CLUSTER_SUMMARY, SLUG_CLUSTER_SUMMARY),
     (TASK_MEMORY_CANDIDATE, SLUG_MEMORY_CANDIDATE),
     (TASK_EPISODE_COMPRESS, SLUG_EPISODE_COMPRESS),
@@ -586,7 +577,6 @@ pub fn task_title(task: &str) -> &str {
         TASK_DIGEST_WEEKLY => "周 Digest",
         TASK_DIGEST_PICK_DAILY => "日 Digest 选题",
         TASK_DIGEST_PICK_WEEKLY => "周 Digest 选题",
-        TASK_CITE_SUMMARIZE => "引用总结",
         TASK_CLUSTER_SUMMARY => "相近报道综述",
         TASK_MEMORY_CANDIDATE => "记忆候选",
         TASK_EPISODE_COMPRESS => "情节压缩",

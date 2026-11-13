@@ -13,7 +13,7 @@ test("外链阅读、收录与失败重试保留返回路径", async ({ page }) 
       10: readerView(10, { title: "网页文章", url }),
     },
     webLinks: {
-      [url]: { article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: "http://web.example.test/story", layer: "UserRule", suspicious: [], text_chars: 1842, image_count: 3 },
+      [url]: { article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: "http://web.example.test/story", layer: "UserRule", text_chars: 1842, image_count: 3 },
       [links[1]]: { kind: "Waf", message: "HTTP 403" },
       [links[2]]: { kind: "Empty", message: "empty" },
     },
@@ -143,7 +143,7 @@ test("引用链接添加整篇 chip；抽取失败只通知，不换篇或添加
       10: readerView(10, { title: "引用目标文章", url: good }),
     },
     webLinks: {
-      [good]: { article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: good, layer: "General", suspicious: [], text_chars: 300, image_count: 0 },
+      [good]: { article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: good, layer: "General", text_chars: 300, image_count: 0 },
       [bad]: { kind: "Waf", message: "challenge" },
     },
   });
@@ -174,7 +174,7 @@ test("顶栏原网页首次确认后嵌入阅读区", async ({ page }) => {
   await installMockHost(page, {
     focus: TWO_ARTICLE_PAGE, settingValues: { web_first_tip: "0" },
     readers: { 1: readerView(1, { document: { v: 1, blocks: [{ t: "p", inlines: [{ t: "a", href: url, children: [{ t: "t", text: "测试网页" }] }] }] } }), 10: readerView(10, { url }) },
-    webLinks: { [url]: { article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: url, layer: "General", suspicious: [], text_chars: 300, image_count: 0 } },
+    webLinks: { [url]: { article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: url, layer: "General", text_chars: 300, image_count: 0 } },
   });
   await page.goto("/");
   await page.getByRole("article", { name: "甲文", exact: true }).click();
@@ -223,7 +223,7 @@ test("原网页嵌在阅读区：菜单盖住时收起，Esc 回阅读视图，�
   await installMockHost(page, {
     focus: TWO_ARTICLE_PAGE, settingValues: { web_open_mode: "web", web_original_tip: "0", web_first_tip: "0" },
     readers: { 1: readerView(1, { document: { v: 1, blocks: [{ t: "p", inlines: [{ t: "a", href: url, children: [{ t: "t", text: "测试网页" }] }] }] } }), 10: readerView(10, { url, title: "网页正文" }) },
-    webLinks: { [url]: { article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: url, layer: "General", suspicious: [], text_chars: 300, image_count: 0 } },
+    webLinks: { [url]: { article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: url, layer: "General", text_chars: 300, image_count: 0 } },
   });
   const host = () => page.evaluate(() => {
     const mock = (window as any).__mockHost;
@@ -302,7 +302,7 @@ test("原网页按当前地址回到阅读视图，窗口仍留着", async ({ pa
   await installMockHost(page, {
     focus: TWO_ARTICLE_PAGE, settingValues: { web_open_mode: "web", web_original_tip: "0", web_first_tip: "0" },
     readers: { 1: readerView(1, { document: { v: 1, blocks: [{ t: "p", inlines: [{ t: "a", href: url, children: [{ t: "t", text: "测试网页" }] }] }] } }), 10: readerView(10, { url: current, title: "导航后正文" }) },
-    webLinks: { [current]: { article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: current, layer: "General", suspicious: [], text_chars: 300, image_count: 0 } },
+    webLinks: { [current]: { article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: current, layer: "General", text_chars: 300, image_count: 0 } },
   });
   await page.goto("/");
   await page.getByRole("article", { name: "甲文", exact: true }).click();
@@ -328,7 +328,7 @@ test("网页阅读顶栏可翻译、可摘要，正文栏宽与普通文章相�
       10: readerView(10, { title: "网页文章", url }),
     },
     webLinks: {
-      [url]: { article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: url, layer: "General", suspicious: [], text_chars: 300, image_count: 0 },
+      [url]: { article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: url, layer: "General", text_chars: 300, image_count: 0 },
     },
   });
   await page.setViewportSize({ width: 1280, height: 800 });

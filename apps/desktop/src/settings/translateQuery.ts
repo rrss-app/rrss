@@ -1,3 +1,4 @@
+import { settingsQueryPolicy } from "./queryPolicy";
 import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
 import type { TranslatePage } from "../bindings";
 import { api } from "../lib/api";
@@ -14,14 +15,7 @@ export const translateKeys = {
 export const translateQueryOptions = () => queryOptions({
   queryKey: translateKeys.page,
   queryFn: () => api.translatePage(),
-  staleTime: 30_000,
-  gcTime: 5 * 60_000,
-  retry: false,
-  retryOnMount: false,
-  refetchOnMount: true,
-  refetchOnWindowFocus: false,
-  refetchOnReconnect: false,
-  networkMode: "always",
+  ...settingsQueryPolicy,
 });
 
 export const TRANSLATE_BACKENDS = [

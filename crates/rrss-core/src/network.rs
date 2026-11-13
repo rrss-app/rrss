@@ -33,6 +33,14 @@ pub const PROXY_ENV_KEYS: [&str; 8] = [
     "NO_PROXY",
     "no_proxy",
 ];
+/// 原始宿主环境快照，与 PROXY_ENV_KEYS 的大小写对逐一对应。
+/// 始终整组传递；未设置或工具不需要系统代理时为空串。
+pub const HOST_PROXY_ENV_KEYS: [&str; 4] = [
+    "RRSS_HOST_HTTP_PROXY",
+    "RRSS_HOST_HTTPS_PROXY",
+    "RRSS_HOST_ALL_PROXY",
+    "RRSS_HOST_NO_PROXY",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NetworkScope {
@@ -119,7 +127,7 @@ impl ProxyRule {
             .is_ok_and(|url| !url.username().is_empty() || url.password().is_some())
     }
 
-    /// 将设置页表单应用到规则。代理认证只在显式填写或清除时改变；仅改地址默认保留旧认证。
+    /// 将设置页表单应用到规则。仅在 scheme、主机与有效端口相同时沿用旧认证。
     pub fn from_form(
         existing: &Self,
         mode: ProxyMode,
@@ -150,6 +158,12 @@ impl ProxyRule {
             } else if url.username().is_empty()
                 && url.password().is_none()
                 && let Some(old) = old_url
+                && url.scheme() == old.scheme()
+                && url
+                    .host_str()
+                    .zip(old.host_str())
+                    .is_some_and(|(next, old)| next.eq_ignore_ascii_case(old))
+                && url.port_or_known_default() == old.port_or_known_default()
                 && (!old.username().is_empty() || old.password().is_some())
             {
                 let _ = url.set_username(old.username());
@@ -287,7 +301,8 @@ impl ProxyConfig {
                 }
                 ProxyMode::System => {
                     category = "environment";
-                    let no_proxy = merge_no_proxy(env.value("NO_PROXY", "no_proxy").unwrap_or(""))?;
+                    let no_proxy =
+                        normalize_system_no_proxy(env.value("NO_PROXY", "no_proxy").unwrap_or(""));
                     let all = env.value("ALL_PROXY", "all_proxy");
                     for (https, value) in [
                         (false, env.value("HTTP_PROXY", "http_proxy").or(all)),
@@ -351,11 +366,12 @@ impl ProxyConfig {
     /// 子进程（Pi）的代理环境。调用方先移除 [`PROXY_ENV_KEYS`] 全部八个变量，再写入这里的值，
     /// 不修改父进程环境。值可能含代理认证，只能进子进程环境，展示用 [`ChildProxyEnv::redacted`]。
     ///
-    /// - 无代理：不写任何变量（包括启动 RRSS 时继承的）。
+    /// - 无代理：不写任何标准变量（包括启动 RRSS 时继承的）。
     /// - 系统代理：原样转交环境里的地址，大小写两份取同一值；不替 Pi 校验地址。
     /// - 自定义：HTTP / HTTPS / ALL 三组都指向同一地址，SOCKS5 是否被 Pi 接受取决于其运行时。
     ///
     /// 系统与自定义都写入 `NO_PROXY`，并追加默认回环绕过。
+    /// 仅当 Api / Content 使用系统代理时另传原始宿主环境，否则整组传空串。
     pub fn child_env(&self, scope: NetworkScope, env: &ProxyEnvironment) -> Result<ChildProxyEnv> {
         let config = self.normalized()?;
         let rule = config.effective_for(scope);
@@ -405,6 +421,15 @@ impl ProxyConfig {
             }
             ProxyMode::Inherit => return Err(invalid("全局代理不能选择跟随全局")),
         }
+        let host_values = if [NetworkScope::Api, NetworkScope::Content]
+            .into_iter()
+            .any(|scope| config.effective_for(scope).mode == ProxyMode::System)
+        {
+            env.host_values.clone()
+        } else {
+            Default::default()
+        };
+        vars.extend(HOST_PROXY_ENV_KEYS.into_iter().zip(host_values));
         Ok(ChildProxyEnv(vars))
     }
 }
@@ -435,7 +460,9 @@ impl ChildProxyEnv {
         self.0
             .iter()
             .map(|(key, value)| {
-                let shown = if key.eq_ignore_ascii_case("NO_PROXY") {
+                let shown = if HOST_PROXY_ENV_KEYS.contains(key) {
+                    crate::logsafe::Secret(value).to_string()
+                } else if key.eq_ignore_ascii_case("NO_PROXY") {
                     value.clone()
                 } else {
                     match Url::parse(value) {
@@ -461,7 +488,7 @@ impl ChildProxyEnv {
     pub fn secrets(&self) -> Vec<String> {
         let mut secrets = Vec::new();
         for (key, value) in &self.0 {
-            if key.eq_ignore_ascii_case("NO_PROXY") {
+            if value.is_empty() || key.eq_ignore_ascii_case("NO_PROXY") {
                 continue;
             }
             let Ok(url) = Url::parse(value) else {
@@ -488,14 +515,17 @@ impl ChildProxyEnv {
     }
 }
 
-/// 仅保存标准代理变量；不实现平台特定读取，也不修改父进程环境。
+/// 保存有效代理与合并原生系统设置前的宿主环境；不修改父进程环境。
 #[derive(Clone, Default, PartialEq, Eq)]
-pub struct ProxyEnvironment(BTreeMap<String, String>);
+pub struct ProxyEnvironment {
+    values: BTreeMap<String, String>,
+    host_values: [String; 4],
+}
 
 impl fmt::Debug for ProxyEnvironment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ProxyEnvironment")
-            .field("keys", &self.0.keys())
+            .field("keys", &self.values.keys())
             .finish()
     }
 }
@@ -508,7 +538,7 @@ impl ProxyEnvironment {
     /// Merge a captured native snapshot without consulting the host (fixture friendly).
     pub fn with_system(&self, native: &crate::platform::SystemProxySnapshot) -> Self {
         warn_native_proxy(native);
-        let mut values = self.0.clone();
+        let mut result = self.clone();
         // Windows 原生代理优先于启动环境变量；没有原生值的协议继续回退环境变量。
         for (key, value) in [
             ("HTTP_PROXY", &native.http),
@@ -517,11 +547,13 @@ impl ProxyEnvironment {
             ("NO_PROXY", &native.no_proxy),
         ] {
             if let Some(value) = value {
-                values.insert(key.to_owned(), value.clone());
-                values.insert(key.to_ascii_lowercase(), value.clone());
+                result.values.insert(key.to_owned(), value.clone());
+                result
+                    .values
+                    .insert(key.to_ascii_lowercase(), value.clone());
             }
         }
-        Self(values)
+        result
     }
 
     pub fn system_snapshot() -> crate::platform::SystemProxySnapshot {
@@ -531,19 +563,36 @@ impl ProxyEnvironment {
     }
 
     pub fn from_lookup(mut lookup: impl FnMut(&str) -> Option<String>) -> Self {
-        Self(
-            PROXY_ENV_KEYS
-                .into_iter()
-                .filter_map(|key| lookup(key).map(|value| (key.to_owned(), value)))
-                .collect(),
-        )
+        let host = HOST_PROXY_ENV_KEYS.map(&mut lookup);
+        // Presence, including an empty value, selects the whole host snapshot.
+        // Never fill gaps from Pi's standard variables.
+        let restored = host.iter().any(Option::is_some);
+        let mut env = Self::default();
+        for (pair, saved) in PROXY_ENV_KEYS.chunks_exact(2).zip(host) {
+            if restored {
+                if let Some(value) = saved {
+                    env.values.insert(pair[0].to_owned(), value);
+                }
+            } else {
+                for key in pair {
+                    if let Some(value) = lookup(key) {
+                        env.values.insert((*key).to_owned(), value);
+                    }
+                }
+            }
+        }
+        env.host_values = std::array::from_fn(|index| {
+            let pair = &PROXY_ENV_KEYS[index * 2..index * 2 + 2];
+            env.value(pair[0], pair[1]).unwrap_or("").to_owned()
+        });
+        env
     }
 
     /// 大写非空值优先，小写次之；目标协议未配置时才回退 ALL_PROXY。
     fn value(&self, upper: &str, lower: &str) -> Option<&str> {
         [upper, lower]
             .into_iter()
-            .filter_map(|key| self.0.get(key))
+            .filter_map(|key| self.values.get(key))
             .map(|value| value.trim())
             .find(|value| !value.is_empty())
     }
@@ -668,6 +717,42 @@ pub fn normalize_no_proxy(raw: &str) -> Result<String> {
         }
     }
     Ok(entries.join(","))
+}
+
+/// 系统绕过列表的一项：去掉通配域名前缀与端口，保留 IPv6 字面量。
+/// 返回待校验的候选项；Windows 可先将其专有 IPv4 通配转成 CIDR，
+/// 再共用严格校验，无法表达的项由调用方跳过。
+pub(crate) fn normalize_system_no_proxy_entry(raw: &str) -> &str {
+    let item = raw.trim().strip_prefix("*.").unwrap_or(raw.trim());
+    if let Some((host, suffix)) = item.strip_prefix('[').and_then(|v| v.split_once(']'))
+        && matches!(host.parse::<IpAddr>(), Ok(IpAddr::V6(_)))
+        && (suffix.is_empty()
+            || suffix
+                .strip_prefix(':')
+                .is_some_and(|port| port.parse::<u16>().is_ok()))
+    {
+        return host;
+    }
+    match item.rsplit_once(':') {
+        Some((host, port)) if !host.contains(':') && port.parse::<u16>().is_ok() => host,
+        _ => item,
+    }
+}
+
+fn normalize_system_no_proxy(raw: &str) -> String {
+    let mut entries = Vec::new();
+    for item in raw
+        .split(|c: char| c == ',' || c.is_ascii_whitespace())
+        .filter(|s| !s.is_empty())
+    {
+        if let Ok(entry) = normalize_no_proxy(normalize_system_no_proxy_entry(item))
+            && !entry.is_empty()
+            && !entries.contains(&entry)
+        {
+            entries.push(entry);
+        }
+    }
+    entries.join(",")
 }
 
 fn reqwest_no_proxy(normalized: &str) -> Option<NoProxy> {

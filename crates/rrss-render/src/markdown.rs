@@ -4,7 +4,7 @@
 
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
-use crate::html::html_to_blocks;
+use crate::html::{html_to_blocks, normalize_code_language};
 use crate::ir::{Block, Inline};
 
 pub fn markdown_to_blocks(md: &str) -> Vec<Block> {
@@ -106,7 +106,15 @@ pub fn markdown_to_blocks(md: &str) -> Vec<Block> {
                 in_code = true;
                 code.clear();
                 code_lang = match kind {
-                    CodeBlockKind::Fenced(lang) if !lang.is_empty() => Some(lang.to_string()),
+                    CodeBlockKind::Fenced(info) => normalize_code_language(
+                        info.split_whitespace()
+                            .next()
+                            .unwrap_or("")
+                            .split(',')
+                            .next()
+                            .unwrap_or("")
+                            .trim_matches(['{', '}', '.']),
+                    ),
                     _ => None,
                 };
             }
@@ -295,6 +303,53 @@ mod tests {
                 _ => None,
             })
             .expect("paragraph")
+    }
+
+    #[test]
+    fn fenced_code_languages() {
+        let cases = [
+            ("JS", Some("javascript")),
+            ("ts title=demo", Some("typescript")),
+            ("{.python}", Some("python")),
+            ("rust,ignore", Some("rust")),
+            ("py", Some("python")),
+            ("sh", Some("bash")),
+            ("shell", Some("bash")),
+            ("zsh", Some("bash")),
+            ("console", Some("bash")),
+            ("rs", Some("rust")),
+            ("yml", Some("yaml")),
+            ("c++", Some("cpp")),
+            ("cs", Some("csharp")),
+            ("c#", Some("csharp")),
+            ("golang", Some("go")),
+            ("md", Some("markdown")),
+            ("html", Some("html")),
+            ("Custom-42+#", Some("custom-42+#")),
+            ("", None),
+            ("text", None),
+            ("plain", None),
+            ("plaintext", None),
+            ("NONE", None),
+            ("nohighlight", None),
+            (
+                "abcdefghijklmnopqrstuvwxyz123456",
+                Some("abcdefghijklmnopqrstuvwxyz123456"),
+            ),
+            ("abcdefghijklmnopqrstuvwxyz1234567", None),
+            ("bad_name", None),
+            ("rüst", None),
+        ];
+        for (info, expected) in cases {
+            assert_eq!(
+                markdown_to_blocks(&format!("```{info}\nx\n```")),
+                vec![Block::CodeBlock {
+                    lang: expected.map(str::to_string),
+                    text: "x\n".to_string(),
+                }],
+                "{info:?}",
+            );
+        }
     }
 
     #[test]

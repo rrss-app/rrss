@@ -112,7 +112,6 @@ pub struct RelatedArticleView {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct RankReasonView {
-    pub component: String,
     pub text: String,
     // 这条原因折合的整数分，正为加分。
     pub points: i64,
@@ -348,7 +347,6 @@ pub struct DigestSelection {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct MediaRef {
     pub src: String,
-    pub media_id: Option<i64>,
     pub href: String,
     // 本地缓存图片的像素宽高（按显示方向），阅读器据此在解码前占位；视频与读不出时为空。
     pub width: Option<u32>,
@@ -834,10 +832,6 @@ pub struct TaskBindView {
     pub title: String,
     pub provider_id: i64,
     pub model: String,
-    // 所选模型的生效能力；没选或模型已不在列表里时为空。
-    #[serde(default)]
-    #[ts(optional)]
-    pub capabilities: Option<CapsView>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -2083,14 +2077,6 @@ pub fn article_from_card(card: rrss_core::ArticleCard) -> ArticleView {
             card.rank_reasons
                 .into_iter()
                 .map(|reason| RankReasonView {
-                    component: match reason.component {
-                        rrss_core::rank::combine::Component::Features => "features",
-                        rrss_core::rank::combine::Component::Source => "source",
-                        rrss_core::rank::combine::Component::Coverage => "coverage",
-                        rrss_core::rank::combine::Component::Freshness => "freshness",
-                        rrss_core::rank::combine::Component::Affinity => "affinity",
-                    }
-                    .into(),
                     text: reason.text,
                     points: reason.points,
                 })
@@ -2327,7 +2313,6 @@ pub struct VectorSpaceStatusView {
     pub allow_model_change: bool,
     pub dims_setting: String,
     pub estimate_chunks: i64,
-    pub estimate_chars: i64,
     pub estimate_tokens: i64,
     pub local: bool,
 }
@@ -2367,6 +2352,8 @@ pub struct OpenWebLinkView {
     pub web_extracted_at: Option<i64>,
     pub temporary: bool,
     pub layer: WebLinkLayer,
+    #[serde(skip)]
+    #[ts(skip)]
     pub suspicious: Vec<String>,
     pub text_chars: i64,
     pub image_count: i64,
@@ -2479,4 +2466,40 @@ pub struct WebVerifyStateEvent {
     pub text_chars: Option<i64>,
     pub image_count: Option<i64>,
     pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DiscoverFeedsRequest {
+    Start { request_id: String, url: String },
+    Cancel { request_id: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DiscoverFeedsResult {
+    Candidates { candidates: Vec<DiscoveredFeed> },
+    RsshubAvailable,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DiscoverFeedsError {
+    PageUnavailable,
+    NoFeed,
+    SiteProtection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct DiscoveredFeed {
+    pub url: String,
+    pub title: Option<String>,
+    #[ts(type = "'rss' | 'atom' | 'json'")]
+    pub feed_type: String,
+    // UTC milliseconds; absent when the feed supplies no dates.
+    pub updated_at: Option<i64>,
+    pub entry_count: usize,
+    pub sample_titles: Vec<String>,
+    pub subscribed: bool,
 }

@@ -100,9 +100,10 @@ fn filter(base: &str, extra: &str) -> EnvFilter {
     })
 }
 
+// fmt 层按格式化器类型缓存 span 字段；两层分开，避免 record 时重复追加。
 #[derive(Clone, Copy)]
-struct SafeFields;
-impl<'writer> FormatFields<'writer> for SafeFields {
+struct SafeFields<const STDERR: bool>;
+impl<'writer, const STDERR: bool> FormatFields<'writer> for SafeFields<STDERR> {
     fn format_fields<R: tracing_subscriber::field::RecordFields>(
         &self,
         writer: Writer<'writer>,
@@ -185,14 +186,14 @@ pub fn subscriber(mode: Mode, extra: &str) -> (impl Subscriber + Send + Sync, Ha
             .with_ansi(false)
             .with_target(true)
             .with_timer(LocalTime)
-            .fmt_fields(SafeFields)
+            .fmt_fields(SafeFields::<false>)
             .compact()
             .with_filter(file_filter)
     });
     let stderr = tracing_subscriber::fmt::layer()
         .with_writer(std::io::stderr)
         .with_target(true)
-        .fmt_fields(SafeFields)
+        .fmt_fields(SafeFields::<true>)
         .compact()
         .with_filter(filter(
             if desktop {

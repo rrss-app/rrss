@@ -1,5 +1,6 @@
 import type { ReadSessionEndedBy, ReadSessionVia } from "../../bindings";
 import { tableText, type Block, type Inline } from "../../lib/blockIr";
+import { inlineText as plainInlineText } from "../../lib/readingTime";
 import type { ReadSessionRecord } from "../../lib/signals";
 
 const ENGLISH_CHARS_PER_MS = 230 * 6 / 60_000;
@@ -7,8 +8,7 @@ const CHINESE_CHARS_PER_MS = 400 / 60_000;
 const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
 type ReadingBlock = { id: number; chars: number; cjkChars?: number };
-const inlineText = (nodes: Inline[]): string => nodes.map(node =>
-  "text" in node ? node.text : "children" in node ? inlineText(node.children) : "\n").join("");
+const inlineText = (nodes: Inline[]): string => plainInlineText(nodes, "\n");
 
 /** 正文文字，不计 URL、控件、列表标记；码点计数排除空白，保留原块顺序。 */
 export function readingBlocks(blocks: readonly Block[]): ReadingBlock[] {

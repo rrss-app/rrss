@@ -175,7 +175,6 @@ function buildBody(
       blocks.push(imageBlock(mediaId));
       media.push({
         src: mediaToken(mediaId),
-        media_id: mediaId,
         href: mediaHref(mediaId, origin),
         width: null,
         height: null,

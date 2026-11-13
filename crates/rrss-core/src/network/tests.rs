@@ -46,7 +46,10 @@ fn proxy_events_never_include_credentials_or_environment_values() {
                     .build_client_with_env(
                         NetworkScope::Pi,
                         Client::builder(),
-                        &env(&[("HTTP_PROXY", "canary-invalid-environment")])
+                        &env(&[
+                            ("HTTP_PROXY", "http://unused.example:8080"),
+                            ("RRSS_HOST_HTTP_PROXY", "canary-invalid-environment"),
+                        ])
                     )
                     .is_err()
             );
@@ -178,6 +181,121 @@ fn url_validation_normalization_and_redaction() {
 }
 
 #[test]
+fn form_only_reuses_authentication_for_the_same_proxy_endpoint() {
+    for scheme in ["http", "https", "socks5", "socks5h"] {
+        let existing =
+            ProxyRule::custom(format!("{scheme}://old-user:old-pass@proxy.example:8080"));
+        let changed_scheme = if scheme == "http" { "https" } else { "http" };
+        for (address, username, password, clear, expected) in [
+            (
+                format!("{scheme}://proxy.example:8080"),
+                None,
+                None,
+                false,
+                Some(("old-user", "old-pass")),
+            ),
+            (
+                format!("{scheme}://proxy.example:8080/"),
+                None,
+                None,
+                false,
+                Some(("old-user", "old-pass")),
+            ),
+            (
+                format!("{}://PROXY.EXAMPLE:8080", scheme.to_uppercase()),
+                None,
+                None,
+                false,
+                Some(("old-user", "old-pass")),
+            ),
+            (
+                format!("{scheme}://proxy.example:8081"),
+                None,
+                None,
+                false,
+                None,
+            ),
+            (
+                format!("{scheme}://other.example:8080"),
+                None,
+                None,
+                false,
+                None,
+            ),
+            (
+                format!("{changed_scheme}://proxy.example:8080"),
+                None,
+                None,
+                false,
+                None,
+            ),
+            (
+                format!("{scheme}://proxy.example:8080"),
+                None,
+                None,
+                true,
+                None,
+            ),
+            (
+                format!("{scheme}://other.example:8080"),
+                Some("new-user"),
+                Some("new-pass"),
+                false,
+                Some(("new-user", "new-pass")),
+            ),
+            (
+                format!("{scheme}://url-user:url-pass@other.example:8080"),
+                None,
+                None,
+                false,
+                Some(("url-user", "url-pass")),
+            ),
+            (
+                format!("{scheme}://url-user:url-pass@other.example:8080"),
+                Some("new-user"),
+                Some("new-pass"),
+                true,
+                None,
+            ),
+        ] {
+            let next = ProxyRule::from_form(
+                &existing,
+                ProxyMode::Custom,
+                &address,
+                "",
+                username,
+                password,
+                clear,
+            )
+            .unwrap();
+            let url = Url::parse(&next.url).unwrap();
+            assert_eq!(next.has_auth(), expected.is_some());
+            assert_eq!(
+                (url.username(), url.password()),
+                expected
+                    .map(|(user, pass)| (user, Some(pass)))
+                    .unwrap_or(("", None))
+            );
+        }
+    }
+    for (scheme, port) in [("http", 80), ("https", 443)] {
+        let existing =
+            ProxyRule::custom(format!("{scheme}://old-user:old-pass@proxy.example:{port}"));
+        let next = ProxyRule::from_form(
+            &existing,
+            ProxyMode::Custom,
+            &format!("{scheme}://proxy.example/"),
+            "",
+            None,
+            None,
+            false,
+        )
+        .unwrap();
+        assert!(next.has_auth());
+    }
+}
+
+#[test]
 fn default_no_proxy_is_added_without_being_stored() {
     assert_eq!(merge_no_proxy("").unwrap(), DEFAULT_NO_PROXY);
     assert_eq!(
@@ -209,6 +327,62 @@ fn no_proxy_is_normalized_and_rejects_unsupported_syntax() {
         assert!(normalize_no_proxy(raw).is_err());
     }
     assert_eq!(normalize_no_proxy(" , \n\t").unwrap(), "");
+}
+
+#[test]
+fn system_no_proxy_converts_supported_entries_without_rejecting_the_client() {
+    let config = ProxyConfig {
+        global: ProxyRule {
+            mode: ProxyMode::System,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    for (raw, expected) in [
+        ("*.service.example", "service.example"),
+        (".service.example", ".service.example"),
+        ("host.example:8080", "host.example"),
+        ("*.service.example:443", "service.example"),
+        ("192.0.2.1:8080", "192.0.2.1"),
+        ("2001:db8::1", "2001:db8::1"),
+        ("[2001:db8::1]", "2001:db8::1"),
+        ("[2001:db8::1]:8080", "2001:db8::1"),
+        ("2001:db8::8080", "2001:db8::8080"),
+        ("*internal*", ""),
+        ("https://service.example:8080", ""),
+        ("user:fake-pass@service.example", ""),
+        ("host.example:65536", ""),
+        ("[2001:db8::1]:bad", ""),
+        (" , \n\t", ""),
+        (
+            "*internal*,https://service.example,user:fake-pass@service.example,:8080",
+            "",
+        ),
+        (
+            "*,192.0.2.0/24,2001:db8::/32",
+            "*,192.0.2.0/24,2001:db8::/32",
+        ),
+        (
+            " *.Service.Example,,service.example\n*internal*,host.example:8080 ",
+            "service.example,host.example",
+        ),
+    ] {
+        assert_eq!(normalize_system_no_proxy(raw), expected);
+        // Windows and environment input share conversions; its native separator differs.
+        assert_eq!(
+            crate::platform::normalize_windows_override(
+                raw.trim().replace([',', '\n', '\t'], ";").as_str()
+            )
+            .unwrap_or_default(),
+            expected
+        );
+        for key in ["NO_PROXY", "no_proxy"] {
+            let values = env(&[("HTTP_PROXY", "http://proxy.example:8080"), (key, raw)]);
+            for scope in [NetworkScope::Content, NetworkScope::Api, NetworkScope::Pi] {
+                client(&config, scope, &values);
+            }
+        }
+    }
 }
 
 #[test]
@@ -280,25 +454,59 @@ fn auth_is_removed_from_all_rules_including_inactive_values() {
 }
 
 #[test]
-fn environment_priority_is_explicit_and_debug_is_safe() {
+fn standalone_tool_keeps_standard_environment_priority_and_debug_is_safe() {
     let values = env(&[
-        ("HTTP_PROXY", "http://upper:private@host:1234"),
-        ("http_proxy", "http://lower:1234"),
+        ("HTTP_PROXY", "http://upper:private@host.example:1234"),
+        ("http_proxy", "http://lower.example:1234"),
         ("HTTPS_PROXY", " "),
-        ("https_proxy", "http://secure:1234"),
+        ("https_proxy", "http://secure.example:1234"),
+        ("NO_PROXY", " "),
+        ("no_proxy", "*.bypass.example:443"),
         ("UNRELATED", "secret"),
     ]);
     assert_eq!(
         values.value("HTTP_PROXY", "http_proxy"),
-        Some("http://upper:private@host:1234")
+        Some("http://upper:private@host.example:1234")
     );
     assert_eq!(
         values.value("HTTPS_PROXY", "https_proxy"),
-        Some("http://secure:1234")
+        Some("http://secure.example:1234")
     );
-    assert_eq!(values.0.len(), 4);
+    assert_eq!(
+        values.value("NO_PROXY", "no_proxy"),
+        Some("*.bypass.example:443")
+    );
     assert!(!format!("{values:?}").contains("private"));
     assert!(!format!("{values:?}").contains("secret"));
+}
+
+#[test]
+fn empty_or_partial_host_snapshot_never_falls_back_to_pi_variables() {
+    let config = ProxyConfig {
+        pi: ProxyRule {
+            no_proxy: "pi-only.example".into(),
+            ..ProxyRule::custom("http://pi-proxy.example:8080")
+        },
+        ..Default::default()
+    };
+    let child = config.child_env(NetworkScope::Pi, &env(&[])).unwrap();
+    let values = vars(&child);
+    for inherited in [values.as_slice(), &[("RRSS_HOST_HTTP_PROXY", "")][..]] {
+        let tool = ProxyEnvironment::from_lookup(|key| {
+            inherited
+                .iter()
+                .find(|(name, _)| *name == key)
+                .map(|(_, value)| (*value).to_owned())
+                .or_else(|| {
+                    PROXY_ENV_KEYS
+                        .contains(&key)
+                        .then(|| "http://pi-proxy.example:8080".into())
+                })
+        });
+        for pair in PROXY_ENV_KEYS.chunks_exact(2) {
+            assert_eq!(tool.value(pair[0], pair[1]), None);
+        }
+    }
 }
 
 fn vars(env: &ChildProxyEnv) -> Vec<(&str, &str)> {
@@ -306,23 +514,65 @@ fn vars(env: &ChildProxyEnv) -> Vec<(&str, &str)> {
 }
 
 #[test]
-fn child_env_direct_sets_nothing_even_with_inherited_variables() {
+fn child_env_only_exposes_host_snapshot_when_tools_need_system_proxy() {
+    use ProxyMode::{Custom, Direct, Inherit, System};
+
     let inherited = env(&[
-        ("HTTPS_PROXY", "http://inherited:1"),
-        ("NO_PROXY", "x.test"),
+        (
+            "HTTP_PROXY",
+            "http://host-user:host-pass@host-proxy.example:8080",
+        ),
+        ("HTTPS_PROXY", "http://host-https.example:8443"),
+        ("ALL_PROXY", "socks5h://host-all.example:1080"),
+        ("NO_PROXY", "host-bypass.example"),
     ]);
-    let config = ProxyConfig {
-        content: ProxyRule::custom("http://content.test:1"),
-        ..Default::default()
+    let rule = |mode| ProxyRule {
+        mode,
+        ..ProxyRule::custom("http://configured.example:8080")
     };
-    // 全局无代理、Pi 跟随全局：调用方清掉八个变量后不再写入任何值。
-    assert!(
-        config
-            .child_env(NetworkScope::Pi, &inherited)
-            .unwrap()
-            .vars()
-            .is_empty()
-    );
+    for (global, api, content, needed) in [
+        (Direct, Inherit, Inherit, false),
+        (Custom, Inherit, Inherit, false),
+        (System, Direct, Custom, false),
+        (System, Custom, Direct, false),
+        (Direct, System, Direct, true),
+        (Direct, Custom, System, true),
+        (System, Inherit, Direct, true),
+        (System, Custom, Inherit, true),
+        (System, Inherit, Inherit, true),
+    ] {
+        for pi in [Direct, Custom, System] {
+            let config = ProxyConfig {
+                global: rule(global),
+                api: rule(api),
+                content: rule(content),
+                pi: rule(pi),
+                ..Default::default()
+            };
+            let child = config.child_env(NetworkScope::Pi, &inherited).unwrap();
+            let values = vars(&child);
+            for (key, original) in HOST_PROXY_ENV_KEYS.into_iter().zip(&inherited.host_values) {
+                assert_eq!(
+                    values
+                        .iter()
+                        .find(|(name, _)| *name == key)
+                        .map(|(_, value)| *value),
+                    Some(if needed { original.as_str() } else { "" })
+                );
+            }
+            if pi == Direct {
+                assert!(
+                    values
+                        .iter()
+                        .all(|(key, _)| HOST_PROXY_ENV_KEYS.contains(key))
+                );
+            }
+            if !needed && pi != System {
+                assert!(values.iter().all(|(_, value)| !value.contains("host-")));
+                assert!(child.secrets().iter().all(|value| !value.contains("host-")));
+            }
+        }
+    }
 }
 
 #[test]
@@ -354,7 +604,7 @@ fn child_env_custom_sets_every_proxy_pair_and_merges_bypass() {
         for key in ["NO_PROXY", "no_proxy"] {
             assert!(got.contains(&(key, "localhost,127.0.0.1,::1,internal.test,10.0.0.0/8")));
         }
-        assert_eq!(got.len(), 8);
+        assert_eq!(got.len(), 8 + HOST_PROXY_ENV_KEYS.len());
         assert!(!format!("{child:?}").contains("p%40ss"));
     }
 }
@@ -380,7 +630,10 @@ fn child_env_system_passes_environment_values_and_adds_loopback_bypass() {
         )
         .unwrap();
     assert_eq!(
-        vars(&child),
+        vars(&child)
+            .into_iter()
+            .filter(|(key, _)| PROXY_ENV_KEYS.contains(key))
+            .collect::<Vec<_>>(),
         [
             ("HTTPS_PROXY", "http://lower.test:3128"),
             ("https_proxy", "http://lower.test:3128"),
@@ -402,18 +655,46 @@ fn child_env_system_passes_environment_values_and_adds_loopback_bypass() {
 fn child_env_display_and_secrets_hide_authentication() {
     let config = ProxyConfig {
         global: ProxyRule::custom("http://proxy-user:pa%3Ass@proxy.test:8080"),
+        api: ProxyRule {
+            mode: ProxyMode::System,
+            ..Default::default()
+        },
         ..Default::default()
     };
-    let child = config.child_env(NetworkScope::Pi, &env(&[])).unwrap();
+    let child = config
+        .child_env(
+            NetworkScope::Pi,
+            &env(&[
+                (
+                    "HTTP_PROXY",
+                    "http://host-user:host%3Apass@host-proxy.example:8080",
+                ),
+                ("NO_PROXY", "host-bypass.example"),
+            ]),
+        )
+        .unwrap();
     let shown = format!("{:?}", child.redacted());
     assert!(
         shown.contains("http://proxy.test:8080/（认证已隐藏）"),
         "{shown}"
     );
-    for secret in ["proxy-user", "pa%3Ass", "pa:ss"] {
+    for secret in [
+        "proxy-user",
+        "pa%3Ass",
+        "pa:ss",
+        "host-user",
+        "host%3Apass",
+        "host:pass",
+    ] {
         assert!(!shown.contains(secret), "{shown}");
+        assert!(!format!("{child:?}").contains(secret));
         assert!(child.secrets().iter().any(|s| s == secret), "{secret}");
+        assert!(
+            !crate::logsafe::scrub_secrets_with(secret, child.secrets().iter().map(String::as_str))
+                .contains(secret)
+        );
     }
+    assert!(!shown.contains("host-bypass.example"));
     // 坏配置报脱敏错误，不退回直连。
     let broken = ProxyConfig {
         version: 999,
@@ -458,6 +739,110 @@ async fn headers(task: tokio::task::JoinHandle<String>) -> String {
         .await
         .unwrap()
         .unwrap()
+}
+
+#[tokio::test]
+async fn tool_system_proxy_uses_host_environment_for_every_pi_mode_and_scope() {
+    for mode in [ProxyMode::Custom, ProxyMode::Direct, ProxyMode::System] {
+        for scope in [NetworkScope::Api, NetworkScope::Content] {
+            // Exercise Linux, unavailable WinINet, and partial Windows settings
+            // with either an absent or a configured native bypass list.
+            let windows = crate::platform::parse_windows_proxy_server("https=wininet.example:8443");
+            for native in [
+                crate::platform::SystemProxySnapshot::default(),
+                crate::platform::SystemProxySnapshot {
+                    unavailable: true,
+                    ..Default::default()
+                },
+                windows.clone(),
+                crate::platform::SystemProxySnapshot {
+                    no_proxy: crate::platform::normalize_windows_override(
+                        "*.bypass.example;native-only.example",
+                    ),
+                    ..windows
+                },
+            ] {
+                let (proxy, proxy_task) = http_endpoint().await;
+                let (target, bypass_task) = http_endpoint().await;
+                let target = Url::parse(&target).unwrap();
+                let host = env(&[
+                    ("HTTP_PROXY", &proxy),
+                    ("http_proxy", "http://unused.example:8080"),
+                    ("HTTPS_PROXY", " "),
+                    ("https_proxy", "http://host-https.example:8443"),
+                    ("ALL_PROXY", "socks5h://host-all.example:1080"),
+                    ("all_proxy", "http://unused.example:8080"),
+                    ("NO_PROXY", " "),
+                    ("no_proxy", "*.bypass.example:443"),
+                ])
+                .with_system(&native);
+                let config = ProxyConfig {
+                    global: ProxyRule {
+                        mode: ProxyMode::System,
+                        ..Default::default()
+                    },
+                    pi: ProxyRule {
+                        mode,
+                        no_proxy: "pi-only.example".into(),
+                        ..ProxyRule::custom("http://pi-proxy.example:8080")
+                    },
+                    ..Default::default()
+                };
+                let child = config.child_env(NetworkScope::Pi, &host).unwrap();
+                let tool = env(&vars(&child)).with_system(&native);
+                assert_eq!(tool.value("HTTP_PROXY", "http_proxy"), Some(proxy.as_str()));
+                assert_eq!(
+                    tool.value("HTTPS_PROXY", "https_proxy"),
+                    Some(
+                        native
+                            .https
+                            .as_deref()
+                            .unwrap_or("http://host-https.example:8443")
+                    )
+                );
+                assert_eq!(
+                    tool.value("ALL_PROXY", "all_proxy"),
+                    Some("socks5h://host-all.example:1080")
+                );
+                assert_eq!(
+                    tool.value("NO_PROXY", "no_proxy"),
+                    Some(native.no_proxy.as_deref().unwrap_or("*.bypass.example:443"))
+                );
+                // Forward the raw environment, without freezing native settings
+                // into the fallback used by the next process.
+                assert!(
+                    vars(&child)
+                        .contains(&("RRSS_HOST_HTTPS_PROXY", "http://host-https.example:8443"))
+                );
+                assert!(vars(&child).contains(&("RRSS_HOST_NO_PROXY", "*.bypass.example:443")));
+                let client = config
+                    .build_client_with_env(
+                        scope,
+                        Client::builder()
+                            .timeout(Duration::from_secs(3))
+                            .resolve("bypass.example", target.socket_addrs(|| None).unwrap()[0]),
+                        &tool,
+                    )
+                    .unwrap();
+                client
+                    .get("http://target.example/article")
+                    .send()
+                    .await
+                    .unwrap();
+                assert!(
+                    headers(proxy_task)
+                        .await
+                        .starts_with("GET http://target.example/article ")
+                );
+                client
+                    .get(format!("http://bypass.example:{}/", target.port().unwrap()))
+                    .send()
+                    .await
+                    .unwrap();
+                assert!(headers(bypass_task).await.starts_with("GET / HTTP/1.1"));
+            }
+        }
+    }
 }
 
 #[tokio::test]

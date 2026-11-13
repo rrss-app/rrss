@@ -4,7 +4,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
-use crate::rules::{self, Dimension, NewRule, Polarity, Rule, RuleSource, ScopeKind};
+use crate::rules::{self, Dimension, NewRule, Polarity, RuleSource, ScopeKind};
 
 const PACK_SOURCES: &[(&str, &str)] = &[
     (
@@ -136,20 +136,6 @@ pub fn pack_statuses(conn: &Connection) -> Result<Vec<PackStatus>> {
         });
     }
     Ok(out)
-}
-
-pub fn pack_rules(conn: &Connection, pack_id: &str) -> Result<Vec<Rule>> {
-    rules::list_rules(
-        conn,
-        &rules::RuleFilter {
-            ..rules::RuleFilter::default()
-        },
-    )
-    .map(|rows| {
-        rows.into_iter()
-            .filter(|r| r.pack_id.as_deref() == Some(pack_id))
-            .collect()
-    })
 }
 
 pub fn apply_pack(conn: &Connection, id: &str) -> Result<u32> {

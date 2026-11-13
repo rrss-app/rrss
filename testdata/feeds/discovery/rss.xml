@@ -1,0 +1,8 @@
+<?xml version="1.0"?><rss version="2.0"><channel>
+<title>Lantern Journal</title><link>http://journal.example/</link><description>Field notes</description>
+<lastBuildDate>Thu, 12 Nov 2026 12:00:00 GMT</lastBuildDate>
+<item><guid>urn:lantern:1</guid><title>Paper observatories</title><pubDate>Wed, 11 Nov 2026 12:00:00 GMT</pubDate></item>
+<item><guid>urn:lantern:2</guid><title>Stone notebooks</title></item>
+<item><guid>urn:lantern:3</guid><title>Quiet gardens</title></item>
+<item><guid>urn:lantern:4</guid><title>Just a moment in the garden</title></item>
+</channel></rss>

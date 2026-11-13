@@ -55,6 +55,13 @@ pub const DEFAULT_TOOLS: &[PiToolDef] = &[
         parameters: &[("query", "string", "检索词")],
     },
     PiToolDef {
+        name: "get_assistant_config",
+        label: "读助手配置",
+        description: "只读查看 RRSS 给助手的配置：助手说明、已启用的工具与技能、能否抓取网址、外部工具（MCP）允许的工具名，以及当前对话的模型别名与思考档位（拿得到时）。不含密钥、服务地址、启动命令、系统提示模板、记忆和文章，不修改任何配置。",
+        confirm_required: false,
+        parameters: &[],
+    },
+    PiToolDef {
         name: "open_original",
         label: "打开原文",
         description: "用系统浏览器打开文章 URL。",
@@ -207,6 +214,10 @@ pub fn seed_default_tools(conn: &Connection) -> Result<()> {
 
 pub fn list_tools(conn: &Connection) -> Result<Vec<PiTool>> {
     seed_default_tools(conn)?;
+    read_tools(conn)
+}
+
+fn read_tools(conn: &Connection) -> Result<Vec<PiTool>> {
     let mut stmt = conn.prepare(
         "SELECT name, enabled, label, description, confirm_required, builtin, default_description
          FROM pi_tools ORDER BY name",
@@ -279,8 +290,9 @@ fn tool_params_from_def(
         .collect()
 }
 
+/// Read the manifest without writes; profile loading refreshes defaults via `list_tools`.
 pub fn tool_manifest(conn: &Connection) -> Result<ToolManifest> {
-    let enabled = list_tools(conn)?
+    let enabled = read_tools(conn)?
         .into_iter()
         .filter(|t| t.enabled)
         .collect::<Vec<_>>();
@@ -778,6 +790,13 @@ mod tests {
         let manifest = tool_manifest(&conn).unwrap();
         assert!(manifest.tools.iter().any(|t| t.name == "search_articles"));
         assert!(!manifest.tools.iter().any(|t| t.name == "fetch_url"));
+        let config = manifest
+            .tools
+            .iter()
+            .find(|t| t.name == "get_assistant_config")
+            .unwrap();
+        assert!(!config.confirm);
+        assert!(config.parameters.is_empty());
     }
 
     #[test]

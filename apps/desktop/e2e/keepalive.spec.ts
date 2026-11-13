@@ -149,11 +149,55 @@ test("background updates keep the focus scroll position and offer new articles a
     host.state.focus.articles.unshift(row);
     host.emit("feed:updated", { run_id: "bg", feed_id: row.feed_id, generation: 1, status: "ok", inserted: 1, error: null, derived_degraded: false });
   }, { ...template, id: 999, cluster_id: 0, title: "后台抓到的新文章" });
-  const pill = page.getByRole("button", { name: "有 1 篇新内容", exact: true });
+  const pill = page.getByTestId("focus-new-content");
   await expect(pill).toBeVisible();
   expect((await panes(page)).focus.top).toBe(1200);
   await pill.click();
   await expect(page.getByText("后台抓到的新文章", { exact: true })).toBeVisible();
   expect((await panes(page)).focus.top).toBe(0);
+  await expect(pill).toHaveCount(0);
+});
+
+test("background updates adopt new articles until browsing starts, including while hidden", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 520 });
+  await installMockHost(page, { focus: { ...longFocus,
+    articles: longFocus.articles.map((row, index) => ({ ...row, title: `Article ${index + 1}` })),
+  } });
+  await page.goto("/");
+  const initial = page.getByRole("article", { name: "Article 1", exact: true });
+  await expect(initial).toBeVisible();
+  const scroll = page.getByTestId("focus-scroll");
+  const pill = page.getByTestId("focus-new-content");
+  const focusTarget = initial.getByRole("button").first();
+  await focusTarget.focus();
+  const arrive = (id: number) => page.evaluate((row) => {
+    const host = (window as any).__mockHost;
+    host.state.focus.articles.unshift(row);
+    host.emit("feed:updated", { run_id: "bg", feed_id: row.feed_id, generation: row.id, status: "ok", inserted: 1, error: null, derived_degraded: false });
+  }, { ...template, id, cluster_id: 0, title: `New article ${id}` });
+
+  await arrive(900);
+  await expect(page.getByRole("article", { name: "New article 900", exact: true })).toBeVisible();
+  await expect(pill).toHaveCount(0);
+  await expect(scroll).toHaveJSProperty("scrollTop", 0);
+  await expect(scroll).toHaveAttribute("aria-busy", "false");
+  await expect(focusTarget).toBeFocused();
+
+  // 滚过再回顶部仍算浏览；隐藏期间的新文章只能提示。
+  await scrollTo(page, '[data-testid="focus-scroll"]', 1200);
+  await scrollTo(page, '[data-testid="focus-scroll"]', 0);
+  await go(page, "简报");
+  await arrive(902);
+  await expect(pill).toBeAttached();
+  await go(page, "今日焦点");
+  await expect(pill).toBeVisible();
+  await expect(page.getByRole("article", { name: "New article 902", exact: true })).toHaveCount(0);
+  await expect(scroll).toHaveJSProperty("scrollTop", 0);
+
+  // 主动采用后重新等待，下一轮后台到达直接采用。
+  await pill.click();
+  await expect(page.getByRole("article", { name: "New article 902", exact: true })).toBeVisible();
+  await arrive(903);
+  await expect(page.getByRole("article", { name: "New article 903", exact: true })).toBeVisible();
   await expect(pill).toHaveCount(0);
 });

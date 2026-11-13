@@ -11,25 +11,12 @@ pub mod pi;
 
 pub use complete::probe::{CapabilityProbe, Support, probe_capabilities};
 pub use complete::{
-    CompleteRequest, CompleteResponse, Error, Protocol, Result, TestChatResult, cite_json_schema,
-    complete, complete_cached, digest_json_schema, digest_pick_json_schema, facts_json_schema,
-    http_client, segment_json_schema, strip_thinking, summary_json_schema, test_chat,
-    translate_json_schema,
+    CompleteRequest, CompleteResponse, Error, Protocol, Result, complete,
+    complete_cached, digest_json_schema, digest_pick_json_schema, facts_json_schema, http_client,
+    segment_json_schema, strip_thinking, summary_json_schema, translate_json_schema,
 };
 pub use embed::{
     EmbedBatchRequest, EmbedBatchResponse, EmbedRequest, EmbedResponse, embed, embed_batch,
     retry_smaller,
 };
 pub use models::list_models;
-
-pub fn crate_name() -> &'static str {
-    env!("CARGO_PKG_NAME")
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn crate_name_matches() {
-        assert_eq!(super::crate_name(), "rrss-ai");
-    }
-}

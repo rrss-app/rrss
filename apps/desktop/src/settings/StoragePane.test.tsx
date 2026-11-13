@@ -1,3 +1,4 @@
+import { deferred } from "../test/deferred";
 import { act, type ComponentProps } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -78,9 +79,8 @@ describe("storage page", () => {
     expect(box.stub!.callCount("storageClean")).toBe(0);
 
     const seen: string[] = [];
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    box.stub!.handle("storageClean", async (action: string) => { seen.push(action); await gate; return "已清空 AI 缓存（9,870 条）。"; });
+    const gate = deferred<void>();
+    box.stub!.handle("storageClean", async (action: string) => { seen.push(action); await gate.promise; return "已清空 AI 缓存（9,870 条）。"; });
     act(() => onAsk.mock.calls[0][2]());
     await flush();
     expect(item(host, "ai_cache").textContent).toContain("清理中…");
@@ -88,7 +88,7 @@ describe("storage page", () => {
     expect(button(host, "重新统计").disabled).toBe(true);
     box.stub!.handle("storagePage", () => page({ ai_cache: row("ai_cache", "AI 缓存", 0) }));
     client.setQueryData(diagnosticsKeys.page, { vec: "", stats: "", db: "", ai: "", log_hint: "" });
-    release(); await flush();
+    gate.resolve(); await flush();
     expect(seen).toEqual(["ai_cache"]);
     expect(box.stub!.callCount("storagePage")).toBe(2);
     expect(host.querySelector('[role="status"]')?.textContent).toBe("已清空 AI 缓存（9,870 条）。");

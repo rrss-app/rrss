@@ -105,6 +105,7 @@ impl RpcCorrelator {
         }
     }
 
+    #[cfg(test)]
     pub fn pending_len(&self) -> usize {
         self.pending.lock().map(|p| p.len()).unwrap_or(0)
     }

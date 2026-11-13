@@ -13,7 +13,7 @@ function registry(): { highlights: HighlightRegistry; Highlight: HighlightCtor }
 }
 
 /** 与搜索一致：ASCII 不分大小写的字面子串；首尾配对引号按整句处理。 */
-function normalize(query: string): string {
+export function normalizeSearchTerm(query: string): string {
   const q = query.trim();
   const term = q.length >= 2 && q.startsWith('"') && q.endsWith('"') ? q.slice(1, -1).trim() : q;
   return term.replace(/[A-Z]/g, (c) => c.toLowerCase());
@@ -41,7 +41,7 @@ function rangesFor(root: Element, term: string): Range[] {
 export function useSearchTermHighlight(body: HTMLElement | null, query: string | undefined) {
   useEffect(() => {
     const api = registry();
-    const term = query ? normalize(query) : "";
+    const term = query ? normalizeSearchTerm(query) : "";
     if (!api || !body || term.length < 2) return;
     let frame: number | undefined;
     const paint = () => {

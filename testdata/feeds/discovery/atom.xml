@@ -1,0 +1,5 @@
+<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+<id>urn:lantern:journal</id><title>Lantern Research</title><updated>2026-11-10T12:00:00Z</updated>
+<link href="http://journal.example/"/>
+<entry><id>urn:lantern:updated</id><title>Revised observatory</title><published>2026-11-09T12:00:00Z</published><updated>2026-11-12T12:00:00Z</updated></entry>
+</feed>

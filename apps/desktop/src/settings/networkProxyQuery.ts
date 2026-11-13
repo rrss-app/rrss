@@ -1,3 +1,4 @@
+import { settingsQueryPolicy } from "./queryPolicy";
 import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
 import { api, type NetworkProxyRuleView, type NetworkProxyTestArgs, type NetworkProxyView, type SaveNetworkProxyArgs, type SaveNetworkProxyRuleArgs } from "../lib/api";
 import { settingsChanged } from "./editState";
@@ -7,19 +8,9 @@ export const networkProxyKeys = {
   write: ["settings", "networkProxy", "write"] as const,
 };
 
-const policy = {
-  staleTime: 30_000,
-  gcTime: 5 * 60_000,
-  retry: false,
-  retryOnMount: false,
-  refetchOnMount: true,
-  refetchOnWindowFocus: false,
-  refetchOnReconnect: false,
-  networkMode: "always" as const,
-};
 
 export const networkProxyQueryOptions = () => queryOptions({
-  ...policy,
+  ...settingsQueryPolicy,
   queryKey: networkProxyKeys.page,
   queryFn: () => api.networkProxy(),
 });

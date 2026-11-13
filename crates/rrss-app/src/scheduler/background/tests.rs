@@ -1,6 +1,89 @@
 use super::*;
 use tokio::sync::{mpsc, oneshot};
 
+#[tokio::test]
+async fn job_events_keep_their_category_across_dispatch_and_database_work() {
+    use tracing::instrument::WithSubscriber;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("fixture.db");
+    let (subscriber, log) = crate::log::subscriber(
+        crate::log::Mode::Desktop {
+            log_dir: dir.path().join("logs"),
+        },
+        "rrss=warn",
+    );
+    async {
+        crate::jobs::spawn_db(path.clone(), |_| {
+            tracing::warn!(error_kind = "fixture", "standalone job fixture");
+            Ok(())
+        })
+        .await
+        .unwrap();
+        let (_dirty, requests) = watch::channel(1);
+        let (_derived, changes) = watch::channel(0);
+        let (stop, stopped) = watch::channel(false);
+        let (done, mut completed) = watch::channel(0);
+        let (_environment, observed) = watch::channel(Environment::default());
+        let task = tokio::spawn(
+            coordinate(
+                requests,
+                stopped,
+                changes,
+                done,
+                observed,
+                move |job, _| {
+                    let path = path.clone();
+                    async move {
+                        crate::jobs::spawn_db(path, move |_| {
+                            tracing::warn!(
+                                job = rrss_core::logsafe::unless_in_span(
+                                    "job",
+                                    format!("{job:?}").to_lowercase()
+                                ),
+                                error_kind = "fixture",
+                                "scheduled job fixture"
+                            );
+                            Ok(false)
+                        })
+                        .await
+                    }
+                },
+                |_, _, _| {},
+            )
+            .with_current_subscriber(),
+        );
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            completed.wait_for(|done| *done >= 1),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        stop.send_replace(true);
+        task.await.unwrap();
+    }
+    .with_subscriber(subscriber)
+    .await;
+    log.end();
+    let text = std::fs::read_to_string(dir.path().join("logs/rrss.log")).unwrap();
+    let standalone = text
+        .lines()
+        .find(|line| line.contains("standalone job fixture"))
+        .unwrap();
+    assert_eq!(standalone.matches("job=db").count(), 1, "{standalone}");
+    let scheduled = text
+        .lines()
+        .find(|line| line.contains("scheduled job fixture") && line.contains("housekeeping"))
+        .unwrap();
+    assert!(scheduled.contains(" job: "), "{scheduled}");
+    assert_eq!(
+        scheduled.matches("job=housekeeping").count(),
+        1,
+        "{scheduled}"
+    );
+}
+
 #[test]
 fn budget_log_follows_pause_and_resume_without_repeating() {
     let dir = tempfile::tempdir().unwrap();

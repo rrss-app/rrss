@@ -1,3 +1,4 @@
+import { settingsQueryPolicy } from "./queryPolicy";
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { api, type DiagnosticsPage } from "../lib/api";
 import { isTauri } from "../lib/preview";
@@ -17,9 +18,7 @@ export function diagnosticsQueryOptions() {
       void signal; // IPC 不可取消；消费 signal 让 query 取消隔离迟到快照。
       return isTauri() ? api.diagnostics() : Promise.resolve(PREVIEW_DIAGNOSTICS);
     },
-    staleTime: 30_000, gcTime: 5 * 60_000,
-    retry: false, retryOnMount: false, refetchOnMount: true,
-    refetchOnWindowFocus: false, refetchOnReconnect: false, networkMode: "always",
+    ...settingsQueryPolicy,
   });
 }
 export function prefetchDiagnostics(client: QueryClient) {

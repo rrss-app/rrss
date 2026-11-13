@@ -9,7 +9,7 @@ use rrss_core::articles::article_for_tool;
 use rrss_core::ingest::{FetchRequest, fetch_http, http_client_with_proxy};
 use rrss_core::memories;
 use rrss_core::score::strip_html;
-use rrss_core::{db, rag, search};
+use rrss_core::{db, pi_store, rag, search};
 use serde_json::{Value, json};
 
 use crate::digest;
@@ -35,6 +35,14 @@ pub fn run(args: &[String]) -> i32 {
 }
 
 fn run_inner(args: &[String]) -> Result<String> {
+    if args.get(2).map(String::as_str) == Some("get_assistant_config") {
+        // This read-only command must not create/migrate a database or refresh defaults.
+        let conn = rusqlite::Connection::open_with_flags(
+            db_path(),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        return run_with_connection(args, &conn, QUERY_EMBED_TIMEOUT);
+    }
     let conn = db::open_at(&db_path())?;
     run_with_connection(args, &conn, QUERY_EMBED_TIMEOUT)
 }
@@ -87,6 +95,9 @@ fn run_with_connection(
         }
         // 扩展每轮写进系统提示「长期记忆」小节的内容（阶段 18 D10）。不在工具清单里，模型不能调用。
         "memory_preview" => Ok(memories::inject_preview(&conn)?.0),
+        "get_assistant_config" => Ok(serde_json::to_string_pretty(&assistant_config(
+            conn, rest,
+        )?)?),
         "search_memory" => {
             let q = require_flag(rest, "--query")?;
             let vector = query_vector(conn, &q, embed_timeout);
@@ -219,10 +230,62 @@ fn run_with_connection(
             Ok(json!({"ok": true, "id": id, "starred": starred}).to_string())
         }
         "" | "help" => anyhow::bail!(
-            "usage: rrss tool <search_articles|get_article|search_memory|open_original|fetch_url|list_focus|explain_score|list_feeds|get_digest|add_interest|mark_read|star_article>"
+            "usage: rrss tool <search_articles|get_article|search_memory|get_assistant_config|open_original|fetch_url|list_focus|explain_score|list_feeds|get_digest|add_interest|mark_read|star_article>"
         ),
         other => anyhow::bail!("unknown tool {other}"),
     }
+}
+
+fn assistant_config(conn: &rusqlite::Connection, args: &[String]) -> Result<Value> {
+    let manifest = pi_store::tool_manifest(conn).context("assistant_config_manifest")?;
+    let fetch_url_enabled = db::get_setting(conn, FETCH_URL_ENABLED_KEY)?.as_deref() == Some("1")
+        && manifest.tools.iter().any(|t| t.name == "fetch_url");
+    // Explicit field allowlist: never serialize a profile, provider, or MCP configuration.
+    let tools: Vec<_> = manifest
+        .tools
+        .iter()
+        .filter(|t| pi_store::DEFAULT_TOOLS.iter().any(|def| def.name == t.name))
+        .filter(|t| t.name != "fetch_url" || fetch_url_enabled)
+        .map(|t| {
+            json!({
+                "name": t.name,
+                "description": t.description,
+                "confirm_required": t.confirm,
+            })
+        })
+        .collect();
+    let mut stmt = conn.prepare(
+        "SELECT name, include_tools_json FROM mcp_servers
+         WHERE enabled = 1 AND transport != 'sse' ORDER BY name",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+    })?;
+    let mut mcp_servers = Vec::new();
+    for row in rows {
+        let (name, raw) = row?;
+        let mut allowed_tools: Vec<String> = raw
+            .map(|raw| serde_json::from_str(&raw))
+            .transpose()?
+            .unwrap_or_default();
+        // An absent/empty allowlist exposes every tool in Pi's MCP configuration.
+        if allowed_tools.is_empty() {
+            allowed_tools.push("*".into());
+        }
+        mcp_servers.push(json!({"name": name, "allowed_tools": allowed_tools}));
+    }
+    let mut result = json!({
+        "assistant_note": pi_store::assistant_note(conn)?,
+        "tools": tools,
+        "skills": pi_store::enabled_skill_names(conn)?,
+        "fetch_url_enabled": fetch_url_enabled,
+        "mcp_servers": mcp_servers,
+    });
+    // Supplied by the extension's current context, never guessed from the chat default.
+    if let (Some(alias), Some(thinking)) = (flag(args, "--model-alias"), flag(args, "--thinking")) {
+        result["model"] = json!({"alias": alias, "thinking": thinking});
+    }
+    Ok(result)
 }
 
 fn query_vector(conn: &rusqlite::Connection, query: &str, timeout: Duration) -> Option<Vec<f32>> {
@@ -311,6 +374,136 @@ mod search_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn assistant_config_is_read_only_and_exposes_only_allowed_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rrss.db");
+        let conn = db::open_at(&path).unwrap();
+        db::set_setting(&conn, "pi_auto_download", "0").unwrap();
+        pi_store::set_assistant_note(&conn, "Prefer concise replies.").unwrap();
+        pi_store::set_enabled_skill_names(&conn, &["cite-verify".into()]).unwrap();
+        pi_store::set_tool_enabled(&conn, "open_original", false).unwrap();
+        pi_store::set_tool_description(&conn, "search_memory", "Search confirmed facts.").unwrap();
+        db::set_setting(&conn, FETCH_URL_ENABLED_KEY, "1").unwrap();
+        ai_store::insert_provider(
+            &conn,
+            &ai_store::NewProvider {
+                name: "Fixture provider".into(),
+                base_url: "https://model.example/v1".into(),
+                api_key: Some("fake-provider-key".into()),
+                protocol: "chat".into(),
+            },
+        )
+        .unwrap();
+        db::set_setting(
+            &conn,
+            rrss_core::network::SETTING_KEY,
+            r#"{"global":{"mode":"custom","url":"http://fixture:fake-password@proxy.example:8080"}}"#,
+        )
+        .unwrap();
+        pi_store::set_pi_override(
+            &conn,
+            pi_store::PI_MODELS_OVERRIDE_KEY,
+            r#"{"providers":{"fixture":{"apiKey":"fake-override-key","baseUrl":"https://override.example"}}}"#,
+        )
+        .unwrap();
+        conn.execute_batch(
+            "INSERT INTO mcp_servers(name, command, args_json, url, env_json, headers_json,
+                                     include_tools_json, enabled, created_at)
+             VALUES ('Fixture tools', 'fake-mcp-command', '[\"fake-mcp-argument\"]',
+                     'https://mcp.example', '{\"FIXTURE_TOKEN\":\"fake-env-token\"}',
+                     '{\"Authorization\":\"Bearer fake-header-token\"}', '[\"lookup\",\"inspect\"]', 1, 0);
+             INSERT INTO mcp_servers(name, transport, include_tools_json, enabled, created_at) VALUES
+                 ('All tools', 'http', NULL, 1, 0), ('Empty allowlist', 'stdio', '[]', 1, 0),
+                 ('Disabled service', 'stdio', NULL, 0, 0), ('Legacy service', 'sse', NULL, 1, 0);
+             INSERT INTO feeds(id, url, title, created_at) VALUES (1, 'https://feed.example', 'Fixture feed', 0);
+             INSERT INTO articles(feed_id, title, content_md, created_at) VALUES (1, 'Fixture article', 'private-article-content', 0);
+             INSERT INTO memories(kind, content, created_at) VALUES ('semantic', 'private-memory-content', 0);
+             UPDATE prompt_templates SET body = 'private-system-template';",
+        )
+        .unwrap();
+        let reader = rusqlite::Connection::open_with_flags(
+            &path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )
+        .unwrap();
+        let mut args = ["rrss", "tool", "get_assistant_config"]
+            .map(str::to_owned)
+            .to_vec();
+        args.extend(["--model-alias", "Fixture chat", "--thinking", "high"].map(str::to_owned));
+        let raw = run_with_connection(&args, &reader, QUERY_EMBED_TIMEOUT).unwrap();
+        let result: Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(result["assistant_note"], "Prefer concise replies.");
+        assert_eq!(result["skills"], json!(["cite-verify"]));
+        assert_eq!(result["fetch_url_enabled"], true);
+        assert_eq!(
+            result["model"],
+            json!({"alias": "Fixture chat", "thinking": "high"})
+        );
+        assert_eq!(
+            result["mcp_servers"],
+            json!([
+                {"name": "All tools", "allowed_tools": ["*"]},
+                {"name": "Empty allowlist", "allowed_tools": ["*"]},
+                {"name": "Fixture tools", "allowed_tools": ["lookup", "inspect"]},
+            ])
+        );
+        let tools = result["tools"].as_array().unwrap();
+        assert!(
+            tools
+                .iter()
+                .any(|t| t["name"] == "get_assistant_config" && t["confirm_required"] == false)
+        );
+        assert!(
+            tools
+                .iter()
+                .any(|t| t["name"] == "fetch_url" && t["confirm_required"] == true)
+        );
+        assert!(tools.iter().any(|t| t == &json!({
+            "name": "search_memory", "description": "Search confirmed facts.", "confirm_required": false,
+        })));
+        assert!(!tools.iter().any(|t| t["name"] == "open_original"));
+        for forbidden in [
+            "fake-provider-key",
+            "model.example",
+            "fake-password",
+            "proxy.example",
+            "fake-override-key",
+            "override.example",
+            "fake-mcp-command",
+            "fake-mcp-argument",
+            "mcp.example",
+            "FIXTURE_TOKEN",
+            "fake-env-token",
+            "Authorization",
+            "fake-header-token",
+            "private-article-content",
+            "private-memory-content",
+            "private-system-template",
+        ] {
+            assert!(!raw.contains(forbidden), "leaked fixture value");
+        }
+        let template = serde_json::to_string(crate::pi::workspace::SYSTEM_TEMPLATE.trim()).unwrap();
+        assert!(!raw.contains(template.trim_matches('"')));
+        // Both gates must be open for fetch_url; no current context means no model field.
+        args.truncate(3);
+        for (setting, enabled) in [("0", true), ("1", false)] {
+            db::set_setting(&conn, FETCH_URL_ENABLED_KEY, setting).unwrap();
+            pi_store::set_tool_enabled(&conn, "fetch_url", enabled).unwrap();
+            let raw = run_with_connection(&args, &reader, QUERY_EMBED_TIMEOUT).unwrap();
+            let result: Value = serde_json::from_str(&raw).unwrap();
+            assert_eq!(result["fetch_url_enabled"], false);
+            assert!(
+                !result["tools"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|t| t["name"] == "fetch_url")
+            );
+            assert!(result.get("model").is_none());
+        }
+    }
 
     #[test]
     fn digest_cli_explicit_id_never_falls_back_to_latest() {

@@ -1,6 +1,5 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use rrss_core::db;
 use rrss_core::media::{MediaRow, cache_key};
 
 use crate::views::MediaRef;
@@ -30,7 +29,6 @@ pub fn cached_media_ref(row: &MediaRow, src: &str) -> MediaRef {
         .and_then(|p| rrss_core::image_size::image_size(Path::new(p)));
     MediaRef {
         src: src.to_string(),
-        media_id: Some(row.id),
         href: media_href_with_fingerprint(row.id, fp),
         width: size.map(|s| s.0),
         height: size.map(|s| s.1),
@@ -41,7 +39,6 @@ pub fn cached_media_ref(row: &MediaRow, src: &str) -> MediaRef {
 pub fn failed_media_ref(src: &str, error: &str) -> MediaRef {
     MediaRef {
         src: src.to_string(),
-        media_id: None,
         href: String::new(),
         width: None,
         height: None,
@@ -55,16 +52,4 @@ pub fn media_id_from_path(path: &str) -> Option<i64> {
     rest.strip_prefix("media/")
         .and_then(|s| s.split(['/', '?', '#']).next())
         .and_then(|s| s.parse().ok())
-}
-
-pub fn open_db(path: &Path) -> rrss_core::Result<rrss_core::db::PooledConnection> {
-    db::open_at(path)
-}
-
-pub fn data_paths() -> anyhow::Result<(PathBuf, PathBuf)> {
-    let data_dir = rrss_core::data_dir()?;
-    std::fs::create_dir_all(&data_dir)?;
-    let db_path = rrss_core::db_path()?;
-    let _ = db::open_at(&db_path)?;
-    Ok((data_dir, db_path))
 }

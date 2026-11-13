@@ -62,7 +62,7 @@ export function handleReaderReads(stub: ApiStub) {
   stub.handle("translateDetach", () => {});
   // 正文显示约 400ms 后会只读预取下一篇。慢机器上叠层测试还停在阅读器里，这次请求不能算意外调用。
   stub.handle("reader", id => readerView(id));
-  stub.handle("retryImage", (_articleId, url) => ({ src: url, media_id: null, href: "", width: null, height: null, error: "" }));
+  stub.handle("retryImage", (_articleId, url) => ({ src: url, href: "", width: null, height: null, error: "" }));
   // 挂载根壳时侧栏「订阅」项读未读总数，阅读器换篇后也会刷新一次。
   stub.handle("feedCounts", () => ({ total: 0, feeds: [], folders: [] }));
 }

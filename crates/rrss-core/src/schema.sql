@@ -324,6 +324,8 @@ CREATE TABLE ai_model_pool (
     PRIMARY KEY (provider_id, model)
 );
 
+-- Templates and task bindings are seeded from ai_store's active registry;
+-- migrations remove retired entries from existing databases (v42).
 CREATE TABLE prompt_templates (
     id      INTEGER PRIMARY KEY,
     slug    TEXT    NOT NULL UNIQUE,

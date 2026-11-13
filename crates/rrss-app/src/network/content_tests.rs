@@ -73,7 +73,7 @@ async fn reader_downloads_use_content_and_keep_headers_cache_and_next_task_switc
         .await
         .unwrap();
     assert_eq!(refs.len(), 1);
-    assert!(refs[0].media_id.is_some());
+    assert!(!refs[0].href.is_empty());
     assert!(!refs[0].href.starts_with("http://content.invalid"));
 
     config.content = ProxyRule::custom(&next.uri());
@@ -101,7 +101,7 @@ async fn reader_downloads_use_content_and_keep_headers_cache_and_next_task_switc
     )
     .await
     .unwrap();
-    assert!(media.media_id.is_some());
+    assert!(!media.href.is_empty());
     assert!(!media.href.starts_with("http://content.invalid"));
     // 本地已缓存媒体无需网络配置；坏配置不使已下载内容失效。
     db::set_setting(&conn, network::SETTING_KEY, "broken-private-secret").unwrap();
@@ -272,14 +272,16 @@ async fn extracted_lazy_images_use_local_refs_and_failed_downloads_never_hotlink
         .unwrap();
     assert_eq!(refs.len(), 2);
     assert_eq!(refs[0].src, "http://content.invalid/pictures/good.png");
-    assert!(refs[0].media_id.is_some());
+    assert!(!refs[0].href.is_empty());
     assert!(
-        refs[0]
-            .href
-            .starts_with(&crate::queries::media_href(refs[0].media_id.unwrap()))
+        refs[0].href.starts_with(&crate::queries::media_href(
+            rrss_core::media::lookup(&conn, 1, &refs[0].src)
+                .unwrap()
+                .unwrap()
+                .id
+        ))
     );
     assert_eq!(refs[1].src, "http://content.invalid/pictures/bad.png");
-    assert!(refs[1].media_id.is_none());
     assert!(
         refs[1].href.is_empty(),
         "failed image must leave a placeholder, not a remote href"

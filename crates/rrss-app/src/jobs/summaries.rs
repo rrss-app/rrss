@@ -1,15 +1,14 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use rrss_ai::{cite_json_schema, segment_json_schema, summary_json_schema};
-use rrss_core::ai_store::{
-    self, TASK_ARTICLE_SEGMENT, TASK_ARTICLE_SUMMARY, TASK_CITE_SUMMARIZE, TASK_FOCUS_SUMMARY,
-};
+use rrss_ai::{segment_json_schema, summary_json_schema};
+use rrss_core::ai_store::{self, TASK_ARTICLE_SEGMENT, TASK_ARTICLE_SUMMARY, TASK_FOCUS_SUMMARY};
 use rrss_core::articles::{self, DueSummary};
 use rrss_core::summary_extract;
 use serde_json::Value;
+use tracing::{Instrument, instrument::WithSubscriber};
 
-use super::complete::{complete_task, execute_prepared, prepare_resolved, task_is_current};
+use super::complete::{execute_prepared, prepare_resolved, task_is_current};
 use super::{FOCUS_BATCH, is_skip, spawn_db};
 
 /// 单篇摘要最多保留的要点与关键事实条数，与模板里的要求一致。
@@ -110,29 +109,6 @@ pub async fn summarize_article(
     })
     .await?;
     summarize_job(db_path, client, TASK_ARTICLE_SUMMARY, &job, false, true).await
-}
-
-pub async fn summarize_citations(
-    db_path: &Path,
-    client: &reqwest::Client,
-    payload: String,
-) -> Result<String> {
-    let parsed = complete_task(
-        db_path,
-        client,
-        TASK_CITE_SUMMARIZE,
-        &payload,
-        cite_json_schema(),
-        false,
-    )
-    .await?;
-    parsed
-        .get("summary")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(ToString::to_string)
-        .context("cite summary JSON missing summary")
 }
 
 pub(crate) async fn summarize_job(
@@ -331,23 +307,27 @@ async fn segment_notes_payload(
         let client = client.clone();
         let resolved = resolved.clone();
         let user = format!("{title}\n\n（第 {} / {total} 部分）\n\n{segment}", i + 1);
-        set.spawn(async move {
-            let input = user.clone();
-            let prepared = spawn_db(path.clone(), move |conn| {
-                prepare_resolved(conn, resolved, &input, false)
-            })
-            .await?;
-            let parsed = execute_prepared(
-                &path,
-                &client,
-                prepared,
-                &user,
-                segment_json_schema(),
-                |value| Ok(value.clone()),
-            )
-            .await?;
-            anyhow::Ok((i, parsed))
-        });
+        set.spawn(
+            async move {
+                let input = user.clone();
+                let prepared = spawn_db(path.clone(), move |conn| {
+                    prepare_resolved(conn, resolved, &input, false)
+                })
+                .await?;
+                let parsed = execute_prepared(
+                    &path,
+                    &client,
+                    prepared,
+                    &user,
+                    segment_json_schema(),
+                    |value| Ok(value.clone()),
+                )
+                .await?;
+                anyhow::Ok((i, parsed))
+            }
+            .in_current_span()
+            .with_current_subscriber(),
+        );
     }
     let mut notes = vec![Value::Null; total];
     while let Some(joined) = set.join_next().await {
@@ -405,16 +385,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("t.db");
         let conn = db::open_at(&path).unwrap();
-        let pid = ai_store::insert_provider(
-            &conn,
-            &ai_store::NewProvider {
-                name: "mock".into(),
-                base_url: base_url.into(),
-                api_key: None,
-                protocol: "openai".into(),
-            },
-        )
-        .unwrap();
+        let pid = crate::test_net::fake_provider(&conn, "mock", base_url.into());
         for task in [
             TASK_ARTICLE_SUMMARY,
             TASK_ARTICLE_SEGMENT,

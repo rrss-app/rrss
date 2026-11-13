@@ -1,16 +1,12 @@
 import type { ReactNode } from "react";
 
-/** 与后端一致：ASCII 不分大小写的字面子串，其他文字原样匹配；首尾配对引号按整句处理。 */
-export function normalizeSearchTerm(query: string): string {
-  const q = query.trim();
-  return q.length >= 2 && q.startsWith('"') && q.endsWith('"') ? q.slice(1, -1).trim() : q;
-}
+import { normalizeSearchTerm } from "../../components/searchTermHighlight";
 
 const foldAscii = (text: string) => text.replace(/[A-Z]/g, (c) => c.toLowerCase());
 
 /** 把文本里每处命中包进 `<mark>`；不拼 HTML。 */
 export function Highlight({ text, query }: { text: string; query: string }) {
-  const term = foldAscii(normalizeSearchTerm(query));
+  const term = normalizeSearchTerm(query);
   if (!term) return <>{text}</>;
   const folded = foldAscii(text);
   const parts: ReactNode[] = [];
@@ -29,7 +25,7 @@ export function Highlight({ text, query }: { text: string; query: string }) {
  * 只裁开头一刀，不拼接多个片段。
  */
 export function focusOnMatch(text: string, query: string, lead = 40): string {
-  const term = foldAscii(normalizeSearchTerm(query));
+  const term = normalizeSearchTerm(query);
   const at = term ? foldAscii(text).indexOf(term) : -1;
   if (at < 0) return text;
   const before = Array.from(text.slice(0, at));

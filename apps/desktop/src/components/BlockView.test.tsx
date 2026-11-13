@@ -1,3 +1,4 @@
+import { deferred } from "../test/deferred";
 import { act, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -234,7 +235,7 @@ describe("images", () => {
     const { host, unmount } = mount(
       <BlockView
         document={{ v: 1, blocks: [{ t: "img", src: "https://cdn.example/a.webp", alt: "封面" }] }}
-        media={[{ src: "https://cdn.example/a.webp", media_id: 1, href: "rrss://localhost/media/1", width: null, height: null, error: "" }]}
+        media={[{ src: "https://cdn.example/a.webp", href: "rrss://localhost/media/1", width: null, height: null, error: "" }]}
       />,
     );
     const img = host.querySelector("img") as HTMLImageElement;
@@ -254,13 +255,12 @@ describe("images", () => {
 
   it("shows the cache failure and the image after retry", async () => {
     const src = "https://cdn.example/a.avif";
-    const ready = { src, media_id: 4, href: "rrss://localhost/media/4", width: 32, height: 16, error: "" };
-    let release!: (ref: typeof ready) => void;
-    const pending = new Promise<typeof ready>((resolve) => { release = resolve; });
-    vi.spyOn(api, "retryImage").mockImplementation(() => pending);
+    const ready = { src, href: "rrss://localhost/media/4", width: 32, height: 16, error: "" };
+    const pending = deferred<typeof ready>();
+    vi.spyOn(api, "retryImage").mockImplementation(() => pending.promise);
     const opened = vi.spyOn(window, "open").mockImplementation(() => null);
     function Harness() {
-      const [media, setMedia] = useState([{ src, media_id: null as number | null, href: "", width: null as number | null, height: null as number | null, error: "解码失败" }]);
+      const [media, setMedia] = useState([{ src, href: "", width: null as number | null, height: null as number | null, error: "解码失败" }]);
       return (
         <BlockView
           articleId={3}
@@ -280,7 +280,7 @@ describe("images", () => {
     const retry = button("重试");
     expect(retry.getAttribute("aria-busy")).toBe("true");
     expect(retry.textContent).toBe("重试");
-    await act(async () => { release(ready); await pending; });
+    await act(async () => { pending.resolve(ready); await pending.promise; });
     expect(host.querySelector("img")?.getAttribute("src")).toBe(ready.href);
     expect(host.textContent).not.toContain("图片未能缓存");
     unmount();
@@ -387,7 +387,6 @@ describe("embeds", () => {
   it("starts local playback only after download and only with a media href", async () => {
     vi.spyOn(api, "downloadDirect").mockResolvedValue({
       src: "https://cdn.example/a.mp4",
-      media_id: 8,
       href: "rrss://localhost/media/8",
       width: null,
       height: null,

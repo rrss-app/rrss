@@ -1,3 +1,4 @@
+import { settingsQueryPolicy } from "./queryPolicy";
 import { queryOptions } from "@tanstack/react-query";
 import { api, type StoragePage } from "../lib/api";
 import { isTauri } from "../lib/preview";
@@ -22,8 +23,6 @@ export function storageQueryOptions() {
       void signal; // IPC 不可取消；消费 signal 让 query 取消隔离迟到快照。
       return isTauri() ? api.storagePage() : Promise.resolve(PREVIEW_STORAGE);
     },
-    staleTime: 30_000, gcTime: 5 * 60_000,
-    retry: false, retryOnMount: false, refetchOnMount: true,
-    refetchOnWindowFocus: false, refetchOnReconnect: false, networkMode: "always",
+    ...settingsQueryPolicy,
   });
 }

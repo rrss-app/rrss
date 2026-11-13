@@ -28,8 +28,8 @@ type Result = { tone: "ok" | "err"; text: string; detail?: string };
 /** 用途按功能分组显示，存储仍按用途一行（阶段 19-7）；用途常量以后端 `ALL_TASKS` 为准。 */
 export const USE_GROUPS: Array<{ id: string; title: string; hint: string; tasks: string[]; need?: Need }> = [
   { id: "chat", title: "对话", hint: "新对话默认用它，对话里可以临时换。只列用于对话的模型。", tasks: ["chat"], need: "tools" },
-  { id: "summary", title: "摘要", hint: "本篇摘要、长文分段、引用总结和相近报道综述；后台自动摘要与自动汇总另在下方「自动任务」里开关。",
-    tasks: ["focus_summary", "article_summary", "article_segment", "cite_summarize", "cluster_summary"], need: "json" },
+  { id: "summary", title: "摘要", hint: "本篇摘要、长文分段和相近报道综述；后台自动摘要与自动汇总另在下方「自动任务」里开关。",
+    tasks: ["focus_summary", "article_summary", "article_segment", "cluster_summary"], need: "json" },
   { id: "digest", title: "简报", hint: "日报、周报以及它们的选题。",
     tasks: ["digest_daily", "digest_weekly", "digest_pick_daily", "digest_pick_weekly"], need: "json" },
   { id: "memory", title: "记忆整理", hint: "从对话里提取记忆候选、压缩对话情节。", tasks: ["memory_candidate", "episode_compress"], need: "json" },

@@ -36,10 +36,10 @@ test("toolbar dropdowns use the shared menu, and the keyboard-selected row has n
 test("recommendation details default off, reveal ordinary reasons and keep spot checks blind", async ({ page }) => {
   const [first, second] = MOCK_FOCUS.articles;
   const reasons = [
-    { component: "freshness", text: "按这个源的阅读节奏降低旧文优先级", points: -1 },
-    { component: "source", text: "你常读这个源", points: 1 },
-    { component: "coverage", text: "3 个源在报道", points: 2 },
-    { component: "affinity", text: "和你常读的『Rust async』相似", points: 2 },
+    { text: "按这个源的阅读节奏降低旧文优先级", points: -1 },
+    { text: "你常读这个源", points: 1 },
+    { text: "3 个源在报道", points: 2 },
+    { text: "和你常读的『Rust async』相似", points: 2 },
   ];
   await installMockHost(page, { focus: { ...MOCK_FOCUS, articles: [
     { ...first, starred: true, noisy: true, rank_reasons: reasons },

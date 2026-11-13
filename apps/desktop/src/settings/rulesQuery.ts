@@ -1,3 +1,4 @@
+import { settingsQueryPolicy } from "./queryPolicy";
 import { queryOptions } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { isTauri, PREVIEW_RULES } from "../lib/preview";
@@ -14,12 +15,5 @@ export const rulesQueryOptions = (filter: string) => queryOptions({
     void signal; // IPC 不可取消，但 TanStack 必须丢弃已取消的迟到结果。
     return isTauri() ? api.rules(filter === "all" ? "" : filter) : Promise.resolve(PREVIEW_RULES);
   },
-  staleTime: 30_000,
-  gcTime: 5 * 60_000,
-  retry: false,
-  retryOnMount: false,
-  refetchOnMount: true,
-  refetchOnWindowFocus: false,
-  refetchOnReconnect: false,
-  networkMode: "always" as const,
+  ...settingsQueryPolicy,
 });

@@ -2,7 +2,7 @@ use rusqlite::Connection;
 
 use crate::error::{Error, Result};
 
-pub const SCHEMA_VERSION: i32 = 41;
+pub const SCHEMA_VERSION: i32 = 42;
 
 /// 低于此版本的库不能在当前程序里升级。
 pub const MIN_UPGRADE_VERSION: i32 = 33;
@@ -30,6 +30,7 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         (39, apply_v39),
         (40, apply_v40),
         (41, apply_v41),
+        (42, apply_v42),
     ];
     let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if !(0..=SCHEMA_VERSION).contains(&version) {
@@ -166,6 +167,17 @@ fn apply_v41(conn: &Connection) -> Result<()> {
         INSERT INTO messages_fts (rowid, content)
         SELECT id, content FROM messages WHERE role IN ('user', 'assistant');",
     )?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn apply_v42(conn: &Connection) -> Result<()> {
+    let tx = crate::db::write_transaction(conn)?;
+    tx.execute_batch(
+        "DELETE FROM task_bindings WHERE task = 'cite_summarize';
+         DELETE FROM prompt_templates WHERE slug = 'cite-summarize';",
+    )?;
+    // Cache keys are hashes and usage is aggregated by day, so neither identifies a task.
     tx.commit()?;
     Ok(())
 }
@@ -309,6 +321,74 @@ fn apply_v34(conn: &Connection) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn v42_removes_retired_citation_task_without_disturbing_active_tasks_or_usage() {
+        use crate::{ai_store, model_pool};
+
+        let dir = tempfile::tempdir().unwrap();
+        let conn = crate::db::open_at(&dir.path().join("retired-task.db")).unwrap();
+        conn.execute_batch(
+            "INSERT INTO ai_providers(id,name,base_url,created_at)
+                 VALUES(99,'Fixture','https://model.example/v1',0);
+             INSERT INTO ai_model_pool(provider_id,model,created_at)
+                 VALUES(99,'retired-model',0),(99,'active-model',0);
+             INSERT INTO prompt_templates(slug,title,body)
+                 VALUES('cite-summarize','Retired template','Retired prompt');
+             INSERT INTO task_bindings(task,provider_id,template_id,model)
+                 SELECT 'cite_summarize',99,id,'retired-model'
+                 FROM prompt_templates WHERE slug='cite-summarize';
+             UPDATE task_bindings SET provider_id=99,model='active-model'
+                 WHERE task='article_summary';
+             INSERT INTO ai_usage(day,tokens,prompt_tokens,completion_tokens)
+                 VALUES('2026-11-01',30,20,10);
+             PRAGMA user_version=41;",
+        )
+        .unwrap();
+        let cache_key = ai_store::cache_key("cite_summarize", "retired-model", 1, "fixture");
+        ai_store::cache_put(&conn, &cache_key, "cached summary").unwrap();
+        let active_template = ai_store::get_template_by_slug(&conn, "article-summary").unwrap();
+        migrate(&conn).unwrap();
+        // Reopening must not seed the retired task again.
+        migrate(&conn).unwrap();
+        assert_eq!(
+            conn.pragma_query_value(None, "user_version", |r| r.get::<_, i32>(0))
+                .unwrap(),
+            SCHEMA_VERSION
+        );
+        let bindings = ai_store::list_task_bindings(&conn).unwrap();
+        assert_eq!(bindings.len(), ai_store::ALL_TASKS.len());
+        assert!(
+            bindings
+                .iter()
+                .all(|b| ai_store::ALL_TASKS.contains(&b.task.as_str()))
+        );
+        assert!(matches!(
+            ai_store::get_template_by_slug(&conn, "cite-summarize"),
+            Err(Error::TemplateNotFound(_))
+        ));
+        let active = ai_store::resolve_task(&conn, ai_store::TASK_ARTICLE_SUMMARY).unwrap();
+        assert_eq!(active.provider.id, 99);
+        assert_eq!(active.model, "active-model");
+        assert_eq!(active.template.id, active_template.id);
+        assert_eq!(active.template.body, active_template.body);
+        assert_eq!(active.template.version, active_template.version);
+        assert_eq!(
+            ai_store::cache_get(&conn, &cache_key).unwrap().as_deref(),
+            Some("cached summary")
+        );
+        assert_eq!(ai_store::usage_on(&conn, "2026-11-01").unwrap().tokens, 30);
+        // The retired binding used to make model removal fail with UnknownAiTask.
+        let removed = model_pool::update_pool(
+            &conn,
+            &[],
+            &[model_pool::ModelRef::new(99, "retired-model")],
+            None,
+        )
+        .unwrap();
+        assert!(removed.unset.is_empty());
+        assert_eq!(model_pool::pool(&conn).unwrap().len(), 1);
+    }
 
     #[test]
     fn v40_preserves_usage_and_positive_budgets_and_marks_only_upgrades() {
@@ -461,7 +541,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |r| r.get::<_, i32>(0))
                 .unwrap(),
-            41
+            SCHEMA_VERSION
         );
         assert_eq!(
             conn.pragma_query_value(None, "foreign_keys", |r| r.get::<_, i32>(0))

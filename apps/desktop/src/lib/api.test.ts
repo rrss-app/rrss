@@ -51,8 +51,4 @@ describe("isSafeHttpUrl", () => {
     expect(isSafeHttpUrl("not a url")).toBe(false);
     expect(isSafeHttpUrl("")).toBe(false);
   });
-
-  it("exports fetchModels method on api", () => {
-    expect(typeof api.fetchModels).toBe("function");
-  });
 });

@@ -46,8 +46,6 @@ db_task!(add_interest(label: String) -> i64 =>
 
 db_task!(interest_hits(id: i64) -> Vec<InterestHitView> => |conn| Ok::<_, rrss_core::Error>(queries::interest_hits(conn, id)));
 
-db_task!(ranking_settings() -> RankingSettings => queries::ranking_settings);
-
 db_task!(focus_cluster_members(cluster_id: i64, scope: Option<String>) -> Vec<ArticleView> =>
 |conn| {
     let scope = rrss_core::feed_scope::resolve(
@@ -95,7 +93,6 @@ command_handler![
     set_interest_enabled,
     delete_interest,
     add_interest,
-    ranking_settings,
     focus_cluster_members,
     mark_cluster_read,
     cluster_summary,

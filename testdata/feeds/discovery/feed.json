@@ -1,0 +1,6 @@
+{
+  "version": "https://jsonfeed.org/version/1.1",
+  "title": "Rowan's Notebook",
+  "home_page_url": "http://journal.example/rowan",
+  "items": [{"id":"urn:rowan:1","title":"Small discoveries","content_text":"A fictional field note.","date_published":"2026-11-09T12:00:00Z","date_modified":"2026-11-12T12:00:00Z"}]
+}

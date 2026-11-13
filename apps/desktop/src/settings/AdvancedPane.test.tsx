@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider, notifyManager } from "@tanstack/react
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiStub } from "../test/api";
 import { createPiFixture, type PiFixture } from "../test/fixtures/pi";
-import { generatedConfigFixture } from "../test/fixtures/settings";
+import { generatedConfigFixture, networkProxyFixture } from "../test/fixtures/settings";
 import { createReactHarness } from "../test/react";
 import { AdvancedPane } from "./AdvancedPane";
 
@@ -99,6 +99,47 @@ describe("AdvancedPane", () => {
     // 草稿再变，旧结果不再对应当前线路。
     type(field<HTMLInputElement>(host, "全局代理地址"), "http://127.0.0.1:7891");
     expect([...host.querySelectorAll("[data-proxy-check][data-state]")]).toHaveLength(0);
+  });
+
+  it("marks saved authentication for clearing when the draft proxy endpoint changes", async () => {
+    fixture.stub.handle("networkProxy", () =>
+      networkProxyFixture({
+        global: {
+          mode: "custom",
+          url: "http://proxy.example/",
+          no_proxy: "",
+          has_auth: true,
+        },
+      }),
+    );
+    const mounted = harness.mount(
+      <QueryClientProvider client={client}>
+        <AdvancedPane onAsk={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    await harness.flush();
+    const group = mounted.host.querySelector('[data-proxy-scope="global"]')!;
+    const input = group.querySelector<HTMLInputElement>(
+      '[data-proxy-field="url"]',
+    )!;
+    const state = () =>
+      group.querySelector("[data-auth-state]")!.getAttribute("data-auth-state");
+    expect(state()).toBe("saved");
+    for (const [address, expected] of [
+      ["http://other.example", "clear"],
+      ["HTTP://PROXY.EXAMPLE:80", "saved"],
+      ["http://proxy.example:8080/", "clear"],
+      ["https://proxy.example/", "clear"],
+    ]) {
+      type(input, address);
+      expect(state()).toBe(expected);
+      expect(
+        !!group.querySelector('[data-auth-clear-reason="endpoint-changed"]'),
+      ).toBe(expected === "clear");
+    }
+    type(input, "http://new-user:fake-pass@other.example:8080");
+    expect(state()).toBe("replace");
+    expect(group.querySelector("[data-auth-clear-reason]")).toBeNull();
   });
 
   it("moves pasted proxy credentials out of the address and keeps a client-side rejection as a draft", async () => {

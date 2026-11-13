@@ -1,3 +1,4 @@
+import { settingsQueryPolicy } from "./queryPolicy";
 import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -14,29 +15,24 @@ import { settingsChanged } from "./editState";
 
 export { aiKeys };
 
-const policy = {
-  staleTime: 30_000, gcTime: 5 * 60_000, retry: false, retryOnMount: false,
-  refetchOnMount: true, refetchOnWindowFocus: false, refetchOnReconnect: false,
-  networkMode: "always" as const,
-};
 
 // 连接列表不含完整密钥（阶段 19-9），只有状态与首尾各 4 位。
 // IPC 不可取消；消费 signal 让 query 取消隔离迟到快照。
 export const aiQueryOptions = () => queryOptions({
-  ...policy, queryKey: aiKeys.page, queryFn: ({ signal }) => { void signal; return api.ai(0); },
+  ...settingsQueryPolicy, queryKey: aiKeys.page, queryFn: ({ signal }) => { void signal; return api.ai(0); },
 });
 
 export const bindingsQueryOptions = () => queryOptions({
-  ...policy, queryKey: aiKeys.bindings, queryFn: ({ signal }) => { void signal; return api.modelBindings(); },
+  ...settingsQueryPolicy, queryKey: aiKeys.bindings, queryFn: ({ signal }) => { void signal; return api.modelBindings(); },
 });
 
 export const poolQueryOptions = () => queryOptions({
-  ...policy, queryKey: aiKeys.pool, queryFn: ({ signal }) => { void signal; return api.modelPool(); },
+  ...settingsQueryPolicy, queryKey: aiKeys.pool, queryFn: ({ signal }) => { void signal; return api.modelPool(); },
 });
 
 /** 预设是后端常量，一次读取即可。 */
 export const presetsQueryOptions = () => queryOptions({
-  ...policy, staleTime: Infinity, queryKey: aiKeys.presets, queryFn: () => api.providerPresets(),
+  ...settingsQueryPolicy, staleTime: Infinity, queryKey: aiKeys.presets, queryFn: () => api.providerPresets(),
 });
 
 export function prefetchAiSettings(client: QueryClient) {

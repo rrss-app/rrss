@@ -102,17 +102,6 @@ pub fn digest_pick_json_schema() -> Value {
     })
 }
 
-pub fn cite_json_schema() -> Value {
-    json!({
-        "type": "object",
-        "properties": {
-            "summary": { "type": "string" }
-        },
-        "required": ["summary"],
-        "additionalProperties": false
-    })
-}
-
 pub fn facts_json_schema() -> Value {
     json!({
         "type": "object",

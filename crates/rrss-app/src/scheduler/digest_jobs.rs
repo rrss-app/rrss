@@ -7,6 +7,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tokio::sync::watch;
+use tracing::{Instrument, instrument::WithSubscriber};
 
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("{message}")]
@@ -117,32 +118,42 @@ where
             key,
             finished: false,
         };
-        tokio::spawn(async move {
-            let _work = work;
-            let mut stop = capacity.stopped.subscribe();
-            let mut force = force;
-            loop {
-                let result = tokio::select! {
-                    biased;
-                    _ = stop.wait_for(|epoch| *epoch != key.2) => break,
-                    result = generate(key.1, force) => result.map_err(Failure::from),
-                };
-                let mut jobs = capacity.digests.0.lock().unwrap();
-                let entry = jobs.get_mut(&key).expect("digest owner");
-                entry.current.send_replace(Some(result));
-                if let Some(next) = entry.next.take() {
-                    entry.current = next;
-                    force = true;
-                } else {
-                    jobs.remove(&key);
-                    // Retire ownership under the same mutex so a new generation
-                    // cannot be removed by the old owner's Drop.
-                    owner.finished = true;
-                    break;
+        let current = tracing::Span::current();
+        let span = if current.is_none() {
+            crate::jobs::span(period)
+        } else {
+            current
+        };
+        tokio::spawn(
+            async move {
+                let _work = work;
+                let mut stop = capacity.stopped.subscribe();
+                let mut force = force;
+                loop {
+                    let result = tokio::select! {
+                        biased;
+                        _ = stop.wait_for(|epoch| *epoch != key.2) => break,
+                        result = generate(key.1, force) => result.map_err(Failure::from),
+                    };
+                    let mut jobs = capacity.digests.0.lock().unwrap();
+                    let entry = jobs.get_mut(&key).expect("digest owner");
+                    entry.current.send_replace(Some(result));
+                    if let Some(next) = entry.next.take() {
+                        entry.current = next;
+                        force = true;
+                    } else {
+                        jobs.remove(&key);
+                        // Retire ownership under the same mutex so a new generation
+                        // cannot be removed by the old owner's Drop.
+                        owner.finished = true;
+                        break;
+                    }
                 }
+                drop(owner);
             }
-            drop(owner);
-        });
+            .instrument(span)
+            .with_current_subscriber(),
+        );
     }
     loop {
         if let Some(result) = receiver.borrow_and_update().clone() {

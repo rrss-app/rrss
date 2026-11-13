@@ -355,11 +355,11 @@ export const MOCK_POOL = modelPoolFixture({
 // 各用途明确选的模型（阶段 19-7：没有主模型与「跟随」）；翻译还没选。
 const TASK_TITLES: Array<[string, string]> = [
   ["focus_summary", "焦点摘要"], ["article_summary", "本篇摘要"], ["article_segment", "长文分段压缩"], ["digest_daily", "日 Digest"],
-  ["digest_weekly", "周 Digest"], ["digest_pick_daily", "日 Digest 选题"], ["digest_pick_weekly", "周 Digest 选题"], ["cite_summarize", "引用总结"],
+  ["digest_weekly", "周 Digest"], ["digest_pick_daily", "日 Digest 选题"], ["digest_pick_weekly", "周 Digest 选题"],
   ["cluster_summary", "相近报道综述"], ["memory_candidate", "记忆候选"], ["episode_compress", "情节压缩"], ["article_translate", "本篇翻译"], ["embed", "嵌入"], ["chat", "对话"],
 ];
 const TASK_MODELS: Record<string, [number, string]> = {
-  focus_summary: [1, "llama3.2"], article_summary: [1, "qwen2.5:14b"], article_segment: [1, "qwen2.5:14b"], cite_summarize: [1, "qwen2.5:14b"],
+  focus_summary: [1, "llama3.2"], article_summary: [1, "qwen2.5:14b"], article_segment: [1, "qwen2.5:14b"],
   cluster_summary: [1, "qwen2.5:14b"], digest_daily: [2, "anthropic/claude-sonnet-4"], digest_weekly: [2, "anthropic/claude-sonnet-4"], digest_pick_daily: [1, "qwen2.5:14b"],
   digest_pick_weekly: [1, "qwen2.5:14b"], memory_candidate: [1, "qwen2.5:14b"], episode_compress: [1, "qwen2.5:14b"],
   embed: [1, "nomic-embed-text"], chat: [2, "anthropic/claude-sonnet-4"],

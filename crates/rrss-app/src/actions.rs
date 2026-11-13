@@ -1596,18 +1596,6 @@ mod tests {
         assert_eq!(count, 1);
     }
 
-    fn add_provider(conn: &Connection) -> rrss_core::Result<i64> {
-        ai_store::insert_provider(
-            conn,
-            &NewProvider {
-                name: "新端点".into(),
-                base_url: "http://127.0.0.1:11434/v1".into(),
-                api_key: None,
-                protocol: "chat".into(),
-            },
-        )
-    }
-
     #[test]
     fn successful_feedback_events_and_sessions_request_rank_refresh() {
         let (_dir, conn) = open_temp();
@@ -2200,7 +2188,7 @@ mod tests {
     fn a_use_can_only_pick_an_added_model_and_a_bad_batch_rolls_back() {
         use crate::views::{SaveModelBindingsArgs, TaskModelInput};
         let (_dir, conn) = open_temp();
-        let id = add_provider(&conn).unwrap();
+        let id = crate::test_net::fake_provider(&conn, "新端点", "http://model.example/v1".into());
         let input = |task: &str, model: &str| TaskModelInput {
             task: task.into(),
             provider_id: if model.is_empty() { 0 } else { id },
@@ -2234,7 +2222,6 @@ mod tests {
             (translate.provider_id, translate.model.as_str()),
             (id, "fast")
         );
-        assert!(translate.capabilities.is_some());
         assert_eq!(
             ai_store::resolve_task(&conn, ai_store::TASK_ARTICLE_TRANSLATE)
                 .unwrap()
@@ -2391,7 +2378,7 @@ mod tests {
     #[test]
     fn save_ai_settings_writes_only_the_connection_and_never_returns_the_full_key() {
         let (_dir, conn) = open_temp();
-        let pid = add_provider(&conn).unwrap();
+        let pid = crate::test_net::fake_provider(&conn, "新端点", "http://model.example/v1".into());
         let page = save_ai_settings(&conn, &ai_args(pid)).unwrap();
 
         assert_eq!(page.selected_id, pid);
@@ -2423,7 +2410,7 @@ mod tests {
     #[test]
     fn save_ai_settings_keeps_replaces_or_clears_the_stored_key() {
         let (_dir, conn) = open_temp();
-        let pid = add_provider(&conn).unwrap();
+        let pid = crate::test_net::fake_provider(&conn, "新端点", "http://model.example/v1".into());
         save_ai_settings(&conn, &ai_args(pid)).unwrap();
         let key = || ai_store::get_provider(&conn, pid).unwrap().api_key;
 

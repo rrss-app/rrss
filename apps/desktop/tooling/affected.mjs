@@ -4,7 +4,7 @@ import path from "node:path";
 import { DESKTOP_ROOT, isDirectRun } from "./cli.mjs";
 
 // 按改动挑测试：单测交给 `vitest related`（按 import 关系），e2e 按上次运行记下的「用例 → 执行过的 src 文件」挑到单个用例，
-// Rust 按改动的 crate 及依赖它的 crate。拿不准时本地只跑改过的 spec，全量 e2e 交给 CI（`--full` 仍可本地跑）。
+// Rust 只跑改到的模块与集成测试文件。拿不准时本地只跑改过的 spec；依赖它的 crate 与全量 e2e 交给 CI（`--full` 仍可本地跑 e2e）。
 
 const REPO = path.resolve(DESKTOP_ROOT, "../..");
 const DESKTOP = "apps/desktop/";
@@ -52,10 +52,7 @@ export function planAffected({ changed, coverage, crates, exists = () => true, f
     if (e2e.specs.length) steps.push({ name: "e2e（改过的 spec）", cmd: ["pnpm", "exec", "playwright", "test", "--reporter=line", ...e2e.specs], cwd: DESKTOP });
   } else if (e2e.specs.length) steps.push({ name: "e2e（相关）", cmd: ["pnpm", "exec", "playwright", "test", "--reporter=line", ...e2e.specs], cwd: DESKTOP });
 
-  const touched = Object.entries(crates).filter(([, c]) => changed.some((f) => f.startsWith(`crates/${c.dir}/`))).map(([name]) => name);
-  const rust = dependents(touched, crates);
-  // 桌面 crate 的测试不需要打包界面；前端已由上面的步骤覆盖。
-  if (rust.length) steps.push({ name: "Rust", cmd: ["cargo", "test", "--locked", ...rust.flatMap((name) => ["-p", name])], cwd: ".", env: { RRSS_SKIP_FRONTEND: "1" } });
+  steps.push(...rustSteps(changed, crates));
   return steps;
 }
 
@@ -75,16 +72,41 @@ function pickSpecs(desktop, coverage, present) {
   return { all: false, specs: [...specs].filter((s) => !s.includes(":") || !specs.has(s.split(":")[0])).sort() };
 }
 
-function dependents(touched, crates) {
-  const out = new Set(touched);
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const [name, c] of Object.entries(crates)) {
-      if (!out.has(name) && c.deps.some((d) => out.has(d))) { out.add(name); grew = true; }
+/** 没有单测、check 又依赖 WebKitGTK 的 crate：本地不跑，交给 CI。 */
+const RUST_CHECK_ONLY = new Set(["rrss-desktop"]);
+
+/**
+ * 只测改到的模块：`src/a/b.rs`、`src/a/b/mod.rs`、`src/a/b/tests.rs` → 库测试过滤 `a::b::`；`tests/x.rs` → `--test x`。
+ * 入口、`Cargo.toml` 与非 `.rs` 文件（SQL、数据）看不出范围，跑整个库测试。依赖它的 crate 和其余集成测试留给 CI。
+ */
+function rustSteps(changed, crates) {
+  const steps = [];
+  const env = { RRSS_SKIP_FRONTEND: "1" };
+  for (const [name, { dir }] of Object.entries(crates).sort(([a], [b]) => a.localeCompare(b))) {
+    const prefix = `crates/${dir}/`;
+    const files = changed.filter((f) => f.startsWith(prefix)).map((f) => f.slice(prefix.length));
+    if (!files.length) continue;
+    if (RUST_CHECK_ONLY.has(name)) { steps.push({ name: `Rust ${name} 只有 check，留给 CI`, note: true }); continue; }
+    const filters = new Set();
+    const tests = new Set();
+    let whole = false;
+    for (const file of files) {
+      const integration = /^tests\/([^/]+)\.rs$/.exec(file);
+      if (integration) { tests.add(integration[1]); continue; }
+      const parts = (/^src\/(.+)\.rs$/.exec(file)?.[1].split("/") ?? []).filter((part) => part !== "mod");
+      if (parts.at(-1) === "tests") parts.pop();
+      if (!parts.length || parts[0] === "bin" || (parts.length === 1 && ["lib", "main"].includes(parts[0]))) whole = true;
+      else filters.add(`${parts.join("::")}::`);
+    }
+    if (whole || filters.size) {
+      const filter = whole ? [] : ["--", ...[...filters].sort()];
+      steps.push({ name: `Rust ${name}（${whole ? "整个库测试" : "改动模块"}）`, cmd: ["cargo", "test", "--locked", "-p", name, "--lib", ...filter], cwd: ".", env });
+    }
+    for (const test of [...tests].sort()) {
+      steps.push({ name: `Rust ${name}（tests/${test}.rs）`, cmd: ["cargo", "test", "--locked", "-p", name, "--test", test], cwd: ".", env });
     }
   }
-  return [...out].sort();
+  return steps;
 }
 
 function git(...args) {
@@ -124,7 +146,8 @@ export function runAffected(argv = process.argv.slice(2)) {
   const baseAt = argv.indexOf("--base");
   const base = baseAt >= 0 ? argv[baseAt + 1] : "origin/main";
   const changed = changedFiles(base);
-  const steps = planAffected({ changed, coverage: readCoverage(), crates: readCrates(), exists: (f) => fs.existsSync(path.join(REPO, f)), full });
+  const crates = changed.some((f) => f.startsWith("crates/") || /^Cargo\.(toml|lock)$/.test(f)) ? readCrates() : {};
+  const steps = planAffected({ changed, coverage: readCoverage(), crates, exists: (f) => fs.existsSync(path.join(REPO, f)), full });
   process.stdout.write(`相对 ${base} 改动 ${changed.length} 个文件。\n`);
   if (!steps.length) { process.stdout.write("没有需要跑的检查。\n"); return 0; }
   for (const step of steps) {

@@ -4,6 +4,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
+use tracing::{Instrument, instrument::WithSubscriber};
 
 use rrss_ai::pi::{PiEvent, is_dialog_method, ui_cancel, ui_confirm};
 use rrss_core::threads::{self, MessageRole};
@@ -220,6 +221,7 @@ fn url_summary(raw: &str) -> String {
 pub struct ChatRuntime {
     sup: Arc<Supervisor>,
     turn: StdMutex<TurnState>,
+    turn_span: StdMutex<Option<tracing::Span>>,
     sink: Arc<dyn ChatSink>,
     mcp_confirms: StdMutex<std::collections::HashMap<String, (u64, std::time::Instant)>>,
     mcp_steps: StdMutex<std::collections::HashMap<String, (String, String)>>,
@@ -247,6 +249,7 @@ impl ChatRuntime {
         let runtime = Arc::new(Self {
             sup,
             turn: StdMutex::new(TurnState::default()),
+            turn_span: StdMutex::default(),
             mcp_confirms: StdMutex::default(),
             mcp_steps: StdMutex::default(),
             sink,
@@ -254,7 +257,7 @@ impl ChatRuntime {
             post_turn_jobs,
             dispatch_lock: Arc::new(tokio::sync::Mutex::new(())),
         });
-        tokio::spawn(runtime.clone().pump(rx));
+        tokio::spawn(runtime.clone().pump(rx).with_current_subscriber());
         runtime
     }
 
@@ -268,6 +271,14 @@ impl ChatRuntime {
 
     fn thread_id(&self) -> i64 {
         self.turn.lock().map(|t| t.thread_id).unwrap_or(0)
+    }
+
+    fn turn_span(&self) -> tracing::Span {
+        self.turn_span
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(tracing::Span::none)
     }
 
     /// 与发送准备串行；生成和结算仍占 busy，不能删除正在写消息的线程。
@@ -299,8 +310,15 @@ impl ChatRuntime {
                 "上一条回复尚未结束，请等待或停止生成后再发送",
             ));
         }
-        let result = self.dispatch(args).await;
+        let span = tracing::span!(parent: None, tracing::Level::WARN, "pi_turn", thread_id = tracing::field::Empty);
+        if args.thread_id > 0 {
+            span.record("thread_id", args.thread_id);
+        }
+        *self.turn_span.lock().unwrap() = Some(span.clone());
+        let result = self.dispatch(args).instrument(span.clone()).await;
         if result.is_err() {
+            let _entered = span.enter();
+            self.turn_span.lock().unwrap().take();
             if let Some(done) = self.turn.lock().ok().and_then(|mut t| t.finish()) {
                 self.sink.emit(ChatEvent::Done(done.snapshot.thread_id));
             }
@@ -329,6 +347,9 @@ impl ChatRuntime {
         })
         .await?;
         let thread_id = prepared.thread.id;
+        if args.thread_id <= 0 {
+            tracing::Span::current().record("thread_id", thread_id);
+        }
         let session = self
             .sup
             .open_session(
@@ -464,7 +485,7 @@ impl ChatRuntime {
     }
 
     pub async fn abort(&self) -> Result<(), ChatError> {
-        self.sup.abort().await
+        self.sup.abort().instrument(self.turn_span()).await
     }
 
     /// 设置页「重启引擎」：同样不打断进行中的回复；有序关闭后按当前配置启动（含托管下载与握手）。
@@ -516,26 +537,30 @@ impl ChatRuntime {
 
     /// 回应 chat:confirm。
     pub async fn confirm(&self, id: &str, ok: bool, remember: bool) -> Result<(), ChatError> {
-        let pending = self.mcp_confirms.lock().unwrap().remove(id);
-        if let Some((generation, deadline)) = pending {
-            if generation != self.sup.generation() || std::time::Instant::now() >= deadline {
-                return Ok(());
+        async {
+            let pending = self.mcp_confirms.lock().unwrap().remove(id);
+            if let Some((generation, deadline)) = pending {
+                if generation != self.sup.generation() || std::time::Instant::now() >= deadline {
+                    return Ok(());
+                }
+                let value = if !ok {
+                    "deny"
+                } else if remember {
+                    "remember"
+                } else {
+                    "allow"
+                };
+                return self
+                    .sup
+                    .answer_ui(
+                        &serde_json::json!({"type":"extension_ui_response","id":id,"value":value}),
+                    )
+                    .await;
             }
-            let value = if !ok {
-                "deny"
-            } else if remember {
-                "remember"
-            } else {
-                "allow"
-            };
-            return self
-                .sup
-                .answer_ui(
-                    &serde_json::json!({"type":"extension_ui_response","id":id,"value":value}),
-                )
-                .await;
+            self.sup.answer_ui(&ui_confirm(id, ok)).await
         }
-        self.sup.answer_ui(&ui_confirm(id, ok)).await
+        .instrument(self.turn_span())
+        .await
     }
 
     fn emit_error(&self, thread_id: i64, kind: ChatErrorKind, message: String) {
@@ -671,6 +696,8 @@ impl ChatRuntime {
                 tracing::debug!(generation, "drop event from a previous pi process");
                 continue;
             }
+            let span = self.turn_span();
+            async {
             self.sup.touch();
             match event {
                 PiEvent::TextDelta(delta) => {
@@ -778,6 +805,7 @@ impl ChatRuntime {
                 PiEvent::Exited { .. } => self.settle(true).await,
                 _ => {}
             }
+            }.instrument(span).await;
         }
     }
 
@@ -899,7 +927,7 @@ impl ChatRuntime {
                 .emit(ChatEvent::Context(ChatContextEvent { thread_id, context })),
             // 用量只是指示，存不下不打断对话。
             Err(err) => {
-                tracing::warn!(thread_id, error = %crate::log::error(&err), "could not save context usage")
+                tracing::warn!(thread_id = rrss_core::logsafe::unless_in_span("thread_id", thread_id), error = %crate::log::error(&err), "could not save context usage")
             }
         }
     }
@@ -956,27 +984,38 @@ impl ChatRuntime {
                 self.save_context(thread_id, used, done.window).await;
             }
         }
+        self.turn_span.lock().unwrap().take();
         self.sup.end();
         self.sink.emit(ChatEvent::Done(thread_id));
         if self.post_turn_jobs && !body.trim().is_empty() {
             let path = self.db_path().to_path_buf();
             let network = self.network.clone();
-            tokio::spawn(async move {
-                use rrss_core::network::NetworkScope;
-                match network.client(NetworkScope::Api).await {
-                    Ok(client) => {
-                        let _ = crate::jobs::extract_memory_candidates(&path, &client, body).await;
+            tokio::spawn(
+                async move {
+                    use rrss_core::network::NetworkScope;
+                    match network.client(NetworkScope::Api).await {
+                        Ok(client) => {
+                            let _ =
+                                crate::jobs::extract_memory_candidates(&path, &client, body).await;
+                        }
+                        Err(error) => {
+                            tracing::warn!(%error, "memory extraction network unavailable")
+                        }
                     }
-                    Err(error) => tracing::warn!(%error, "memory extraction network unavailable"),
-                }
-                match network.client(NetworkScope::Api).await {
-                    Ok(client) => {
-                        let _ = crate::jobs::compress_episode_if_needed(&path, &client, thread_id)
-                            .await;
+                    match network.client(NetworkScope::Api).await {
+                        Ok(client) => {
+                            let _ =
+                                crate::jobs::compress_episode_if_needed(&path, &client, thread_id)
+                                    .await;
+                        }
+                        Err(error) => {
+                            tracing::warn!(%error, "episode compression network unavailable")
+                        }
                     }
-                    Err(error) => tracing::warn!(%error, "episode compression network unavailable"),
                 }
-            });
+                .instrument(crate::jobs::span("post_turn"))
+                .with_current_subscriber(),
+            );
         }
     }
 }

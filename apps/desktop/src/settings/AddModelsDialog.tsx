@@ -7,7 +7,7 @@ import { aiKeys, aiMutationOptions, bindingsQueryOptions } from "./aiQuery";
 import { ChipBar } from "./chips";
 import { Dialog } from "./Dialog";
 import { useSettingsWrite, type SettingsEditState } from "./editState";
-import { choiceKey, modelName, parseChoice } from "./modelChoices";
+import { choiceKey, modelName, parseChoice, sameChoice } from "./modelChoices";
 import type { Ask } from "./SettingsPanel";
 import { MenuSelect } from "../components/MenuSelect";
 
@@ -55,7 +55,7 @@ export function AddModelsDialog({ providers, pool, initial, note: firstNote, onA
   const removes = Object.entries(staged).filter(([k, v]) => !v && inPool(k)).map(([k]) => parseChoice(k)!);
   const dirty = adds.length + removes.length > 0 || !!manual.trim();
   const busy = writing || fetching;
-  const used = removes.flatMap((c) => bindings?.tasks.filter((t) => t.provider_id === c.provider_id && t.model === c.model) ?? []);
+  const used = removes.flatMap((c) => bindings?.tasks.filter((t) => sameChoice(t, c)) ?? []);
 
   const toggle = (model: string) => {
     const key = choiceKey({ provider_id: providerId, model });

@@ -165,7 +165,10 @@ export function checkIpc({ commands, handlers, calls, mocks }) {
 }
 
 export function checkChatEvents(api, host) {
-  const listens = [...api.matchAll(/\blisten(?:<[^>]+>)?\("(chat:[\w]+)"/g)].map((m) => m[1]);
+  const listens = [
+    ...api.matchAll(/\blisten(?:<[^>]+>)?\("(chat:[\w]+)"/g),
+    ...api.matchAll(/\bonWebEvent(?:<[^>]+>)?\("(chat:[\w]+)"/g),
+  ].map((m) => m[1]);
   const emits = [...host.matchAll(/\.emit\("(chat:[\w]+)"/g)].map((m) => m[1]);
   const errors = [];
   for (const name of new Set([...listens, ...emits])) {

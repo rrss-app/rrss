@@ -316,7 +316,6 @@ export const api = {
   reader: (id: number) => invoke<ReaderView>("article_reader", { id }),
   relatedArticles: (articleId: number, limit: number) => invoke<RelatedArticleView[]>("related_articles", { articleId, limit }),
   openArticle: (id: number) => invoke<ReaderView>("open_article", { id }),
-  threads: () => invoke<ThreadView[]>("threads"),
   searchThreads: (query: string, limit = 20) => invoke<ThreadSearchHitView[]>("search_threads", { query, limit }),
   threadList: () => invoke<ThreadListView>("thread_list"),
   archivedThreads: () => invoke<ThreadView[]>("archived_threads"),
@@ -439,7 +438,6 @@ export const api = {
     const args: SendMessageArgs = { threadId, text, citations, digestId, model, ...(thinking == null ? {} : { thinking }) };
     return invoke<number>("send_message", { args });
   },
-  newThread: () => invoke<number>("new_thread"),
   abort: () => invoke("abort_generation"),
   prefetch: (articleId: number) => invoke<MediaRef[]>("prefetch_images", { articleId }),
   retryImage: (articleId: number, url: string) => invoke<MediaRef>("retry_image", { articleId, url }),
@@ -450,7 +448,6 @@ export const api = {
   hiddenInScope: (scope: string, listScope: string) =>
     invoke<HiddenPage>("hidden_page", { scope, listScope }),
   releaseArticle: (id: number) => invoke<void>("release_article", { id }),
-  unreleaseArticle: (id: number) => invoke<void>("unrelease_article", { id }),
   allowRuleForFeed: (ruleId: number, feedId: number) => invoke<number>("allow_rule_for_feed", { ruleId, feedId }),
   createRule: (spec: NewRuleSpec) => invoke<number>("create_rule", { spec }),
   updateRule: (id: number, spec: NewRuleSpec) => invoke("update_rule", { id, spec }),
@@ -486,9 +483,6 @@ export const api = {
   dismissFeedHealth: (id: number) => invoke<FeedTree>("dismiss_feed_health", { id }),
   deleteProvider: (id: number) => invoke("delete_provider", { id }),
   saveAiSettings: (args: SaveAiSettingsArgs) => invoke<AiPage>("save_ai_settings", { args }),
-  /** 草稿连接取模型列表；已保存的连接没填密钥时宿主用库里的。 */
-  fetchModels: (providerId: number, baseUrl: string, apiKey?: string | null) =>
-    invoke<string[]>("fetch_models", { providerId, baseUrl, apiKey: apiKey ?? null }),
   /** 「测试」连接：只请求一次模型列表；测的是已保存的地址与密钥时结果记到连接上。 */
   testConnection: (args: ConnectionTestArgs) => invoke<ConnectionTestView>("test_connection", { args }),
   providerPresets: () => invoke<ProviderPreset[]>("provider_presets"),
@@ -583,45 +577,36 @@ export async function copyText(text: string): Promise<void> {
 }
 
 export function onChatDelta(cb: (snapshot: ChatStreamEvent) => void): Promise<UnlistenFn> {
-  if (!isTauri()) return Promise.resolve(() => {});
-  return listen<ChatStreamEvent>("chat:delta", (e) => cb(e.payload));
+  return onWebEvent<ChatStreamEvent>("chat:delta", cb);
 }
 export function onChatStart(cb: (id: number) => void): Promise<UnlistenFn> {
-  if (!isTauri()) return Promise.resolve(() => {});
-  return listen<number>("chat:start", (e) => cb(e.payload));
+  return onWebEvent<number>("chat:start", cb);
 }
 export function onChatError(cb: (event: ChatErrorEvent) => void): Promise<UnlistenFn> {
-  if (!isTauri()) return Promise.resolve(() => {});
-  return listen<ChatErrorEvent>("chat:error", (e) => cb(e.payload));
+  return onWebEvent<ChatErrorEvent>("chat:error", cb);
 }
 export function onChatDone(cb: (id: number) => void): Promise<UnlistenFn> {
-  if (!isTauri()) return Promise.resolve(() => {});
-  return listen<number>("chat:done", (e) => cb(e.payload));
+  return onWebEvent<number>("chat:done", cb);
 }
 /** 结算或压缩后的上下文快照；按 thread_id 替换，不累加。 */
 export function onChatContext(cb: (event: ChatContextEvent) => void): Promise<UnlistenFn> {
-  if (!isTauri()) return Promise.resolve(() => {});
-  return listen<ChatContextEvent>("chat:context", (e) => cb(e.payload));
+  return onWebEvent<ChatContextEvent>("chat:context", cb);
 }
 /** 对话引擎后台下载的进度与结论；离开设置页也照常推送。 */
 export function onPiInstall(cb: (view: PiInstallView) => void): Promise<UnlistenFn> {
-  if (!isTauri()) return Promise.resolve(() => {});
-  return listen<PiInstallView>("pi:install", (e) => cb(e.payload));
+  return onWebEvent<PiInstallView>("pi:install", cb);
 }
 /** 一行进度（「正在查阅本地文章」等）；空文本表示清除。 */
 export function onChatStatus(cb: (event: ChatStatusEvent) => void): Promise<UnlistenFn> {
-  if (!isTauri()) return Promise.resolve(() => {});
-  return listen<ChatStatusEvent>("chat:status", (e) => cb(e.payload));
+  return onWebEvent<ChatStatusEvent>("chat:status", cb);
 }
 /** 助手请求确认（例如读取网页），用 `confirmFetch` 回应；超时由对话引擎按拒绝处理。 */
 export function onChatConfirm(cb: (event: ChatConfirmEvent) => void): Promise<UnlistenFn> {
-  if (!isTauri()) return Promise.resolve(() => {});
-  return listen<ChatConfirmEvent>("chat:confirm", (e) => cb(e.payload));
+  return onWebEvent<ChatConfirmEvent>("chat:confirm", cb);
 }
 
 export function onMediaReady(cb: (payload: MediaReadyEvent) => void): Promise<UnlistenFn> {
-  if (!isTauri()) return Promise.resolve(() => {});
-  return listen<MediaReadyEvent>("media:ready", (e) => cb(e.payload));
+  return onWebEvent<MediaReadyEvent>("media:ready", cb);
 }
 
 /** 四条通道全部就绪才允许启动；任意注册失败都清理已注册的监听。 */
@@ -636,8 +621,7 @@ export async function onTranslationEvent(cb: (payload: TranslationEvent) => void
 }
 
 export function onEmbedCover(cb: (payload: EmbedCoverEvent) => void): Promise<UnlistenFn> {
-  if (!isTauri()) return Promise.resolve(() => {});
-  return listen<EmbedCoverEvent>("embed:cover", (e) => cb(e.payload));
+  return onWebEvent<EmbedCoverEvent>("embed:cover", cb);
 }
 
 function onWebEvent<T>(event: string, cb: (payload: T) => void): Promise<UnlistenFn> {
@@ -682,7 +666,7 @@ export async function onFeedUpdated(changed: (event: FeedUpdated) => void): Prom
 }
 
 export function onSchedulerUpdated(changed: (snapshot: SchedulerSnapshot) => void): Promise<UnlistenFn> {
-  return isTauri() ? listen<SchedulerSnapshot>("scheduler:updated", event => changed(event.payload)) : Promise.resolve(() => {});
+  return onWebEvent<SchedulerSnapshot>("scheduler:updated", changed);
 }
 
 /** 窗口三键的动作与最大化状态；只在有宿主时调用。 */

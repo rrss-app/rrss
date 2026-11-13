@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use rrss_core::{Error as CoreError, db};
+use tracing::Instrument;
 
 pub mod cluster;
 pub mod cluster_summary;
@@ -88,6 +89,11 @@ pub(crate) fn is_skip(err: &anyhow::Error) -> bool {
     })
 }
 
+/// 独立作业不继承触发它的命令；只附加类别，不产生日志行。
+pub(crate) fn span(job: &str) -> tracing::Span {
+    tracing::span!(parent: None, tracing::Level::WARN, "job", job)
+}
+
 pub(crate) async fn spawn_db<T, F>(path: PathBuf, f: F) -> Result<T>
 where
     T: Send + 'static,
@@ -96,6 +102,13 @@ where
     let capacity = crate::scheduler::model_capacity::Capacity::for_database(&path);
     let settling = capacity.work();
     let queued = std::time::Instant::now();
+    // 已有 job / feed / pi_turn / command 链路继续沿用，独立数据库作业才建根 span。
+    let current = tracing::Span::current();
+    let span = if current.is_none() {
+        span("db")
+    } else {
+        current
+    };
     crate::execution::blocking(move || {
         let _settling = settling;
         capacity.metrics.db_queue.record(queued.elapsed());
@@ -103,6 +116,7 @@ where
         let _timing = capacity.metrics.db_work.start();
         f(&conn)
     })
+    .instrument(span)
     .await
     .context("db worker join")?
     .map_err(Into::into)

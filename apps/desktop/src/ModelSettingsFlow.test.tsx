@@ -1,3 +1,4 @@
+import { deferred } from "./test/deferred";
 import { aiPageFixture, bindingsFixture, modelPoolFixture, providerFixture } from "./test/fixtures/settings";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -53,14 +54,14 @@ describe("Model settings leave protection", () => {
 
   it("blocks leaving during writes, keeps dirty edits on save failure, then saves and leaves", async () => {
     const { host, input } = await setup();
-    let reject!: (error: Error) => void;
-    vi.spyOn(api, "saveAiSettings").mockImplementation(() => new Promise((_, no) => { reject = no; }));
+    const save = deferred<Awaited<ReturnType<typeof api.saveAiSettings>>>();
+    vi.spyOn(api, "saveAiSettings").mockImplementation(() => save.promise);
     click(host.querySelector("[role=dialog]")!, "保存"); await flush();
     tab(host, "translate"); await flush();
     expect(host.querySelector(".settings-nav [aria-current=page]")?.getAttribute("data-settings-tab")).toBe("model");
     expect(host.querySelector("[role=alertdialog]")).toBeNull();
     expect(host.textContent).toContain("本次操作完成后再离开");
-    await act(async () => reject(new Error("database locked"))); await flush();
+    await act(async () => save.reject(new Error("database locked"))); await flush();
     expect(input.value).toBe("未保存的接口名");
     click(host, "返回阅读"); await flush();
     const confirm = host.querySelector<HTMLElement>("[role=alertdialog]")!;

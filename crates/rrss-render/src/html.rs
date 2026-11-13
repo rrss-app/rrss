@@ -15,10 +15,79 @@ use url::Url;
 use crate::ir::{Block, Inline};
 use crate::sanitize::clean_html;
 
+pub(crate) fn normalize_code_language(language: &str) -> Option<String> {
+    if language.len() > 32
+        || !language
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'+' | b'#' | b'-'))
+    {
+        return None;
+    }
+    let language = language.to_ascii_lowercase();
+    Some(
+        match language.as_str() {
+            "" | "text" | "plain" | "plaintext" | "none" | "nohighlight" => return None,
+            "js" => "javascript",
+            "ts" => "typescript",
+            "py" => "python",
+            "sh" | "shell" | "zsh" | "console" => "bash",
+            "rs" => "rust",
+            "yml" => "yaml",
+            "c++" => "cpp",
+            "cs" | "c#" => "csharp",
+            "golang" => "go",
+            "md" => "markdown",
+            _ => &language,
+        }
+        .to_string(),
+    )
+}
+
+fn code_language(tag: &html5ever::tokenizer::Tag) -> Option<String> {
+    let code_tag = matches!(tag.name.as_ref(), "pre" | "code");
+    let mut fallback = None;
+    for attr in &tag.attrs {
+        match attr.name.local.as_ref() {
+            "data-lang" | "data-language" => return Some(attr.value.to_string()),
+            "lang" if code_tag => fallback = Some(attr.value.to_string()),
+            "class" => {
+                let mut words = attr.value.split_whitespace();
+                while let Some(word) = words.next() {
+                    for prefix in ["language-", "lang-", "highlight-source-"] {
+                        if prefix == "lang-" && !code_tag {
+                            continue;
+                        }
+                        if let Some(language) = word.strip_prefix(prefix) {
+                            return Some(language.to_string());
+                        }
+                    }
+                    if code_tag && let Some(brush) = word.strip_prefix("brush:") {
+                        let language = if brush.is_empty() {
+                            words.next().unwrap_or("")
+                        } else {
+                            brush
+                        };
+                        return Some(language.split(';').next().unwrap_or("").to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    fallback
+}
+
 pub fn html_to_blocks(html: &str, base: Option<&Url>) -> Vec<Block> {
     let (html, embeds) = crate::embed::excise_embeds(html, base);
     let cleaned = clean_html(&html, base);
-    let mut blocks = walk(&cleaned, &table_candidates(&html));
+    let (tables, languages) = source_metadata(&html);
+    // A removed <pre> would shift every later hint onto the wrong code block.
+    let languages = if source_metadata(&cleaned).1.len() == languages.len() {
+        languages.as_slice()
+    } else {
+        &[]
+    };
+    let mut blocks = walk(&cleaned, &tables, languages);
     if blocks.is_empty() && !cleaned.trim().is_empty() {
         blocks.push(Block::Paragraph {
             inlines: vec![Inline::text(strip_tags(&cleaned))],
@@ -66,7 +135,7 @@ fn strip_tags(html: &str) -> String {
     html_unescape(&out)
 }
 
-fn walk(html: &str, table_candidates: &[bool]) -> Vec<Block> {
+fn walk(html: &str, table_candidates: &[bool], code_languages: &[Option<String>]) -> Vec<Block> {
     let mut p = Parser {
         input: html,
         pos: 0,
@@ -76,6 +145,8 @@ fn walk(html: &str, table_candidates: &[bool]) -> Vec<Block> {
         list_kind: Vec::new(),
         in_pre: false,
         pre_buf: String::new(),
+        pre_lang: None,
+        code_languages: code_languages.iter(),
         heading: None,
         in_quote: false,
         in_p: false,
@@ -103,6 +174,8 @@ struct Parser<'a> {
     list_kind: Vec<ListKind>,
     in_pre: bool,
     pre_buf: String,
+    pre_lang: Option<String>,
+    code_languages: std::slice::Iter<'a, Option<String>>,
     heading: Option<u8>,
     in_quote: bool,
     in_p: bool,
@@ -203,11 +276,17 @@ impl<'a> Parser<'a> {
                 self.flush_paragraph();
                 self.in_pre = true;
                 self.pre_buf.clear();
+                self.pre_lang = self
+                    .code_languages
+                    .next()
+                    .and_then(|language| language.as_deref())
+                    .and_then(normalize_code_language);
             }
             (true, "pre") => {
                 self.in_pre = false;
                 let text = std::mem::take(&mut self.pre_buf);
-                self.blocks.push(Block::CodeBlock { lang: None, text });
+                let lang = self.pre_lang.take();
+                self.blocks.push(Block::CodeBlock { lang, text });
             }
             (false, "blockquote") => {
                 self.flush_paragraph();
@@ -459,25 +538,75 @@ fn table_inline_tag(name: &str) -> bool {
     )
 }
 
-/// 在清洗前判断结构，避免 section 等未入白名单的块标签消失后被误认成简单表格。
-fn table_candidates(html: &str) -> Vec<bool> {
+/// 在清洗前读取结构与语言，避免被移除的容器和属性改变表格判断或代码语言。
+fn source_metadata(html: &str) -> (Vec<bool>, Vec<Option<String>>) {
     use html5ever::tokenizer::{
         BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer,
     };
     use std::cell::RefCell;
     #[derive(Default)]
-    struct Tables {
+    struct Metadata {
         candidates: Vec<bool>,
         stack: Vec<usize>,
+        languages: Vec<Option<String>>,
+        elements: Vec<(html5ever::LocalName, Option<String>)>,
+        // Code-block index and whether its first <code> may still supply a hint.
+        pre: Option<(usize, bool)>,
     }
     #[derive(Default)]
-    struct Sink(RefCell<Tables>);
+    struct Sink(RefCell<Metadata>);
     impl TokenSink for Sink {
         type Handle = ();
         fn process_token(&self, token: Token, _: u64) -> TokenSinkResult<()> {
             if let Token::TagToken(tag) = token {
                 let mut state = self.0.borrow_mut();
                 let name = tag.name.as_ref();
+                if tag.kind == TagKind::EndTag {
+                    if let Some(index) = state.elements.iter().rposition(|(n, _)| n == &tag.name) {
+                        state.elements.truncate(index);
+                    }
+                    if name == "pre" {
+                        state.pre = None;
+                    }
+                } else {
+                    let language = code_language(&tag);
+                    if name == "pre" {
+                        let parent = state
+                            .elements
+                            .iter()
+                            .rev()
+                            .take(2)
+                            .find_map(|(_, lang)| lang.clone());
+                        state.pre = Some((state.languages.len(), language.is_none()));
+                        state.languages.push(language.clone().or(parent));
+                    } else if name == "code"
+                        && let Some((index, true)) = state.pre
+                    {
+                        state.pre = Some((index, false));
+                        if language.is_some() {
+                            state.languages[index] = language.clone();
+                        }
+                    }
+                    if !matches!(
+                        name,
+                        "area"
+                            | "base"
+                            | "br"
+                            | "col"
+                            | "embed"
+                            | "hr"
+                            | "img"
+                            | "input"
+                            | "link"
+                            | "meta"
+                            | "param"
+                            | "source"
+                            | "track"
+                            | "wbr"
+                    ) {
+                        state.elements.push((tag.name.clone(), language));
+                    }
+                }
                 if name == "table" && tag.kind == TagKind::EndTag {
                     state.stack.pop();
                 } else if tag.kind == TagKind::StartTag {
@@ -547,7 +676,8 @@ fn table_candidates(html: &str) -> Vec<bool> {
     let tokenizer = Tokenizer::new(Sink::default(), Default::default());
     let _ = tokenizer.feed(&input);
     tokenizer.end();
-    tokenizer.sink.0.into_inner().candidates
+    let state = tokenizer.sink.0.into_inner();
+    (state.candidates, state.languages)
 }
 
 /// 输入已由 ammonia 规范化；单元格只允许内联标签，其他情况交还旧 walker。
@@ -589,7 +719,7 @@ fn simple_table(html: &str) -> Option<(usize, crate::table::Table)> {
                     }
                 }
                 let mut inlines = Vec::new();
-                for block in walk(&format!("<p>{cell}</p>"), &[]) {
+                for block in walk(&format!("<p>{cell}</p>"), &[], &[]) {
                     let Block::Paragraph { inlines: part } = block else {
                         return None;
                     };
@@ -858,6 +988,158 @@ mod tests {
                 assert!(text.contains("close 21:00"), "{text:?}");
             }
             other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn code_block_languages() {
+        let cases: &[(&str, &str, &[Option<&str>])] = &[
+            (
+                "pre wins",
+                "<div data-lang='go'><pre class='language-JS'><code class='language-py'>x</code></pre></div>",
+                &[Some("javascript")],
+            ),
+            (
+                "code wins over parent",
+                "<div data-lang='go'><pre><code class='lang-TS'>x</code></pre></div>",
+                &[Some("typescript")],
+            ),
+            (
+                "highlight wrapper",
+                "<div class='highlight-source-rust'><pre>x</pre></div>",
+                &[Some("rust")],
+            ),
+            (
+                "rouge wrapper",
+                "<div class='language-js highlighter-rouge'><pre>x</pre></div>",
+                &[Some("javascript")],
+            ),
+            (
+                "nested rouge wrapper",
+                "<div class='language-ruby highlighter-rouge'><div class='highlight'><pre class='highlight'><code>x</code></pre></div></div>",
+                &[Some("ruby")],
+            ),
+            (
+                "nearest annotated wrapper wins",
+                "<div class='language-ruby'><div data-lang='go'><pre>x</pre></div></div>",
+                &[Some("go")],
+            ),
+            (
+                "parent lang attribute",
+                "<div lang='en'><pre>x</pre></div>",
+                &[None],
+            ),
+            (
+                "parent lang class",
+                "<article class='lang-en'><pre>x</pre></article>",
+                &[None],
+            ),
+            (
+                "parent brush class",
+                "<div class='brush: js;'><pre>x</pre></div>",
+                &[None],
+            ),
+            (
+                "figure data-lang",
+                "<figure data-lang='go'><pre>x</pre></figure>",
+                &[Some("go")],
+            ),
+            (
+                "brush",
+                "<pre class='brush: js; gutter: false'>x</pre>",
+                &[Some("javascript")],
+            ),
+            (
+                "data-language",
+                "<pre data-language='PY'>x</pre>",
+                &[Some("python")],
+            ),
+            ("lang attribute", "<pre lang='YML'>x</pre>", &[Some("yaml")]),
+            (
+                "class overrides lang",
+                "<pre lang='en' class='language-rust'>x</pre>",
+                &[Some("rust")],
+            ),
+            (
+                "data-lang overrides lang",
+                "<pre lang='en' data-lang='go'>x</pre>",
+                &[Some("go")],
+            ),
+            (
+                "code data-language overrides lang",
+                "<pre><code lang='en' data-language='py'>x</code></pre>",
+                &[Some("python")],
+            ),
+            (
+                "data-lang alias",
+                "<pre data-lang='C++'>x</pre>",
+                &[Some("cpp")],
+            ),
+            (
+                "explicit plain wins",
+                "<div data-lang='go'><pre data-lang='text'><code class='language-rust'>x</code></pre></div>",
+                &[None],
+            ),
+            ("invalid", "<pre data-lang='bad/name'>x</pre>", &[None]),
+            (
+                "too long",
+                "<pre data-lang='abcdefghijklmnopqrstuvwxyz1234567'>x</pre>",
+                &[None],
+            ),
+            (
+                "only first code",
+                "<div data-lang='go'><pre><code></code><code class='language-rust'>x</code></pre></div>",
+                &[Some("go")],
+            ),
+            (
+                "only two ancestor levels",
+                "<div data-lang='go'><section><div><pre>x</pre></div></section></div>",
+                &[None],
+            ),
+            (
+                "wrapper removed by cleaning",
+                "<section data-lang='rust'><pre>x</pre></section>",
+                &[Some("rust")],
+            ),
+            (
+                "raw script is not markup",
+                "<script>const sample = '<pre data-lang=\"go\">x</pre>';</script><pre data-lang='rust'>x</pre>",
+                &[Some("rust")],
+            ),
+            (
+                "pre count mismatch drops all languages",
+                "<pre data-lang='js'>x</pre><noscript><pre data-lang='go'>x</pre></noscript><pre data-lang='rust'>x</pre>",
+                &[None, None],
+            ),
+            (
+                "no sibling leak",
+                "<div data-lang='go'><pre>x</pre></div><pre>x</pre>",
+                &[Some("go"), None],
+            ),
+            (
+                "void tags and table",
+                "<div data-lang='go'><br><hr><img src='https://image.example/a'><table><tr><td>a</td></tr></table><pre>x</pre></div>",
+                &[Some("go")],
+            ),
+            (
+                "attribute text is not a hint",
+                "<pre title=\"data-lang='js'\">x</pre>",
+                &[None],
+            ),
+        ];
+        for (label, html, expected) in cases {
+            let blocks = html_to_blocks(html, None);
+            let languages: Vec<_> = blocks
+                .iter()
+                .filter_map(|block| match block {
+                    Block::CodeBlock { lang, text } => {
+                        assert_eq!(text, "x", "{label}");
+                        Some(lang.as_deref())
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(&languages, expected, "{label}");
         }
     }
 

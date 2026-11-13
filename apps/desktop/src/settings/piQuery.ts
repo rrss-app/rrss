@@ -1,3 +1,4 @@
+import { settingsQueryPolicy } from "./queryPolicy";
 import type { McpInput } from "../bindings";
 import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
 import { api, type SavePiConfigArgs, type SkillDraft } from "../lib/api";
@@ -12,16 +13,11 @@ export const piKeys = {
   generated: ["settings", "pi", "generated"] as const,
   write: ["settings", "pi", "write"] as const,
 };
-const policy = {
-  staleTime: 30_000, gcTime: 5 * 60_000, retry: false, retryOnMount: false,
-  refetchOnMount: true, refetchOnWindowFocus: false, refetchOnReconnect: false,
-  networkMode: "always" as const,
-};
-export const piQueryOptions = () => queryOptions({ ...policy, queryKey: piKeys.page, queryFn: () => api.pi() });
-export const piProbeOptions = () => queryOptions({ ...policy, queryKey: piKeys.probe, queryFn: () => api.piProbe() });
-export const piConfigOptions = () => queryOptions({ ...policy, queryKey: piKeys.config, queryFn: () => api.piConfig() });
+export const piQueryOptions = () => queryOptions({ ...settingsQueryPolicy, queryKey: piKeys.page, queryFn: () => api.pi() });
+export const piProbeOptions = () => queryOptions({ ...settingsQueryPolicy, queryKey: piKeys.probe, queryFn: () => api.piProbe() });
+export const piConfigOptions = () => queryOptions({ ...settingsQueryPolicy, queryKey: piKeys.config, queryFn: () => api.piConfig() });
 // 生成配置只在打开查看时读，每次都读最新的。
-export const generatedConfigOptions = () => queryOptions({ ...policy, staleTime: 0, gcTime: 0, queryKey: piKeys.generated, queryFn: () => api.piGeneratedConfig() });
+export const generatedConfigOptions = () => queryOptions({ ...settingsQueryPolicy, staleTime: 0, gcTime: 0, queryKey: piKeys.generated, queryFn: () => api.piGeneratedConfig() });
 export function prefetchPiSettings(client: QueryClient) {
   if (client.isMutating({ mutationKey: piKeys.write })) return Promise.resolve();
   // 启动预载绝不执行 pi --version。

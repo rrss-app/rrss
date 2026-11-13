@@ -106,13 +106,11 @@ pub fn image_type(bytes: &[u8], mime: Option<&str>) -> Option<&'static str> {
     if bytes.len() > MAX_BYTES {
         return None;
     }
-    let actual = match media::sniff_image_ext(bytes)? {
-        "png" => "image/png",
-        "jpg" => "image/jpeg",
-        "webp" => "image/webp",
-        "ico" => "image/x-icon",
-        _ => return None,
-    };
+    let ext = media::sniff_image_ext(bytes)?;
+    if !matches!(ext, "png" | "jpg" | "webp" | "ico") {
+        return None;
+    }
+    let actual = media::mime_for_ext(ext)?;
     if let Some(mime) = mime {
         let mime = mime.split(';').next()?.trim().to_ascii_lowercase();
         if mime != actual

@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 
 use rrss_core::ai_store;
-use rrss_core::articles::{self, FocusFilter};
+use rrss_core::articles;
 use rrss_core::db;
 use rrss_core::feed_scope::FeedScope;
 use rrss_core::interests;
@@ -9,10 +9,6 @@ use rrss_core::rag;
 
 use super::ai::digest_banner_label;
 use crate::views::*;
-
-pub fn parse_focus_filter(value: &str) -> FocusFilter {
-    FocusFilter::parse_str(value)
-}
 
 pub fn focus_page(
     conn: &Connection,
@@ -407,10 +403,6 @@ mod tests {
         )
         .unwrap();
         let page = focus_page(&conn, None, &[], &[], false, FeedScope::All).unwrap();
-        assert_eq!(
-            page.articles[0].rank_reasons.as_ref().unwrap()[0].component,
-            "source"
-        );
         assert_eq!(
             page.articles[0].rank_reasons.as_ref().unwrap()[0].text,
             "你常读这个源"

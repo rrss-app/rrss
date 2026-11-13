@@ -15,9 +15,9 @@ test("sized images reserve their ratio before decoding, and the opened hit stays
     ...Array.from({ length: 8 }, (_, i) => para(`后面第 ${i + 1} 段。`.repeat(6))),
   ] };
   const media = [
-    { src: "sized.png", media_id: 1, href: "/e2e-img/sized.png", width: 480, height: 240, error: "" },
-    { src: "loose-1.png", media_id: 2, href: "/e2e-img/loose-1.png", width: null, height: null, error: "" },
-    { src: "loose-2.png", media_id: 3, href: "/e2e-img/loose-2.png", width: null, height: null, error: "" },
+    { src: "sized.png", href: "/e2e-img/sized.png", width: 480, height: 240, error: "" },
+    { src: "loose-1.png", href: "/e2e-img/loose-1.png", width: null, height: null, error: "" },
+    { src: "loose-2.png", href: "/e2e-img/loose-2.png", width: null, height: null, error: "" },
   ];
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });

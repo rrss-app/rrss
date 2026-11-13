@@ -83,5 +83,5 @@ cargo check --locked -p rrss-desktop   # 桌面 crate 没有单测，只做编�
 - 用户能感知的变化（新功能、行为变化、修复）在 [CHANGELOG.md](CHANGELOG.md) 的「未发布」下加一条，写给用户看，不写实现细节；纯重构、测试与文档改动不用写。
 - 界面有明显变化时附截图。README 的演示截图可用 `RRSS_README_SHOTS=1 pnpm --dir apps/desktop exec playwright test e2e/readme-shots.spec.ts` 重新生成。
 - 安全问题不要开公开 issue，按 [SECURITY.md](SECURITY.md) 私下报告。
-- 这个仓库由上游开发仓库同步生成，PR 不在这里直接合并：评审通过后，维护者把改动并入上游，下一次同步时出现在这里，PR 会附说明后关闭，提交里用 `Co-authored-by` 署上你的名字。
+- 这个仓库由上游开发仓库同步生成，上游每合并一项改动，这里就多一个对应的提交，提交说明写给外部读者。PR 不在这里直接合并：评审通过后，维护者把改动并入上游，同步时作为单独的提交出现在这里，PR 会附说明后关闭，提交里用 `Co-authored-by` 署上你的名字。
 - 提交的代码按仓库的 [MIT 许可](LICENSE) 发布。

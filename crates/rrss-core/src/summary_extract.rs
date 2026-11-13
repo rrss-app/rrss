@@ -4,6 +4,8 @@
 //! 正文在预算内就整篇给出；超出时按优先级挑**完整段落**（标题、导语、结尾、各节首段、
 //! 信息密度高的段落），按原文顺序拼回，省略处用「…」标出。预算由 [`InputTier`] 决定。
 
+use crate::text::truncate_chars;
+
 use rrss_render::{
     Block, Document, RenderOpts, document_from_json, html_to_document, inlines_to_plain,
 };
@@ -524,13 +526,6 @@ fn is_boilerplate(text: &str) -> bool {
         || lower.starts_with("本文来自")
         || lower.starts_with("follow us on")
         || lower.starts_with("subscribe to")
-}
-
-fn truncate_chars(s: &str, max: usize) -> String {
-    match s.char_indices().nth(max) {
-        Some((i, _)) => s[..i].to_string(),
-        None => s.to_string(),
-    }
 }
 
 #[cfg(test)]

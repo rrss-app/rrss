@@ -1,3 +1,4 @@
+import { sameChoice } from "../../settings/modelChoices";
 import type {
   FeatureView, McpView, AiPage, CapsView, GeneratedConfig, ModelBindingsView, ModelPoolView, NetworkProxyView, PiConfigView, PiPage, PiProbe, PoolEntryView, ProviderView, RuleView, RulesPage, SaveModelPoolArgs, TranslatePage,
 } from "../../bindings";
@@ -86,20 +87,19 @@ export function modelPoolFixture(overrides: Partial<ModelPoolView> = {}): ModelP
  * `bindings` 给出时一并改写（模拟宿主传入可变的用途快照）。
  */
 export function applyPoolChange(view: ModelPoolView, args: SaveModelPoolArgs, bindings?: ModelBindingsView): ModelPoolView {
-  const same = (a: { provider_id: number; model: string }, b: { provider_id: number; model: string }) => a.provider_id === b.provider_id && a.model === b.model;
-  const removed = view.pool.filter((e) => args.remove.some((r) => same(r, e)));
+  const removed = view.pool.filter((e) => args.remove.some((r) => sameChoice(r, e)));
   const kept = view.pool.filter((e) => !removed.includes(e));
   let chatEmpty = !kept.some((e) => e.chat);
-  const added = args.add.filter((a) => !kept.some((e) => same(a, e))).map((a) => {
+  const added = args.add.filter((a) => !kept.some((e) => sameChoice(a, e))).map((a) => {
     const chat = chatEmpty && !/embed/i.test(a.model);
     if (chat) chatEmpty = false;
     return poolEntryFixture({ ...a, chat });
   });
-  const replace = args.replace && [...kept, ...added].find((e) => same(e, args.replace!));
+  const replace = args.replace && [...kept, ...added].find((e) => sameChoice(e, args.replace!));
   const replaced: string[] = [];
   const unset: string[] = [];
   for (const task of bindings?.tasks ?? []) {
-    if (!removed.some((e) => same(e, task))) continue;
+    if (!removed.some((e) => sameChoice(e, task))) continue;
     if (replace && (task.task !== "chat" || replace.chat)) {
       Object.assign(task, { provider_id: replace.provider_id, model: replace.model });
       replaced.push(task.task);
@@ -108,7 +108,7 @@ export function applyPoolChange(view: ModelPoolView, args: SaveModelPoolArgs, bi
       unset.push(task.task);
     }
   }
-  const pool = [...kept, ...added].map((e) => ({ ...e, uses: (bindings?.tasks ?? []).filter((t) => same(t, e)).map((t) => t.task) }));
+  const pool = [...kept, ...added].map((e) => ({ ...e, uses: (bindings?.tasks ?? []).filter((t) => sameChoice(t, e)).map((t) => t.task) }));
   return { ...view, pool, replaced, unset };
 }
 

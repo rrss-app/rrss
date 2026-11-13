@@ -268,7 +268,7 @@ describe("reader request ownership", () => {
     const img = { t: "img", src: "https://cdn.example/a.webp", alt: "甲图" } as const;
     await openResolved(host, A, {
       document: { v: 1, blocks: [img] },
-      media: [{ src: img.src, media_id: 1, href: "", width: null, height: null, error: "" }],
+      media: [{ src: img.src, href: "", width: null, height: null, error: "" }],
     });
     await harness.flush();
     expect(prefetches.map((c) => c.id)).toEqual([A]);
@@ -279,7 +279,7 @@ describe("reader request ownership", () => {
     readers.at(-1)!.gate.resolve(
       view(B, {
         document: { v: 1, blocks: [{ t: "img", src: "https://cdn.example/b.webp", alt: "乙图" }] },
-        media: [{ src: "https://cdn.example/b.webp", media_id: 2, href: "rrss://media/2", width: null, height: null, error: "" }],
+        media: [{ src: "https://cdn.example/b.webp", href: "rrss://media/2", width: null, height: null, error: "" }],
       }),
     );
     await harness.flush();
@@ -287,9 +287,9 @@ describe("reader request ownership", () => {
     expect(host.textContent).not.toContain("配图加载中");
     expect(prefetches).toHaveLength(1);
 
-    prefetches[0].gate.resolve([{ src: img.src, media_id: 1, href: "rrss://media/1", width: null, height: null, error: "" }]);
+    prefetches[0].gate.resolve([{ src: img.src, href: "rrss://media/1", width: null, height: null, error: "" }]);
     act(() => {
-      box.events!.emit("media:ready", { article_id: A, media: { src: img.src, media_id: 1, href: "rrss://media/1", width: null, height: null, error: "" } });
+      box.events!.emit("media:ready", { article_id: A, media: { src: img.src, href: "rrss://media/1", width: null, height: null, error: "" } });
     });
     await harness.flush();
     expect(readerTitle(host)).toBe("乙文");

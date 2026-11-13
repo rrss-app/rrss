@@ -75,7 +75,7 @@ test("uses are grouped, saved on pick, and the apply bar sets several groups in 
   await expect(group("summary").getByRole("button", { name: "摘要的模型", exact: true })).toHaveText("2 种模型");
   await expect(group("translate")).toContainText("还没选模型，翻译暂停。");
   await expect(group("chat").getByRole("button", { name: "对话模型", exact: true })).toHaveText("Sonnet OpenRouter");
-  await group("summary").getByRole("button", { name: "细分（5）", exact: true }).click();
+  await group("summary").getByRole("button", { name: /^细分/ }).click();
   await expect(group("summary").getByRole("button", { name: "焦点摘要的模型", exact: true })).toHaveText("llama3.2 本机 Ollama");
   await shots(page, "page", true);
 
@@ -90,9 +90,13 @@ test("uses are grouped, saved on pick, and the apply bar sets several groups in 
   const bar = settings.getByRole("group", { name: "一键应用" });
   await bar.getByRole("button", { name: "一键应用的模型", exact: true }).click();
   await page.getByRole("dialog", { name: "一键应用的模型" }).getByRole("option", { name: /Sonnet/ }).click();
-  await bar.getByRole("button", { name: "应用到 11 项", exact: true }).click();
-  await expect(settings.getByRole("status").filter({ hasText: "已保存：11 项改用 Sonnet。" })).toBeVisible();
-  expect((await lastArgs(page, "save_model_bindings")).bindings).toHaveLength(11);
+  await bar.getByRole("button", { name: /^应用到/ }).click();
+  await expect.poll(async () => (await lastArgs(page, "save_model_bindings")).bindings)
+    .toEqual([
+      "focus_summary", "article_summary", "article_segment", "cluster_summary",
+      "digest_daily", "digest_weekly", "digest_pick_daily", "digest_pick_weekly",
+      "memory_candidate", "episode_compress",
+    ].map((task) => ({ task, provider_id: 2, model: "anthropic/claude-sonnet-4" })));
   await expect(group("summary").getByRole("button", { name: "摘要的模型", exact: true })).toHaveText("Sonnet OpenRouter");
 
   // 已绑定向量库：未允许更换时不保存；打开开关后改选要确认重建。

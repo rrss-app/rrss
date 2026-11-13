@@ -2,7 +2,6 @@
 
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub mod clean;
@@ -741,63 +740,6 @@ pub(crate) fn http_error(
     Error::Http {
         status: status.as_u16(),
         message,
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TestChatResult {
-    pub ok: bool,
-    pub reply: String,
-    pub latency_ms: u64,
-    pub error: Option<String>,
-}
-
-pub async fn test_chat(
-    client: &reqwest::Client,
-    base_url: &str,
-    api_key: Option<&str>,
-    model: &str,
-    protocol: Protocol,
-) -> TestChatResult {
-    let start = std::time::Instant::now();
-    let req = CompleteRequest {
-        base_url: base_url.to_string(),
-        api_key: api_key.map(str::to_string),
-        model: model.to_string(),
-        system: "You are a test helper. Reply with ONLY valid JSON: {\"reply\":\"pong\"}".into(),
-        user: "ping".into(),
-        json_schema: Some(json!({
-            "type": "object",
-            "properties": { "reply": { "type": "string" } },
-            "required": ["reply"]
-        })),
-        protocol,
-    };
-    match complete(client, &req).await {
-        Ok(res) => {
-            let latency_ms = start.elapsed().as_millis() as u64;
-            let reply = res
-                .parsed
-                .get("reply")
-                .and_then(Value::as_str)
-                .unwrap_or(&res.content)
-                .to_string();
-            TestChatResult {
-                ok: true,
-                reply,
-                latency_ms,
-                error: None,
-            }
-        }
-        Err(err) => {
-            let latency_ms = start.elapsed().as_millis() as u64;
-            TestChatResult {
-                ok: false,
-                reply: String::new(),
-                latency_ms,
-                error: Some(err.to_string()),
-            }
-        }
     }
 }
 

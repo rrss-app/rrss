@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use rrss_ai::pi::PiEvent;
 use rrss_core::ai_store::PI_BINARY_KEY;
 use rrss_core::db;
@@ -439,7 +439,7 @@ pub async fn spawn(
     }
     let prepared = {
         let (db_path, data_dir) = (db_path.to_path_buf(), data_dir.to_path_buf());
-        tokio::task::spawn_blocking(move || prepare(&db_path, &data_dir, target.as_ref()))
+        crate::execution::blocking(move || prepare(&db_path, &data_dir, target.as_ref()))
             .await
             .map_err(|err| ChatError::new(ChatErrorKind::Internal, err.to_string()))??
     };
@@ -593,14 +593,6 @@ pub fn locate_pi(explicit: Option<&str>) -> (String, Option<PathBuf>) {
 }
 
 const PI_NOT_FOUND_HINT: &str = "未找到 pi 独立二进制。从 GitHub Releases 下载 pi-linux-x64.tar.gz / pi-windows-x64.zip，放到 PATH、与 rrss 同目录，或 ~/.local/share/rrss/bin（Windows：%APPDATA%\\rrss\\bin）。";
-
-pub fn open_path(path: &Path) -> Result<()> {
-    std::process::Command::new(rrss_core::platform::Os::current().file_opener())
-        .arg(path)
-        .spawn()
-        .context("open path")?;
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {

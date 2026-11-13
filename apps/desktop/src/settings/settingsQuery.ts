@@ -1,3 +1,4 @@
+import { settingsQueryPolicy } from "./queryPolicy";
 import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
 import { api, type SettingsSchema, type SettingValue } from "../lib/api";
 import { isTauri } from "../lib/preview";
@@ -16,9 +17,7 @@ export function settingsSchemaOptions() {
       void signal; // IPC 不可取消；消费 signal 让 query 取消隔离迟到快照。
       return isTauri() ? api.settingsSchema() : Promise.resolve(client.getQueryData<SettingsSchema>(settingsKeys.schema) ?? createSettingsSchema());
     },
-    staleTime: 30_000, gcTime: 5 * 60_000,
-    retry: false, retryOnMount: false, refetchOnMount: true,
-    refetchOnWindowFocus: false, refetchOnReconnect: false, networkMode: "always",
+    ...settingsQueryPolicy,
   });
 }
 

@@ -12,6 +12,17 @@ db_task!(feeds_page(scope: String, list_scope: String, cursor: Option<FeedsCurso
 
 db_task!(feed_counts() -> FeedCountsView => queries::feed_counts);
 
+#[tauri::command]
+pub async fn discover_feeds(
+    state: State<'_, AppState>,
+    request: DiscoverFeedsRequest,
+) -> Result<DiscoverFeedsResult, DiscoverFeedsError> {
+    state
+        .discovery
+        .run(&state.network, &state.db_path, request)
+        .await
+}
+
 db_task!(mark_scope_read(scope: String) -> Vec<i64> =>
     |conn| rrss_app::actions::mark_scope_read(conn, &scope));
 
@@ -71,6 +82,7 @@ command_handler![
     feed_tree,
     feeds_page,
     feed_counts,
+    discover_feeds,
     mark_scope_read,
     add_feed,
     save_feed,

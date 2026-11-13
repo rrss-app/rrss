@@ -472,11 +472,11 @@ export function FocusPane({
           ) : null}
         </div>
       </div>
-      <div className="scroll" ref={parent} aria-busy={page === null || loading} tabIndex={returnFocus ? -1 : undefined}>
+      <div className="scroll" data-testid="focus-scroll" ref={parent} aria-busy={page === null || loading} tabIndex={returnFocus ? -1 : undefined}>
         {/* 零高度的吸顶条：提示浮在列表上方，出现和消失都不挤动下面的内容。 */}
         <div className="focus-new" aria-live="polite">
           {newCount > 0 && onShowNew && !loading ? (
-            <button type="button" className="focus-new-pill" onClick={onShowNew}>
+            <button type="button" className="focus-new-pill" data-testid="focus-new-content" onClick={onShowNew}>
               <Icon name="arrowUp" size={13} />有 {newCount} 篇新内容
             </button>
           ) : null}

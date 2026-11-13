@@ -190,7 +190,7 @@ impl Supervisor {
             .await;
         if let Ok(models) = models {
             let db = self.cfg.db_path.clone();
-            let saved = tokio::task::spawn_blocking(move || {
+            let saved = crate::execution::blocking(move || {
                 let conn = rrss_core::db::open_at(&db)?;
                 super::context::cache_windows(&conn, &models)
             })
@@ -207,7 +207,7 @@ impl Supervisor {
         // 记下可用档位，引擎停下后设置页仍能按它显示思考强度。
         if !thinking_levels.is_empty() {
             let (db, levels) = (self.cfg.db_path.clone(), thinking_levels.clone());
-            let saved = tokio::task::spawn_blocking(move || {
+            let saved = crate::execution::blocking(move || {
                 rrss_core::db::open_at(&db).and_then(|conn| {
                     rrss_core::pi_store::set_cached_thinking_levels(&conn, &levels)
                 })
@@ -256,7 +256,7 @@ impl Supervisor {
             *current = target.clone();
         }
         let (db, data) = (self.cfg.db_path.clone(), self.cfg.data_dir.clone());
-        let current = tokio::task::spawn_blocking(move || {
+        let current = crate::execution::blocking(move || {
             let conn = rrss_core::db::open_at(&db)
                 .map_err(|err| ChatError::new(ChatErrorKind::Internal, err.to_string()))?;
             launch::current_profile(&conn, &data, target.as_ref()).map(|(p, _)| {

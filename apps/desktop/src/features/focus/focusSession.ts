@@ -1,12 +1,15 @@
 import { useSyncExternalStore } from "react";
 import { api, type ArticleView, type FeedTree, type FeedView, type FocusPage, type SearchQuery } from "../../lib/api";
 import { trackEvent } from "../../lib/signals";
-import { applyStarToFocusPage, flattenFeeds, focusExcludes, mergeFocusPage, refreshFocusRows } from "../../lib/focusUtils";
+import { applyStarToFocusPage, flattenFeeds, focusExcludes, mergeFocusPage, refreshFocusRows, rowKey } from "../../lib/focusUtils";
 import { formatNotice } from "../../lib/notice";
 import { isTauri, PREVIEW_FOCUS } from "../../lib/preview";
 import { FALLBACK_RANKING, type RankingToggle } from "../../components/FocusPane";
 import type { SpotAction, SpotReview } from "../../components/SpotCheckReveal";
 import { refreshProblem, waitForRefresh } from "./refreshOperation";
+
+// 约一张普通卡片的高度（px）；超过此距离视为已离开列表顶部。
+const BROWSING_SCROLL_THRESHOLD = 88;
 
 export type FocusNotice = { message: string; holdMs?: number; actionLabel?: string; onAction?: () => void };
 export type FocusSnapshot = {
@@ -21,7 +24,7 @@ export type FocusSnapshot = {
   refreshing: boolean;
   /** 用户换了列表（筛选、范围、刷新等）才加一；回到顶部、键盘选中都跟着它。 */
   revision: number;
-  /** 后台更新就地改了行内容时加一，不动视口。 */
+  /** 后台就地更新或采用新内容时加一，不清键盘选中。 */
   dataRevision: number;
   /** 后台发现、还没并进列表的新文章数；点顶部提示才重读。 */
   pendingNew: number;
@@ -52,6 +55,11 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
   const representatives = new Map<number, ArticleView | null>();
   let feedsGeneration = 0;
   let active = false;
+  let browsingStarted = false;
+  let viewport: { readTop: () => number; resetTop: () => void } | undefined;
+  function startBrowsing() {
+    if (active && !state.loading && state.page) browsingStarted = true;
+  }
   let refreshController: AbortController | null = null;
   // 空字符串表示全部订阅：请求里不放 scope 键。
   let feedScope = options?.scope && options.scope !== "all" ? options.scope : "";
@@ -172,8 +180,9 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     finally { publish({ spotBusy: false }); }
   }
 
-  async function reload() {
+  async function reload(resetBrowsing = true) {
     const gen = ++generation;
+    if (resetBrowsing) browsingStarted = false;
     moreRequest = null;
     publish({ readerReturn: null, loading: true, loadingMore: false, moreError: "", revision: state.revision + 1, pendingNew: 0 });
     // 筛选存于宿主设置：先等本实例排队的写入完成，再读取实际生效范围。
@@ -245,8 +254,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
   }
 
   /**
-   * 后台事件（抓到新文章、摘要 / 排序 / 聚类完成）只是数据变了，不换列表（阶段 17 · 后台更新不动视口）：
-   * 静默取第一页，已显示的行就地更新，当前没有的文章只计数，等用户点顶部提示再重读。
+   * 后台静默取第一页：未开始浏览时直接采用新内容；开始后就地更新并提示。
    */
   async function backgroundChanged(tree?: FeedTree) {
     ++feedsGeneration;
@@ -259,7 +267,19 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     let latest: FocusPage;
     try { latest = await focusQuery(requestedCluster); } catch { return; }
     if (!owns(gen) || pageGeneration !== gen || !state.page || state.loading) return;
+    // 查询期间也可能开始浏览；离顶部超过约一行时兜底，不能只看请求发出时的状态。
+    if ((viewport?.readTop() ?? 0) > BROWSING_SCROLL_THRESHOLD) browsingStarted = true;
     const { page, added } = refreshFocusRows(state.page, latest, (id) => dismissedIds.has(id));
+    if (added > 0 && !browsingStarted) {
+      // 替换分页基线，旧列表的迟到续页不能再追加；保留本地的已读 / 收藏写入。
+      pageGeneration = ++generation;
+      moreRequest = null;
+      const updated = new Map(page.articles.map(row => [rowKey(row), row]));
+      viewport?.resetTop();
+      publish({ page: visiblePage({ ...latest, articles: latest.articles.map(row => updated.get(rowKey(row)) ?? row) }),
+        dataRevision: state.dataRevision + 1, pendingNew: 0, loadingMore: false, moreError: "" });
+      return;
+    }
     const patch: Partial<FocusSnapshot> = {};
     if (page !== state.page) Object.assign(patch, { page, dataRevision: state.dataRevision + 1 });
     if (added !== state.pendingNew) patch.pendingNew = added;
@@ -301,7 +321,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
       options?.onMarked?.();
       await reload();
       notify({ message: `已标记 ${ids.length} 篇为已读`, actionLabel: "撤销", onAction: () => {
-        void api.unmarkRead(ids).then(reload).catch((err) => notify({ message: formatNotice("撤销失败：", err) }));
+        void api.unmarkRead(ids).then(() => reload()).catch((err) => notify({ message: formatNotice("撤销失败：", err) }));
       } });
     } catch (err) { if (active) notify({ message: formatNotice("标记已读失败：", err) }); }
   }
@@ -350,7 +370,10 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
       if (active && !controller.signal.aborted && !resume) notify({ message: formatNotice("刷新失败：", err), actionLabel: "重试", onAction: () => void refresh() });
     } finally {
       if (active && refreshController === controller) {
-        if (state.refreshing) await reload();
+        if (state.refreshing) {
+          if (resume) await backgroundChanged();
+          else await reload();
+        }
         if (active && refreshController === controller) publish({ refreshing: false });
       }
     }
@@ -375,7 +398,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     const nextTarget = () => forward.find(candidate => state.page?.articles.some(row => row.row_kind === 0 && row.id === candidate))
       ?? (hadMore ? state.page?.articles.find(row => row.row_kind === 0 && !known.has(row.id))?.id : undefined);
     // 阅读期间为当前篇保留过的行不再属于宿主范围，关闭时一并重读。
-    const pending = unread || keptReading ? reload() : Promise.resolve();
+    const pending = unread || keptReading ? reload(false) : Promise.resolve();
     const gen = generation;
     await pending;
     const current = () => owns(gen) && pageGeneration === gen && sequence === returnSequence;
@@ -399,6 +422,12 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     start() { active = true; publish({ refreshing: false }); void reload(); void reloadFeeds(); if (isTauri() && !options?.scope) void refreshCurrent(true); },
     stop() { active = false; refreshController?.abort(); ++generation; ++feedsGeneration; moreRequest = null; },
     reload, reloadFeeds, feedsChanged, backgroundChanged, loadMore, toggleStar, setRead, markAllRead, markGroupRead, refresh, revealSpotCheck, decideSpotCheck,
+    startBrowsing,
+    bindViewport(readTop: () => number, resetTop: () => void) {
+      const bound = { readTop, resetTop };
+      viewport = bound;
+      return () => { if (viewport === bound) viewport = undefined; };
+    },
     setFilter: (filter: string) => { resetNavigation(); return changeSetting(() => api.setSetting("focus_filter", filter)); },
     setListScope: (scope: string) => { resetNavigation(); return changeSetting(() => api.setSetting("list_scope", scope)); },
     setExpanded(id: number | null) {
@@ -479,7 +508,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     },
     getNavigation: () => ({ expandedCluster: state.expandedCluster, articles: state.page?.articles ?? [], hasMore: !state.loading && pageGeneration === generation && !!state.page?.has_more, loadingMore: state.loadingMore, scope: state.page?.list_scope, revision: state.revision, reset: navigationReset }),
     readerClosed,
-    readerOpened() { ++returnSequence; publish({ readerReturn: null }); },
+    readerOpened() { startBrowsing(); ++returnSequence; publish({ readerReturn: null }); },
     /** 阅读器显示了列表里的某篇；`null` 表示当前篇不来自列表（简报、对话）。 */
     readerAt(id: number | null) { readingId = id; },
     clearReaderReturn() { publish({ readerReturn: null }); },

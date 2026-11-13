@@ -167,6 +167,7 @@ pub fn http_key(conn: &Connection) -> Result<Option<String>> {
     Ok(get_setting(conn, TRANSLATE_HTTP_KEY_KEY)?.filter(|s| !s.trim().is_empty()))
 }
 
+#[cfg(test)]
 pub fn set_http_endpoint(conn: &Connection, url: &str, api_key: Option<&str>) -> Result<()> {
     set_setting(conn, TRANSLATE_HTTP_URL_KEY, url.trim())?;
     set_setting(conn, TRANSLATE_HTTP_KEY_KEY, api_key.unwrap_or("").trim())?;

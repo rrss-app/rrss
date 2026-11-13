@@ -167,18 +167,6 @@ pub fn list_archived_threads(conn: &Connection) -> Result<Vec<Thread>> {
         .collect::<rusqlite::Result<_>>()?)
 }
 
-pub fn set_thread_title(conn: &Connection, id: i64, title: &str) -> Result<()> {
-    let n = conn.execute(
-        "UPDATE threads SET title = ?1, updated_at = ?2 WHERE id = ?3",
-        params![title, now_ms(), id],
-    )?;
-    if n == 0 {
-        Err(Error::ThreadNotFound)
-    } else {
-        Ok(())
-    }
-}
-
 pub fn set_pi_session_file(conn: &Connection, id: i64, file: Option<&str>) -> Result<()> {
     let n = conn.execute(
         "UPDATE threads SET pi_session_file = ?1, updated_at = ?2 WHERE id = ?3",

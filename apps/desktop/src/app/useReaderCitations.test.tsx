@@ -1,3 +1,4 @@
+import { deferred } from "../test/deferred";
 import { act } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { createDraftStore, type useConversationRuntime } from "../features/chat";
@@ -7,8 +8,8 @@ import { useReaderCitations } from "./useReaderCitations";
 const harness = createReactHarness();
 afterEach(() => harness.cleanup());
 function setup() {
-  let finish: (id: number) => void = () => {};
-  const sendMessage = vi.fn(() => new Promise<number>(resolve => { finish = resolve; }));
+  let pending: ReturnType<typeof deferred<number>>;
+  const sendMessage = vi.fn(() => { pending = deferred<number>(); return pending.promise; });
   const chat = { sendMessage, seedThread: vi.fn(), sending: false, busyThreadId: null } as unknown as ReturnType<typeof useConversationRuntime>;
   const drafts = createDraftStore(), onSent = vi.fn();
   let article = { id: 1, title: "发送时的文章" };
@@ -19,7 +20,7 @@ function setup() {
   }
   harness.mount(<Probe />);
   act(() => { adapter.begin({ kind: "thread", threadId: 9, title: "目标会话" }); adapter.ask(); });
-  return { drafts, get adapter() { return adapter!; }, onSent, finish: (id: number) => finish(id), setArticle: (next: typeof article) => { article = next; } };
+  return { drafts, get adapter() { return adapter!; }, onSent, finish: (id: number) => pending.resolve(id), setArticle: (next: typeof article) => { article = next; } };
 }
 it("records the article at send time and overwrites only that thread after another successful send", async () => {
   const context = setup();

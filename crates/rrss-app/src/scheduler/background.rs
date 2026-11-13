@@ -5,6 +5,7 @@ use rrss_core::network::NetworkScope;
 use std::collections::HashMap;
 use tokio::sync::watch;
 use tokio::task::JoinSet;
+use tracing::{Instrument, instrument::WithSubscriber};
 
 pub(super) type ManualResult = watch::Sender<Option<std::result::Result<String, String>>>;
 
@@ -166,18 +167,23 @@ impl Scheduler {
             .map_err(|_| anyhow::anyhow!("模型任务繁忙，请稍后重试"))?;
         let work = shared.capacity.work();
         // The request owns its result even if its IPC waiter goes away.
-        tokio::spawn(async move {
-            let (_work, _admission) = (work, admission);
-            let mut stop = shared.stop.subscribe();
-            tokio::select! {
-                biased;
-                _ = stop.wait_for(|stopped| *stopped) => anyhow::bail!("后台运行时已停止"),
-                result = async {
-                    let client = shared.network.client(NetworkScope::Api).await?;
-                    crate::jobs::run_digest(&shared.path, &client, period, true).await
-                } => result,
+        let span = crate::jobs::span(period);
+        tokio::spawn(
+            async move {
+                let (_work, _admission) = (work, admission);
+                let mut stop = shared.stop.subscribe();
+                tokio::select! {
+                    biased;
+                    _ = stop.wait_for(|stopped| *stopped) => anyhow::bail!("后台运行时已停止"),
+                    result = async {
+                        let client = shared.network.client(NetworkScope::Api).await?;
+                        crate::jobs::run_digest(&shared.path, &client, period, true).await
+                    } => result,
+                }
             }
-        })
+            .instrument(span)
+            .with_current_subscriber(),
+        )
         .await?
     }
     pub async fn embed_now(&self) -> Result<()> {
@@ -221,6 +227,11 @@ impl Scheduler {
         if let Some(mut owner) = owner {
             let shared = self.shared.clone();
             let work_guard = shared.capacity.work();
+            let span = crate::jobs::span(match job {
+                ManualJob::Summary(_) => "summaries",
+                ManualJob::ClusterSummary(_, _) => "clustersummaries",
+                ManualJob::Embed => "embeddings",
+            });
             tokio::spawn(async move {
                 let _work = work_guard;
                 let mut stop = shared.stop.subscribe();
@@ -253,7 +264,7 @@ impl Scheduler {
                     result = work => result,
                 };
                 owner.finish(outcome.map_err(|error| error.to_string()));
-            });
+            }.instrument(span).with_current_subscriber());
         }
         loop {
             if let Some(result) = result.borrow_and_update().clone() {
@@ -373,10 +384,15 @@ async fn coordinate<F, Fut>(
             if let Some(version) = pending.claim(job, tokio::time::Instant::now()) {
                 let work = run(job, version);
                 let stopped = stop.clone();
-                let task = workers.spawn(async move {
-                    anyhow::ensure!(!*stopped.borrow(), "后台运行时已停止");
-                    work.await
-                });
+                let span = crate::jobs::span(&format!("{job:?}").to_lowercase());
+                let task = workers.spawn(
+                    async move {
+                        anyhow::ensure!(!*stopped.borrow(), "后台运行时已停止");
+                        work.await
+                    }
+                    .instrument(span)
+                    .with_current_subscriber(),
+                );
                 owners.insert(task.id(), job);
             }
         }
@@ -408,7 +424,7 @@ async fn coordinate<F, Fut>(
                 let job = owners.remove(&id).expect("every worker has an owner");
                 let reason = outcome.as_ref().err().map(pause_reason);
                 if let Err(error) = &outcome && reason != Some("budget") {
-                    tracing::warn!(?job, error = %crate::log::error(error.as_ref()), "background job did not complete");
+                    tracing::warn!(job = rrss_core::logsafe::unless_in_span("job", format!("{job:?}").to_lowercase()), error = %crate::log::error(error.as_ref()), "background job did not complete");
                 }
                 pending.finish(job, reason, outcome.unwrap_or(false), tokio::time::Instant::now());
                 finished_work = true;
@@ -441,9 +457,16 @@ fn log_budget_changes(
             .any(|old| old.kind == job.kind && old.reason.as_deref() == Some("budget"));
         let budget = job.reason.as_deref() == Some("budget");
         if budget && !was_budget {
-            tracing::warn!(job = %job.kind, error_kind = "budget", "automatic model job paused");
+            tracing::warn!(
+                job = rrss_core::logsafe::unless_in_span("job", job.kind.as_str()),
+                error_kind = "budget",
+                "automatic model job paused"
+            );
         } else if was_budget && !budget {
-            tracing::info!(job = %job.kind, "automatic model budget pause cleared");
+            tracing::info!(
+                job = rrss_core::logsafe::unless_in_span("job", job.kind.as_str()),
+                "automatic model budget pause cleared"
+            );
         }
     }
 }

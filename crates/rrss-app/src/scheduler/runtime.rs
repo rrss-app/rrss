@@ -1922,10 +1922,12 @@ async fn run_icons(shared: Arc<Shared>) {
             loop {
                 let version = *dirty.borrow_and_update();
                 if version > consumed {
+                    async {
                     match shared.network.client(rrss_core::network::NetworkScope::Content).await {
                         Ok(client) => crate::jobs::feed_icons::run(&shared.path, &client).await,
                         Err(error) => tracing::warn!(%error, "feed icons unavailable"),
                     }
+                    }.instrument(crate::jobs::span("feed_icons")).await;
                     consumed = version;
                     shared.invalidate();
                 } else if dirty.changed().await.is_err() { break; }

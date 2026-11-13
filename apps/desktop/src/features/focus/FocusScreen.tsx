@@ -3,7 +3,7 @@ import { FocusPane } from "../../components/FocusPane";
 import type { SignalSurface } from "../../bindings";
 import { api, copyText, type ArticleView, type CitationView } from "../../lib/api";
 import { trackEvent } from "../../lib/signals";
-import { navigableRowIndices } from "../../lib/focusUtils";
+import { navigableRowIndices, rowKey } from "../../lib/focusUtils";
 import { isTypingTarget } from "../../lib/shortcuts";
 import { useWindowKeydown } from "../../lib/useWindowKeydown";
 import { useFocusSnapshot, type FocusNotice, type FocusSession } from "./focusSession";
@@ -56,15 +56,34 @@ export const FocusScreen = memo(function FocusScreen({ session, active, shortcut
   useEffect(() => {
     if (state.expandedCluster != null) void summaries.load(state.expandedCluster);
   }, [state.expandedCluster, state.revision, state.dataRevision, summaries]);
-  const [keyboard, setKeyboard] = useState({ revision: -1, index: -1, returned: 0 });
-  const focusedRowIndex = keyboard.revision === state.revision ? keyboard.index : -1;
-  const clearFocus = useCallback(() => setKeyboard({ revision: -1, index: -1, returned: 0 }), []);
+  const [keyboard, setKeyboard] = useState({ revision: -1, key: null as string | null, returned: 0 });
+  const focusedRowIndex = keyboard.revision === state.revision
+    ? (state.page?.articles.findIndex(row => rowKey(row) === keyboard.key) ?? -1) : -1;
+  const clearFocus = useCallback(() => setKeyboard({ revision: -1, key: null, returned: 0 }), []);
   useEffect(() => { session.start(); return session.stop; }, [session]);
+  useEffect(() => {
+    const el = scrollRoot.current;
+    if (!el) return;
+    const unbind = session.bindViewport(() => el.scrollTop, () => { el.scrollTop = 0; });
+    // 回顶部的程序滚动不算浏览；监听保留到隐藏期间，状态由会话持有。
+    const scrolled = () => { if (el.scrollTop > 0) session.startBrowsing(); };
+    const wheeled = (event: WheelEvent) => { if (event.deltaY > 0) session.startBrowsing(); };
+    el.addEventListener("scroll", scrolled, { passive: true });
+    el.addEventListener("wheel", wheeled, { passive: true });
+    el.addEventListener("touchmove", session.startBrowsing, { passive: true });
+    return () => {
+      unbind();
+      el.removeEventListener("scroll", scrolled);
+      el.removeEventListener("wheel", wheeled);
+      el.removeEventListener("touchmove", session.startBrowsing);
+    };
+  }, [session]);
+  useEffect(() => { if (focusedRowIndex < 0 && keyboard.key !== null) clearFocus(); }, [focusedRowIndex, keyboard.key, clearFocus]);
   useEffect(() => { if (!shortcuts) clearFocus(); }, [shortcuts, clearFocus]);
   useEffect(() => {
     if (!shortcuts || state.loading || !state.readerReturn) return;
-    const index = state.page?.articles.findIndex(row => row.row_kind === 0 && row.id === state.readerReturn!.id) ?? -1;
-    setKeyboard({ revision: state.revision, index, returned: state.readerReturn.sequence });
+    const row = state.page?.articles.find(row => row.row_kind === 0 && row.id === state.readerReturn!.id);
+    setKeyboard({ revision: state.revision, key: row ? rowKey(row) : null, returned: state.readerReturn.sequence });
     session.clearReaderReturn();
   }, [shortcuts, state.loading, state.readerReturn, state.page, state.revision, session]);
   useEffect(() => {
@@ -85,7 +104,8 @@ export const FocusScreen = memo(function FocusScreen({ session, active, shortcut
       event.preventDefault();
       const forward = key === "j" || key === "arrowdown";
       const next = position < 0 ? 0 : Math.max(0, Math.min(position + (forward ? 1 : -1), indices.length - 1));
-      setKeyboard({ revision: state.revision, index: indices[next], returned: 0 });
+      session.startBrowsing();
+      setKeyboard({ revision: state.revision, key: rowKey(rows[indices[next]]), returned: 0 });
       return;
     }
     const row = rows[focusedRowIndex];

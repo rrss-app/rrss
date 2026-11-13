@@ -3,11 +3,13 @@ import { test } from "node:test";
 import { checkChatEvents, checkIpc, commandRegistry, frontendCalls, mockedCommands, registered, rustCommands } from "./check-ipc.mjs";
 
 test("chat context event has a listener and a host forwarder", () => {
-  const api = 'listen<ChatContextEvent>("chat:context", cb)';
   const host = 'self.app.emit("chat:context", context)';
-  assert.deepEqual(checkChatEvents(api,host), []);
-  assert.equal(checkChatEvents(api,"").length,1);
-  assert.equal(checkChatEvents("",host).length,1);
+  for (const listener of ["listen", "onWebEvent"]) {
+    const api = `${listener}<ChatContextEvent>("chat:context", cb)`;
+    assert.deepEqual(checkChatEvents(api,host), []);
+    assert.equal(checkChatEvents(api,"").length,1);
+    assert.equal(checkChatEvents("",host).length,1);
+  }
 });
 
 const RUST = `

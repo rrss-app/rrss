@@ -1,3 +1,4 @@
+import { settingsQueryPolicy } from "./queryPolicy";
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { isTauri, PREVIEW_MEMORY } from "../lib/preview";
@@ -18,9 +19,7 @@ export function memoryQueryOptions(query = "") {
         memories: PREVIEW_MEMORY.memories.filter((memory) => memory.content.includes(query)),
       });
     },
-    staleTime: 30_000, gcTime: 5 * 60_000,
-    retry: false, retryOnMount: false, refetchOnMount: true,
-    refetchOnWindowFocus: false, refetchOnReconnect: false, networkMode: "always",
+    ...settingsQueryPolicy,
   });
 }
 

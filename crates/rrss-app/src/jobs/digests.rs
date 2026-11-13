@@ -337,16 +337,7 @@ mod tests {
         let path = dir.path().join("t.db");
         {
             let conn = db::open_at(&path).unwrap();
-            let pid = ai_store::insert_provider(
-                &conn,
-                &ai_store::NewProvider {
-                    name: "mock".into(),
-                    base_url: server.uri(),
-                    api_key: None,
-                    protocol: "openai".into(),
-                },
-            )
-            .unwrap();
+            let pid = crate::test_net::fake_provider(&conn, "mock", server.uri());
             for task in [TASK_DIGEST_PICK_WEEKLY, TASK_DIGEST_WEEKLY] {
                 ai_store::set_task_binding(&conn, task, Some(pid), Some("m")).unwrap();
             }

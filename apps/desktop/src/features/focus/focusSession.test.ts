@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { api } from "../../lib/api";
+import * as apiModule from "../../lib/api";
+import * as preview from "../../lib/preview";
+import type { SchedulerSnapshot } from "../../bindings";
 import { deferred } from "../../test/deferred";
 import { flushUpdates } from "../../test/react";
 import { focusRow, TWO_ARTICLE_PAGE } from "../../test/fixtures/reader";
@@ -301,6 +304,7 @@ it("background updates refresh shown rows in place and only count new articles u
   const rows = [1, 2, 3].map(id => focusRow(id, `文章 ${id}`));
   const focus = vi.spyOn(api, "focus").mockResolvedValue({ ...TWO_ARTICLE_PAGE, articles: rows });
   session.start(); await flushUpdates();
+  session.readerOpened();
   session.setRead(2, true);
   const revision = session.getSnapshot().revision;
   // 排序变了、第 1 篇有了摘要、来了一篇新文章；后台的旧已读状态不覆盖本地。
@@ -317,4 +321,30 @@ it("background updates refresh shown rows in place and only count new articles u
   expect(session.getSnapshot().revision).toBe(revision + 1);
   expect(session.getSnapshot().pendingNew).toBe(0);
   expect(session.getSnapshot().page?.articles[0].id).toBe(9);
+});
+
+it("keeps a browsed list and counts new articles when the resumed startup refresh completes", async () => {
+  vi.spyOn(preview, "isTauri").mockReturnValue(true);
+  vi.spyOn(apiModule, "onSchedulerUpdated").mockResolvedValue(() => {});
+  const running: SchedulerSnapshot = {
+    run_id: "run", version: 1, stopped: false, background: [], background_requested: 0, background_completed: 0, feed_pause: null,
+    operations: [{ id: 1, target: 1, completed: 0, inserted: 0, failed: 0, failed_feeds: [], deleted: 0, skipped: 0, done: false, error: null }],
+  };
+  const finished = deferred<SchedulerSnapshot>();
+  vi.spyOn(api, "schedulerStatus").mockResolvedValueOnce(running).mockReturnValue(finished.promise);
+  const focus = vi.spyOn(api, "focus").mockResolvedValue(TWO_ARTICLE_PAGE);
+  session.start(); await flushUpdates();
+  expect(session.getSnapshot().refreshing).toBe(true);
+  expect(session.getSnapshot().loading).toBe(false);
+  session.startBrowsing();
+  const revision = session.getSnapshot().revision;
+  focus.mockResolvedValue({ ...TWO_ARTICLE_PAGE, articles: [focusRow(3, "New article 3"), focusRow(4, "New article 4"), ...TWO_ARTICLE_PAGE.articles] });
+  finished.resolve({ ...running, version: 2, operations: [{ ...running.operations[0], done: true, completed: 1, inserted: 2 }] });
+  await flushUpdates();
+  const snapshot = session.getSnapshot();
+  expect(snapshot.refreshing).toBe(false);
+  expect(snapshot.loading).toBe(false);
+  expect(snapshot.revision).toBe(revision);
+  expect(snapshot.pendingNew).toBe(2);
+  expect(snapshot.page?.articles.map(row => row.id)).toEqual(TWO_ARTICLE_PAGE.articles.map(row => row.id));
 });

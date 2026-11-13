@@ -342,15 +342,6 @@ fn walk_folders<'a>(
     }
 }
 
-pub fn add_rsshub_instance(conn: &Connection, name: &str, base_url: &str) -> Result<i64> {
-    let base = normalize_feed_url(base_url)?;
-    conn.execute(
-        "INSERT INTO rsshub_instances (name, base_url, created_at) VALUES (?1, ?2, ?3)",
-        params![name, base, now_ms()],
-    )?;
-    Ok(conn.last_insert_rowid())
-}
-
 pub fn list_rsshub_instances(conn: &Connection) -> Result<Vec<RsshubInstance>> {
     let mut stmt = conn.prepare("SELECT id, name, base_url FROM rsshub_instances ORDER BY id")?;
     let rows = stmt.query_map([], |row| {

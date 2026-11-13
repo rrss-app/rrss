@@ -121,7 +121,12 @@ export default function (pi: ExtensionAPI) {
             };
           }
         }
-        return runTool(pi, flags(t, params as Record<string, unknown>), signal);
+        const args = flags(t, params as Record<string, unknown>);
+        if (t.name === "get_assistant_config" && ctx.model?.name) {
+          // Pass only the alias and thinking level, never the model/provider object.
+          args.push("--model-alias", ctx.model.name, "--thinking", pi.getThinkingLevel());
+        }
+        return runTool(pi, args, signal);
       },
     });
   }

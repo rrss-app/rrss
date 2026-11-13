@@ -2,6 +2,7 @@
 
 use std::path::Path;
 use std::sync::Arc;
+use tracing::{Instrument, instrument::WithSubscriber};
 
 use rrss_core::articles::{self, ArticleRow};
 use rrss_core::{db, media};
@@ -24,7 +25,7 @@ pub async fn run(db_path: &Path, data_dir: &Path, network: &crate::network::Netw
 
     let db_path = db_path.to_path_buf();
     let data_dir = data_dir.to_path_buf();
-    let jobs = match tokio::task::spawn_blocking({
+    let jobs = match crate::execution::blocking({
         let db_path = db_path.clone();
         move || collect_jobs(&db_path)
     })
@@ -57,21 +58,25 @@ pub async fn run(db_path: &Path, data_dir: &Path, network: &crate::network::Netw
         let db_path = db_path.clone();
         let data_dir = data_dir.clone();
         let limit = limit.clone();
-        set.spawn(async move {
-            let Ok(_permit) = limit.acquire().await else {
-                return;
-            };
-            let _ = crate::image_fetch::fetch_and_store_with_priority(
-                &client,
-                &db_path,
-                &data_dir,
-                job.article_id,
-                &job.url,
-                &job.referer,
-                crate::scheduler::model_capacity::Priority::Background,
-            )
-            .await;
-        });
+        set.spawn(
+            async move {
+                let Ok(_permit) = limit.acquire().await else {
+                    return;
+                };
+                let _ = crate::image_fetch::fetch_and_store_with_priority(
+                    &client,
+                    &db_path,
+                    &data_dir,
+                    job.article_id,
+                    &job.url,
+                    &job.referer,
+                    crate::scheduler::model_capacity::Priority::Background,
+                )
+                .await;
+            }
+            .in_current_span()
+            .with_current_subscriber(),
+        );
     }
     while set.join_next().await.is_some() {}
 }

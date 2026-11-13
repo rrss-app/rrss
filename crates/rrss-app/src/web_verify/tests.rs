@@ -18,6 +18,12 @@ fn verification_transition_table_and_retry() {
     let bad = Err("没有正文".into());
     let mut suspicious = page;
     suspicious.suspicious.push("TooShort".into());
+    assert!(
+        serde_json::to_value(&suspicious)
+            .unwrap()
+            .get("suspicious")
+            .is_none()
+    );
     let suspicious = Ok(suspicious);
     for (url, title, loaded, last, expected) in [
         (

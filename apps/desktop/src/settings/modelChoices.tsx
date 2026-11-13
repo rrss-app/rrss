@@ -20,7 +20,7 @@ export const sameChoice = (a: ModelChoice | null | undefined, b: ModelChoice | n
 /** 选择列表与对话输入区显示的名字。 */
 export const modelName = (e: Pick<PoolEntryView, "display_name" | "model">) => e.display_name || e.model;
 export const findEntry = (pool: ModelPoolView | undefined, c: ModelChoice | null | undefined) =>
-  c ? pool?.pool.find((e) => e.provider_id === c.provider_id && e.model === c.model) : undefined;
+  c ? pool?.pool.find((e) => sameChoice(e, c)) : undefined;
 
 const host = (p?: ProviderView) => {
   try { return p ? new URL(p.base_url).host : ""; } catch { return p?.base_url ?? ""; }

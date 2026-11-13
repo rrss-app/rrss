@@ -298,11 +298,10 @@ mod tests {
         );
         assert_eq!(refs.len(), 2);
         assert_eq!(refs[0].src, good);
-        assert!(refs[0].media_id.is_some());
+        assert!(!refs[0].href.is_empty());
         assert!(refs[0].href.contains("?v="));
         assert!(refs[0].error.is_empty());
         assert_eq!(refs[1].src, bad);
-        assert!(refs[1].media_id.is_none());
         assert!(refs[1].href.is_empty());
         assert_eq!(refs[1].error, "HTTP 5xx");
         {

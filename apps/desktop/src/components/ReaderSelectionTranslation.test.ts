@@ -1,3 +1,4 @@
+import { deferred } from "../test/deferred";
 import { afterEach, expect, it } from "vitest";
 import type { SelectionTranslation } from "../bindings";
 import {
@@ -22,14 +23,14 @@ it("drops the oldest finished selection and keeps requests that are still runnin
   expect(hasSelectionTranslation("done-new")).toBe(true);
 
   resetSelectionTranslations();
-  let finishOldest: (value: SelectionTranslation) => void = () => {};
-  rememberSelectionTranslation("oldest", () => new Promise((resolve) => { finishOldest = resolve; }));
+  const oldest = deferred<SelectionTranslation>();
+  rememberSelectionTranslation("oldest", () => oldest.promise);
   for (let i = 0; i < SELECTION_TRANSLATION_LIMIT; i += 1) {
     rememberSelectionTranslation(`pending-${i}`, () => new Promise(() => {}));
   }
   expect(selectionTranslationCount()).toBe(SELECTION_TRANSLATION_LIMIT + 1);
   expect(hasSelectionTranslation("oldest")).toBe(true);
-  finishOldest(sample);
+  oldest.resolve(sample);
   await Promise.resolve();
   await Promise.resolve();
   expect(hasSelectionTranslation("oldest")).toBe(false);

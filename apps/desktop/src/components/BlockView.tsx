@@ -5,6 +5,7 @@ import { WebLinksContext } from "../lib/webLinks";
 import { api, copyText, isSafeHttpUrl, openExternal } from "../lib/api";
 import { formatNotice } from "../lib/notice";
 import { parseDocument, type Block, type Document, type Inline } from "../lib/blockIr";
+import { inlineText } from "../lib/readingTime";
 import { readSelection, type SelectedBlock, type SelectionPick } from "../lib/selection";
 import { EmbedBlock } from "./EmbedBlock";
 import { DigestSourceMarks } from "./DigestSourcePreview";
@@ -72,8 +73,7 @@ function siteName(href: string): string {
 
 // 仅用于段落行距：没有语言字段，不把排版判断当成文章语言。
 function latinTypography(block: Block): boolean {
-  const text = (nodes: Inline[]): string => nodes.map(node => "text" in node ? node.text : "children" in node ? text(node.children) : " ").join("");
-  const value = "inlines" in block ? text(block.inlines) : "";
+  const value = "inlines" in block ? inlineText(block.inlines) : "";
   return /\p{Script=Latin}/u.test(value) && !/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(value);
 }
 

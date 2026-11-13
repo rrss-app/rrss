@@ -80,7 +80,7 @@ describe("createEventStub", () => {
     const offError = await events.onChatError(onError);
     const offMedia = await events.onMediaReady(onMedia);
     const error = { thread_id: 4, message: "boom", kind: "model" };
-    const media = { article_id: 8, media: { src: "a.png", media_id: 1, href: "rrss://localhost/media/1", width: null, height: null, error: "" } };
+    const media = { article_id: 8, media: { src: "a.png", href: "rrss://localhost/media/1", width: null, height: null, error: "" } };
     events.emit("chat:error", error);
     events.emit("media:ready", media);
     expect(onError).toHaveBeenCalledTimes(1);

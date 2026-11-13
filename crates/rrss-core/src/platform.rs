@@ -20,11 +20,6 @@ pub struct WebkitSandboxStatus {
 
 static WEBKIT_SANDBOX: OnceLock<Option<WebkitSandboxStatus>> = OnceLock::new();
 
-/// 供后续诊断查询读取；尚未初始化或非 Linux 时为 `None`。
-pub fn webkit_sandbox_status() -> Option<WebkitSandboxStatus> {
-    WEBKIT_SANDBOX.get().copied().flatten()
-}
-
 fn webkit_sandbox_from_environment(
     disable: Option<&OsStr>,
     force: Option<&OsStr>,
@@ -284,12 +279,7 @@ pub fn normalize_windows_override(raw: &str) -> Option<String> {
         if item.eq_ignore_ascii_case("<local>") {
             continue;
         }
-        let item = item.strip_prefix("*.").unwrap_or(item);
-        // 去掉 `host:port` 的端口；IPv6 字面量里的冒号不是端口。
-        let item = match item.rsplit_once(':') {
-            Some((host, port)) if !host.contains(':') && port.parse::<u16>().is_ok() => host,
-            _ => item,
-        };
+        let item = crate::network::normalize_system_no_proxy_entry(item);
         let normalized = windows_override_entry(item);
         if normalized.is_empty() || crate::network::normalize_no_proxy(&normalized).is_err() {
             continue;
