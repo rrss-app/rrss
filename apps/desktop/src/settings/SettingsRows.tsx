@@ -112,7 +112,9 @@ export function SettingsRows({ ids, label, title, className, disabled = false, o
     const display = registryEntry(spec.id)?.display;
     if (kind.type === "enum") {
       const allowed = only?.[spec.id as SettingId];
-      const options = allowed?.length ? kind.options.filter((o) => allowed.includes(o.id) || o.id === value) : kind.options;
+      const labels = registryEntry(spec.id)?.options;
+      const listed = labels ? kind.options.map((o) => ({ ...o, label: labels[o.id] ?? o.label })) : kind.options;
+      const options = allowed?.length ? listed.filter((o) => allowed.includes(o.id) || o.id === value) : listed;
       return <ChipBar className="segmented" value={value} options={options} disabled={blocked}
         onChange={(next) => void change(row, next)} />;
     }

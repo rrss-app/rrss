@@ -452,6 +452,35 @@ pub fn available_bytes(_path: &Path) -> Option<u64> {
     None
 }
 
+/// 系统托盘能否显示。Linux 的托盘靠 AppIndicator 动态库，运行时才加载，缺库时建托盘会失败甚至中止，
+/// 所以先试着加载一次；Windows 与 macOS 总有托盘。有库但桌面不显示托盘图标（如未装扩展的 GNOME）时查不出来。
+#[cfg(target_os = "linux")]
+pub fn tray_available() -> bool {
+    const LIBRARIES: [&str; 4] = [
+        "libayatana-appindicator3.so.1",
+        "libayatana-appindicator3.so",
+        "libappindicator3.so.1",
+        "libappindicator3.so",
+    ];
+    LIBRARIES.iter().any(|name| {
+        let Ok(name) = std::ffi::CString::new(*name) else {
+            return false;
+        };
+        // SAFETY: `name` 以 NUL 结尾；只检查能否加载，加载成功就立即释放句柄。
+        let handle = unsafe { libc::dlopen(name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
+        if handle.is_null() {
+            return false;
+        }
+        unsafe { libc::dlclose(handle) };
+        true
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn tray_available() -> bool {
+    true
+}
+
 /// 进程是否还在运行；本平台查不到时为 `None`（只有 Linux 读 `/proc`）。
 /// 僵尸进程的文件已经全部关闭，只是还没被回收，算已退出。
 #[cfg(target_os = "linux")]

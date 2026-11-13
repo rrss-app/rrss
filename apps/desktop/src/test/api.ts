@@ -42,6 +42,8 @@ export function createApiStub(): ApiStub {
   handlers.set("focusClusterMembers", async () => []);
   // 组件测试按浏览器预览处理：没有宿主标题栏，不画窗口三键。
   handlers.set("windowChrome", async () => null);
+  // 同样没有托盘；根壳启动时交托盘菜单文字。
+  handlers.set("trayInstall", async () => false);
   handlers.set("moveTreeItems", ((...args: Parameters<ProductionApi["moveTreeItems"]>) => {
     const [items, parentFolderId, before] = args;
     const result = applyFeedTreeOrder(feeds, "move", { items, parentFolderId, before });

@@ -31,11 +31,12 @@ rrss-render.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tauri = { version = "2.12", features = ["unstable"] }
+tauri = { version = "2.12", features = ["unstable", "tray-icon"] }
 tauri-plugin-mcp-bridge = { version = "0.13.1", optional = true }
 tauri-plugin-clipboard-manager = "2.5"
 tauri-plugin-dialog = "2.8"
 tauri-plugin-opener = "2.7"
+tauri-plugin-single-instance = "2"
 tokio.workspace = true
 tracing.workspace = true
 uuid.workspace = true

@@ -286,6 +286,25 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     if (Object.keys(patch).length) publish(patch);
   }
 
+  /**
+   * 从托盘唤回（阶段 14 · 后台驻留）：当作重新开始，直接采用最新的第一页并回到顶部，
+   * 不显示「有 N 篇新内容」；不出骨架屏。本地已读 / 收藏写入先落库再读。
+   */
+  async function adoptLatest() {
+    if (!active) return;
+    browsingStarted = false;
+    if (state.loading || !state.page?.articles.length) return reload();
+    const gen = generation;
+    await writes;
+    let latest: FocusPage;
+    try { latest = await focusQuery(requestedCluster); } catch { return; }
+    if (!owns(gen) || pageGeneration !== gen || state.loading) return;
+    pageGeneration = ++generation;
+    moreRequest = null;
+    viewport?.resetTop();
+    publish({ page: visiblePage(latest), dataRevision: state.dataRevision + 1, pendingNew: 0, loadingMore: false, moreError: "" });
+  }
+
   async function toggleStar(id: number, starred: boolean) {
     const next = !starred;
     try {
@@ -421,7 +440,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     start() { active = true; publish({ refreshing: false }); void reload(); void reloadFeeds(); if (isTauri() && !options?.scope) void refreshCurrent(true); },
     stop() { active = false; refreshController?.abort(); ++generation; ++feedsGeneration; moreRequest = null; },
-    reload, reloadFeeds, feedsChanged, backgroundChanged, loadMore, toggleStar, setRead, markAllRead, markGroupRead, refresh, revealSpotCheck, decideSpotCheck,
+    reload, reloadFeeds, feedsChanged, backgroundChanged, adoptLatest, loadMore, toggleStar, setRead, markAllRead, markGroupRead, refresh, revealSpotCheck, decideSpotCheck,
     startBrowsing,
     bindViewport(readTop: () => number, resetTop: () => void) {
       const bound = { readTop, resetTop };

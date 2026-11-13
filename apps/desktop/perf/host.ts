@@ -588,7 +588,9 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
       case "log_export":
         return null;
       case "window_chrome":
-        return { controls: "windows" };
+        return { controls: "windows", tray: true };
+      case "tray_install":
+        return true;
       case "plugin:window|is_maximized":
         return false;
       case "mark_read": {

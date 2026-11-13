@@ -26,8 +26,10 @@ test("the window keys minimize, maximize and restore, and close the window", asy
   expect((await host(page)).maximized).toBe(true);
   await keys.getByRole("button", { name: "还原" }).click();
   await expect(keys.getByRole("button", { name: "最大化" })).toBeVisible();
+  // 关闭先由宿主拦下；默认「每次询问」，选「退出程序」才关。
   await keys.getByRole("button", { name: "关闭窗口" }).click();
-  expect((await host(page)).closed).toBe(true);
+  await page.getByRole("alertdialog").locator(".btn:not(.primary)").click();
+  await expect.poll(async () => (await host(page)).closed).toBe(true);
 });
 
 for (const style of ["windows", "gnome"] as const) {

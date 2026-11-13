@@ -775,7 +775,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
         webViewVisible: [] as { label: string; visible: boolean }[],
         calls: [] as string[], args: {} as Record<string, unknown>,
         /** 窗口三键的效果：最小化次数、最大化状态、是否已关闭。 */
-        window: { minimized: 0, maximized: false, closed: false },
+        window: { minimized: 0, maximized: false, closed: false, hidden: false, trayLabels: null as unknown, closeChoices: [] as Array<{ choice: string; remember: boolean }> },
         /** 外部工具检测的结果（按服务名覆盖，没写的用 `default`）；浏览器登录挂起到 `finishMcpLogin`。 */
         mcpProbe: {
           default: { ok: true, elapsed_ms: 420, error: "", hint: "", output: "", tools: [
@@ -1249,7 +1249,17 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               case "plugin:opener|open_url":
                 return;
               case "window_chrome":
-                return { controls: windowControls };
+                return { controls: windowControls, tray: true };
+              case "tray_install":
+                harness.window.trayLabels = args.labels;
+                return true;
+              case "window_close_choice": {
+                harness.window.closeChoices.push({ choice: args.choice, remember: args.remember });
+                if (args.remember) state.settings.values = state.settings.values.map((v: { id: string; value: string }) => (v.id === "close_action" ? { id: v.id, value: args.choice } : v));
+                if (args.choice === "tray") harness.window.hidden = true;
+                else harness.window.closed = true;
+                return;
+              }
               case "plugin:window|minimize":
                 harness.window.minimized += 1;
                 return;
@@ -1259,9 +1269,14 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 return;
               case "plugin:window|is_maximized":
                 return harness.window.maximized;
-              case "plugin:window|close":
-                harness.window.closed = true;
+              case "plugin:window|close": {
+                // 宿主拦下关闭后按设置「关闭窗口时」处理（后台驻留）。
+                const action = state.settings.values.find((v: { id: string }) => v.id === "close_action")?.value ?? "ask";
+                if (action === "ask") harness.emit("window:close-requested", null);
+                else if (action === "tray") harness.window.hidden = true;
+                else harness.window.closed = true;
                 return;
+              }
               case "link_safety":
                 return structuredClone(linkSafety[args.href] ?? { actual_host: new URL(args.href).hostname, warnings: [] });
               case "article_reader":

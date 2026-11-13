@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PiConfigView } from "../lib/api";
+import { api, type PiConfigView } from "../lib/api";
 import { formatNotice } from "../lib/notice";
 import { Field, SaveBar, SettingRow, Toggle } from "./chips";
 import { jsonObject, prettyJson, sameJson } from "./compat";
@@ -29,6 +29,7 @@ export function AdvancedPane({ onAsk, onEditStateChange }: {
   const { report } = useMergedEditState(onEditStateChange);
   return (
     <div className="advanced-pane">
+      <WindowGroup report={report("close-action")} />
       <section className="settings-group settings-section" aria-label="界面调试">
         <div className="settings-section-meta">
           <div className="settings-group-head"><h4>界面</h4></div>
@@ -41,6 +42,27 @@ export function AdvancedPane({ onAsk, onEditStateChange }: {
       <EngineGroup onAsk={onAsk} report={report} />
       <ModelGroup report={report} />
     </div>
+  );
+}
+
+/** 窗口组：关闭窗口时怎么做（阶段 14 · 后台驻留）。托盘不可用时提示「隐藏到托盘」会改为最小化。 */
+function WindowGroup({ report }: { report: Report }) {
+  const [tray, setTray] = useState(true);
+  useEffect(() => {
+    let disposed = false;
+    api.windowChrome().then((chrome) => { if (!disposed && chrome) setTray(chrome.tray); }).catch(() => {});
+    return () => { disposed = true; };
+  }, []);
+  return (
+    <section className="settings-group settings-section" aria-label="窗口">
+      <div className="settings-section-meta">
+        <div className="settings-group-head"><h4>窗口</h4></div>
+      </div>
+      <div className="settings-section-body">
+        <SettingsRows ids={["close_action"]} label="关闭窗口时" onEditStateChange={report}
+          notes={tray ? undefined : { close_action: "这台电脑的系统托盘不可用，选「隐藏到托盘」时会改为最小化。" }} />
+      </div>
+    </section>
   );
 }
 

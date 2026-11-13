@@ -52,6 +52,8 @@ import type {
   CitationView,
   DiagnosticsPage,
   WindowChromeView,
+  CloseChoice,
+  TrayLabels,
   SettingsSchema,
   SettingSpec,
   SettingValue,
@@ -236,6 +238,8 @@ export type {
   ReadingSpeedsView,
   ReaderView,
   RelatedArticleView,
+  CloseChoice,
+  TrayLabels,
   RefreshOperation,
   RefreshStarted,
   SchedulerSnapshot,
@@ -367,6 +371,10 @@ export const api = {
   logExport: () => invoke<string | null>("log_export"),
   /** 自绘标题栏：窗口三键按宿主给的平台样子画；没有宿主（浏览器预览）时为 null，不画三键。 */
   windowChrome: (): Promise<WindowChromeView | null> => isTauri() ? invoke<WindowChromeView>("window_chrome") : Promise.resolve(null),
+  /** 关闭询问的结果：隐藏到托盘或退出程序；`remember` 时写进设置「关闭窗口时」。 */
+  windowCloseChoice: (choice: CloseChoice, remember: boolean) => invoke<void>("window_close_choice", { choice, remember }),
+  /** 建托盘或换菜单文字（文字由前端给）；没有宿主或托盘不可用时为 false。 */
+  trayInstall: (labels: TrayLabels): Promise<boolean> => isTauri() ? invoke<boolean>("tray_install", { labels }) : Promise.resolve(false),
   storagePage: () => invoke<StoragePage>("storage_page"),
   /** 推荐评测日志（阶段 23 E0）；统一由 `lib/signals.ts` 批量调用，组件不要直接用。 */
   recordExposures: (records: ExposureInput[]) => invoke<Array<number | null>>("record_exposures", { records }),
@@ -640,6 +648,16 @@ export function onWebEscape(cb: (event: WebEscape) => void): Promise<UnlistenFn>
 }
 export function onWebDownloadBlocked(cb: (event: WebDownloadBlocked) => void): Promise<UnlistenFn> {
   return onWebEvent("web:download-blocked", cb);
+}
+
+/** 设置为「每次询问」时，宿主拦下关闭后请前端弹关闭询问。 */
+export function onWindowCloseRequested(cb: () => void): Promise<UnlistenFn> {
+  return onWebEvent<null>("window:close-requested", () => cb());
+}
+
+/** 窗口从托盘唤回（托盘图标、托盘菜单或再次启动）；最小化后恢复不算。 */
+export function onWindowRestored(cb: () => void): Promise<UnlistenFn> {
+  return onWebEvent<null>("window:restored", () => cb());
 }
 
 export function onWebVerifyState(cb: (event: WebVerifyStateEvent) => void): Promise<UnlistenFn> {

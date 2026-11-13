@@ -33,6 +33,7 @@ pub mod web;
 pub mod web_snapshot;
 pub mod web_verify;
 pub mod web_window;
+pub mod window_close;
 
 pub use views::*;
 
@@ -229,6 +230,8 @@ mod export_ts {
             MemoryPage::decl(),
             WindowControlsStyle::decl(),
             WindowChromeView::decl(),
+            crate::window_close::CloseChoice::decl(),
+            TrayLabels::decl(),
             ClientLogLevel::decl(),
             LogUnavailableReason::decl(),
             LogStatusView::decl(),

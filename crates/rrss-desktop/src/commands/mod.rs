@@ -68,6 +68,7 @@ command_modules! {
     pub mod translate;
     mod web_verify;
     pub mod web_window;
+    pub mod window;
 }
 pub use web_verify::extract_web_view;
 
@@ -85,3 +86,4 @@ pub use signals::*;
 pub use system::*;
 pub use translate::*;
 pub use web_window::*;
+pub use window::*;

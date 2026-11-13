@@ -366,6 +366,17 @@ const DEFS: &[Def] = &[
         write: None,
     },
     Def {
+        id: crate::window_close::SETTING,
+        domain: SettingDomain::Reader,
+        level: SettingLevel::L1,
+        // 选项文字在前端注册表（多语言约定），这里只登记取值。
+        kind: Kind::Enum(&[("ask", "", ""), ("tray", "", ""), ("quit", "", "")]),
+        default: "ask",
+        apply: SettingApply::Immediate,
+        affects_pi: false,
+        write: None,
+    },
+    Def {
         id: "ui_debug_mode",
         domain: SettingDomain::Reader,
         level: SettingLevel::L2,
@@ -492,6 +503,15 @@ pub fn schema(conn: &Connection) -> rrss_core::Result<SettingsSchema> {
         });
     }
     Ok(SettingsSchema { specs, values })
+}
+
+/// 读一项设置的当前值（规范化后；没存过或存的值无效时为默认值）。未登记的键报错。
+pub fn current(conn: &Connection, id: &str) -> rrss_core::Result<String> {
+    let def = DEFS
+        .iter()
+        .find(|d| d.id == id)
+        .ok_or_else(|| rrss_core::Error::InvalidSetting(format!("没有名为 {id} 的设置项")))?;
+    read(conn, def)
 }
 
 /// 按描述符校验并写入，返回规范化后的值。未登记的键、越界或不认识的值都拒绝，原值不动。

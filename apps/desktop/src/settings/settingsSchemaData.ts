@@ -2,7 +2,7 @@
 
 import type { SettingSpec } from "../bindings";
 
-export type SettingId = "web_javascript" | "web_open_mode" | "web_original_tip" | "web_first_tip" | "allow_embedding_model_change" | "feed_icons_enabled" | "theme_preference" | "focus_filter" | "focus_columns" | "list_scope" | "feeds_scope" | "feeds_pinned" | "feeds_list_scope" | "cluster_group_enabled" | "interest_boost_enabled" | "rank_features_enabled" | "rank_source_enabled" | "rank_coverage_enabled" | "rank_freshness_enabled" | "rank_affinity_enabled" | "focus_show_details" | "hidden_spot_check_rate" | "focus_rerank_enabled" | "focus_hide_noisy" | "feed_fetch_per_host" | "hide_threshold" | "translate_target_lang" | "developer_tools" | "fetch_url_enabled" | "ui_debug_mode" | "focus_auto_summary" | "cluster_auto_summary" | "ai_daily_budget_tokens" | "ai_embed_daily_budget_tokens" | "focus_summary_neutral_limit" | "ai_input_tier" | "digest_generate_minutes" | "pi_idle_timeout_secs" | "pi_assistant_note" | "pi_auto_download" | "pi_cache_warming" | "pi_auto_update";
+export type SettingId = "web_javascript" | "web_open_mode" | "web_original_tip" | "web_first_tip" | "allow_embedding_model_change" | "feed_icons_enabled" | "theme_preference" | "focus_filter" | "focus_columns" | "list_scope" | "feeds_scope" | "feeds_pinned" | "feeds_list_scope" | "cluster_group_enabled" | "interest_boost_enabled" | "rank_features_enabled" | "rank_source_enabled" | "rank_coverage_enabled" | "rank_freshness_enabled" | "rank_affinity_enabled" | "focus_show_details" | "hidden_spot_check_rate" | "focus_rerank_enabled" | "focus_hide_noisy" | "feed_fetch_per_host" | "hide_threshold" | "translate_target_lang" | "developer_tools" | "fetch_url_enabled" | "close_action" | "ui_debug_mode" | "focus_auto_summary" | "cluster_auto_summary" | "ai_daily_budget_tokens" | "ai_embed_daily_budget_tokens" | "focus_summary_neutral_limit" | "ai_input_tier" | "digest_generate_minutes" | "pi_idle_timeout_secs" | "pi_assistant_note" | "pi_auto_download" | "pi_cache_warming" | "pi_auto_update";
 
 export const SETTING_SPECS: SettingSpec[] = [
   {"id":"web_javascript","domain":"reader","level":"l0","kind":{"type":"bool"},"default":"1","apply":"immediate","affects_pi":false},
@@ -34,6 +34,7 @@ export const SETTING_SPECS: SettingSpec[] = [
   {"id":"translate_target_lang","domain":"reader","level":"l0","kind":{"type":"text","max":16},"default":"zh","apply":"immediate","affects_pi":false},
   {"id":"developer_tools","domain":"assistant","level":"l2","kind":{"type":"bool"},"default":"0","apply":"immediate","affects_pi":true},
   {"id":"fetch_url_enabled","domain":"assistant","level":"l1","kind":{"type":"bool"},"default":"0","apply":"immediate","affects_pi":true},
+  {"id":"close_action","domain":"reader","level":"l1","kind":{"type":"enum","options":[{"id":"ask","label":"","hint":""},{"id":"tray","label":"","hint":""},{"id":"quit","label":"","hint":""}]},"default":"ask","apply":"immediate","affects_pi":false},
   {"id":"ui_debug_mode","domain":"reader","level":"l2","kind":{"type":"bool"},"default":"0","apply":"immediate","affects_pi":false},
   {"id":"focus_auto_summary","domain":"model","level":"l1","kind":{"type":"bool"},"default":"0","apply":"immediate","affects_pi":false},
   {"id":"cluster_auto_summary","domain":"model","level":"l1","kind":{"type":"bool"},"default":"0","apply":"immediate","affects_pi":false},

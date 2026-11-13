@@ -30,6 +30,8 @@ export type RegistryEntry = {
   /** 开关两态的文字。 */
   on?: string;
   off?: string;
+  /** 枚举各项的文字；后端只登记取值时由这里给（新设置项都这样，展示文案不进后端）。 */
+  options?: Record<string, string>;
 };
 
 export const REGISTRY = {
@@ -125,6 +127,11 @@ export const REGISTRY = {
     control: "自动更新对话引擎",
     on: "已开启",
     off: "已关闭",
+  },
+  close_action: {
+    label: "关闭窗口时",
+    hint: "隐藏到托盘后，RRSS 在后台继续按计划更新订阅，点托盘图标或再次打开 RRSS 就能回来。",
+    options: { ask: "每次询问", tray: "隐藏到托盘", quit: "退出程序" },
   },
   pi_cache_warming: {
     label: "缓存保温",

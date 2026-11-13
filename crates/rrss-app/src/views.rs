@@ -1937,6 +1937,16 @@ pub enum WindowControlsStyle {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct WindowChromeView {
     pub controls: WindowControlsStyle,
+    // 系统托盘能否显示；不能时「隐藏到托盘」退化为最小化，设置页据此提示。
+    pub tray: bool,
+}
+
+// 托盘菜单的文字：前端按当前界面语言交给宿主（展示文案不进后端）。
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct TrayLabels {
+    pub open: String,
+    pub refresh: String,
+    pub quit: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

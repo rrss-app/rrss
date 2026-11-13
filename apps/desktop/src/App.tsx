@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Ref } from "react";
 import { useFeedUpdates } from "./app/useFeedUpdates";
 import { readingMinutes } from "./lib/readingTime";
-import { api, type ArticleView, type CitationView, type ThreadView } from "./lib/api";
+import { api, onWindowCloseRequested, onWindowRestored, type ArticleView, type CitationView, type ThreadView } from "./lib/api";
 import type { WebVerifyStateEvent } from "./bindings";
 import { WebLinksContext } from "./lib/webLinks";
 import { useWebLinks, WebSafetyWarning, WebWindowScene } from "./features/reader";
@@ -12,6 +12,7 @@ import { useModalFocus, type ModalLayerId } from "./lib/useModalFocus";
 import { useOverlayStack } from "./lib/useOverlayStack";
 import { useWindowKeydown } from "./lib/useWindowKeydown";
 import { ConfirmBar } from "./components/ConfirmBar";
+import { CloseAskDialog, TRAY_LABELS } from "./app/CloseAskDialog";
 import { AboutOverlay } from "./components/AboutOverlay";
 import { Toast } from "./components/Toast";
 import { ProbePage, RenderFixture } from "./components/DevPages";
@@ -75,7 +76,7 @@ function primeSettingsPages(client: QueryClient) {
   if (!client.isMutating({ mutationKey: backupKeys.write })) warm(backupKeys.page, () => client.prefetchQuery(backupQueryOptions()));
 }
 
-type Overlay = "web-warning" | "confirm" | "about" | "settings" | "reader" | "training";
+type Overlay = "web-warning" | "confirm" | "about" | "settings" | "reader" | "training" | "close-ask";
 
 export function App() {
   const [queries] = useState(() => new QueryClient());
@@ -283,18 +284,34 @@ function DesktopShell() {
     const prefetch = window.setTimeout(() => primeSettingsPages(queries), 800);
     return () => window.clearTimeout(prefetch);
   }, [queries]);
+  // 后台驻留：托盘菜单文字由前端给；宿主拦下关闭后弹关闭询问；从托盘唤回时焦点直接采用最新内容。
+  const openOverlay = useRef(open);
+  openOverlay.current = open;
+  useEffect(() => {
+    void api.trayInstall(TRAY_LABELS).catch((error) => console.error("tray unavailable", error));
+    let disposed = false;
+    const stops: Array<() => void> = [];
+    const keep = (subscription: Promise<() => void>) => void subscription
+      .then((stop) => { if (disposed) stop(); else stops.push(stop); })
+      // 没有宿主（预览、组件测试）时订阅不到窗口事件，忽略即可。
+      .catch(() => {});
+    keep(onWindowCloseRequested(() => openOverlay.current("close-ask")));
+    keep(onWindowRestored(() => { void focus.adoptLatest(); void column.adoptLatest(); }));
+    return () => { disposed = true; stops.forEach((stop) => stop()); };
+  }, [focus, column]);
 
   const settingsRootRef = useRef<HTMLDivElement>(null);
   const confirmRootRef = useRef<HTMLDivElement>(null);
   const searchRootRef = useRef<HTMLDivElement>(null);
   const webWarningRootRef = useRef<HTMLDivElement>(null);
-  const modalLayers: ModalLayerId[] = stack.filter((item): item is ModalLayerId & Overlay => item === "settings" || item === "confirm" || item === "web-warning");
+  const closeAskRootRef = useRef<HTMLDivElement>(null);
+  const modalLayers: ModalLayerId[] = stack.filter((item): item is ModalLayerId & Overlay => item === "settings" || item === "confirm" || item === "web-warning" || item === "close-ask");
   if (pendingLeave) modalLayers.push("confirm");
   if (commandPaletteOpen) modalLayers.push("search");
-  const modalTop = commandPaletteOpen ? "search" : pendingLeave ? "confirm" : top === "settings" || top === "confirm" || top === "web-warning" ? top : null;
+  const modalTop = commandPaletteOpen ? "search" : pendingLeave ? "confirm" : top === "settings" || top === "confirm" || top === "web-warning" || top === "close-ask" ? top : null;
   useModalFocus({ layers: modalLayers, activeId: modalTop, suspended: false,
-    roots: { settings: settingsRootRef, confirm: confirmRootRef, search: searchRootRef, "web-warning": webWarningRootRef },
-    initialFocus: { settings: "[data-settings-back]", confirm: "[data-confirm-cancel]", search: "input" },
+    roots: { settings: settingsRootRef, confirm: confirmRootRef, search: searchRootRef, "web-warning": webWarningRootRef, "close-ask": closeAskRootRef },
+    initialFocus: { settings: "[data-settings-back]", confirm: "[data-confirm-cancel]", search: "input", "close-ask": "[data-close-tray]" },
   });
   const trapBackground = modalTop !== null;
 
@@ -435,6 +452,12 @@ function DesktopShell() {
       okLabel={confirm.okLabel} cancelLabel={confirm.cancelLabel} style={layer("confirm")}
       secondary={confirm.secondary && { label: confirm.secondary.label, onClick: () => { confirm.secondary!.onClick(); closeTop(); } }}
       onOk={() => { confirm.onOk(); closeTop(); }} onCancel={() => { confirm.onCancel?.(); closeTop(); }} />}
+    {stack.includes("close-ask") && <CloseAskDialog rootRef={closeAskRootRef} inert={commandPaletteOpen} style={layer("close-ask")} onCancel={closeTop}
+      onChoose={(choice, remember) => {
+        closeTop();
+        void api.windowCloseChoice(choice, remember).then(() => { if (remember) void settingsChanged(queries); })
+          .catch((err) => setToast({ message: formatNotice("没能关闭窗口：", err) }));
+      }} />}
     {pendingLeave && <LeaveConfirm rootRef={confirmRootRef} inert={commandPaletteOpen} edit={settingsEditState.current} saving={leaveSaving}
       onSave={async () => {
         const save = settingsEditState.current?.save;
