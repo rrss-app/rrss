@@ -11,6 +11,7 @@ import { EmbedBlock } from "./EmbedBlock";
 import { DigestSourceMarks } from "./DigestSourcePreview";
 import { FloatingMenu, keepsNativeContextMenu } from "./FloatingMenu";
 import { Icon } from "./Icon";
+import { CodeText } from "./CodeText";
 import type { EmbedCoverView } from "../bindings";
 export { readSelection } from "../lib/selection";
 export type { SelectionPick } from "../lib/selection";
@@ -144,7 +145,7 @@ function renderBlock(
           {readerAppearance ? <span className="reader-code-tools" data-selection-ignore><span>{block.lang}</span><button type="button" aria-label="复制代码" onClick={() => void copyText(block.text)}>复制</button></span> : <button type="button" style={{ float: "right" }} onClick={() => copyText(block.text)}>
             复制
           </button>}
-          <code>{block.text}</code>
+          <CodeText text={block.text} lang={block.lang} />
         </pre>
       );
     case "img": {

@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 import { installMockHost } from "./mockHost";
-import { readerReturnFixture } from "../src/test/fixtures/reader";
+import { readerReturnFixture, readerView } from "../src/test/fixtures/reader";
 import { shot } from "./shots";
 
 /** 审阅截图的其余宽度 / 配色；不截图时不改视口，后续断言都在默认 1280 亮色下跑。 */
@@ -76,4 +76,46 @@ test("uncached open shows the delayed reader skeleton and cached open skips it",
   await page.keyboard.press("Escape");
   await page.getByRole("article", { name: fixture.readers[1].title, exact: true }).click();
   await expect(page.locator("[data-reader-opening-skeleton]")).toHaveCount(0);
+});
+
+test("related reading opens as a detour and returns to the article it came from", async ({ page }) => {
+  const fixture = readerReturnFixture(3);
+  const document = fixture.readers[1].document;
+  const row = (id: number, read = false) => ({ article_id: id, feed_id: 1, feed_title: "示例信源", icon_href: "", title: `Related ${id}`, published_at: null, one_liner: "", read, similarity: 0.9 });
+  await installMockHost(page, {
+    ...fixture,
+    readers: { ...fixture.readers, 10: readerView(10, { title: "Related 10", document }), 11: readerView(11, { title: "Related 11", document }) },
+    related: { 1: [row(10), row(11, true)] },
+  });
+  await page.goto("/");
+  await page.getByRole("article", { name: fixture.readers[1].title, exact: true }).click();
+  const reader = page.locator(".drawer.reader");
+  const title = reader.locator(".reader-title");
+  const rows = reader.locator(".reader-related-row");
+  await expect(rows).toHaveCount(2);
+  // 放在下一篇卡之后，不抢下一篇的位置。
+  expect(await reader.locator(".reader-ending").evaluate(el => {
+    const next = el.querySelector(".reader-next"), related = el.querySelector(".reader-related");
+    return !!next && !!related && !!(next.compareDocumentPosition(related) & Node.DOCUMENT_POSITION_FOLLOWING);
+  })).toBe(true);
+  await expect(rows.nth(1)).toHaveAttribute("data-read", "true");
+
+  await rows.first().click();
+  await expect(title).toHaveText("Related 10");
+  await expect(reader.getByRole("button", { name: "回到上一篇" })).toBeVisible();
+  await expect(reader.getByRole("group", { name: "上下篇" })).toHaveCount(0);
+  await expect(rows).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(title).toHaveText(fixture.readers[1].title);
+  await expect(rows.first()).toHaveAttribute("data-read", "true");
+
+  // 岔路里按 J：回到原来那篇再按原列表走到下一篇。
+  await rows.first().click();
+  await expect(title).toHaveText("Related 10");
+  await page.evaluate(() => (window.document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press("j");
+  await expect(title).toHaveText(fixture.readers[2].title);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("article", { name: fixture.readers[2].title, exact: true })).toHaveClass(/focused/);
+  await expect.poll(() => page.evaluate(() => ((window as any).__mockHost.signals.sessions as Array<{ via: string }>).map(s => s.via))).toContain("related");
 });

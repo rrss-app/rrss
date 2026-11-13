@@ -2196,6 +2196,7 @@ signal_enum!(ReadSessionVia => Via {
     Citation => "citation",
     Feeds => "feeds",
     FocusColumn => "focus_column",
+    Related => "related",
 });
 
 // 按输入顺序返回曝光 ID；文章已删除时对应位置为 null。

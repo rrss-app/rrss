@@ -65,4 +65,6 @@ export function handleReaderReads(stub: ApiStub) {
   stub.handle("retryImage", (_articleId, url) => ({ src: url, href: "", width: null, height: null, error: "" }));
   // 挂载根壳时侧栏「订阅」项读未读总数，阅读器换篇后也会刷新一次。
   stub.handle("feedCounts", () => ({ total: 0, feeds: [], folders: [] }));
+  // 文末相关阅读：默认没有（同没有向量时一样），整块不出现。
+  stub.handle("relatedArticles", () => []);
 }

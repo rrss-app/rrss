@@ -230,6 +230,31 @@ describe("selection and links", () => {
   });
 });
 
+describe("code blocks", () => {
+  it("colors labelled code and citing a selection inside it keeps the original text", async () => {
+    const code = "fn main() {\n    let name = \"rrss\"; // greet\n}";
+    const doc = { v: 1, blocks: [{ t: "pre" as const, lang: "rust", text: code }] };
+    const cited: string[] = [];
+    const { host, unmount } = mount(<BlockView document={doc} selectable onCite={(excerpt) => cited.push(excerpt)} />);
+    await vi.waitFor(() => expect(host.querySelector("pre code .code-keyword")).toBeTruthy());
+    const element = host.querySelector("pre code") as HTMLElement;
+    expect(element.textContent).toBe(code);
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    act(() => {
+      element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 40, clientY: 40 }));
+    });
+    act(() => {
+      (document.querySelector('.sel-menu [role="menuitem"]:last-child') as HTMLButtonElement).click();
+    });
+    expect(cited).toEqual([code]);
+    window.getSelection()?.removeAllRanges();
+    unmount();
+  });
+});
+
 describe("images", () => {
   it("renders cached media href and loading placeholder", () => {
     const { host, unmount } = mount(

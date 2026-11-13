@@ -76,6 +76,15 @@
   --danger-tint: rgba(154, 69, 60, 0.1);
   --warn: #8a6528;
   --warn-tint: rgba(138, 101, 40, 0.1);
+  /* 代码语法色：八个语义色，按 highlight.js 的类别归并（lib/codeHighlightEngine.ts）。 */
+  --code-keyword: #7d3c6b;
+  --code-string: #46672b;
+  --code-number: #965020;
+  --code-comment: #67625a;
+  --code-title: #2d5a85;
+  --code-type: #674a8f;
+  --code-attr: #2b6666;
+  --code-meta: #56606b;
   --selection: #d8d3c8;
   --overlay: rgba(24, 22, 18, 0.42);
   --hover: rgba(28, 26, 22, 0.05);
@@ -122,6 +131,14 @@
   --danger-tint: rgba(208, 138, 128, 0.12);
   --warn: #cfa766;
   --warn-tint: rgba(207, 167, 102, 0.12);
+  --code-keyword: #d39bc4;
+  --code-string: #a9c48a;
+  --code-number: #e0a872;
+  --code-comment: #8f8a82;
+  --code-title: #8fb4dc;
+  --code-type: #b9a3e0;
+  --code-attr: #82c2bf;
+  --code-meta: #a3adb8;
   --selection: #3a3c42;
   --overlay: rgba(0, 0, 0, 0.58);
   --hover: rgba(255, 255, 255, 0.05);
@@ -166,6 +183,14 @@
     --danger-tint: rgba(208, 138, 128, 0.12);
     --warn: #cfa766;
     --warn-tint: rgba(207, 167, 102, 0.12);
+    --code-keyword: #d39bc4;
+    --code-string: #a9c48a;
+    --code-number: #e0a872;
+    --code-comment: #8f8a82;
+    --code-title: #8fb4dc;
+    --code-type: #b9a3e0;
+    --code-attr: #82c2bf;
+    --code-meta: #a3adb8;
     --selection: #3a3c42;
     --overlay: rgba(0, 0, 0, 0.58);
     --hover: rgba(255, 255, 255, 0.05);

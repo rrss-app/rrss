@@ -64,6 +64,7 @@ signal_enum!(Via {
     Citation => "citation",
     Feeds => "feeds",
     FocusColumn => "focus_column",
+    Related => "related",
 });
 
 #[derive(Debug, Clone, PartialEq)]
@@ -473,7 +474,8 @@ mod tests {
                 Via::Digest,
                 Via::Citation,
                 Via::Feeds,
-                Via::FocusColumn
+                Via::FocusColumn,
+                Via::Related
             ]
         );
     }

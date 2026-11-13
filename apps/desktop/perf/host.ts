@@ -520,6 +520,8 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
         return readerFor(asNumber(rawArgs.id), false);
       case "open_article":
         return readerFor(asNumber(rawArgs.id), true);
+      case "related_articles":
+        return [];
       case "prefetch_images": {
         const id = asNumber(pick(rawArgs, "articleId", "article_id"));
         if (id === payload.longArticleId) return clone(payload.longReader.media);

@@ -12,6 +12,7 @@ import { observeReaderViewport } from "./readerViewport";
 export function inferReadingVia(options?: ReaderOpenOptions, list: ReadSessionVia = "focus"): ReadSessionVia {
   if (options?.search) return "search";
   if (options?.citationSource || options?.anchor) return "citation";
+  if (options?.via === "related") return "related";
   if (options?.via === "drawer") return "drawer";
   if (!options?.skipNav && options?.returnToList) return list;
   return options?.skipNav ? "digest" : "drawer";

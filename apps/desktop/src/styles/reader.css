@@ -279,6 +279,16 @@ button.reader-article-drawer-main:hover { background: transparent; color: inheri
   line-height: 1.6;
 }
 .reader pre code { padding: 0; background: transparent; font-size: inherit; }
+/* 代码语法色（CodeText）：阅读器、对话与简报里的代码块共用。 */
+.code-keyword { color: var(--code-keyword); }
+.code-string, .code-add { color: var(--code-string); }
+.code-number { color: var(--code-number); }
+.code-comment { color: var(--code-comment); font-style: italic; }
+.code-title { color: var(--code-title); }
+.code-type { color: var(--code-type); }
+.code-attr { color: var(--code-attr); }
+.code-meta { color: var(--code-meta); }
+.code-del { color: var(--danger); }
 .reader pre > button {
   position: sticky;
   float: right;
@@ -505,6 +515,21 @@ button.embed-external:hover {
 .reader-next[data-has-next="true"]:hover .reader-next-arrow { transform: translateX(3px); }
 .reader-ending .reader-ending-hint { min-height: 24px; margin: 16px 0 0; color: var(--text-muted); font: 12px/1.5 var(--font-ui); }
 .reader-next:focus-visible ~ .reader-ending-hint { color: var(--accent); }
+/* 文末相关阅读（样板 reader-ending 方案 A）：下一篇卡之后，行式列表，已读的标题变淡并带「已读」。 */
+.reader-related { margin-top: 40px; }
+.reader-ending .reader-related-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 4px; padding: 0 8px; color: var(--text-muted); font: 12px/1.5 var(--font-ui); }
+.reader-related-head strong { color: var(--text-2); font-size: 13px; font-weight: 600; }
+.reader-related-head span { margin-left: auto; font: inherit; }
+.reader-related-list { margin: 0; padding: 0; list-style: none; }
+.reader-related-list li + li .reader-related-row { border-top: 1px solid var(--border); }
+.reader-related-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; width: 100%; padding: 12px 8px; border-radius: var(--radius); text-align: left; }
+.reader-related-row:hover { background: var(--tint-hover); }
+.reader-related-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.reader-related-title { min-width: 0; color: var(--text); font: 600 15px/1.5 var(--font-read); text-wrap: pretty; }
+.reader-related-meta { grid-column: 1; color: var(--text-muted); font: 12px/1.5 var(--font-ui); }
+.reader-related-tag { grid-column: 2; grid-row: 1 / span 2; align-self: center; padding: 0 8px; border-radius: var(--radius-pill); background: var(--tint-hover); color: var(--text-muted); font: 11px/20px var(--font-ui); }
+.reader-related-row[data-read] .reader-related-title { color: var(--text-muted); font-weight: 500; }
+@container reader (width < 560px) { .reader-related-head span { flex-basis: 100%; margin-left: 0; } }
 .return-search { display: inline-flex; gap: 8px; align-items: center; margin-top: 20px; }
 .complete-icon { background: var(--tint-hover); color: var(--text-muted); }
 .reader-opening-body { width: min(640px, calc(100% - 112px)); margin: 0 auto; padding: 48px 0 64px; }

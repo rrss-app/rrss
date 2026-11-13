@@ -13,13 +13,13 @@ import {
 import { LIBRARY_FIXTURE, LIBRARY_FIXTURE_EN } from "../../components/BlockView";
 /** 无宿主预览合成的阅读视图；没有真实翻译服务，走整包示例译文，不建渐进会话。 */
 const PREVIEW_SOURCE = "preview-";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { settingsSchemaOptions } from "../../settings/settingsQuery";
 import { readerHasSelection, useReaderTranslation } from "./useReaderTranslation";
 import { TranslationStatus, translationAction } from "./TranslationStatus";
 import { translationNotes, unitFailed } from "./translationState";
 import { ReaderOverlay, readerDrawerKey, scrollReaderToTop, type ReaderPosition } from "../../components/ReaderOverlay";
-import { api, onEmbedCover, onMediaReady, type ArticleView, type CitationView, type MediaRef, type ReaderView, type SearchHitBlocksView, type SearchHitView } from "../../lib/api";
+import { api, onEmbedCover, onMediaReady, type ArticleView, type CitationView, type MediaRef, type ReaderView, type RelatedArticleView, type SearchHitBlocksView, type SearchHitView } from "../../lib/api";
 import { classifyEmbed } from "../../components/embedUrl";
 import { parseDocument } from "../../lib/blockIr";
 import { formatNotice } from "../../lib/notice";
@@ -52,7 +52,8 @@ function mergeReaderMedia(view: ReaderView, incoming: MediaRef): ReaderView {
 
 export type ReaderOpenOptions = {
   /** 阅读器篇目抽屉切换，保留返回列表语义但单独记录入口。 */
-  via?: "drawer";
+  /** related：从文末「相关阅读」打开，作为岔路记入返回栈，顶栏显示「回到上一篇」。 */
+  via?: "drawer" | "related";
   /** 引用发送的来源；thread 同时建立本次打开的对话返回目标。 */
   citationSource?: ReaderCitationSource;
   /** 消息摘录的原文块；失效时沿用按篇阅读位置。 */
@@ -155,7 +156,11 @@ export const READING_POSITION_LIMIT = 200;
 /** 阅读区宽度达到该值才真正钉住篇目抽屉；窄于此时钉住偏好仍保留，但按浮层显示。 */
 export const READER_DRAWER_PIN_MIN_WIDTH = 1100;
 
-type Session = { web?: WebPage; ticket: ReaderTicket; view: ReaderView; skipNav: boolean; returnToList: boolean; readingVia: ReadSessionVia; openedAt: number | null; fromThread?: Extract<ReaderCitationSource, { kind: "thread" }>; anchor?: ReaderOpenOptions["anchor"]; search?: SearchSession };
+type Session = { web?: WebPage; ticket: ReaderTicket; view: ReaderView; skipNav: boolean; returnToList: boolean; readingVia: ReadSessionVia; openedAt: number | null; fromThread?: Extract<ReaderCitationSource, { kind: "thread" }>; anchor?: ReaderOpenOptions["anchor"]; search?: SearchSession; detour?: boolean };
+
+/** 文末「相关阅读」最多几条（样板 A）。 */
+const RELATED_LIMIT = 3;
+const relatedKey = (articleId: number) => ["related_articles", articleId, RELATED_LIMIT] as const;
 
 /** 当前篇显示后多久开始预取下一篇：让正文先排好、首屏图片先解码。 */
 const PREFETCH_DELAY_MS = 400;
@@ -243,6 +248,16 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   }, [baseReader?.source_hash]);
   const positions = useRef(new Map<string, ReaderPosition>());
   const settings = useQuery({ ...settingsSchemaOptions(), enabled: open });
+  const queryClient = useQueryClient();
+  // 相关阅读：岔路里的文章与网页不再列，免得越走越远；没有向量或找不到够近的时返回空，整块不出现。
+  const relatedId = session && !session.detour && !session.web ? session.view.id : null;
+  const related = useQuery({
+    queryKey: relatedKey(relatedId ?? 0),
+    queryFn: () => api.relatedArticles(relatedId!, RELATED_LIMIT),
+    enabled: open && relatedId != null,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
   const debug = settings.data?.values.some(value => value.id === "ui_debug_mode" && value.value === "1") ?? false;
   const currentNav = () => navRef.current.getCurrent?.() ?? navRef.current;
   drawerPinnedRef.current = drawerPinned;
@@ -360,6 +375,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     userMode.current = false; pendingMode.current = null;
     setOps({});
     const next = { web, ticket, view, skipNav, returnToList, openedAt, readingVia: inferReadingVia(options, propsRef.current.listVia), anchor: options?.anchor,
+      detour: options?.via === "related" || undefined,
       search: options?.search ? searchSession(earlyHitBlocks.current?.ticket === ticket && !options.search.blocks
         ? { ...options.search, blocks: earlyHitBlocks.current.blocks } : options.search) : undefined,
       fromThread: options?.citationSource?.kind === "thread" ? options.citationSource
@@ -400,7 +416,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   };
 
   const openArticle = async (id: number, opts?: ReaderOpenOptions, web?: WebPage) => {
-    if (!web) returns.current = [];
+    if (!web && opts?.via !== "related") returns.current = [];
     setFailure(null);
     const skipNav = opts?.skipNav ?? false;
     const returnToList = !skipNav && (opts?.returnToList ?? false);
@@ -539,6 +555,16 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     } finally { setExtractingSession(old => old === cur.ticket.session ? null : old); }
   };
 
+  /** 打开文末的相关阅读：当前这篇进返回栈，Esc / 「回到上一篇」回到它的文末；上下篇仍按原来的列表走。 */
+  const openRelated = (item: RelatedArticleView) => {
+    const cur = sessionRef.current;
+    if (!cur || !requests.owns(cur.ticket)) return;
+    returns.current.push(cur);
+    readingSession.finish("next");
+    queryClient.setQueryData<RelatedArticleView[]>(relatedKey(cur.view.id), rows => rows?.map(row => row.article_id === item.article_id ? { ...row, read: true } : row));
+    void openArticle(item.article_id, { skipNav: true, via: "related" });
+  };
+
   const back = () => {
     const previous = returns.current.pop();
     if (!previous) return false;
@@ -636,7 +662,11 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       const view = sessionRef.current?.view;
       return view ? { id: view.id, title: view.title } : null;
     },
-    getReturnArticleId: () => sessionRef.current?.returnToList ? sessionRef.current.view.id : null,
+    getReturnArticleId: () => {
+      // 岔路里关掉阅读器时，列表仍定位到岔开之前的那篇。
+      const origin = sessionRef.current?.detour ? returns.current.find(item => !item.detour) : sessionRef.current;
+      return origin?.returnToList ? origin.view.id : null;
+    },
     getDismissedArticleIds: () => [...dismissedIds.current],
   }));
 
@@ -681,6 +711,11 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   }, [cache, setView]);
 
   const openNeighbor = async (dir: -1 | 1) => {
+    // 相关阅读的岔路里按 J / K：先回到原来那篇，再按原来的列表走。
+    if (sessionRef.current?.detour) {
+      if (back()) await openNeighbor(dir);
+      return;
+    }
     const cur = sessionRef.current;
     if (cur?.search) {
       // 从搜索打开：上下篇按搜索结果顺序，邻篇同样打开到它的命中段。
@@ -1005,6 +1040,10 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       citationTray={props.citationTray}
       onTrayEscape={props.onTrayEscape}
       returnThreadTitle={session.fromThread?.title}
+      returnArticleTitle={session.detour ? returns.current.at(-1)?.view.title : undefined}
+      onReturnArticle={session.detour ? () => { if (!back()) closeReader(); } : undefined}
+      related={related.data && related.data.length ? related.data : undefined}
+      onOpenRelated={openRelated}
       onContinueAsking={session.fromThread ? props.onContinueAsking : undefined}
       anchor={searchAnchor ?? session.anchor}
       searchTerm={session.search?.query}
@@ -1035,8 +1074,8 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       onMediaRef={(media) => acceptMedia(reader.id, media)}
       hasPrev={pager && pos > 0}
       hasNext={pager && pos >= 0 && (pos < ids.length - 1 || (!session.search && nav.hasMore))}
-      onPrev={() => void openNeighbor(-1)}
-      onNext={() => void openNeighbor(1)}
+      onPrev={session.detour ? undefined : () => void openNeighbor(-1)}
+      onNext={session.detour ? undefined : () => void openNeighbor(1)}
       fetchingFulltext={!!ops.fulltext}
       onFetchFulltext={() => void fetchFulltext()}
       onStar={() => void toggleStar()}

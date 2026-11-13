@@ -605,6 +605,8 @@ export type MockHostOptions = {
   threads?: ThreadView[];
   messages?: Record<number, ChatMessageView[]>;
   reader?: ReaderView;
+  /** 文末相关阅读（按文章 id）；未列出的文章没有相关阅读，同没有向量时一样。 */
+  related?: Record<number, import("../src/bindings").RelatedArticleView[]>;
   /** 按文章 id 覆盖 `reader`。未列出的 id 仍用默认阅读视图，只改 id。 */
   readers?: Record<number, ReaderView>;
   /** 每次显式打开推进一版，读取快照不推进；用来验证正文版本变化。 */
@@ -660,7 +662,7 @@ export type MockHostOptions = {
 /** 在页面脚本之前注入模拟 IPC。返回的 `invoke` 同步产生结果，不涉及真实宿主。 */
 export async function installMockHost(page: Page, options: MockHostOptions = {}) {
   await page.addInitScript(
-    ({ webExtractions, webWindowError, clearWebDataError, siteRules, siteRuleReport, webLinks, linkSafety, focus, feeds, threads, threadFolders, messages, digests, sendFailures, holdSend, ai, bindings, pool, presets, rules, memory, pi, probe, piConfig, networkProxy, generated, settings, diag, storage, retention, backup, translate, reader, readers, readerSequences, holdOpen, holdFocusPage, holdDigest, focusPageSize, clusterArticles, clusterSummaries, clusterGenerated, holdClusterSummary, clusterSummaryModelReady, holdSummary, summary, selectionTranslation, holdSelectionTranslation, refreshFails, piDelayMs, feedIconHrefs, brokenBlocks, trainingFeatures, vectorSpace, hidden, ruleStats, timelineArticles, feedsPageSize, feedsHiddenCount, feedTreeOrder, windowControls }) => {
+    ({ webExtractions, webWindowError, clearWebDataError, siteRules, siteRuleReport, webLinks, linkSafety, related, focus, feeds, threads, threadFolders, messages, digests, sendFailures, holdSend, ai, bindings, pool, presets, rules, memory, pi, probe, piConfig, networkProxy, generated, settings, diag, storage, retention, backup, translate, reader, readers, readerSequences, holdOpen, holdFocusPage, holdDigest, focusPageSize, clusterArticles, clusterSummaries, clusterGenerated, holdClusterSummary, clusterSummaryModelReady, holdSummary, summary, selectionTranslation, holdSelectionTranslation, refreshFails, piDelayMs, feedIconHrefs, brokenBlocks, trainingFeatures, vectorSpace, hidden, ruleStats, timelineArticles, feedsPageSize, feedsHiddenCount, feedTreeOrder, windowControls }) => {
       const applyFeedTreeOrder = eval(`(${feedTreeOrder})`) as (tree: FeedTree, op: "move" | "restore", args: { items?: string[]; parentFolderId?: number | null; before?: string | null; layout?: { item: string; parent_folder_id: number | null; position: number }[] }) => { tree: FeedTree; layout: { item: string; parent_folder_id: number | null; position: number }[] };
       const collectWebArticle = (id: number) => {
         for (const value of Object.values(webLinks)) {
@@ -1264,6 +1266,8 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 return structuredClone(linkSafety[args.href] ?? { actual_host: new URL(args.href).hostname, warnings: [] });
               case "article_reader":
                 return readerFor(args.id);
+              case "related_articles":
+                return structuredClone((related[args.articleId] ?? []).slice(0, args.limit));
               case "open_article": {
                 if (harness.holdOpen) await new Promise<void>(resolve => pendingOpens.push(resolve));
                 const sequence = readerSequences[args.id];
@@ -1851,6 +1855,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
       webWindowError: options.webWindowError ?? "", clearWebDataError: options.clearWebDataError ?? "",
       webLinks: options.webLinks ?? {},
       linkSafety: options.linkSafety ?? {},
+      related: options.related ?? {},
       focus: options.focus ?? MOCK_FOCUS,
       feeds: options.feeds ?? MOCK_FEEDS,
       threads: options.threads ?? MOCK_THREADS,

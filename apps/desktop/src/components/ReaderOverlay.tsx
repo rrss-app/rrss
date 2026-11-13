@@ -1,5 +1,5 @@
 import { Component, createRef, useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
-import { openExternal, type ArticleView, type MediaRef, type ReaderView } from "../lib/api";
+import { openExternal, type ArticleView, type MediaRef, type ReaderView, type RelatedArticleView } from "../lib/api";
 import { openOriginal } from "../lib/signals";
 import { useExposureTracker, type ExposureObserver } from "../lib/useExposureTracker";
 import { BlockView, type ReaderSelection } from "./BlockView";
@@ -39,6 +39,10 @@ export function ReaderOverlay({
   searchTerm,
   searchHits,
   returnThreadTitle,
+  returnArticleTitle,
+  onReturnArticle,
+  related,
+  onOpenRelated,
   onContinueAsking,
   onReadingPosition,
   onBody,
@@ -121,6 +125,12 @@ export function ReaderOverlay({
   /** 正文命中段导航：第几处（零起）、共几处、N / Shift+N。 */
   searchHits?: { index: number; total: number; onStep: (dir: -1 | 1) => void };
   returnThreadTitle?: string;
+  /** 从文末相关阅读岔出来时：上一篇的标题与返回；顶栏的返回改成「上一篇」。 */
+  returnArticleTitle?: string;
+  onReturnArticle?: () => void;
+  /** 文末相关阅读（已按向量近邻取好，空时不传）。 */
+  related?: RelatedArticleView[];
+  onOpenRelated?: (item: RelatedArticleView) => void;
   onContinueAsking?: () => void;
   onReadingPosition?: (position: ReaderPosition) => void;
   onBody?: (body: HTMLDivElement | null) => void;
@@ -262,16 +272,19 @@ export function ReaderOverlay({
         <div className="drawer-head reader-head" data-tauri-drag-region="deep">
           <div className="reader-head-nav">
             {webNav ?? <>
-              <ReaderTool label={returnThreadTitle ? `回到对话「${returnThreadTitle}」` : searchTerm ? `回到搜索「${searchTerm}」` : "返回"}
+              {onReturnArticle ? <ReaderTool label={returnArticleTitle ? `回到「${returnArticleTitle}」` : "回到上一篇"}
+                aria-label="回到上一篇" shortcut="Esc" className="reader-back" onClick={onReturnArticle}>
+                <Icon name="arrowLeft" size={16} />上一篇
+              </ReaderTool> : <ReaderTool label={returnThreadTitle ? `回到对话「${returnThreadTitle}」` : searchTerm ? `回到搜索「${searchTerm}」` : "返回"}
                 aria-label={returnThreadTitle ? "对话" : searchTerm ? "回到搜索" : "返回"} shortcut="Esc" className="reader-back" onClick={onClose}>
                 <Icon name="arrowLeft" size={16} />{returnThreadTitle ? "对话" : searchTerm ? "搜索" : "返回"}
-              </ReaderTool>
+              </ReaderTool>}
               {onDrawerOpen ? <ReaderTool label="篇目" shortcut="L" onClick={onDrawerOpen}><Icon name="list" size={16} /></ReaderTool> : null}
-              <span className="reader-head-divider" />
-              <div className="reader-pager" role="group" aria-label="上下篇">
+              {onPrev || onNext ? <span className="reader-head-divider" /> : null}
+              {onPrev || onNext ? <div className="reader-pager" role="group" aria-label="上下篇">
                 {onPrev ? <ReaderTool label="上一篇" shortcut="K" disabled={!hasPrev} onClick={onPrev}><Icon name="chevronLeft" size={16} /></ReaderTool> : null}
                 {onNext ? <ReaderTool label="下一篇" shortcut="J" disabled={!hasNext} onClick={onNext}><Icon name="chevronRight" size={16} /></ReaderTool> : null}
-              </div>
+              </div> : null}
               {positionLabel ? <span className="reader-position" aria-label={`篇位 ${positionLabel}`}>{positionLabel}</span> : null}
               {onDrawerRate ? <ReaderTool label="踩并看下一篇" shortcut="X" onClick={() => onDrawerRate(reader.id)}><ThumbIcon down /></ReaderTool> : null}
             </>}
@@ -395,7 +408,8 @@ export function ReaderOverlay({
             </ErrorBoundary>
             {!origin ? <ReaderEnding reader={reader} onRate={onRate} onStar={onStar} onCite={onCiteArticle}
               showNext={showNextCard} hasNext={hasNext} nextArticle={nextArticle} onNext={onNext}
-              searchPosition={searchPosition} onReturnToSearch={onReturnToSearch} /> : null}
+              searchPosition={searchPosition} onReturnToSearch={onReturnToSearch}
+              related={related} onOpenRelated={onOpenRelated} /> : null}
           </div>
         </ReadingPosition>
         <BackToTop body={body} />
