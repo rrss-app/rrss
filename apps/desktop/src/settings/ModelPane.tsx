@@ -22,6 +22,7 @@ import type { Ask, Navigate } from "./SettingsPanel";
 import { TRANSLATE_BACKENDS, translateQueryOptions } from "./translateQuery";
 import { Pending } from "../components/Pending";
 import { embedChangeConfirm, VectorSpaceSection, vectorSpaceKey, vectorSpaceQueryOptions } from "./VectorSpaceSection";
+import { locale } from "../i18n";
 
 type Result = { tone: "ok" | "err"; text: string; detail?: string };
 
@@ -197,7 +198,7 @@ const ago = (at: number) => {
   if (minutes < 1) return "刚刚";
   if (minutes < 60) return `${minutes} 分钟前`;
   if (minutes < 24 * 60) return `${Math.round(minutes / 60)} 小时前`;
-  return new Date(at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+  return new Date(at).toLocaleDateString(locale(), { month: "numeric", day: "numeric" });
 };
 
 /** 连接列表：状态点反映最近一次测试（记在连接上，重开设置仍在）。 */

@@ -10,13 +10,14 @@ import { useSettingsWrite, type SettingsEditState } from "./editState";
 import { choiceKey, modelName, parseChoice, sameChoice } from "./modelChoices";
 import type { Ask } from "./SettingsPanel";
 import { MenuSelect } from "../components/MenuSelect";
+import { locale } from "../i18n";
 
 type Note = { tone: "ok" | "err"; text: string };
 
 /** 一次新勾选超过这么多先确认：模型会出现在所有选模型的地方。 */
 export const BULK_CONFIRM = 50;
 
-const fetchedLabel = (at: number) => new Date(at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+const fetchedLabel = (at: number) => new Date(at).toLocaleString(locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
 /**
  * 添加模型（阶段 19-7）：按连接切换；勾选只改草稿，底部「应用」一次写入，左侧写明将加入 / 移出几个。

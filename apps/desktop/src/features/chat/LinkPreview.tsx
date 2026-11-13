@@ -5,6 +5,7 @@ import { useLingering } from "../../lib/motion";
 import { WebLinksContext } from "../../lib/webLinks";
 import { sourceStatusNote } from "../../components/DigestSourcePreview";
 import { localArticleId } from "./ChatMessages";
+import { locale } from "../../i18n";
 
 /** 停多久才弹：擦过不弹。 */
 const SHOW_MS = 350;
@@ -78,7 +79,7 @@ function usePreviews() {
 function formatDay(ms: number | null): string {
   if (ms == null) return "";
   const date = new Date(ms);
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString(locale(), { month: "long", day: "numeric" });
 }
 
 export type LinkPreviewProps = {

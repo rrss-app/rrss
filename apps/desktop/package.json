@@ -19,7 +19,8 @@
     "check:hooks": "node tooling/check-hooks.mjs",
     "check:deps": "node tooling/check-deps.mjs",
     "check:ipc": "node tooling/check-ipc.mjs",
-    "check:frontend": "pnpm run check:types && pnpm run check:hooks && pnpm run check:deps && pnpm run check:ipc",
+    "check:i18n": "node tooling/check-i18n.mjs",
+    "check:frontend": "pnpm run check:types && pnpm run check:hooks && pnpm run check:deps && pnpm run check:ipc && pnpm run check:i18n",
     "check:frontend:report": "node tooling/check-hooks.mjs --report && node tooling/check-deps.mjs --report",
     "perf:report": "node tooling/perf-report.mjs",
     "test:tooling": "node --test tooling/*.test.mjs",
@@ -33,9 +34,11 @@
     "@tauri-apps/plugin-clipboard-manager": "^2.5.0",
     "@tauri-apps/plugin-dialog": "^2.8.3",
     "@tauri-apps/plugin-opener": "^2.7.2",
+    "i18next": "^27.1.1",
     "lowlight": "^3.3.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "react-i18next": "^18.0.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

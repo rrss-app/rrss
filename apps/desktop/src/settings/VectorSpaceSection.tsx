@@ -8,6 +8,7 @@ import { Feedback } from "./ConnectionDialog";
 import { SettingRow } from "./chips";
 import { SettingsRows } from "./SettingsRows";
 import type { Ask } from "./SettingsPanel";
+import { locale } from "../i18n";
 
 /** 阶段 23 V1c：向量库绑定、重建进度与探针核对。 */
 export const vectorSpaceKey = ["vector-space"] as const;
@@ -18,7 +19,7 @@ export const vectorSpaceQueryOptions = () => queryOptions({
   refetchInterval: (query) => (query.state.data?.building ? 3_000 : false),
 });
 
-const count = (n: number) => n.toLocaleString("zh-CN");
+const count = (n: number) => n.toLocaleString(locale());
 // 粗估：本机每秒约 30 段；远程只报 token 量，价格看服务商。
 const effort = (s: VectorSpaceStatusView) => s.local
   ? `约 ${Math.max(1, Math.round(s.estimate_chunks / 30 / 60))} 分钟，不产生费用`
@@ -121,7 +122,7 @@ export function VectorSpaceSection({ onAsk }: { onAsk: Ask }) {
         {space && (
           <div className="settings-option">
             <div><strong>核对生成方式</strong>
-              <p className="hint">定期检查服务生成的向量有没有变化；变了会暂停生成并提醒你。{space.checked_at ? `上次核对：${new Date(space.checked_at).toLocaleString("zh-CN", { hour12: false })}。` : ""}</p></div>
+              <p className="hint">定期检查服务生成的向量有没有变化；变了会暂停生成并提醒你。{space.checked_at ? `上次核对：${new Date(space.checked_at).toLocaleString(locale(), { hour12: false })}。` : ""}</p></div>
             <button type="button" className="btn sm ghost" disabled={busy}
               onClick={() => void act(api.checkVectorSpace, "核对完成。")}>立即核对</button>
           </div>

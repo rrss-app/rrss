@@ -10,18 +10,9 @@ export const DEFAULT_FILTERS: SearchFilters = { scope: "all", feedIds: [], time:
 /** 浮层一次取的结果数；列表与预览各自滚动，不分页。 */
 export const SEARCH_LIMIT = 50;
 
-export const SCOPE_OPTIONS: { value: SearchScope; label: string }[] = [
-  { value: "all", label: "全部" },
-  { value: "unread", label: "未读" },
-  { value: "starred", label: "收藏" },
-];
+export const SCOPES: SearchScope[] = ["all", "unread", "starred"];
 
-export const TIME_OPTIONS: { value: SearchTime; label: string }[] = [
-  { value: "any", label: "不限" },
-  { value: "today", label: "今天" },
-  { value: "7d", label: "7 天" },
-  { value: "30d", label: "30 天" },
-];
+export const TIMES: SearchTime[] = ["any", "today", "7d", "30d"];
 
 const DAY = 86_400_000;
 

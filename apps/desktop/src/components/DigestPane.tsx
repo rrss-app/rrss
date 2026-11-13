@@ -8,6 +8,7 @@ import { Icon } from "./Icon";
 import type { SelectedBlock } from "../lib/selection";
 import { Segmented } from "./Segmented";
 import { useDelayed } from "./Pending";
+import { locale } from "../i18n";
 
 function DigestSkeleton() {
   const late = useDelayed(250);
@@ -306,7 +307,7 @@ export function DigestPane({
                   <span className="digest-kicker">{showing.period_label}</span>
                   <span className="digest-doc-date">{showing.date_label}</span>
                   {/* period_start 与后端 digest_date_label 一样是毫秒；不指定时区，跟随本机日历。 */}
-                  {showing.period === "daily" ? <span className="digest-doc-weekday">{new Date(showing.period_start).toLocaleDateString("zh-CN", { weekday: "long" })}</span> : null}
+                  {showing.period === "daily" ? <span className="digest-doc-weekday">{new Date(showing.period_start).toLocaleDateString(locale(), { weekday: "long" })}</span> : null}
                 </div>
                 {showing.document ? (
                   <ErrorBoundary scope="digest"

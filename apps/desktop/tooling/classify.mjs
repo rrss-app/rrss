@@ -22,6 +22,8 @@ export const KNOWN_SRC_DIRS = new Set([
   "styles",
   "test",
   "features",
+  "i18n",
+  "locales",
 ]);
 
 export const IGNORE_DIR_NAMES = new Set([
@@ -142,6 +144,10 @@ export function classifyFile(root, filePath) {
   }
   if (srcDir === "app") {
     return { rel, role: "production", layer: "app", feature: null, isIndex: false };
+  }
+  // 语言包与取文案的入口：各层都能用，自己不依赖业务代码。
+  if (srcDir === "i18n" || srcDir === "locales") {
+    return { rel, role: "production", layer: "shared", feature: null, isIndex: false };
   }
   if (srcDir === "shared") {
     return { rel, role: "production", layer: "shared", feature: null, isIndex: false };

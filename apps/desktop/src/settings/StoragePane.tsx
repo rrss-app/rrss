@@ -7,10 +7,11 @@ import { useMergedEditState, type SettingsEditState } from "./editState";
 import type { Ask } from "./SettingsPanel";
 import { useStorageSettings } from "./useStorageSettings";
 import { useDelayed } from "../components/Pending";
+import { locale } from "../i18n";
 
 function scannedAt(ms: number) {
   if (!ms) return "";
-  return new Date(ms).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return new Date(ms).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 const PARTS = [

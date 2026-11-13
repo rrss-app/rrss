@@ -12,6 +12,7 @@ import { useSettingsWrite, type SettingsEditState } from "./editState";
 import { chatDefault, choiceKey, modelName, sameChoice, thinkingOptions } from "./modelChoices";
 import { piQueryOptions } from "./piQuery";
 import type { Ask } from "./SettingsPanel";
+import { locale } from "../i18n";
 
 export type ModelFilter = "" | "chat" | "untested" | "unused";
 const FILTERS: Array<{ id: ModelFilter; label: string }> = [
@@ -177,7 +178,7 @@ export function ManageModels({ providers, initialFilter, initialModel, onAsk, on
               <div>
                 <h4 className="mono">{current.model}</h4>
                 <span className="hint"><span className="model-picker-tag">{name(current.provider_id)}</span>
-                  {current.tested_at ? ` 能力 ${new Date(current.tested_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 测试` : " 能力还没测试"}</span>
+                  {current.tested_at ? ` 能力 ${new Date(current.tested_at).toLocaleString(locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 测试` : " 能力还没测试"}</span>
               </div>
               <button type="button" className="btn sm" disabled={writing} aria-busy={probing || undefined} onClick={() => void probe()}>测试能力</button>
             </div>

@@ -5,6 +5,7 @@ import type { ReaderSearchOpen } from "../reader";
 import { SourceAvatar } from "../../components/ArticleCard";
 import { Icon } from "../../components/Icon";
 import { RelativeTime } from "../../components/RelativeTime";
+import { Trans, useTranslation } from "../../i18n";
 import { Highlight } from "./Highlight";
 import { SearchFilterBar, type SearchKind } from "./SearchFilterBar";
 import { Score, SearchPreview } from "./SearchPreview";
@@ -51,6 +52,7 @@ const noBlocks = () => Promise.reject(new Error("no host"));
 
 export function CommandPalette({ open, topmost = true, region = "window", feeds = [], onClose, onSearch, onHitBlocks, onReadingMinutes, onOpen, keepAlive = false, returnTo = null, rootRef,
   onSearchThreads, onOpenThread, threadFolderName }: CommandPaletteProps) {
+  const { t } = useTranslation("search");
   const alive = open || keepAlive;
   const session = useSearchSession({ active: alive, search: onSearch });
   const { query, setQuery, filters, setFilters, status, hits, searched, error, retry } = session;
@@ -194,9 +196,9 @@ export function CommandPalette({ open, topmost = true, region = "window", feeds 
   const loading = status === "loading";
   const showResults = hits.length > 0 && (status === "ready" || status === "loading" || status === "error");
   const none = status === "ready" && hits.length === 0;
-  const articleCount = showResults ? (hits.length >= SEARCH_LIMIT ? `前 ${hits.length} 篇` : `${hits.length} 篇`) : none ? "0 篇" : "";
+  const articleCount = showResults ? t(hits.length >= SEARCH_LIMIT ? "count.articlesCapped" : "count.articles", { count: hits.length }) : none ? t("count.articles", { count: 0 }) : "";
   const threadReady = threadSearch.status === "ready" || (threadSearch.status !== "idle" && threadHits.length > 0);
-  const threadCount = threadReady ? `${threadHits.length >= THREAD_SEARCH_LIMIT ? "前 " : ""}${threadHits.length} 条会话` : "";
+  const threadCount = threadReady ? t(threadHits.length >= THREAD_SEARCH_LIMIT ? "count.threadsCapped" : "count.threads", { count: threadHits.length }) : "";
   const count = onThreads ? threadCount : articleCount;
   const kindCounts = {
     articles: showResults ? (hits.length >= SEARCH_LIMIT ? `${hits.length}+` : String(hits.length)) : none ? "0" : "",
@@ -206,17 +208,17 @@ export function CommandPalette({ open, topmost = true, region = "window", feeds 
 
   return (
     <div className="overlay command-palette-stage" data-region={region} style={{ zIndex: 50 }}>
-      <button type="button" className="overlay-dismiss" aria-label="关闭搜索" onClick={close} />
+      <button type="button" className="overlay-dismiss" aria-label={t("close")} onClick={close} />
       <div ref={frameRef} className="search-frame" data-tier={tier}>
-        <div ref={rootRef} className="command-palette" role="dialog" aria-modal="true" aria-label="搜索文章">
+        <div ref={rootRef} className="command-palette" role="dialog" aria-modal="true" aria-label={t("dialog")}>
           <div className="command-palette-field">
             <Icon name="search" size={18} className="command-palette-icon" />
             <input
               ref={inputRef}
               type="search"
               className="command-palette-input"
-              placeholder="搜索标题与正文…"
-              aria-label="搜索文章"
+              placeholder={t("placeholder")}
+              aria-label={t("dialog")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -241,7 +243,7 @@ export function CommandPalette({ open, topmost = true, region = "window", feeds 
               }}
             />
             {count ? <span className="search-count">{count}</span> : null}
-            {hasQuery ? <button type="button" className="search-clear" aria-label="清空" onClick={clear}><Icon name="close" size={12} /></button> : null}
+            {hasQuery ? <button type="button" className="search-clear" aria-label={t("clear")} onClick={clear}><Icon name="close" size={12} /></button> : null}
             <kbd className="kbd">Esc</kbd>
             {loading ? <i className="search-busy" aria-hidden="true" /> : null}
           </div>
@@ -264,19 +266,19 @@ export function CommandPalette({ open, topmost = true, region = "window", feeds 
               {status === "error" ? (
                 <div className="search-error" role="alert">
                   <Icon name="info" size={15} />
-                  <span>搜索失败：{error}</span>
-                  <button type="button" className="btn sm" onClick={retry}>重试</button>
+                  <span>{t("error.articles", { message: error })}</span>
+                  <button type="button" className="btn sm" onClick={retry}>{t("retry", { ns: "common" })}</button>
                 </div>
               ) : null}
               {!hasQuery ? (
                 <>
                   {recent.length ? (
                     <>
-                      <div className="search-caption">最近搜索</div>
+                      <div className="search-caption">{t("recent.caption")}</div>
                       <div className="search-recent">
                         {recent.map((term) => (
                           <button key={term} type="button" onClick={() => { setQuery(term); inputRef.current?.focus(); }}>
-                            <Icon name="clock" size={14} />{term}<span>本次运行</span>
+                            <Icon name="clock" size={14} />{term}<span>{t("recent.session")}</span>
                           </button>
                         ))}
                       </div>
@@ -285,22 +287,22 @@ export function CommandPalette({ open, topmost = true, region = "window", feeds 
                   {tier === "narrow" ? tips : null}
                 </>
               ) : status === "short" ? (
-                <p className="command-palette-hint">再输入一个字：至少 2 个字符</p>
+                <p className="command-palette-hint">{t("hint.short")}</p>
               ) : loading && hits.length === 0 ? (
-                <p className="command-palette-hint" role="status">搜索中…</p>
+                <p className="command-palette-hint" role="status">{t("hint.loading")}</p>
               ) : none ? (
                 <div className="search-none">
-                  <h3>没有找到「{searched}」</h3>
-                  {threadHits.length && onSearchThreads ? <p>文章里没有，对话里有 {threadHits.length} 条。
-                    <button type="button" className="link-btn" onClick={() => setKind("threads")}>看对话</button></p> : null}
-                  <p>换个更短的词，或去掉引号再试；被规则隐藏的文章不会出现在这里。</p>
+                  <h3>{t("none.title", { query: searched })}</h3>
+                  {threadHits.length && onSearchThreads ? <p>{t("none.inThreads", { count: threadHits.length })}
+                    <button type="button" className="link-btn" onClick={() => setKind("threads")}>{t("none.seeThreads")}</button></p> : null}
+                  <p>{t("none.advice")}</p>
                   <div className="search-none-actions">
-                    {filtersActive(filters) ? <button type="button" className="btn" onClick={() => setFilters(DEFAULT_FILTERS)}>清除筛选</button> : null}
-                    <button type="button" className="btn" onClick={clear}>清空重搜</button>
+                    {filtersActive(filters) ? <button type="button" className="btn" onClick={() => setFilters(DEFAULT_FILTERS)}>{t("none.clearFilters")}</button> : null}
+                    <button type="button" className="btn" onClick={clear}>{t("none.reset")}</button>
                   </div>
                 </div>
               ) : showResults ? (
-                <div role="listbox" aria-label="结果">
+                <div role="listbox" aria-label={t("results.articles")}>
                   {hits.map((hit, i) => (
                     <SearchRow key={hit.id} hit={hit} index={i} query={searched} selected={i === active} flash={i === flash} onPick={pick} observe={observe} />
                   ))}
@@ -322,10 +324,10 @@ export function CommandPalette({ open, topmost = true, region = "window", feeds 
             ) : null}
           </div>
           <div className="command-palette-foot">
-            <span><kbd className="kbd">↑</kbd><kbd className="kbd">↓</kbd> 选择</span>
-            <span><kbd className="kbd">Enter</kbd> {onThreads ? "打开对话" : "打开到命中段"}</span>
+            <span><kbd className="kbd">↑</kbd><kbd className="kbd">↓</kbd> {t("foot.select")}</span>
+            <span><kbd className="kbd">Enter</kbd> {onThreads ? t("foot.openThread") : t("foot.openArticle")}</span>
             <span className="search-foot-gap" />
-            <span>本机全文检索 · 不调用模型</span>
+            <span>{t("foot.local")}</span>
           </div>
         </div>
       </div>
@@ -348,6 +350,7 @@ function SearchList({ listRef, active, loading, dim, onMouseMove, children }: {
 
 function SearchRow({ hit, index, query, selected, flash, onPick, observe }: { hit: SearchHitView; index: number; query: string; selected: boolean; flash: boolean; onPick: (id: number) => void; observe: ExposureObserver }) {
   const { id } = hit;
+  const { t } = useTranslation("search");
   const ref = useCallback((element: HTMLButtonElement | null) => observe(element, id, index), [observe, id, index]);
   return (
     <button ref={ref} type="button" role="option" aria-selected={selected} data-index={index} className="search-row" data-read={hit.read || undefined} data-flash={flash || undefined}
@@ -360,8 +363,8 @@ function SearchRow({ hit, index, query, selected, flash, onPick, observe }: { hi
         <SourceAvatar title={hit.feed_title} size={14} iconHref={hit.feed_icon_href} />
         <span className="search-row-feed">{hit.feed_title}</span>
         {hit.published_at != null ? <><span aria-hidden="true">·</span><RelativeTime ms={hit.published_at} /></> : null}
-        {hit.read ? <><span aria-hidden="true">·</span><span>已读</span></> : null}
-        {hit.starred ? <><span aria-hidden="true">·</span><span className="search-row-star"><Icon name="star" size={11} filled />已收藏</span></> : null}
+        {hit.read ? <><span aria-hidden="true">·</span><span>{t("state.read")}</span></> : null}
+        {hit.starred ? <><span aria-hidden="true">·</span><span className="search-row-star"><Icon name="star" size={11} filled />{t("state.starred")}</span></> : null}
       </span>
       {hit.snippet ? <span className="search-row-snippet"><Highlight text={hit.snippet} query={query} /></span> : null}
     </button>
@@ -369,10 +372,11 @@ function SearchRow({ hit, index, query, selected, flash, onPick, observe }: { hi
 }
 
 function SearchTips() {
+  const { t } = useTranslation("search");
   return (
     <div className="search-tips">
-      <h4>怎么搜</h4>
-      <p>标题和正文都会搜；中文任意两个字以上即可，英文不分大小写。加引号 <code>"本地优先"</code> 按整句匹配。被规则隐藏的文章不在结果里。</p>
+      <h4>{t("tips.articlesTitle")}</h4>
+      <p><Trans t={t} i18nKey="tips.articlesBody" components={{ code: <code /> }} /></p>
     </div>
   );
 }
@@ -386,14 +390,15 @@ function ThreadResults({ search, hasQuery, short, active, folderName, onPick }: 
   folderName?: (folderId: number) => string | undefined;
   onPick: (hit: ThreadSearchHitView) => void;
 }) {
-  if (!hasQuery) return <p className="command-palette-hint">输入要找的词，搜会话标题和消息。</p>;
-  if (short) return <p className="command-palette-hint">再输入一个字：至少 2 个字符</p>;
-  if (search.status === "error") return <div className="search-error" role="alert"><Icon name="info" size={15} /><span>搜索会话失败：{search.error}</span></div>;
-  if (search.status === "loading" && !search.hits.length) return <p className="command-palette-hint" role="status">搜索中…</p>;
+  const { t } = useTranslation("search");
+  if (!hasQuery) return <p className="command-palette-hint">{t("hint.threadsEmpty")}</p>;
+  if (short) return <p className="command-palette-hint">{t("hint.short")}</p>;
+  if (search.status === "error") return <div className="search-error" role="alert"><Icon name="info" size={15} /><span>{t("error.threads", { message: search.error })}</span></div>;
+  if (search.status === "loading" && !search.hits.length) return <p className="command-palette-hint" role="status">{t("hint.loading")}</p>;
   if (search.status === "ready" && !search.hits.length) {
-    return <div className="search-none"><h3>会话里没有找到「{search.searched}」</h3><p>只搜没归档的会话；归档的会话在侧栏「已归档」里。</p></div>;
+    return <div className="search-none"><h3>{t("none.threadsTitle", { query: search.searched })}</h3><p>{t("none.threadsAdvice")}</p></div>;
   }
-  return <div role="listbox" aria-label="对话结果">
+  return <div role="listbox" aria-label={t("results.threads")}>
     {search.hits.map((hit, i) => {
       const folder = hit.folder_id != null ? folderName?.(hit.folder_id) : undefined;
       return <button key={hit.thread_id} type="button" role="option" aria-selected={i === active} data-index={i} className="search-row search-thread-row"
@@ -407,7 +412,7 @@ function ThreadResults({ search, hasQuery, short, active, folderName, onPick }: 
           <RelativeTime ms={hit.message_id ? hit.created_at : hit.updated_at} />
         </span>
         {hit.snippet ? <span className="search-row-snippet">
-          <span className="search-thread-who">{hit.role === "user" ? "你" : "助手"}：</span><Highlight text={hit.snippet} query={search.searched} />
+          <span className="search-thread-who">{t("thread.snippetWho", { who: t(hit.role === "user" ? "thread.who.user" : "thread.who.assistant") })}</span><Highlight text={hit.snippet} query={search.searched} />
         </span> : null}
       </button>;
     })}
@@ -416,23 +421,25 @@ function ThreadResults({ search, hasQuery, short, active, folderName, onPick }: 
 
 /** 对话预览：会话标题、命中的是哪条消息，以及那条消息的片段；Enter 打开并定位过去。 */
 function ThreadPreview({ hit, query, folder }: { hit: ThreadSearchHitView; query: string; folder?: string }) {
-  const who = hit.role === "user" ? "你" : "助手";
+  const { t } = useTranslation("search");
+  const who = t(hit.role === "user" ? "thread.who.user" : "thread.who.assistant");
   return <div className="search-preview-main">
-    <div className="search-preview-source"><Icon name="chat" size={13} />对话{folder ? ` · ${folder}` : ""}</div>
+    <div className="search-preview-source"><Icon name="chat" size={13} />{folder ? t("thread.sourceIn", { folder }) : t("thread.source")}</div>
     <h2><Highlight text={hit.title} query={query} /></h2>
     <div className="search-preview-meta">
-      {hit.message_id ? `命中${hit.role === "user" ? "你的提问" : "助手的回复"}` : "标题命中 · 最近一条消息"} · <RelativeTime ms={hit.message_id ? hit.created_at : hit.updated_at} />
+      {t(!hit.message_id ? "thread.hitTitle" : hit.role === "user" ? "thread.hitUser" : "thread.hitAssistant")} · <RelativeTime ms={hit.message_id ? hit.created_at : hit.updated_at} />
     </div>
     {hit.snippet ? <div className="search-preview-context"><h4>{who}</h4><p><Highlight text={hit.snippet} query={query} /></p></div> : null}
-    <p className="search-preview-go">Enter 打开对话，{hit.message_id ? "定位到这条消息" : "从最新处开始"}</p>
+    <p className="search-preview-go">{t(hit.message_id ? "thread.goMessage" : "thread.goLatest")}</p>
   </div>;
 }
 
 function ThreadTips() {
+  const { t } = useTranslation("search");
   return (
     <div className="search-tips">
-      <h4>搜会话</h4>
-      <p>会话标题和你与助手的消息都会搜；归档的会话和简报追问不在结果里。打开后会翻到命中的那条消息。</p>
+      <h4>{t("tips.threadsTitle")}</h4>
+      <p>{t("tips.threadsBody")}</p>
     </div>
   );
 }

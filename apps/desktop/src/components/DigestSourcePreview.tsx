@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { createPortal } from "react-dom";
 import type { DigestSourceView } from "../bindings";
 import { useExposureTracker, type ExposureObserver } from "../lib/useExposureTracker";
+import { locale } from "../i18n";
 
 const CARD_ID = "digest-source-card";
 const HIDE_DELAY_MS = 120;
@@ -43,7 +44,7 @@ export function sourceLabel(source: DigestSourceView): string {
 
 function formatDay(ms: number): string {
   const date = new Date(ms);
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString(locale(), { year: "numeric", month: "long", day: "numeric" });
 }
 
 /** 一篇简报内同时最多一张来源卡片；按钮与卡片视为同一悬停区域。 */

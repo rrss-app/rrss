@@ -1,0 +1,119 @@
+{
+  "dialog": "搜索文章",
+  "close": "关闭搜索",
+  "placeholder": "搜索标题与正文…",
+  "clear": "清空",
+  "count": {
+    "articles_other": "{{count}} 篇",
+    "articlesCapped_other": "前 {{count}} 篇",
+    "threads_other": "{{count}} 条会话",
+    "threadsCapped_other": "前 {{count}} 条会话"
+  },
+  "error": {
+    "articles": "搜索失败：{{message}}",
+    "threads": "搜索会话失败：{{message}}"
+  },
+  "recent": {
+    "caption": "最近搜索",
+    "session": "本次运行"
+  },
+  "hint": {
+    "short": "再输入一个字：至少 2 个字符",
+    "loading": "搜索中…",
+    "threadsEmpty": "输入要找的词，搜会话标题和消息。"
+  },
+  "none": {
+    "title": "没有找到「{{query}}」",
+    "inThreads_other": "文章里没有，对话里有 {{count}} 条。",
+    "seeThreads": "看对话",
+    "advice": "换个更短的词，或去掉引号再试；被规则隐藏的文章不会出现在这里。",
+    "clearFilters": "清除筛选",
+    "reset": "清空重搜",
+    "threadsTitle": "会话里没有找到「{{query}}」",
+    "threadsAdvice": "只搜没归档的会话；归档的会话在侧栏「已归档」里。"
+  },
+  "results": {
+    "articles": "结果",
+    "threads": "对话结果"
+  },
+  "foot": {
+    "select": "选择",
+    "openArticle": "打开到命中段",
+    "openThread": "打开对话",
+    "local": "本机全文检索 · 不调用模型"
+  },
+  "state": {
+    "read": "已读",
+    "starred": "已收藏"
+  },
+  "tips": {
+    "articlesTitle": "怎么搜",
+    "articlesBody": "标题和正文都会搜；中文任意两个字以上即可，英文不分大小写。加引号 <code>\"本地优先\"</code> 按整句匹配。被规则隐藏的文章不在结果里。",
+    "threadsTitle": "搜会话",
+    "threadsBody": "会话标题和你与助手的消息都会搜；归档的会话和简报追问不在结果里。打开后会翻到命中的那条消息。"
+  },
+  "thread": {
+    "who": {
+      "user": "你",
+      "assistant": "助手"
+    },
+    "snippetWho": "{{who}}：",
+    "source": "对话",
+    "sourceIn": "对话 · {{folder}}",
+    "hitUser": "命中你的提问",
+    "hitAssistant": "命中助手的回复",
+    "hitTitle": "标题命中 · 最近一条消息",
+    "goMessage": "Enter 打开对话，定位到这条消息",
+    "goLatest": "Enter 打开对话，从最新处开始"
+  },
+  "filter": {
+    "kind": "搜索什么",
+    "kindArticles": "文章",
+    "kindThreads": "对话",
+    "threadsNote": "只搜没归档的会话，含标题和消息",
+    "scope": "范围",
+    "scopePrefix": "范围：",
+    "scopeOption": {
+      "all": "全部",
+      "unread": "未读",
+      "starred": "收藏"
+    },
+    "feeds": "按来源筛选",
+    "feedsValue": "来源：{{value}}",
+    "feedsAll": "全部",
+    "feedsCount_other": "{{count}} 个来源",
+    "feedsEvery": "全部来源",
+    "time": "按发布时间筛选",
+    "timePrefix": "时间：",
+    "timeOption": {
+      "any": "不限",
+      "today": "今天",
+      "7d": "7 天",
+      "30d": "30 天"
+    }
+  },
+  "preview": {
+    "label": "预览",
+    "minutes_other": "约 {{count}} 分钟",
+    "score": "分数",
+    "where": "命中位置",
+    "whereTitle": "标题",
+    "whereBody": "正文",
+    "whereBodyCount": "正文 {{n}} 处",
+    "bodyHit": "正文命中",
+    "bodyStart": "正文开头",
+    "blocksError": "命中段落暂时取不到，打开后可在正文里查找。",
+    "goBody": "点击或 Enter 打开，直接定位到正文里第一处命中的段落。",
+    "goTitle": "只在标题命中：点击或 Enter 从头打开。",
+    "siblings": "同来源",
+    "siblingsTitle": "本次结果里的同来源"
+  },
+  "hits": {
+    "label": "正文命中",
+    "head": "正文命中 {{n}} 处",
+    "total_other": "全文 {{count}} 段",
+    "ordinal": "第 {{n}} 段",
+    "go": "打开到这里 →",
+    "more_other": "展开其余 {{count}} 处"
+  }
+}

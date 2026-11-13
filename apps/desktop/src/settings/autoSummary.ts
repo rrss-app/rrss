@@ -1,4 +1,5 @@
 import type { AutoSummaryView } from "../bindings";
+import { locale } from "../i18n";
 
 /**
  * 自动摘要与预算的估算（AI 规格 · 自动摘要与预算 · 估算）。单篇与简报两个数由后端按档位算好下发，
@@ -8,11 +9,11 @@ import type { AutoSummaryView } from "../bindings";
 /** 「20 万」「4,000」：一万以上按万写、保留一位小数。 */
 export function wan(tokens: number): string {
   return tokens >= 10_000
-    ? `${Number((tokens / 10_000).toFixed(1)).toLocaleString("zh-CN", { maximumFractionDigits: 1 })} 万`
-    : tokens.toLocaleString("zh-CN");
+    ? `${Number((tokens / 10_000).toFixed(1)).toLocaleString(locale(), { maximumFractionDigits: 1 })} 万`
+    : tokens.toLocaleString(locale());
 }
 
-export const digits = (n: number) => n.toLocaleString("zh-CN");
+export const digits = (n: number) => n.toLocaleString(locale());
 
 /** 开启自动汇总时每天最多用掉的 token（组数上限 × 每组）。 */
 export function clusterDaily(auto: AutoSummaryView, clusterOn: boolean): number {

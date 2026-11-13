@@ -6,6 +6,7 @@ import { Icon } from "../components/Icon";
 import { ChipBar, SettingRow } from "./chips";
 import { diagnosticsKeys } from "./diagnosticsQuery";
 import type { Ask } from "./SettingsPanel";
+import { locale } from "../i18n";
 
 // 按原因给处理办法：另一个窗口在记录时检查权限没有用。
 const UNAVAILABLE: Record<LogUnavailableReason, { title: string; text: string }> = {
@@ -19,7 +20,7 @@ const LEVELS = [{ id: "default", label: "默认" }, { id: "detailed", label: "�
 function lastEvent(value: string) {
   const at = new Date(value);
   if (Number.isNaN(at.getTime())) return "";
-  const time = at.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const time = at.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit", hour12: false });
   return at.toDateString() === new Date().toDateString() ? `今天 ${time}` : `${at.getMonth() + 1} 月 ${at.getDate()} 日 ${time}`;
 }
 
