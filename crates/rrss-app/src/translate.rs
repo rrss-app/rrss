@@ -137,12 +137,19 @@ async fn translate_units(
             merged.extend(result?);
             continue;
         }
-        merged
-            .extend(result.map_err(|e| {
-                anyhow::anyhow!(redact_backend(&format!("{e:#}"), &config.backend))
-            })?);
+        merged.extend(result.map_err(|e| redact_error(e, &config.backend))?);
     }
     Ok(merged)
+}
+
+fn redact_error(error: anyhow::Error, backend: &TranslateBackend) -> anyhow::Error {
+    let mut ui = crate::views::UiError::from_anyhow_ref(&error);
+    if ui.code() == "legacy_text" {
+        anyhow::anyhow!(redact_backend(&format!("{error:#}"), backend))
+    } else {
+        ui.detail = redact_backend(&ui.detail, backend);
+        anyhow::Error::new(ui)
+    }
 }
 
 async fn non_complete_window(
@@ -692,6 +699,17 @@ pub async fn test_translate(db_path: &Path, client: &reqwest::Client) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backend_redaction_keeps_typed_error_code_and_parameters() {
+        let error = anyhow::Error::new(rrss_core::Error::UnknownAiTask("article_translate".into()));
+        let ui = crate::views::UiError::from(redact_error(error, &TranslateBackend::Complete));
+        assert_eq!(ui.code(), "ai_task_unknown");
+        assert_eq!(
+            serde_json::to_value(ui).unwrap()["params"],
+            serde_json::json!({"task":"article_translate"})
+        );
+    }
     use rrss_render::{Block, Document, IR_VERSION, Inline, apply_units, extract_units};
 
     #[test]

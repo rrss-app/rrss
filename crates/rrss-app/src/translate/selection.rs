@@ -42,6 +42,7 @@ pub async fn translate_selection(
         return Err(TranslationCommandError {
             kind: TranslationFailure::InvalidOutput,
             message: format!("选中文字超过 {MAX_CHARS} 字，请改用全文翻译。"),
+            error: None,
         });
     }
     if text.trim().is_empty() {

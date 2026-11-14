@@ -1,5 +1,5 @@
 import { i18n } from "../i18n";
-import { asUiError } from "../lib/errors";
+import { asUiError, formatError } from "../lib/errors";
 
 /** AI 设置失败信息：中文归类、折叠详情、去敏 Key / URL 凭证。 */
 
@@ -20,7 +20,8 @@ export type AiErrorView = {
 };
 
 export function rawErrorText(err: unknown): string {
-  return asUiError(err ?? "").detail.replace(/^Error:\s*/, "").trim();
+  const error = asUiError(err ?? "");
+  return (error.code === "legacy_text" ? error.detail : formatError(error)).replace(/^Error:\s*/, "").trim();
 }
 
 export function secretsFromUrl(url: string): string[] {
@@ -84,7 +85,7 @@ export function classifyAiError(raw: string): AiErrorKind {
 
 export function explainAiError(err: unknown, extraSecrets: string[] = []): AiErrorView {
   const detail = redactAiText(rawErrorText(err), extraSecrets);
-  const kind = classifyAiError(rawErrorText(err));
+  const kind = classifyAiError(asUiError(err ?? "").detail);
   return { kind, title: i18n.t(`error.${kind}`, { ns: "settingsModels" }), detail };
 }
 

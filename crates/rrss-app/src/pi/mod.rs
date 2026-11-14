@@ -48,26 +48,30 @@ impl ChatErrorKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 #[error("{message}")]
 pub struct ChatError {
     pub kind: ChatErrorKind,
-    pub message: String,
+    pub message: crate::views::UiError,
 }
 
 impl ChatError {
-    pub fn new(kind: ChatErrorKind, message: impl Into<String>) -> Self {
+    pub fn new(kind: ChatErrorKind, message: impl Into<crate::views::UiError>) -> Self {
         Self {
             kind,
             message: message.into(),
         }
     }
 
+    pub fn internal(kind: ChatErrorKind, error: impl Into<anyhow::Error>) -> Self {
+        Self::new(kind, crate::views::UiError::from(error.into()))
+    }
+
     /// 从 `anyhow` 错误里还原类别；没有标注的按 `fallback`。
     pub fn classify(err: &anyhow::Error, fallback: ChatErrorKind) -> Self {
         match err.downcast_ref::<ChatError>() {
             Some(e) => e.clone(),
-            None => Self::new(fallback, format!("{err:#}")),
+            None => Self::new(fallback, crate::views::UiError::from_anyhow_ref(err)),
         }
     }
 }
@@ -78,7 +82,10 @@ mod tests {
 
     #[test]
     fn classify_keeps_tagged_kind() {
-        let tagged = anyhow::Error::new(ChatError::new(ChatErrorKind::NotInstalled, "未找到"));
+        let tagged = anyhow::Error::new(ChatError::new(
+            ChatErrorKind::NotInstalled,
+            "fixture missing".to_string(),
+        ));
         assert_eq!(
             ChatError::classify(&tagged, ChatErrorKind::Internal).kind,
             ChatErrorKind::NotInstalled

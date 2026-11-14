@@ -246,5 +246,15 @@
       "hide": "收起噪声源 · {{names}}",
       "hideMore": "收起噪声源 · {{names}} 等"
     }
+  },
+  "ruleConditions": {
+    "author": "作者是『{{pattern}}』",
+    "tag": "带有标签『{{pattern}}』",
+    "title_kw": "标题包含『{{pattern}}』",
+    "title_re": "标题匹配正则『{{pattern}}』",
+    "url_phrase": "URL 包含『{{pattern}}』",
+    "url_re": "URL 匹配正则『{{pattern}}』",
+    "body_phrase": "正文包含『{{pattern}}』",
+    "body_re": "正文匹配正则『{{pattern}}』"
   }
 }

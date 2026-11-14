@@ -1,3 +1,4 @@
+import { feedHealthKind, feedHealthLabel, feedHealthDetail, formatFeedError } from "../features/feeds";
 import { useRef, useState } from "react";
 import { api, type FeedTree, type FeedView, type FolderView } from "../lib/api";
 import { formatNotice } from "../lib/notice";
@@ -37,12 +38,12 @@ export function SubscribePane({ onAsk, onChanged, onEditStateChange }: {
   const folders = tree?.folders ?? [];
   // 源健康：只提示，不自动退订；「只看这些」只影响本页列表。
   const issues = feeds.filter((feed) => feed.health);
-  const failing = issues.filter((feed) => feed.health === "failing");
+  const failing = issues.filter((feed) => feed.health?.code === "feed_health_failing");
   const [onlyIssues, setOnlyIssues] = useState(false);
   const filtering = onlyIssues && issues.length > 0;
   const shown = (list: FeedView[]) => (filtering ? list.filter((feed) => feed.health) : list);
   const askBatch = () => onAsk(t("subscribe.batch.title"),
-    [...failing.map((feed) => `${feed.title} — ${feed.health_label}`), t("subscribe.batch.warning")].join("\n"),
+    [...failing.map((feed) => `${feed.title} — ${feedHealthLabel(feed.health)}`), t("subscribe.batch.warning")].join("\n"),
     () => { void s.run(t("subscribe.action.unsubscribe"), async () => ({ tree: await api.unsubscribeFeeds(failing.map((feed) => feed.id)), message: t("subscribe.batch.done", { count: failing.length }) })); },
     { okLabel: t("subscribe.batch.ok", { count: failing.length }) });
   return (
@@ -191,12 +192,12 @@ function FeedItem({ feed, folders, onAsk, settings: s, missing = false }: {
   const unsubscribe = () => onAsk(t("subscribe.feed.deleteTitle"), t("subscribe.feed.deleteConfirm", { title: feed.title }), () => {
     void s.run(t("subscribe.action.delete"), async () => { await api.unsubscribe(feed.id); return {}; }, () => s.editFeed(feed.id));
   });
-  if (!editor) return <div className="list-row feed-row" data-feed-health={feed.health || undefined}>
+  if (!editor) return <div className="list-row feed-row" data-feed-health={feedHealthKind(feed.health) || undefined}>
     <SourceAvatar title={feed.title} size={20} iconHref={feed.icon_href} />
     <div>
       <span className="feed-title">{feed.title}</span>
       <span className="url" title={feed.url}>{feed.url}</span>
-      {feed.health && open && <span className="feed-health-detail">{feed.health_detail}</span>}
+      {feed.health && open && <span className="feed-health-detail">{feedHealthDetail(feed)}</span>}
     </div>
     <div className="feed-row-actions">
       {feed.health ? <>
@@ -204,9 +205,9 @@ function FeedItem({ feed, folders, onAsk, settings: s, missing = false }: {
       </> : null}
       <button type="button" className="btn sm ghost" onClick={() => s.editFeed(feed.id, { baseline: feed, draft: feed })}>{t("subscribe.edit")}</button>
       <button type="button" className="btn sm danger" onClick={unsubscribe}>{t("subscribe.feed.unsubscribe")}</button>
-      {feed.health && <button type="button" className={`health-badge ${feed.health === "failing" ? "danger" : "warn"}`}
-        aria-expanded={open} onClick={() => setOpen(!open)}>{feed.health_label}</button>}
-      {!feed.health && feed.error && <span className="health-badge danger" title={feed.error}>{t("subscribe.feed.refreshFailed")}</span>}
+      {feed.health && <button type="button" className={`health-badge ${feed.health?.code === "feed_health_failing" ? "danger" : "warn"}`}
+        aria-expanded={open} onClick={() => setOpen(!open)}>{feedHealthLabel(feed.health)}</button>}
+      {!feed.health && feed.error && <span className="health-badge danger" title={formatFeedError(feed.error)}>{t("subscribe.feed.refreshFailed")}</span>}
     </div>
   </div>;
   const { baseline, draft } = editor;
@@ -235,7 +236,7 @@ function FeedItem({ feed, folders, onAsk, settings: s, missing = false }: {
       </label>}
     </div>
     <p className="hint">{t("subscribe.feed.retentionHint")}</p>
-    {feed.error && <p className="notice warn"><Icon name="info" size={14} />{feed.error}</p>}
+    {feed.error && <p className="notice warn"><Icon name="info" size={14} />{formatFeedError(feed.error)}</p>}
     {missing && <p className="notice warn">{t("subscribe.feed.missing")}</p>}
     <div className="row form-actions">
       <button type="button" className="btn primary sm" disabled={missing || badDays} onClick={() => void s.run(t("subscribe.action.save"), async () => ({

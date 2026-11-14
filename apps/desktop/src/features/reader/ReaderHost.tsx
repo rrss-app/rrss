@@ -283,7 +283,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   const articleForRate = (view: ReaderView): ArticleView => currentNav().articles.find((article) => article.row_kind === 0 && article.id === view.id) ?? {
     id: view.id, title: view.title, feed_id: 0, feed_title: "", feed_icon_href: "", published_at: null, url: view.url,
     read: true, starred: view.starred, score: view.score, summary: view.summary, row_kind: 0,
-    cluster_id: 0, cluster_size: 1, cluster_label: "", cluster_span: "", interest_label: "", noisy: false, spot_check: false,
+    cluster_id: 0, cluster_size: 1, cluster_label: "", cluster_span: "", interest_reason: null, noisy: false, spot_check: false,
   };
   const observeStage = useCallback((node: HTMLDivElement | null) => {
     stageObserver.current?.disconnect();

@@ -117,8 +117,8 @@ pub fn pi_probe(conn: &Connection, data_dir: &Path) -> PiProbe {
         }
     };
     let config_error = match crate::pi::launch::current_profile(conn, data_dir, None) {
-        Err(err) if err.kind == crate::pi::ChatErrorKind::Config => err.message,
-        _ => String::new(),
+        Err(err) if err.kind == crate::pi::ChatErrorKind::Config => Some(err.message),
+        _ => None,
     };
     PiProbe {
         binary_source,
@@ -135,7 +135,7 @@ pub fn pi_skill(data_dir: &Path, name: &str) -> anyhow::Result<SkillDraft> {
         .user_skill(name)
         .join("SKILL.md");
     let raw = std::fs::read_to_string(&path)
-        .map_err(|_| anyhow::anyhow!("没有名为 {name} 的自定义技能"))?;
+        .map_err(|_| anyhow::Error::new(crate::ui_error::pi::PiUiError::skill_draft_missing(name)))?;
     let body = raw
         .strip_prefix("---")
         .and_then(|rest| {

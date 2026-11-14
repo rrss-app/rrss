@@ -1,3 +1,4 @@
+import { ruleConditionLabel } from "../lib/ruleLabels";
 import { useLayoutEffect, useRef, type CSSProperties } from "react";
 import type { ArticleView, FeatureView } from "../lib/api";
 import { getFocusableElements, isFocusable } from "../lib/useModalFocus";
@@ -86,7 +87,7 @@ export function TrainingBar({
         <div className="training-list">
           {item.features.map((f) => (
             <div key={f.dimension + f.pattern} className="training-row">
-              <span className="training-label">{t(item.dislike ? "trainingBar.scoreDown" : "trainingBar.scoreUp", { label: f.label })}</span>
+              <span className="training-label">{t(item.dislike ? "trainingBar.scoreDown" : "trainingBar.scoreUp", { label: ruleConditionLabel(f, "focus") })}</span>
               <div className="row">
                 <button type="button" className="btn sm" disabled={busy} aria-busy={busy} onClick={() => onConfirm(f, false)}>
                   {t("trainingBar.global")}

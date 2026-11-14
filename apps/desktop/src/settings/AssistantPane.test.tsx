@@ -1,4 +1,4 @@
-import { mcpFixture, aiPageFixture, bindingsFixture, modelPoolFixture, poolEntryFixture, providerFixture } from "../test/fixtures/settings";
+import { piProbeFixture, mcpFixture, aiPageFixture, bindingsFixture, modelPoolFixture, poolEntryFixture, providerFixture } from "../test/fixtures/settings";
 import { act, StrictMode } from "react";
 import { QueryClient, QueryClientProvider, notifyManager } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -74,6 +74,20 @@ describe("AssistantPane", () => {
     client.clear();
     notifyManager.setScheduler((callback) => setTimeout(callback, 0));
     box.stub?.assertNoUnexpectedCalls();
+  });
+
+  it("retries an installation failure delivered as a typed error", async () => {
+    box.stub!.handle("piProbe", () => piProbeFixture({ version_state: "missing" }));
+    box.stub!.handle("piInstallStatus", () => ({ state: "failed", received: 0, total: null, dir: "", message: "", error: { code: "pi_package_binary_missing" as const, params: { file: "pi" }, detail: "fixture" } }));
+    box.stub!.handle("installPi", () => ({ state: "downloading", received: 0, total: null, dir: "", message: "" }));
+    const { host } = mountPane();
+    await harness.flush();
+    const status = host.querySelector<HTMLElement>(".engine-status[role=alert]")!;
+    expect(status.dataset.errorCode).toBe("pi_package_binary_missing");
+    click(status.querySelector<HTMLButtonElement>("button:last-child")!);
+    await harness.flush();
+    expect(host.querySelector(".engine-status[aria-busy=true]")).not.toBeNull();
+    expect(host.querySelector(".engine-status[data-error-code]")).toBeNull();
   });
 
   it("saves the chat model immediately into the shared bindings snapshot and lists only chat models", async () => {

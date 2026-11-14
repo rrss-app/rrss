@@ -99,7 +99,7 @@ impl ProxyRule {
     fn normalized(&self) -> Result<Self> {
         let url = self.url.trim();
         if self.mode == ProxyMode::Custom && url.is_empty() {
-            return Err(invalid("请填写自定义代理地址"));
+            return Err(invalid(ProxyError::CustomUrlMissing));
         }
         Ok(Self {
             mode: self.mode,
@@ -200,10 +200,13 @@ impl Default for ProxyConfig {
 impl ProxyConfig {
     pub fn normalized(&self) -> Result<Self> {
         if self.version != CONFIG_VERSION {
-            return Err(invalid("不支持此版本的代理配置"));
+            return Err(invalid(ProxyError::VersionUnsupported {
+                found: self.version,
+                supported: CONFIG_VERSION,
+            }));
         }
         if self.global.mode == ProxyMode::Inherit {
-            return Err(invalid("全局代理不能选择跟随全局"));
+            return Err(invalid(ProxyError::GlobalInherit));
         }
         Ok(Self {
             version: CONFIG_VERSION,
@@ -295,7 +298,7 @@ impl ProxyConfig {
                 ProxyMode::Direct => {}
                 ProxyMode::Custom => {
                     let proxy = Proxy::all(&rule.url)
-                        .map_err(|_| invalid("无法构造自定义代理"))?
+                        .map_err(|_| invalid(ProxyError::CustomBuildFailed))?
                         .no_proxy(reqwest_no_proxy(&rule.no_proxy));
                     builder = builder.proxy(proxy);
                 }
@@ -315,17 +318,19 @@ impl ProxyConfig {
                             } else {
                                 Proxy::http(url)
                             }
-                            .map_err(|_| invalid("无法构造环境代理"))?
+                            .map_err(|_| invalid(ProxyError::EnvironmentBuildFailed))?
                             .no_proxy(reqwest_no_proxy(&no_proxy));
                             builder = builder.proxy(proxy);
                         }
                     }
                 }
-                ProxyMode::Inherit => return Err(invalid("全局代理不能选择跟随全局")),
+                ProxyMode::Inherit => return Err(invalid(ProxyError::GlobalInherit)),
             }
             // 不附带 reqwest 的原始错误或 source，避免 Debug / anyhow 错误链泄露地址。
             category = "client";
-            builder.build().map_err(|_| invalid("无法创建网络客户端"))
+            builder
+                .build()
+                .map_err(|_| invalid(ProxyError::ClientBuildFailed))
         })();
         let scope = scope_name;
         match &result {
@@ -419,7 +424,7 @@ impl ProxyConfig {
                 }
                 set("NO_PROXY", "no_proxy", &entries.join(","));
             }
-            ProxyMode::Inherit => return Err(invalid("全局代理不能选择跟随全局")),
+            ProxyMode::Inherit => return Err(invalid(ProxyError::GlobalInherit)),
         }
         let host_values = if [NetworkScope::Api, NetworkScope::Content]
             .into_iter()
@@ -643,8 +648,67 @@ fn proxy_scheme(value: &str) -> &'static str {
     }
 }
 
-fn invalid(message: &str) -> Error {
-    Error::InvalidNetworkProxy(message.into())
+/// Fixed, typed reasons; proxy addresses and credentials never enter failures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ProxyError {
+    #[error("unsupported proxy configuration version {found} (supported: {supported})")]
+    VersionUnsupported { found: u32, supported: u32 },
+    #[error("custom proxy address is required")]
+    CustomUrlMissing,
+    #[error("global proxy cannot inherit itself")]
+    GlobalInherit,
+    #[error("complete proxy URL is required")]
+    UrlIncomplete,
+    #[error("invalid proxy URL")]
+    UrlInvalid,
+    #[error("unsupported proxy scheme")]
+    SchemeUnsupported,
+    #[error("valid proxy host and port are required")]
+    EndpointInvalid,
+    #[error("proxy path, query and fragment are not supported")]
+    UrlComponentsUnsupported,
+    #[error("invalid proxy bypass list")]
+    NoProxyInvalid,
+    #[error("invalid proxy configuration")]
+    ConfigInvalid,
+    #[error("proxy configuration serialization failed")]
+    SaveFailed,
+    #[error("custom proxy construction failed")]
+    CustomBuildFailed,
+    #[error("environment proxy construction failed")]
+    EnvironmentBuildFailed,
+    #[error("network client construction failed")]
+    ClientBuildFailed,
+    #[error("network client configuration unavailable")]
+    ConfigUnavailable,
+    #[error("original-page proxy route changed; clear browser data first")]
+    WebviewRouteChanged,
+    #[error("original-page direct mode is unavailable on this platform")]
+    WebviewDirectUnsupported,
+    #[error("original-page proxy unavailable: proxy authentication is not supported")]
+    WebviewAuthUnsupported,
+    #[error("original-page proxy unavailable: only HTTP or SOCKS5 proxies are supported")]
+    WebviewSchemeUnsupported,
+    #[error("original-page proxy unavailable: webview requires an explicit non-default port")]
+    WebviewPortUnsupported,
+    #[error("original-page proxy unavailable: proxy bypass lists are not supported")]
+    WebviewBypassUnsupported,
+    #[error("original-page proxy unavailable: system proxy settings are unavailable")]
+    WebviewSystemUnavailable,
+    #[error(
+        "original-page proxy unavailable: PAC and automatic proxy configuration are not supported"
+    )]
+    WebviewPacUnsupported,
+    #[error("original-page proxy unavailable: HTTP and HTTPS proxy routes differ")]
+    WebviewRoutesDiffer,
+    #[error("original-page proxy unavailable: HTTP and HTTPS routes cannot be unified")]
+    WebviewRouteIncomplete,
+    #[error("original-page proxy unavailable: invalid proxy inheritance")]
+    WebviewInheritInvalid,
+}
+
+fn invalid(reason: ProxyError) -> Error {
+    Error::InvalidNetworkProxy(reason)
 }
 
 fn parse_proxy_url(raw: &str) -> Result<Url> {
@@ -653,11 +717,11 @@ fn parse_proxy_url(raw: &str) -> Result<Url> {
         || raw.chars().any(|c| c.is_whitespace() || c.is_control())
         || raw.contains('\\')
     {
-        return Err(invalid("代理地址格式无效，请填写完整 URL"));
+        return Err(invalid(ProxyError::UrlIncomplete));
     }
-    let url = Url::parse(raw).map_err(|_| invalid("代理地址格式无效"))?;
+    let url = Url::parse(raw).map_err(|_| invalid(ProxyError::UrlInvalid))?;
     if !matches!(url.scheme(), "http" | "https" | "socks5" | "socks5h") {
-        return Err(invalid("代理只支持 HTTP、HTTPS、SOCKS5 或 SOCKS5H"));
+        return Err(invalid(ProxyError::SchemeUnsupported));
     }
     // 禁止 URL 解析器将 http:///host 修复成另一个有效地址。
     let authority = raw.split_once("://").map(|(_, rest)| rest).unwrap_or("");
@@ -665,7 +729,7 @@ fn parse_proxy_url(raw: &str) -> Result<Url> {
         || url.host_str().is_none_or(str::is_empty)
         || url.port() == Some(0)
     {
-        return Err(invalid("代理地址需要有效主机和端口"));
+        return Err(invalid(ProxyError::EndpointInvalid));
     }
     if authority
         .split_once('/')
@@ -674,7 +738,7 @@ fn parse_proxy_url(raw: &str) -> Result<Url> {
         || url.query().is_some()
         || url.fragment().is_some()
     {
-        return Err(invalid("代理地址不能包含路径、查询参数或片段"));
+        return Err(invalid(ProxyError::UrlComponentsUnsupported));
     }
     Ok(url)
 }
@@ -710,7 +774,7 @@ pub fn normalize_no_proxy(raw: &str) -> Result<String> {
                 })
         };
         if !valid {
-            return Err(invalid("不代理列表只支持域名、IP、网段或 *"));
+            return Err(invalid(ProxyError::NoProxyInvalid));
         }
         if !entries.contains(&entry) {
             entries.push(entry);
@@ -784,7 +848,8 @@ pub fn merge_no_proxy(user: &str) -> Result<String> {
 
 fn decode(raw: &str) -> Result<ProxyConfig> {
     // serde 的错误可能包含原始字段值，因此只回传固定文案。
-    let config: ProxyConfig = serde_json::from_str(raw).map_err(|_| invalid("代理配置格式无效"))?;
+    let config: ProxyConfig =
+        serde_json::from_str(raw).map_err(|_| invalid(ProxyError::ConfigInvalid))?;
     config.normalized()
 }
 
@@ -798,7 +863,7 @@ pub fn load(conn: &Connection) -> Result<ProxyConfig> {
 /// 完整校验后只写一条记录；校验 / SQLite 写入失败均保留旧值。
 pub fn save(conn: &Connection, config: &ProxyConfig) -> Result<ProxyConfig> {
     let config = config.normalized()?;
-    let raw = serde_json::to_string(&config).map_err(|_| invalid("无法保存代理配置"))?;
+    let raw = serde_json::to_string(&config).map_err(|_| invalid(ProxyError::SaveFailed))?;
     db::set_setting(conn, SETTING_KEY, &raw)?;
     Ok(config)
 }
@@ -824,7 +889,8 @@ impl<T> Redacted<T> for std::result::Result<T, reqwest::Error> {
 }
 
 /// 网络接入方可共用的安全错误投影：保留类别，不传播可能含认证的 URL / source。
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RequestErrorMessage {
     Timeout,
     Connect,
@@ -833,15 +899,15 @@ pub enum RequestErrorMessage {
     Other,
 }
 
-// Preserve the existing display projection while giving IPC a typed value.
+// Internal diagnostics stay English; IPC owns the localized projection.
 impl std::fmt::Display for RequestErrorMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::Timeout => "网络请求超时",
-            Self::Connect => "网络连接失败，请检查目标服务和代理设置",
-            Self::Redirect => "网络重定向失败",
-            Self::Decode => "网络响应解码失败",
-            Self::Other => "网络请求失败",
+            Self::Timeout => "network request timed out",
+            Self::Connect => "network connection failed; check target service and proxy settings",
+            Self::Redirect => "network redirect failed",
+            Self::Decode => "network response decoding failed",
+            Self::Other => "network request failed",
         })
     }
 }

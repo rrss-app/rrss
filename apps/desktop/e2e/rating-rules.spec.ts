@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./fixtures";
-import { installMockHost, MOCK_RULES, settingsTab } from "./mockHost";
+import { installMockHost, MOCK_RULES, MOCK_RULE_SUMMARIES, settingsTab } from "./mockHost";
 import { shot } from "./shots";
 import { trainingFeaturesFixture } from "../src/test/fixtures/settings";
 
@@ -49,7 +49,7 @@ test("rating without features announces success, expires, and rules use host sum
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await settingsTab(page, "rules").click();
   const rules = page.locator(".rules-pane");
-  for (const rule of MOCK_RULES.rules) {
+  for (const rule of MOCK_RULES.rules.map(rule => ({ ...rule, summary: MOCK_RULE_SUMMARIES[rule.id] }))) {
     const row = rules.locator(`[data-rule-id="${rule.id}"]`);
     await expect(row).toHaveAttribute("data-pending", String(rule.pending));
     await expect(row.locator(".rule-summary")).toHaveText(rule.summary);

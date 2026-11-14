@@ -1,5 +1,6 @@
 //! 加进来的模型与模型目录的查询、写入和获取（阶段 19-6 / 19-7）。存储在 `rrss_core::model_pool`。
 
+use rrss_core::error::models::CompatProblem;
 use std::path::Path;
 
 use reqwest::Client;
@@ -123,7 +124,7 @@ pub fn update_pool_model(
         None => None,
         Some(raw) if raw.trim().is_empty() => Some(None),
         Some(raw) => Some(Some(serde_json::from_str(raw).map_err(|_| {
-            rrss_core::Error::InvalidCompat("兼容设置必须是 JSON 对象".into())
+            rrss_core::Error::InvalidCompat(CompatProblem::ModelObjectRequired)
         })?)),
     };
     model_pool::update_entry(

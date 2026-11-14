@@ -1,5 +1,6 @@
 //! 阶段 23「向量空间（V1）」：指纹、空间切换与固定探针；active 是读取唯一入口。
 //! rebuild_from 区分 stale 的重建和生效空间。
+use crate::error::{models::ModelChoiceProblem, settings::SettingProblem};
 use crate::{ai_store::EmbedEndpoint, error::Result, rag::rebuild_inputs};
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -25,9 +26,11 @@ pub fn resolve_dims(value: &str, source_dims: usize) -> Result<usize> {
     let target = match value.trim() {
         "auto" => 1024,
         "native" => source_dims,
-        n => n.parse::<usize>().ok().filter(|n| *n > 0).ok_or_else(|| {
-            crate::Error::InvalidSetting("向量维度必须是 auto、native 或正整数。".into())
-        })?,
+        n => n
+            .parse::<usize>()
+            .ok()
+            .filter(|n| *n > 0)
+            .ok_or_else(|| crate::Error::InvalidSetting(SettingProblem::VectorDimsInvalid))?,
     };
     Ok(target.min(source_dims))
 }
@@ -207,7 +210,7 @@ pub fn prepare_binding(
     let (Some(provider), Some(model)) = (provider, model.map(str::trim).filter(|s| !s.is_empty()))
     else {
         return Err(crate::Error::InvalidModelChoice(
-            "重建需要选择嵌入模型。".into(),
+            ModelChoiceProblem::RebuildModelMissing,
         ));
     };
     conn.execute(
@@ -344,9 +347,8 @@ pub fn prepare_dims_rebuild(conn: &Connection, active: &VectorSpace, dims: usize
     let space = building(conn)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
     if local {
         let decode = |blob: Vec<u8>| {
-            crate::rag::le_to_f32s(&blob).ok_or_else(|| {
-                crate::Error::InvalidSetting("向量数据损坏，无法在本地缩减维度。".into())
-            })
+            crate::rag::le_to_f32s(&blob)
+                .ok_or_else(|| crate::Error::InvalidSetting(SettingProblem::VectorDataInvalid))
         };
         let mut probes =
             conn.prepare("SELECT ordinal,embedding FROM vector_space_probes WHERE space_id=?1")?;

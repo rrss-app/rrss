@@ -58,8 +58,8 @@ struct V2Package {
     items: Vec<V2Item>,
 }
 
-fn digest_error(message: &str) -> Error {
-    Error::Parse(format!("简报成稿无效：{message}"))
+fn digest_error(reason: crate::error::JobFailure) -> Error {
+    Error::Jobs(reason)
 }
 
 pub fn sha256_hex(input: &[u8]) -> String {
@@ -236,18 +236,18 @@ fn serialize_v2(body: &str, items: Vec<V2Item>) -> Result<String> {
         body_hash: sha256_hex(body.as_bytes()),
         items,
     })
-    .map_err(|err| digest_error(&format!("来源序列化失败：{err}")))
+    .map_err(|_| digest_error(crate::error::JobFailure::DigestDraftSerialize))
 }
 
 pub fn prepare_digest_draft(output: &Value, numbered: &[DigestItem]) -> Result<DigestDraft> {
     let object = output
         .as_object()
-        .ok_or_else(|| digest_error("顶层不是对象"))?;
+        .ok_or_else(|| digest_error(crate::error::JobFailure::DigestDraftNotObject))?;
     if let Some(sections) = object.get("sections") {
         let sections = sections
             .as_array()
             .filter(|arr| !arr.is_empty())
-            .ok_or_else(|| digest_error("sections 为空或格式错误"))?;
+            .ok_or_else(|| digest_error(crate::error::JobFailure::DigestDraftSectionsInvalid))?;
         let mut rendered = Vec::new();
         let mut expected = Vec::new();
         let mut items = Vec::new();
@@ -307,11 +307,11 @@ pub fn prepare_digest_draft(output: &Value, numbered: &[DigestItem]) -> Result<D
             }
         }
         if rendered.is_empty() {
-            return Err(digest_error("清洗后没有有效条目"));
+            return Err(digest_error(crate::error::JobFailure::DigestDraftEmpty));
         }
         let body = rendered.join("\n\n");
         if canonical_digest_items(&markdown_to_document(&body)).as_ref() != Some(&expected) {
-            return Err(digest_error("规范正文与来源位置不一致"));
+            return Err(digest_error(crate::error::JobFailure::DigestDraftSourcesMismatch));
         }
         return Ok(DigestDraft {
             items_json: serialize_v2(&body, items)?,
@@ -323,11 +323,11 @@ pub fn prepare_digest_draft(output: &Value, numbered: &[DigestItem]) -> Result<D
         .get("body")
         .and_then(Value::as_str)
         .filter(|body| !body.trim().is_empty())
-        .ok_or_else(|| digest_error("缺少可用正文"))?;
+        .ok_or_else(|| digest_error(crate::error::JobFailure::DigestDraftBodyMissing))?;
     let refs = parse_digest_item_ns(output);
     let (body, aligned_refs) = sanitize_digest_body_with_item_refs(raw, &refs);
     if body.trim().is_empty() || count_digest_list_items(&body) == 0 {
-        return Err(digest_error("清洗后没有有效条目"));
+        return Err(digest_error(crate::error::JobFailure::DigestDraftEmpty));
     }
     let doc = markdown_to_document(&body);
     if let Some(expected) = canonical_digest_items(&doc) {
@@ -627,6 +627,21 @@ mod tests {
         );
         assert_eq!(decoded.lines[1][0].article_id, 22);
         assert!(!out.body.contains("空章节"));
+    }
+
+    #[test]
+    fn malformed_drafts_retain_typed_validation_reasons() {
+        use crate::error::JobFailure;
+        for (output, reason) in [
+            (Value::Null, JobFailure::DigestDraftNotObject),
+            (serde_json::json!({"sections": []}), JobFailure::DigestDraftSectionsInvalid),
+            (serde_json::json!({"sections": [{"items": []}]}), JobFailure::DigestDraftEmpty),
+            (serde_json::json!({}), JobFailure::DigestDraftBodyMissing),
+        ] {
+            let error = prepare_digest_draft(&output, &[item(11, "Fixture")]).unwrap_err();
+            let Error::Jobs(actual) = error else { panic!("expected a typed draft failure") };
+            assert_eq!(std::mem::discriminant(&actual), std::mem::discriminant(&reason));
+        }
     }
 
     #[test]

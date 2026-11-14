@@ -18,7 +18,7 @@ pub async fn fetch_fulltext(state: State<'_, AppState>, id: i64) -> Result<Reade
     let path = state.db_path.clone();
     rrss_app::fulltext::fetch_and_store(&state.network, &path, id)
         .await
-        .map_err(|error| UiError::from(error.to_string()))?;
+        .map_err(UiError::from)?;
     with_db("fetch_fulltext", path, move |conn| {
         queries::reader_view(conn, id).map_err(UiError::from)
     })
@@ -140,7 +140,7 @@ pub async fn download_direct_media(
         &referer,
     )
     .await
-    .map_err(|error| UiError::from(error.to_string()))
+    .map_err(UiError::from)
 }
 
 #[tauri::command]

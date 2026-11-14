@@ -391,20 +391,13 @@ fn schema_older_than_minimum_is_rejected() {
         Err(err) => err,
         Ok(_) => panic!("expected SchemaTooOld"),
     };
-    let text = err.to_string();
     assert!(
         matches!(
             err,
-            Error::SchemaTooOld {
-                found: 32,
-                min: MIN_UPGRADE_VERSION
-            }
+            Error::SchemaTooOld { found, min }
+                if found == MIN_UPGRADE_VERSION - 1 && min == MIN_UPGRADE_VERSION
         ),
-        "{text}"
-    );
-    assert_eq!(
-        text,
-        "数据库版本 v32 过旧，最低支持 v33：请先用旧版本打开一次完成升级，或新建数据库"
+        "{err}"
     );
 }
 

@@ -34,7 +34,7 @@ export function createTranslationSession(reader: ReaderView, changed: (view: Tra
     disconnected = connection; issue = true;
     const typed = error && typeof error === "object" && "kind" in error && "message" in error ? error as TranslationCommandError : null;
     failure = typed?.kind ?? null;
-    note = connection ? i18n.t("translation.disconnected", { ns: "reader" }) : formatNotice(i18n.t("translation.failedPrefix", { ns: "reader" }), typed?.message ?? error);
+    note = connection ? i18n.t("translation.disconnected", { ns: "reader" }) : formatNotice(i18n.t("translation.failedPrefix", { ns: "reader" }), typed?.error ?? typed?.message ?? error);
     clearTimeout(timer); clearBuffer(); publish();
   };
   const schedule = () => {

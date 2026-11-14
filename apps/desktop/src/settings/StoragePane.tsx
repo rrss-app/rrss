@@ -1,3 +1,4 @@
+import { formatStorageBytes as formatBytes, formatStorageMessage } from "./panelText";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../components/Icon";
 import { api, copyText, type StorageGroupView, type StorageItemView } from "../lib/api";
@@ -32,16 +33,6 @@ const PARTS: ReadonlyArray<{ id: PartId; keys: readonly string[] }> = [
 ];
 const partId = (key: string) => PARTS.find((part) => part.keys.includes(key))?.id ?? "other";
 
-/** 与宿主 `fmt_bytes` 同一档位，只用于悬停读数。 */
-function formatBytes(bytes: number) {
-  const kb = 1024;
-  if (bytes >= kb ** 3) return `${(bytes / kb ** 3).toFixed(2)} GB`;
-  if (bytes >= 100 * kb ** 2) return `${(bytes / kb ** 2).toFixed(0)} MB`;
-  if (bytes >= kb ** 2) return `${(bytes / kb ** 2).toFixed(1)} MB`;
-  if (bytes >= kb) return `${(bytes / kb).toFixed(0)} KB`;
-  return bytes > 0 ? `${bytes} B` : "0";
-}
-
 /** 构成条：色段和图例互相联动，指到哪一项就只亮那一项，下面一行读出大小与占比。 */
 /** 指针停稳这么久才换高亮项：快速扫过不让读数连跳。键盘聚焦立即切换。 */
 const HOVER_SETTLE_MS = 120;
@@ -66,7 +57,7 @@ function Composition({ parts }: { parts: Array<{ id: string; label: string; byte
         onMouseEnter={() => hover(part.id)} />)}
     </div>
     <p className="storage-readout" aria-live="polite">
-      {current ? <><strong>{current.label}</strong>{formatBytes(current.bytes)} · {share(current.bytes)}</> : <span className="hint">{t("storage.composition.hint")}</span>}
+      {current ? <><strong>{current.label}</strong>{formatBytes(current.bytes, false)} · {share(current.bytes)}</> : <span className="hint">{t("storage.composition.hint")}</span>}
     </p>
     <div className="storage-legend">{shown.map((part) => (
       <button key={part.id} type="button" data-on={part.id === hot || undefined}
@@ -108,15 +99,15 @@ function StorageRow({ item, disabled, pending, onClean }: {
   onClean: (item: StorageItemView) => void;
 }) {
   const { t } = useTranslation("settingsSystem");
-  return <div className="storage-row" data-storage-item={item.key}>
-    <i className="storage-swatch" data-part={partId(item.key)} aria-hidden="true" />
-    <div className="storage-name"><strong>{item.label}</strong>{item.hint && <span className="hint">{item.hint}</span>}</div>
+  return <div className="storage-row" data-storage-item={item.kind}>
+    <i className="storage-swatch" data-part={partId(item.kind)} aria-hidden="true" />
+    <div className="storage-name"><strong>{t(`storage.items.${item.kind}`)}</strong>{item.hint && <span className="hint">{formatStorageMessage(item.hint, item)}</span>}</div>
     <div className="storage-act">
       {pending ? <span className="storage-busy" role="status"><Icon name="spinner" size={14} className="spin" />{item.action === "vacuum" ? t("storage.row.compacting") : t("storage.row.cleaning")}</span>
-        : item.action ? <button type="button" className={`btn sm${item.action === "vacuum" ? "" : " danger"}`} disabled={disabled} onClick={() => onClean(item)}>{item.action_label}</button>
-        : item.passive && <span className="storage-passive">{item.passive}</span>}
+        : item.action ? <button type="button" className={`btn sm${item.action === "vacuum" ? "" : " danger"}`} disabled={disabled} onClick={() => onClean(item)}>{t(`storage.actions.${item.action}`)}</button>
+        : item.passive && <span className="storage-passive">{t(`storage.passive.${item.passive}`)}</span>}
     </div>
-    <div className="storage-size">{item.size}</div>
+    <div className="storage-size">{formatBytes(item.bytes)}</div>
   </div>;
 }
 
@@ -127,13 +118,13 @@ function StorageGroup({ group, disabled, pending, onClean }: {
   onClean: (item: StorageItemView) => void;
 }) {
   const { t } = useTranslation("settingsSystem");
-  return <section className="storage-group settings-card settings-section" aria-label={group.label}>
+  return <section className="storage-group settings-card settings-section" aria-label={t(`storage.groups.${group.kind}`)}>
     <div className="settings-section-meta">
-      <h4>{group.label} <span className="settings-count">{group.size}</span></h4>
-      <p className="hint">{group.key === "database" ? t("storage.group.database") : group.key === "media" ? t("storage.group.media") : group.note}</p>
-      {group.note && group.key === "database" && <p className="hint">{group.note}</p>}
+      <h4>{t(`storage.groups.${group.kind}`)} <span className="settings-count">{formatBytes(group.bytes)}</span></h4>
+      <p className="hint">{group.kind === "database" ? t("storage.group.database") : group.kind === "media" ? t("storage.group.media") : formatStorageMessage(group.note)}</p>
+      {group.note && group.kind === "database" && <p className="hint">{formatStorageMessage(group.note)}</p>}
     </div>
-    <div className="settings-section-body">{group.items.map((item) => <StorageRow key={item.key} item={item} disabled={disabled}
+    <div className="settings-section-body">{group.items.map((item) => <StorageRow key={item.kind} item={item} disabled={disabled}
       pending={!!pending && pending === item.action} onClean={onClean} />)}</div>
   </section>;
 }
@@ -152,7 +143,7 @@ export function StoragePane({ onAsk, onEditStateChange, onChanged }: {
   const refreshing = query.isFetching;
   const error = status?.tone === "err" ? status.text : query.isError ? t("storage.loadFailed", { message: formatError(query.error) }) : "";
   const items = data?.groups.flatMap((g) => g.items) ?? [];
-  const composition = PARTS.map((part) => ({ ...part, label: t(`storage.parts.${part.id}`), bytes: items.filter((i) => partId(i.key) === part.id).reduce((sum, i) => sum + Math.max(0, i.bytes), 0) }));
+  const composition = PARTS.map((part) => ({ ...part, label: t(`storage.parts.${part.id}`), bytes: items.filter((i) => partId(i.kind) === part.id).reduce((sum, i) => sum + Math.max(0, i.bytes), 0) }));
   // 首次统计：先整页留白等一小会儿，统计快就一次出全；慢了才画同形状的骨架，
   // 不让保留 / 备份先出来、再被晚到的占用分组整片推下去。
   const settled = !!data || query.isError;
@@ -166,7 +157,7 @@ export function StoragePane({ onAsk, onEditStateChange, onChanged }: {
         <div className="settings-section-meta"><h4>{t("storage.total.title")}</h4><p className="hint">{data ? t("storage.total.hintReady") : t("storage.total.hintScanning")}</p></div>
         <div className="settings-section-body">
           {data ? <>
-            <div className="storage-total"><span className="storage-total-num">{data.total}</span><span className="hint">{data.summary}</span></div>
+            <div className="storage-total"><span className="storage-total-num">{data.total_bytes === null ? "—" : formatBytes(data.total_bytes)}</span><span className="hint">{data.summary ? formatStorageMessage(data.summary) : t("storage.preview.summary")}</span></div>
             <Composition parts={composition} />
           </> : query.isError ? <p className="hint" role="status">{t("storage.total.failed")}</p> : <StorageSkeleton />}
           <div className="storage-scan">
@@ -182,7 +173,7 @@ export function StoragePane({ onAsk, onEditStateChange, onChanged }: {
         <div className="settings-section-meta"><i style={{ width: 72 }} /></div>
         <div className="settings-section-body">{[0, 1, 2, 3].map((n) => <div key={n} className="storage-row"><i /><i /><span /><i /></div>)}</div>
       </section> : null}
-      {data?.groups.map((group) => <StorageGroup key={group.key} group={group} disabled={busy || refreshing || backupBusy} pending={pending} onClean={clean} />)}
+      {data?.groups.map((group) => <StorageGroup key={group.kind} group={group} disabled={busy || refreshing || backupBusy} pending={pending} onClean={clean} />)}
       <RetentionSection onAsk={onAsk} onEditStateChange={report.retention} onChanged={onChanged} blocked={busy || parts.backup} />
       <BackupSection onAsk={onAsk} onEditStateChange={report.backup} onChanged={onChanged} blocked={busy || parts.retention} />
     </div>

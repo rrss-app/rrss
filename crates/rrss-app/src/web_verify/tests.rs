@@ -15,7 +15,7 @@ fn verification_transition_table_and_retry() {
         actual_url: "https://example.test".into(),
     };
     let good = Ok(page.clone());
-    let bad = Err("没有正文".into());
+    let bad = Err(crate::UiError::from("没有正文".to_string()));
     let mut suspicious = page;
     suspicious.suspicious.push("TooShort".into());
     assert!(
@@ -111,4 +111,18 @@ fn verification_transition_table_and_retry() {
     let failure = event("web-1", "https://example.test", None, Some(&bad));
     assert_eq!(failure.reason.as_deref(), Some("没有正文"));
     assert_eq!(failure.article_id, None);
+}
+
+#[test]
+fn extraction_failure_keeps_its_code_in_the_event() {
+    let failure = Err(crate::UiError::from(
+        crate::ui_error::web::WebError::SnapshotTimeout,
+    ));
+    let event = event("web-1", "https://page.example/story", None, Some(&failure));
+    assert_eq!(event.reason, None);
+    assert_eq!(event.error.as_ref().unwrap().code(), "web_snapshot_timeout");
+    assert_eq!(
+        serde_json::to_value(event).unwrap()["error"]["code"],
+        "web_snapshot_timeout"
+    );
 }

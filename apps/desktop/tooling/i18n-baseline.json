@@ -2,8 +2,6 @@
   "files": {
     "components/BlockView.tsx": 14,
     "components/DevPages.tsx": 8,
-    "features/reader/useWebWindows.tsx": 1,
-    "lib/preview.ts": 45,
-    "settings/settingsSchemaData.ts": 26
+    "lib/preview.ts": 41
   }
 }

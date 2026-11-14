@@ -12,11 +12,14 @@ use tokio::sync::mpsc;
 
 use super::supervisor::{Supervisor, SupervisorConfig};
 use super::{ChatError, ChatErrorKind};
+use crate::ui_error::chat::ChatUiError;
+use crate::views::UiError;
 use crate::views::{
     ChatConfirmEvent, ChatContextEvent, ChatErrorEvent, ChatStatusEvent, ChatStepView,
     ChatStreamEvent, ContextUsageView, SendMessageArgs,
 };
 use rrss_core::logsafe::scrub_secrets;
+use rrss_core::{Error, error::PiFailure};
 
 /// 流式快照最小间隔。
 const DELTA_THROTTLE: Duration = Duration::from_millis(30);
@@ -47,7 +50,7 @@ pub struct TurnState {
     context_window: Option<i64>,
     committed: String,
     settled: bool,
-    model_error: Option<String>,
+    model_error: Option<UiError>,
     aborted: bool,
 }
 
@@ -55,7 +58,7 @@ pub struct TurnState {
 #[derive(Debug, Clone)]
 pub struct Settled {
     pub snapshot: ChatStreamEvent,
-    pub model_error: Option<String>,
+    pub model_error: Option<UiError>,
     pub aborted: bool,
     pub used: Option<i64>,
     pub window: Option<i64>,
@@ -92,8 +95,11 @@ impl TurnState {
         }
         match stop_reason {
             Some("error") => {
-                let reason = error.unwrap_or("模型返回错误，没有给出原因");
-                self.model_error = Some(scrub_secrets(reason));
+                self.model_error = Some(
+                    error
+                        .map(|reason| UiError::from(scrub_secrets(reason)))
+                        .unwrap_or_else(|| Error::Pi(PiFailure::ModelErrorMissing).into()),
+                );
             }
             Some("aborted") => self.aborted = true,
             _ => {}
@@ -115,7 +121,7 @@ impl TurnState {
     /// 自动重试最终失败。
     pub fn retry_failed(&mut self, reason: &str) {
         if self.active() {
-            self.model_error = Some(scrub_secrets(reason));
+            self.model_error = Some(UiError::from(scrub_secrets(reason)));
         }
     }
 
@@ -146,23 +152,6 @@ impl TurnState {
             used: self.last_usage.map(|u| u.context_tokens()),
             window: self.context_window,
         })
-    }
-}
-
-/// 工具名换成一步过程的文案（等待过程里显示，前面不带「正在」）。
-pub fn tool_label(name: &str) -> String {
-    match name {
-        "search_articles" | "list_focus" | "list_feeds" => "查阅本地文章".into(),
-        "get_article" => "读取文章".into(),
-        "get_digest" => "读取简报".into(),
-        "search_memory" => "查找记忆".into(),
-        "fetch_url" => "读取网页".into(),
-        "open_original" => "打开原文".into(),
-        "explain_score" => "查看评分原因".into(),
-        "mark_read" => "标记已读".into(),
-        "star_article" => "收藏文章".into(),
-        "add_interest" => "记下兴趣".into(),
-        other => format!("使用工具 {other}"),
     }
 }
 
@@ -290,7 +279,7 @@ impl ChatRuntime {
         if self.sup.is_busy() && self.thread_id() == thread_id {
             return Err(ChatError::new(
                 ChatErrorKind::Busy,
-                "这条对话正在生成，先停止再删除",
+                Error::Pi(PiFailure::ThreadGenerating),
             ));
         }
         // 下次发送会 switch_session / new_session，无需清除当前 Pi 会话或重启进程。
@@ -303,11 +292,11 @@ impl ChatRuntime {
         let _dispatch = self
             .dispatch_lock
             .try_lock()
-            .map_err(|_| ChatError::new(ChatErrorKind::Busy, "上一条消息仍在发送，请稍后重试"))?;
+            .map_err(|_| ChatError::new(ChatErrorKind::Busy, Error::Pi(PiFailure::SendBusy)))?;
         if !self.sup.try_begin() {
             return Err(ChatError::new(
                 ChatErrorKind::Busy,
-                "上一条回复尚未结束，请等待或停止生成后再发送",
+                Error::Pi(PiFailure::ReplyPending),
             ));
         }
         let span = tracing::span!(parent: None, tracing::Level::WARN, "pi_turn", thread_id = tracing::field::Empty);
@@ -329,7 +318,7 @@ impl ChatRuntime {
 
     async fn dispatch(self: &Arc<Self>, args: SendMessageArgs) -> Result<i64, ChatError> {
         crate::chat::validate_thinking(args.thinking.as_deref())
-            .map_err(|err| ChatError::new(ChatErrorKind::Config, err.to_string()))?;
+            .map_err(|err| ChatError::new(ChatErrorKind::Config, err))?;
         let db = self.db_path().to_path_buf();
         // 先核对配置：缺模型直接报错，不建线程；配置变了就在这里重启。
         let state = self.sup.sync_profile(args.model.clone()).await?;
@@ -444,7 +433,7 @@ impl ChatRuntime {
             self.emit_error(
                 thread_id,
                 ChatErrorKind::Internal,
-                format!("会话路径保存失败：{err}"),
+                ChatUiError::SessionSaveFailed.caused_by(err.message),
             );
         }
         Ok(thread_id)
@@ -490,7 +479,7 @@ impl ChatRuntime {
 
     /// 设置页「重启引擎」：同样不打断进行中的回复；有序关闭后按当前配置启动（含托管下载与握手）。
     pub async fn restart_engine(&self) -> Result<(), ChatError> {
-        self.while_idle("重启引擎", async {
+        self.while_idle(PiFailure::RestartBusy, PiFailure::RestartPending, async {
             self.sup.stop().await;
             self.sup.start().await
         })
@@ -499,7 +488,7 @@ impl ChatRuntime {
 
     /// 显式获取模型可启动 Pi，但不能打断正在进行的回复；切换配置后先同步指纹。
     pub async fn available_models(&self) -> Result<Vec<String>, ChatError> {
-        self.while_idle("获取模型", async {
+        self.while_idle(PiFailure::ModelsBusy, PiFailure::ModelsPending, async {
             self.sup.sync_profile(None).await?;
             self.sup.available_models().await
         })
@@ -509,17 +498,16 @@ impl ChatRuntime {
     /// 占住一轮再做进程级操作：发送中或回复未结束时返回忙，完成后释放占用。
     async fn while_idle<T>(
         &self,
-        what: &str,
+        busy: PiFailure,
+        pending: PiFailure,
         work: impl std::future::Future<Output = Result<T, ChatError>>,
     ) -> Result<T, ChatError> {
-        let _dispatch = self.dispatch_lock.try_lock().map_err(|_| {
-            ChatError::new(ChatErrorKind::Busy, format!("正在发送消息，请稍后{what}"))
-        })?;
+        let _dispatch = self
+            .dispatch_lock
+            .try_lock()
+            .map_err(|_| ChatError::new(ChatErrorKind::Busy, Error::Pi(busy)))?;
         if !self.sup.try_begin() {
-            return Err(ChatError::new(
-                ChatErrorKind::Busy,
-                format!("回复尚未结束，请稍后{what}"),
-            ));
+            return Err(ChatError::new(ChatErrorKind::Busy, Error::Pi(pending)));
         }
         struct Release<'a>(&'a Supervisor);
         impl Drop for Release<'_> {
@@ -563,7 +551,7 @@ impl ChatRuntime {
         .await
     }
 
-    fn emit_error(&self, thread_id: i64, kind: ChatErrorKind, message: String) {
+    fn emit_error(&self, thread_id: i64, kind: ChatErrorKind, message: UiError) {
         self.sink.emit(ChatEvent::Error(ChatErrorEvent {
             thread_id,
             message,
@@ -603,7 +591,6 @@ impl ChatRuntime {
                 id: "engine".into(),
                 start,
                 tool: String::new(),
-                label: "启动对话引擎".into(),
                 detail: String::new(),
                 article_id: None,
                 error: false,
@@ -645,7 +632,6 @@ impl ChatRuntime {
                 kind: "tool".into(),
                 id: call_id,
                 start: true,
-                label: tool_label(&name),
                 tool: name,
                 detail,
                 article_id,
@@ -665,11 +651,6 @@ impl ChatRuntime {
             .unwrap()
             .remove(&call_id)
             .unwrap_or_default();
-        let label = if server.is_empty() {
-            tool_label(&name)
-        } else {
-            format!("使用 {server} 的 {server_tool}")
-        };
         self.step(
             thread_id,
             ChatStepView {
@@ -678,7 +659,6 @@ impl ChatRuntime {
                 kind: "tool".into(),
                 id: call_id,
                 start: false,
-                label,
                 tool: name,
                 detail: String::new(),
                 article_id: None,
@@ -841,7 +821,6 @@ impl ChatRuntime {
                         id,
                         start: true,
                         tool: name,
-                        label: format!("使用 {server} 的 {tool}"),
                         server,
                         server_tool: tool,
                         detail: String::new(),
@@ -940,7 +919,7 @@ impl ChatRuntime {
         self.mcp_steps.lock().unwrap().clear();
         let thread_id = done.snapshot.thread_id;
         let body = done.snapshot.text.clone();
-        let mut error: Option<(ChatErrorKind, String)> = None;
+        let mut error: Option<(ChatErrorKind, UiError)> = None;
         if !body.trim().is_empty() {
             let text = body.clone();
             let saved = blocking(self.db_path().to_path_buf(), move |conn| {
@@ -950,23 +929,26 @@ impl ChatRuntime {
             })
             .await;
             if let Err(err) = saved {
-                error = Some((ChatErrorKind::Internal, format!("回复保存失败：{err}")));
+                error = Some((
+                    ChatErrorKind::Internal,
+                    ChatUiError::ReplySaveFailed.caused_by(err.message),
+                ));
             }
         }
         if exited {
             let message = if body.trim().is_empty() {
-                "对话引擎意外退出，本轮没有收到回复；下次发送会自动重启"
+                PiFailure::ExitEmpty
             } else {
-                "对话引擎意外退出，已收到的内容已保留；下次发送会自动重启"
+                PiFailure::ExitPartial
             };
-            error = Some((ChatErrorKind::ProcessExit, message.into()));
+            error = Some((ChatErrorKind::ProcessExit, Error::Pi(message).into()));
         } else if let Some(reason) = done.model_error.clone() {
             // 类别已说明是模型服务出错，消息只带原因，界面不重复前缀。
             error = Some((ChatErrorKind::Model, reason));
         } else if body.trim().is_empty() && !done.aborted && error.is_none() {
             error = Some((
                 ChatErrorKind::Model,
-                "本轮未收到回复，请检查对话模型设置后重试".into(),
+                Error::Pi(PiFailure::ReplyEmpty).into(),
             ));
         }
         self.sink.emit(ChatEvent::Delta(done.snapshot));
@@ -1028,7 +1010,7 @@ where
 {
     crate::execution::with_db(db, f)
         .await
-        .map_err(|err| ChatError::new(ChatErrorKind::Internal, format!("{err:#}")))
+        .map_err(|err| ChatError::new(ChatErrorKind::Internal, UiError::from_anyhow_pretty(err)))
 }
 
 #[cfg(test)]
@@ -1051,7 +1033,7 @@ mod tests {
         let done = turn.finish().unwrap();
         assert_eq!(done.snapshot.thread_id, 7);
         assert_eq!(done.snapshot.text, "先查原文。\n\n第二条的具体内容。");
-        assert_eq!((done.model_error, done.aborted), (None, false));
+        assert!(done.model_error.is_none() && !done.aborted);
         assert!(turn.finish().is_none());
         turn.push_delta("迟到的消息");
         assert!(turn.snapshot().is_none());
@@ -1070,7 +1052,7 @@ mod tests {
             Some("401 bad key sk-secret123\nauthorization: bearer lower-canary"),
         );
         let done = turn.finish().unwrap();
-        let error = done.model_error.unwrap();
+        let error = done.model_error.unwrap().detail;
         assert!(error.starts_with("401 bad key") && error.contains('\n'));
         assert!(!error.contains("secret123") && !error.contains("lower-canary"));
         assert!(done.snapshot.text.is_empty());
@@ -1090,7 +1072,11 @@ mod tests {
         turn.begin(3);
         turn.retry_failed("529 overloaded");
         assert_eq!(
-            turn.finish().unwrap().model_error.as_deref(),
+            turn.finish()
+                .unwrap()
+                .model_error
+                .as_ref()
+                .map(|error| error.detail.as_str()),
             Some("529 overloaded")
         );
     }
@@ -1119,10 +1105,22 @@ mod tests {
     }
 
     #[test]
-    fn tool_names_become_plain_steps() {
-        assert_eq!(tool_label("search_articles"), "查阅本地文章");
-        assert_eq!(tool_label("fetch_url"), "读取网页");
-        assert_eq!(tool_label("weather"), "使用工具 weather");
+    fn steps_export_tool_ids_without_display_labels() {
+        let step = ChatStepView {
+            kind: "tool".into(),
+            id: "call".into(),
+            start: true,
+            tool: "search_articles".into(),
+            server: String::new(),
+            server_tool: String::new(),
+            detail: String::new(),
+            article_id: None,
+            error: false,
+        };
+        let json = serde_json::to_value(step).unwrap();
+        assert_eq!(json["kind"], "tool");
+        assert_eq!(json["tool"], "search_articles");
+        assert!(json.get("label").is_none());
     }
 
     #[test]

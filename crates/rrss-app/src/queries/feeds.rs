@@ -29,19 +29,11 @@ pub fn feed_tree(conn: &Connection) -> rrss_core::Result<FeedTree> {
             icon_href: icons.get(&feed.id).cloned().unwrap_or_default(),
             title: feeds::display_title(feed.title.as_deref().unwrap_or(""), &feed.url),
             url: feed.url,
-            error: feed
-                .error
-                .map(|e| feeds::humanize_refresh_error(&e))
-                .unwrap_or_default(),
+            error: feed.error.map(|e| crate::ui_error::feeds::stored_error(&e)),
             noisy: noisy.contains(&feed.id),
             folder_id: feed.folder_id.unwrap_or(0),
             retention_days: retention.get(&feed.id).copied().flatten(),
-            health: health
-                .get(&feed.id)
-                .map(|h| h.kind.as_str().to_string())
-                .unwrap_or_default(),
-            health_label: health.get(&feed.id).map(health_label).unwrap_or_default(),
-            health_detail: health.get(&feed.id).map(health_detail).unwrap_or_default(),
+            health: health.get(&feed.id).map(health_notice),
             position: feed.position,
             empty: empty_manual == Some(feed.id),
         })
@@ -123,46 +115,67 @@ fn feed_retention(
     Ok(rows.collect::<rusqlite::Result<_>>()?)
 }
 
-fn health_label(h: &FeedHealth) -> String {
+fn health_notice(h: &FeedHealth) -> crate::ui_error::feeds::FeedHealthNotice {
+    use crate::ui_error::feeds::FeedHealthNotice;
     match h.kind {
-        HealthKind::Failing => format!("连续失败 {} 次 · {} 天", h.fail_count, h.failing_days),
-        HealthKind::Stale => format!("{} 天没有新文章", h.quiet_days),
-        HealthKind::Noisy => "多数内容被隐藏".into(),
+        HealthKind::Failing => FeedHealthNotice::Failing {
+            fail_count: h.fail_count,
+            failing_days: h.failing_days,
+            last_success_at: h.last_success_at,
+        },
+        HealthKind::Stale => FeedHealthNotice::Stale {
+            quiet_days: h.quiet_days,
+            avg_interval_days: h.avg_interval_days,
+            failed: h.error.is_some(),
+            last_article_at: h.last_article_at,
+            last_success_at: h.last_success_at,
+        },
+        HealthKind::Noisy => FeedHealthNotice::Noisy {
+            window_days: feeds::NOISE_WINDOW_DAYS,
+        },
     }
 }
 
-fn health_detail(h: &FeedHealth) -> String {
-    let success = h
-        .last_success_at
-        .map(|t| format!("最近成功：{}", super::fmt_when(t)))
-        .unwrap_or_else(|| "还没有成功抓取过".into());
-    match h.kind {
-        HealthKind::Failing => format!(
-            "最近错误：{}\n{success}",
-            h.error
-                .as_deref()
-                .map(feeds::humanize_refresh_error)
-                .unwrap_or_default()
-        ),
-        HealthKind::Stale => {
-            let pace = h
-                .avg_interval_days
-                .map(|d| format!("平时约 {} 天一篇；", d.round().max(1.0)))
-                .unwrap_or_default();
-            let last = h
-                .last_article_at
-                .map(|t| format!("最近一篇入库于 {}。", super::fmt_when(t)))
-                .unwrap_or_else(|| "订阅以来还没有入库过文章。".into());
-            let fetch = if h.error.is_some() {
-                "最近一次抓取失败"
-            } else {
-                "抓取正常"
-            };
-            format!("{pace}{last}\n{fetch}，{success}")
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn tree_reads_old_text_and_new_error_records_and_carries_raw_health_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = rrss_core::db::open_at(&dir.path().join("rrss.db")).unwrap();
+        let now = feeds::now_ms();
+        let record = feeds::refresh_error_json(&rrss_core::Error::Http {
+            status: 503,
+            message: String::new(),
+        });
+        for (id, error) in [(1, "fixture legacy failure"), (2, record.as_str())] {
+            conn.execute(
+                "INSERT INTO feeds(id,url,created_at,error,fail_count,failing_since,last_success_at)
+                 VALUES(?1,?2,?3,?4,12,?5,?6)",
+                rusqlite::params![id, format!("https://feed{id}.example/rss"), now - 100 * 86_400_000, error,
+                    now - 9 * 86_400_000, now - 10 * 86_400_000],
+            ).unwrap();
         }
-        HealthKind::Noisy => format!(
-            "近 {} 天大部分文章被规则隐藏或被踩。可以退订，或在规则页调整。",
-            feeds::NOISE_WINDOW_DAYS
-        ),
+        let tree = feed_tree(&conn).unwrap();
+        let old = tree.uncategorized.iter().find(|feed| feed.id == 1).unwrap();
+        assert_eq!(old.error.as_ref().unwrap().code(), "legacy_text");
+        assert_eq!(old.error.as_ref().unwrap().detail, "fixture legacy failure");
+        let new = tree.uncategorized.iter().find(|feed| feed.id == 2).unwrap();
+        assert_eq!(new.error.as_ref().unwrap().code(), "feed_refresh_http");
+        let wire = serde_json::to_value(new).unwrap();
+        assert_eq!(wire["error"]["params"], json!({ "status": 503 }));
+        assert_eq!(wire["health"]["code"], "feed_health_failing");
+        assert_eq!(
+            wire["health"]["params"],
+            json!({ "fail_count": 12, "failing_days": 9, "last_success_at": now - 10 * 86_400_000 })
+        );
+        assert!(wire.get("health_label").is_none());
+        assert!(wire.get("health_detail").is_none());
+        let persisted: String = conn
+            .query_row("SELECT error FROM feeds WHERE id=1", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(persisted, "fixture legacy failure");
     }
 }

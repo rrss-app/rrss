@@ -81,7 +81,7 @@ async fn summarize_cluster_inner(
     let Some(input) = input else {
         return Ok(String::new());
     };
-    anyhow::ensure!(input.members.len() >= 2, "这组相近报道已不足两篇，无法汇总");
+    anyhow::ensure!(input.members.len() >= 2, rrss_core::Error::Jobs(rrss_core::error::JobFailure::ClusterTooSmall));
     let members = input.members.clone();
     let digest = complete_task_checked(
         db_path,
@@ -92,7 +92,7 @@ async fn summarize_cluster_inner(
         auto,
         |value| {
             cluster_summary::parse_output(value, &members)
-                .context("模型没有给出综述，已保留上一次的结果")
+                .context(rrss_core::Error::Jobs(rrss_core::error::JobFailure::ClusterEmpty))
         },
     )
     .await?;
@@ -445,7 +445,7 @@ mod tests {
         let err = summarize_cluster(&path, &client(), 7, FeedScope::All)
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("已保留上一次的结果"), "{err:#}");
+        assert!(crate::ui_error::jobs::display_anyhow(&err).contains("已保留上一次的结果"), "{err:#}");
         assert_eq!(view(&path).overview, "旧综述");
     }
 
@@ -469,6 +469,6 @@ mod tests {
         let err = summarize_cluster(&path, &client(), 7, FeedScope::All)
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("不足两篇"));
+        assert!(crate::ui_error::jobs::display_anyhow(&err).contains("不足两篇"));
     }
 }

@@ -1,4 +1,5 @@
 //! Pi owns OAuth credentials and refreshes. Views observe presence only; probes may borrow an access token.
+use crate::ui_error::mcp::McpUiError;
 use crate::{
     McpLoginResult,
     pi::{
@@ -7,6 +8,7 @@ use crate::{
     },
 };
 use anyhow::{Context, Result, bail};
+use rrss_core::{Error, error::McpFailure};
 use rrss_core::{
     db,
     pi_store::{self, McpServer},
@@ -123,7 +125,7 @@ async fn command(
             let conn = db::open_at(&db_path)?;
             let explicit = db::get_setting(&conn, rrss_core::ai_store::PI_BINARY_KEY)?;
             (
-                launch::find_pi(explicit.as_deref()).context("未找到对话引擎，请先安装 Pi")?,
+                launch::find_pi(explicit.as_deref()).context(Error::Mcp(McpFailure::PiMissing))?,
                 launch::pi_proxy_env(&conn).map_err(|e| anyhow::anyhow!(e.message))?,
                 pi_store::mcp_config(&conn)?.0,
             )
@@ -139,7 +141,13 @@ async fn command(
         Ok((paths, binary, proxy))
     })
     .await??;
-    let mut cmd = platform::mcp_command(binary.to_str().context("Pi 路径无效")?, &project, None);
+    let mut cmd = platform::mcp_command(
+        binary
+            .to_str()
+            .context(Error::Mcp(McpFailure::PiPathInvalid))?,
+        &project,
+        None,
+    );
     super::apply_environment(&mut cmd, &proxy, &server)?;
     cmd.env("PI_CODING_AGENT_DIR", &paths.agent).args([
         "mcp",
@@ -153,16 +161,18 @@ async fn command(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     if *cancel.borrow() {
-        bail!("已取消登录");
+        bail!(Error::Mcp(McpFailure::LoginCancelled));
     }
-    let mut child = cmd.spawn().context("无法启动 Pi 登录")?;
+    let mut child = cmd
+        .spawn()
+        .context(Error::Mcp(McpFailure::LoginSpawnFailed))?;
     let tree = platform::ChildTree::attach(&mut child)?;
     let out = tokio::spawn(drain(child.stdout.take().unwrap()));
     let err = tokio::spawn(drain(child.stderr.take().unwrap()));
     let result = tokio::select! {
-        status = child.wait() => status.map(|s| s.success()).context("登录进程退出异常"),
-        _ = cancel.changed() => Err(anyhow::anyhow!("已取消登录")),
-        _ = tokio::time::sleep(Duration::from_secs(if operation == "login" { 300 } else { 15 })) => Err(anyhow::anyhow!("登录超时，请重试")),
+        status = child.wait() => status.map(|s| s.success()).context(Error::Mcp(McpFailure::LoginProcessFailed)),
+        _ = cancel.changed() => Err(anyhow::anyhow!(Error::Mcp(McpFailure::LoginCancelled))),
+        _ = tokio::time::sleep(Duration::from_secs(if operation == "login" { 300 } else { 15 })) => Err(anyhow::anyhow!(Error::Mcp(McpFailure::LoginTimeout))),
     };
     drop(tree);
     let _ = child.kill().await;
@@ -181,7 +191,8 @@ pub async fn login(db_path: &Path, data_dir: &Path, id: i64) -> McpLoginResult {
         if jobs.contains_key(&key) {
             return McpLoginResult {
                 ok: false,
-                message: "此服务正在登录或删除".into(),
+                message: String::new(),
+                error: Some(Error::Mcp(McpFailure::LoginBusy).into()),
             };
         }
         jobs.insert(
@@ -203,13 +214,13 @@ pub async fn login(db_path: &Path, data_dir: &Path, id: i64) -> McpLoginResult {
     let result = async {
         let server = crate::execution::with_db(db_path.to_path_buf(), move |conn| {
             if pi_store::use_own_config(conn)? {
-                bail!("自有 Pi 配置模式请在自己的 Pi 中登录；RRSS 浏览器登录只用于托管模式");
+                bail!(Error::Mcp(McpFailure::OwnConfigLogin));
             }
             Ok(pi_store::get_mcp_server(conn, id)?)
         })
         .await?;
         if server.transport != "http" || server.auth != "oauth" {
-            bail!("浏览器登录只支持使用 OAuth 的 HTTP 服务");
+            bail!(Error::Mcp(McpFailure::LoginTransport));
         }
         if !command(
             db_path,
@@ -221,18 +232,18 @@ pub async fn login(db_path: &Path, data_dir: &Path, id: i64) -> McpLoginResult {
         )
         .await?
         {
-            bail!("登录失败，请检查服务地址、Pi 代理设置与浏览器授权结果");
+            bail!(Error::Mcp(McpFailure::LoginFailed));
         }
         let current = crate::execution::core_db(db_path.to_path_buf(), move |conn| {
             pi_store::get_mcp_server(conn, id)
         })
         .await?;
         if current.url != server.url || current.auth != server.auth {
-            bail!("登录期间配置已改变，请重新登录");
+            bail!(Error::Mcp(McpFailure::LoginConfigChanged));
         }
         let data_dir = data_dir.to_path_buf();
         if !crate::execution::blocking(move || logged_in(&data_dir, &server)).await? {
-            bail!("服务未保存登录凭据，请检查是否需要浏览器登录");
+            bail!(Error::Mcp(McpFailure::LoginNotSaved));
         }
         Ok(())
     }
@@ -242,10 +253,12 @@ pub async fn login(db_path: &Path, data_dir: &Path, id: i64) -> McpLoginResult {
         Ok(()) => McpLoginResult {
             ok: true,
             message: "已登录".into(),
+            error: None,
         },
         Err(error) => McpLoginResult {
             ok: false,
-            message: format!("{error}"),
+            message: String::new(),
+            error: Some(McpUiError::project(error)),
         },
     }
 }
@@ -256,7 +269,7 @@ pub async fn delete(db_path: &Path, data_dir: &Path, id: i64) -> rrss_core::Resu
         let mut jobs = active().lock().unwrap();
         if let Some(job) = jobs.get_mut(&key) {
             if job.deleting {
-                return Err(super::invalid("此服务正在删除"));
+                return Err(Error::Mcp(McpFailure::Deleting));
             }
             job.deleting = true;
             let _ = job.cancel.send(true);
@@ -328,25 +341,25 @@ pub(super) fn probe_token(data_dir: &Path, server: &McpServer) -> Result<String>
     }
     let url = reqwest::Url::parse(server.url.as_deref().unwrap_or_default())?;
     let file = std::fs::File::open(WorkspacePaths::new(data_dir).agent.join("mcp-auth.json"))
-        .map_err(|_| anyhow::anyhow!("请先完成浏览器登录"))?;
+        .map_err(|_| anyhow::anyhow!(Error::Mcp(McpFailure::LoginRequired)))?;
     let mut states: HashMap<String, State> = serde_json::from_reader(std::io::BufReader::new(file))
-        .map_err(|_| anyhow::anyhow!("登录凭据不可用，请重新登录"))?;
+        .map_err(|_| anyhow::anyhow!(Error::Mcp(McpFailure::CredentialsUnavailable)))?;
     let key = format!("mcp__{}|{url}", pi_store::mcp_name(server.id));
     let state = states
         .remove(&key)
         .or_else(|| states.remove(url.as_str()))
-        .context("请先完成浏览器登录")?;
+        .context(Error::Mcp(McpFailure::LoginRequired))?;
     if state
         .expires
         .is_some_and(|at| at <= rrss_core::feeds::now_ms())
     {
-        bail!("登录已过期，请重新登录后检测");
+        bail!(Error::Mcp(McpFailure::LoginExpired));
     }
     state
         .tokens
         .and_then(|tokens| tokens.access_token)
         .filter(|value| !value.is_empty())
-        .context("登录凭据不可用，请重新登录")
+        .context(Error::Mcp(McpFailure::CredentialsUnavailable))
 }
 
 #[cfg(test)]
@@ -380,7 +393,9 @@ mod tests {
         assert!(!logged_in(dir.path(), &server));
         pi_store::set_use_own_config(&conn, true).unwrap();
         let result = login(&db, dir.path(), server.id).await;
-        assert!(!result.ok && result.message.contains("自有 Pi"));
+        assert!(
+            !result.ok && crate::ui_error::test_display::login_error(&result).contains("自有 Pi")
+        );
     }
     #[cfg(unix)]
     #[tokio::test]
@@ -422,7 +437,7 @@ mod tests {
         assert!(!login(&db, &data, id).await.ok);
         delete(&db, &data, id).await.unwrap();
         let result = run.await.unwrap();
-        assert!(!result.ok && result.message.contains("取消"));
+        assert!(!result.ok && crate::ui_error::test_display::login_error(&result).contains("取消"));
         assert_eq!(platform::process_alive(pid), Some(false));
         assert!(pi_store::list_mcp_servers(&conn).unwrap().is_empty());
         assert!(active().lock().unwrap().get(&(data, id)).is_none());

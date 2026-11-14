@@ -1,3 +1,4 @@
+import type { UiErrorEnvelope } from "../src/lib/errors";
 import { threadFixture } from "../src/test/fixtures/chat";
 import { applyFeedTreeOrder } from "../src/test/treeOrder";
 import {
@@ -88,7 +89,7 @@ const article = (
   cluster_size: 1,
   cluster_label: "",
   cluster_span: "",
-  interest_label: "",
+  interest_reason: null,
   rank_reasons: [],
   noisy: false,
   spot_check: false,
@@ -122,7 +123,7 @@ export const MOCK_FOCUS: FocusPage = {
     article(1, "sqlite-vec 在桌面端单库里的取舍：WAL、FTS5 与向量检索如何共存", 2, "Compiler Notes", minutesAgo(12), {
       summary: "不必上 Qdrant：WAL + FTS5 已经够用到十万级，向量检索只在兴趣重排时参与。",
       score: 12,
-      interest_label: " · 本地优先",
+      interest_reason: { code: "legacy_text", params: { text: " · 本地优先", prefix: null } },
     }),
     article(2, "Tauri 2 的 IPC 命令默认在主线程执行", 3, "Byte Harbor", minutesAgo(60), {
       summary: "同步命令阻塞窗口，异步命令走线程池；桌面应用应把慢查询移出主线程。",
@@ -166,8 +167,8 @@ export const MOCK_FEEDS: FeedTree = {
       label: "中文",
       indent: 0,
       position: 0,
-      feeds: [{ id: 1, title: "闲聊广场", url: "https://xianliao.example/index.xml", error: "", noisy: true, folder_id: 1, retention_days: null, icon_href: "", position: 0,
-        health: "noisy", health_label: "多数内容被隐藏", health_detail: "近 14 天大部分文章被规则隐藏或被踩。可以退订，或在规则页调整。", empty: false }],
+      feeds: [{ id: 1, title: "闲聊广场", url: "https://xianliao.example/index.xml", error: null, noisy: true, folder_id: 1, retention_days: null, icon_href: "", position: 0,
+        health: { code: "feed_health_noisy", params: { window_days: 14 } }, empty: false }],
     },
     {
       id: 2,
@@ -176,15 +177,15 @@ export const MOCK_FEEDS: FeedTree = {
       indent: 0,
       position: 1,
       feeds: [
-        { id: 2, title: "Compiler Notes", url: "https://compiler-notes.example/feed.xml", error: "", noisy: false, folder_id: 2, retention_days: null, icon_href: "", health: "", health_label: "", health_detail: "", position: 0, empty: false },
-        { id: 3, title: "Byte Harbor", url: "https://byte-harbor.example/rss", error: "", noisy: false, folder_id: 2, retention_days: 0, icon_href: "", position: 1, empty: false,
-          health: "stale", health_label: "47 天没有新文章", health_detail: "平时约 6 天一篇；最近一篇入库于 8 月 11 日 09:30。\n抓取正常，最近成功：今天 08:02" },
+        { id: 2, title: "Compiler Notes", url: "https://compiler-notes.example/feed.xml", error: null, noisy: false, folder_id: 2, retention_days: null, icon_href: "", health: null, position: 0, empty: false },
+        { id: 3, title: "Byte Harbor", url: "https://byte-harbor.example/rss", error: null, noisy: false, folder_id: 2, retention_days: 0, icon_href: "", position: 1, empty: false,
+          health: { code: "feed_health_stale", params: { quiet_days: 47, avg_interval_days: 6, failed: false, last_article_at: new Date(new Date().getFullYear(), 7, 11, 9, 30).getTime(), last_success_at: new Date().setHours(8, 2, 0, 0) } } },
       ],
     },
   ],
   uncategorized: [
-    { id: 4, title: "Gadget Wire Tech Weekly Digest Long Name", url: "http://192.0.2.10:1200/gadgetwire", error: "源暂时不可用（503）", noisy: false, folder_id: 0, retention_days: null, icon_href: "", position: 2,
-      health: "failing", health_label: "连续失败 12 次 · 9 天", health_detail: "最近错误：源暂时不可用（503）\n最近成功：9 月 18 日 07:40", empty: false },
+    { id: 4, title: "Gadget Wire Tech Weekly Digest Long Name", url: "http://192.0.2.10:1200/gadgetwire", error: { code: "feed_refresh_http", params: { status: 503 }, detail: "http status 503" }, noisy: false, folder_id: 0, retention_days: null, icon_href: "", position: 2,
+      health: { code: "feed_health_failing", params: { fail_count: 12, failing_days: 9, last_success_at: new Date(new Date().getFullYear(), 8, 18, 7, 40).getTime() } }, empty: false },
   ],
   folder_combo: ["中文", "English"],
 };
@@ -374,12 +375,20 @@ export const MOCK_BINDINGS: ModelBindingsView = bindingsFixture({
 });
 for (const e of MOCK_POOL.pool) e.uses = MOCK_BINDINGS.tasks.filter((t) => t.provider_id === e.provider_id && t.model === e.model).map((t) => t.task);
 
+// Preserve the existing display expectations independently of the IPC fixture.
+export const MOCK_RULE_SUMMARIES: Record<number, string> = {
+  "1": "标题包含『Rust』时加分 · 全局",
+  "2": "标题包含『招聘』时隐藏 · 全局",
+  "3": "来自『Byte Harbor』、正文包含『local-first』时加分 · 仅此源",
+  "4": "在『English』文件夹内、URL 匹配正则『/sponsored/』时隐藏 · 此文件夹及子文件夹"
+};
+
 export const MOCK_RULES: RulesPage = {
   rules: [
-    { id: 1, summary: "标题包含『Rust』时加分 · 全局", polarity: "like", dimension: "标题", dimension_id: "title_kw", pattern: "Rust", scope_label: "全局", scope_kind: "global", scope_id: 0, weight: 10, source: "user", enabled: true, pending: false, pack_id: "" },
-    { id: 2, summary: "标题包含『招聘』时隐藏 · 全局", polarity: "dislike", dimension: "标题", dimension_id: "title_kw", pattern: "招聘", scope_label: "全局", scope_kind: "global", scope_id: 0, weight: 15, source: "preset", enabled: true, pending: false, pack_id: "dev-focus" },
-    { id: 3, summary: "来自『Byte Harbor』、正文包含『local-first』时加分 · 仅此源", polarity: "like", dimension: "正文", dimension_id: "body_phrase", pattern: "local-first", scope_label: "源 · Byte Harbor", scope_kind: "feed", scope_id: 3, weight: 5, source: "suggest", enabled: false, pending: true, pack_id: "" },
-    { id: 4, summary: "在『English』文件夹内、URL 匹配正则『/sponsored/』时隐藏 · 此文件夹及子文件夹", polarity: "dislike", dimension: "URL 正则", dimension_id: "url_re", pattern: "/sponsored/", scope_label: "文件夹 · English", scope_kind: "folder", scope_id: 2, weight: 20, source: "user", enabled: false, pending: false, pack_id: "" },
+    { id: 1, summary: { code: "rule_summary", params: { effect: "boost" } }, scope_name: "", polarity: "like", dimension_id: "title_kw", pattern: "Rust", scope_kind: "global", scope_id: 0, weight: 10, source: "user", enabled: true, pending: false, pack_id: "" },
+    { id: 2, summary: { code: "rule_summary", params: { effect: "hide" } }, scope_name: "", polarity: "dislike", dimension_id: "title_kw", pattern: "招聘", scope_kind: "global", scope_id: 0, weight: 15, source: "preset", enabled: true, pending: false, pack_id: "dev-focus" },
+    { id: 3, summary: { code: "rule_summary", params: { effect: "boost" } }, scope_name: "Byte Harbor", polarity: "like", dimension_id: "body_phrase", pattern: "local-first", scope_kind: "feed", scope_id: 3, weight: 5, source: "suggest", enabled: false, pending: true, pack_id: "" },
+    { id: 4, summary: { code: "rule_summary", params: { effect: "hide" } }, scope_name: "English", polarity: "dislike", dimension_id: "url_re", pattern: "/sponsored/", scope_kind: "folder", scope_id: 2, weight: 20, source: "user", enabled: false, pending: false, pack_id: "" },
   ],
   presets: [
     { id: "dev-focus", name: "开发者关注", description: "偏向工程与工具链内容，压低招聘与营销。", rule_count: 12, enabled_count: 11, installed: true },
@@ -439,77 +448,46 @@ export const MOCK_DIAG: DiagnosticsPage = {
   scheduler: null,
 };
 
-const storageItem = (key: string, label: string, hint: string, bytes: number, size: string, extra: Partial<StorageItemView> = {}): StorageItemView => ({
-  key, label, hint, bytes, size, free: false, action: "", action_label: "", passive: "", confirm_title: "", confirm: [], ...extra,
-});
 const MB = 1024 * 1024;
-// 约一年用量的示例，与存储页样板的数字一致。
 export const MOCK_STORAGE: StoragePage = {
   data_dir: "/home/user/.local/share/rrss",
-  total: "4.44 GB",
-  summary: "数据库 1.41 GB · 媒体缓存 632 MB · 对话引擎 114 MB · 自动备份 2.30 GB",
+  total_bytes: 4767413699,
+  summary: {"code": "storage_summary", "params": {"database_bytes": 1513975972, "media_bytes": 662700032, "engine_bytes": 119537664, "backup_bytes": 2469606195, "log_bytes": 0}},
   groups: [
     {
-      key: "database", label: "数据库", size: "1.41 GB", note: "含未写回的日志 12.0 MB", items: [
-        storageItem("articles", "文章", "38,210 篇 · 标题、正文与阅读状态", 612 * MB, "612 MB"),
-        storageItem("search_index", "全文索引", "供搜索使用，随文章增减", 441 * MB, "441 MB", { passive: "随文章变化" }),
-        storageItem("vectors", "向量", "52,904 段 · 其中 8,120 段来自其他模型", 198 * MB, "198 MB", {
-          action: "old_vectors", action_label: "清除旧模型向量", confirm_title: "清除旧模型向量",
-          confirm: ["删除 8,120 段不是由当前模型 nomic-embed-text:v1.5 生成的向量。", "当前模型的向量不受影响；这些文章之后会按当前模型重新生成向量，远程模型会产生费用。"],
-        }),
-        storageItem("ai_cache", "AI 缓存", "9,870 条 · 30 天前的会自动清除", 31 * MB, "31.0 MB", {
-          action: "ai_cache", action_label: "清空", confirm_title: "清空 AI 缓存",
-          confirm: ["删除 9,870 条缓存的摘要和简报结果。", "之后遇到相同内容会重新调用模型，可能产生费用。"],
-        }),
-        storageItem("translations", "译文缓存", "412 篇", 23 * MB, "23.0 MB", {
-          action: "translations", action_label: "清空", confirm_title: "清空译文缓存",
-          confirm: ["删除 412 篇文章的译文。", "再次查看译文时会重新翻译，可能产生费用。"],
-        }),
-        storageItem("recommendation_logs", "推荐日志", "18,000 条 · 曝光、行为与阅读会话合计 · 保留 180 天", 3 * MB, "3.0 MB", {
-          action: "recommendation_logs", action_label: "清空", confirm_title: "清空推荐日志",
-          confirm: ["删除 18,000 条曝光、行为与阅读会话日志。", "文章、赞踩、收藏与阅读状态不受影响。"],
-        }),
-        storageItem("other", "其他", "对话与记忆 4.2 MB（86 个对话）· 设置、订阅与规则 3.3 MB · 简报 1.1 MB（143 期）", 8.6 * MB, "8.6 MB", { passive: "在各自页面管理" }),
-        storageItem("legacy", "旧版遗留数据", "早期版本留下、已不再使用的表：translations、feed_sub_records", 0.4 * MB, "410 KB", {
-          action: "legacy_tables", action_label: "删除", confirm_title: "删除旧版遗留数据",
-          confirm: ["删除 translations、feed_sub_records 表。", "当前版本不再读取它们；译文已迁移到新表。"],
-        }),
-        storageItem("free", "空闲空间", "删除数据后留下的空位，压缩后还给磁盘。需要约 1.40 GB 临时空间，剩余 41.2 GB", 118 * MB, "118 MB", {
-          free: true, action: "vacuum", action_label: "压缩数据库", confirm_title: "压缩数据库",
-          confirm: ["把 118 MB 空闲空间还给磁盘。", "需要约 1.40 GB 临时磁盘空间（剩余 41.2 GB），大库可能需要一两分钟。", "期间刷新和后台作业会等待，可以继续阅读。"],
-        }),
+      kind: "database", bytes: 1513975972, note: {"code": "storage_wal", "params": {"bytes": 12582912}}, items: [
+        {"kind": "articles", "bytes": 641728512, "hint": {"code": "storage_articles", "params": {"count": 38210}}, "model": "", "tables": [], "free": false, "action": null, "passive": null, "confirm": []},
+        {"kind": "search_index", "bytes": 462422016, "hint": {"code": "storage_search_index", "params": {}}, "model": "", "tables": [], "free": false, "action": null, "passive": "follows_articles", "confirm": []},
+        {"kind": "vectors", "bytes": 207618048, "hint": {"code": "storage_vectors_other", "params": {"count": 52904, "old_count": 8120}}, "model": "nomic-embed-text:v1.5", "tables": [], "free": false, "action": "old_vectors", "passive": null, "confirm": [{"code": "storage_old_vectors_confirm", "params": {"count": 8120}}, {"code": "storage_old_vectors_warning", "params": {}}]},
+        {"kind": "ai_cache", "bytes": 32505856, "hint": {"code": "storage_ai_cache", "params": {"count": 9870}}, "model": "", "tables": [], "free": false, "action": "ai_cache", "passive": null, "confirm": [{"code": "storage_ai_cache_confirm", "params": {"count": 9870}}, {"code": "storage_ai_cache_warning", "params": {}}]},
+        {"kind": "translations", "bytes": 24117248, "hint": {"code": "storage_translations", "params": {"count": 412}}, "model": "", "tables": [], "free": false, "action": "translations", "passive": null, "confirm": [{"code": "storage_translations_confirm", "params": {"count": 412}}, {"code": "storage_translations_warning", "params": {}}]},
+        {"kind": "recommendation_logs", "bytes": 3145728, "hint": {"code": "storage_recommendation_logs", "params": {"count": 18000}}, "model": "", "tables": [], "free": false, "action": "recommendation_logs", "passive": null, "confirm": [{"code": "storage_recommendation_logs_confirm", "params": {"count": 18000}}, {"code": "storage_recommendation_logs_warning", "params": {}}]},
+        {"kind": "other", "bytes": 9017754, "hint": {"code": "storage_other", "params": {"chat_bytes": 4404019, "threads": 86, "other_bytes": 3460301, "digest_bytes": 1153434, "periods": 143}}, "model": "", "tables": [], "free": false, "action": null, "passive": "manage_elsewhere", "confirm": []},
+        {"kind": "legacy", "bytes": 419430, "hint": {"code": "storage_legacy", "params": {}}, "model": "", "tables": ["translations", "feed_sub_records"], "free": false, "action": "legacy_tables", "passive": null, "confirm": [{"code": "storage_legacy_confirm", "params": {}}, {"code": "storage_legacy_warning", "params": {}}]},
+        {"kind": "free", "bytes": 123731968, "hint": {"code": "storage_free", "params": {"required_bytes": 1503238554, "available_bytes": 44238163149}}, "model": "", "tables": [], "free": true, "action": "vacuum", "passive": null, "confirm": [{"code": "storage_vacuum_confirm", "params": {"bytes": 123731968}}, {"code": "storage_vacuum_space", "params": {"required_bytes": 1503238554, "available_bytes": 44238163149}}, {"code": "storage_vacuum_wait", "params": {}}]},
       ],
     },
     {
-      key: "media", label: "媒体缓存", size: "632 MB", note: "", items: [
-        storageItem("videos", "音视频缓存", "上限 512 MB", 388 * MB, "388 MB", {
-          action: "videos", action_label: "清空", confirm_title: "清空音视频缓存", confirm: ["删除本地保存的音视频，释放约 388 MB。", "再播放时会重新下载。"],
-        }),
-        storageItem("images", "配图缓存", "上限 256 MB，打开文章时按需下载", 241 * MB, "241 MB", {
-          action: "images", action_label: "清空", confirm_title: "清空配图缓存", confirm: ["删除本地保存的配图，释放约 241 MB。", "再打开文章时会重新下载。"],
-        }),
-        storageItem("untracked_media", "未登记文件", "14 个 · 中断的下载等，可以安全删除", 3.4 * MB, "3.4 MB", {
-          action: "untracked_media", action_label: "清理", confirm_title: "清理未登记文件", confirm: ["删除媒体目录里没有登记的 14 个文件，约 3.4 MB。", "不影响任何文章。"],
-        }),
+      kind: "media", bytes: 662700032, note: null, items: [
+        {"kind": "videos", "bytes": 406847488, "hint": {"code": "storage_videos", "params": {}}, "model": "", "tables": [], "free": false, "action": "videos", "passive": null, "confirm": [{"code": "storage_videos_confirm", "params": {"bytes": 406847488}}, {"code": "storage_videos_warning", "params": {}}]},
+        {"kind": "images", "bytes": 252706816, "hint": {"code": "storage_images", "params": {}}, "model": "", "tables": [], "free": false, "action": "images", "passive": null, "confirm": [{"code": "storage_images_confirm", "params": {"bytes": 252706816}}, {"code": "storage_images_warning", "params": {}}]},
+        {"kind": "untracked_media", "bytes": 3565158, "hint": {"code": "storage_untracked", "params": {"count": 14}}, "model": "", "tables": [], "free": false, "action": "untracked_media", "passive": null, "confirm": [{"code": "storage_untracked_confirm", "params": {"count": 14, "bytes": 3565158}}, {"code": "storage_untracked_warning", "params": {}}]},
       ],
     },
     {
-      key: "engine", label: "对话引擎", size: "114 MB", note: "", items: [
-        storageItem("pi_program", "对话引擎程序", "RRSS 托管的 Pi", 96 * MB, "96.0 MB"),
-        storageItem("pi_sessions", "对话记录（引擎侧）", "续接对话所需，随备份保存", 18 * MB, "18.0 MB"),
+      kind: "engine", bytes: 119537664, note: null, items: [
+        {"kind": "pi_program", "bytes": 100663296, "hint": {"code": "storage_pi_program", "params": {}}, "model": "", "tables": [], "free": false, "action": null, "passive": null, "confirm": []},
+        {"kind": "pi_sessions", "bytes": 18874368, "hint": {"code": "storage_pi_sessions", "params": {}}, "model": "", "tables": [], "free": false, "action": null, "passive": null, "confirm": []},
       ],
     },
     {
-      key: "backups", label: "自动备份", size: "2.30 GB", note: "", items: [
-        storageItem("auto_backups", "自动备份", "2 份 · 只保留最近 5 份", 2355 * MB, "2.30 GB", { passive: "在「备份与恢复」管理" }),
+      kind: "backups", bytes: 2469606195, note: null, items: [
+        {"kind": "auto_backups", "bytes": 2469396480, "hint": {"code": "storage_auto_backups", "params": {"count": 2, "keep": 5}}, "model": "", "tables": [], "free": false, "action": null, "passive": "manage_backups", "confirm": []},
       ],
     },
     {
-      key: "logs", label: "运行日志", size: "7.8 MB", note: "保存在本机日志目录，不进备份。", items: [
-        storageItem("logs", "运行日志", "用于排查问题，清空后继续记录", 7.8 * MB, "7.8 MB", {
-          action: "logs", action_label: "清空", confirm_title: "清空运行日志？",
-          confirm: ["删除现有的日志文件，之后继续记录新的日志。", "不影响订阅、文章和设置。"],
-        }),
+      kind: "logs", bytes: 8178893, note: {"code": "storage_logs_location", "params": {}}, items: [
+        {"kind": "logs", "bytes": 8178893, "hint": {"code": "storage_logs", "params": {}}, "model": "", "tables": [], "free": false, "action": "logs", "passive": null, "confirm": [{"code": "storage_logs_confirm", "params": {}}, {"code": "storage_logs_warning", "params": {}}]},
       ],
     },
   ],
@@ -517,17 +495,16 @@ export const MOCK_STORAGE: StoragePage = {
 };
 
 export const MOCK_RETENTION: RetentionPage = {
-  days: 0, default_days: 90, custom_feeds: 1, preview: "", preview_hint: "", can_run: false,
-  confirm_title: "立即清理旧文章正文", confirm: [], confirm_ok: "备份并清理",
+  days: 0, default_days: 90, custom_feeds: 1, preview: null, preview_hint: null, can_run: false,
+  first_run: true, confirm: [],
 };
 
 export const MOCK_BACKUP: BackupPage = {
-  last_manual: "上次备份：9 月 20 日 22:40。",
+  last_manual_at: new Date(2026, 8, 20, 22, 40).getTime(),
   schedule: "off",
-  auto_summary: "升级前自动 · 定时关闭",
   entries: [
-    { path: "/home/user/.local/share/rrss/backups/rrss-upgrade-20260927-091200-000.zip", when: "今天 09:12", note: "升级前自动备份 · v14 · 1.21 GB", restorable: true },
-    { path: "/home/user/.local/share/rrss/backups/rrss-scheduled-20260913-080500-000.zip", when: "9 月 13 日 08:05", note: "定时备份 · 1.09 GB", restorable: true },
+    { path: "/home/user/.local/share/rrss/backups/rrss-upgrade-20260927-091200-000.zip", created_at: new Date().setHours(9, 12, 0, 0), kind: "upgrade", schema_version: 14, bytes: Math.round(1.21 * 1024 ** 3), secrets_included: false, restorable: true },
+    { path: "/home/user/.local/share/rrss/backups/rrss-scheduled-20260913-080500-000.zip", created_at: new Date(2026, 8, 13, 8, 5).getTime(), kind: "scheduled", schema_version: 14, bytes: Math.round(1.09 * 1024 ** 3), secrets_included: false, restorable: true },
   ],
   restore_notice: null,
   rules: 64,
@@ -549,8 +526,8 @@ export const MOCK_READER: ReaderView = {
   score: 12,
   feedback: 0,
   reasons: [
-    { rule_id: 1, dimension: "标题", snippet: "sqlite", label: "标题含 sqlite", weight: 10 },
-    { rule_id: 0, dimension: "兴趣", snippet: "", label: "兴趣 · 本地优先", weight: 2 },
+    { rule_id: 1, dimension: "title_kw", snippet: "sqlite", code: "legacy_text", params: { text: "标题含 sqlite", prefix: null }, weight: 10 },
+    { rule_id: 0, dimension: "interest", snippet: "", code: "legacy_text", params: { text: "兴趣 · 本地优先", prefix: null }, weight: 2 },
   ],
   media: [],
   translated_title: "",
@@ -583,7 +560,7 @@ export type MockHostOptions = {
   siteRules?: SiteRulesPage;
   siteRuleReport?: SiteRuleTestView;
   webExtractions?: Record<string, WebVerifyStateEvent>;
-  webWindowError?: UiError | string;
+  webWindowError?: UiError | UiErrorEnvelope | string;
   clearWebDataError?: UiError | string;
   webLinks?: Record<string, OpenWebLinkView | FulltextError>;
   linkSafety?: Record<string, LinkSafety>;
@@ -1103,7 +1080,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               case "set_setting": {
                 // 保留命令契约与写后可读；业务校验在后端测试，失败由场景注入。
                 const spec = state.settings.specs.find((s: { id: string }) => s.id === args.id);
-                if (!spec) throw new Error(`没有名为 ${args.id} 的设置项`);
+                if (!spec) throw { code: "setting_unknown", params: { id: args.id }, detail: "setting is unknown" };
                 const raw = String(args.value).trim();
                 state.settings.values = state.settings.values.map((v: { id: string; value: string }) => (v.id === args.id ? { id: args.id, value: raw } : v));
                 if (args.id === "theme_preference") {
@@ -1370,7 +1347,9 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               case "save_model_bindings": {
                 const next = args.args as { bindings: Array<Ref & { task: string }> };
                 for (const b of next.bindings) {
-                  if (b.provider_id && !state.pool.pool.some((e) => same(e, b) && (b.task !== "chat" || e.chat))) throw new Error(`${b.model} 还没有加进模型列表`);
+                  const entry = state.pool.pool.find((e) => same(e, b));
+                  if (b.provider_id && !entry) throw { code: "model_not_added", params: { model: b.model }, detail: "model has not been added to the pool" };
+                  if (b.provider_id && b.task === "chat" && !entry?.chat) throw { code: "model_chat_disabled", params: { model: b.model }, detail: "model is not enabled for chat" };
                 }
                 state.bindings = { ...state.bindings, tasks: state.bindings.tasks.map((t) => {
                   const b = next.bindings.find((x) => x.task === t.task);
@@ -1409,7 +1388,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 const next = args.args as Ref & { chat?: boolean; display_name?: string; thinking?: string; context_window?: number;
                   max_output?: number; compat_json?: string; overrides?: PoolEntryView["overrides"] };
                 const chat = state.bindings.tasks.find((t) => t.task === "chat");
-                if (next.chat === false && chat && same(chat, next)) throw new Error("它是对话默认模型，先在模型页「对话」里改选别的，再关掉");
+                if (next.chat === false && chat && same(chat, next)) throw { code: "model_chat_default_required", detail: "chat default must be replaced before disabling chat" };
                 state.pool = { ...state.pool, pool: state.pool.pool.map((e) => !same(e, next) ? e : {
                   ...e,
                   chat: next.chat ?? e.chat,
@@ -1598,11 +1577,11 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 for (const group of state.storage.groups) {
                   for (const item of group.items) {
                     if (item.action !== args.action) continue;
-                    Object.assign(item, { bytes: 0, size: "0", action: "", action_label: "", passive: item.free ? "无" : "", confirm: [] });
-                    if (args.action === "recommendation_logs") item.hint = "0 条 · 曝光、行为与阅读会话合计 · 保留 180 天";
+                    Object.assign(item, { bytes: 0, action: null, passive: item.free ? "none" : null, confirm: [] });
+                    if (args.action === "recommendation_logs") item.hint = { code: "storage_recommendation_logs", params: { count: 0 } };
                   }
                 }
-                return args.action === "vacuum" ? "数据库已压缩。" : "已清理。";
+                return args.action === "vacuum" ? { code: "storage_cleaned", params: { action: "vacuum", count: 0 } } : { code: "legacy_text", params: { text: "已清理。" } };
               }
               case "retention_page":
                 await wait(60);
@@ -1610,19 +1589,19 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               case "retention_set_days":
                 state.retention.days = args.days;
                 Object.assign(state.retention, args.days > 0
-                  ? { preview: "将清理 12,480 篇", preview_hint: "预计释放约 420 MB，清理后可压缩数据库还给磁盘。每天刷新后自动执行；第一次执行前会自动备份。", can_run: true,
-                    confirm: [`清理 12,480 篇入库满 ${args.days} 天的文章的正文、向量、译文和配图。`, "标题、链接、阅读记录和赞踩保留，仍能按标题搜到；打开时可以重新抓取正文。", "这是第一次清理，会先自动备份全部数据。"] }
-                  : { preview: "", preview_hint: "", can_run: false, confirm: [] });
+                  ? { preview: { code: "retention_preview", params: { count: 12480 } }, preview_hint: { code: "retention_preview_hint", params: { bytes: 420 * 1024 * 1024, first: true } }, can_run: true,
+                    confirm: [{ code: "retention_confirm", params: { count: 12480, days: args.days } }, { code: "retention_preserve", params: {} }, { code: "retention_backup", params: {} }] }
+                  : { preview: null, preview_hint: null, can_run: false, confirm: [] });
                 return;
               case "retention_clean_now":
                 await wait(120);
-                Object.assign(state.retention, { preview: "目前没有要清理的文章", preview_hint: "每天刷新后自动检查一次。", can_run: false, confirm_ok: "清理" });
-                return "已先自动备份。已清理 12,480 篇旧文章的正文。可以压缩数据库把空间还给磁盘。";
+                Object.assign(state.retention, { preview: { code: "retention_preview_empty", params: {} }, preview_hint: { code: "retention_daily", params: {} }, can_run: false, first_run: false });
+                return { code: "retention_cleaned", params: { count: 12480, backed_up: true } };
               case "dismiss_feed_health":
               case "unsubscribe_feeds": {
                 const drop = new Set<number>(command === "unsubscribe_feeds" ? args.ids : []);
                 const fix = (list: any[]) => list.filter((f) => !drop.has(f.id)).map((f) =>
-                  (command === "dismiss_feed_health" && f.id === args.id ? { ...f, health: "", health_label: "", health_detail: "" } : f));
+                  (command === "dismiss_feed_health" && f.id === args.id ? { ...f, health: null } : f));
                 state.feeds = { ...state.feeds, uncategorized: fix(state.feeds.uncategorized),
                   folders: state.feeds.folders.map((folder: any) => ({ ...folder, feeds: fix(folder.feeds) })) };
                 return structuredClone(state.feeds);
@@ -1631,15 +1610,15 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 return structuredClone(state.backup);
               case "backup_create":
                 await wait(120);
-                state.backup.last_manual = "上次备份：今天 14:32。";
-                return { path: "/home/user/Documents/rrss-backup-2026-09-27-1432.zip", size: "1.19 GB", summary: "文章 38,210 篇 · 订阅 74 个 · 规则 64 条 · 对话 86 个 · " + (args.includeSecrets ? "包含密钥" : "不含密钥，恢复后需重新填写") };
+                state.backup.last_manual_at = new Date().setHours(14, 32, 0, 0);
+                return { path: "/home/user/Documents/rrss-backup-2026-09-27-1432.zip", bytes: Math.round(1.19 * 1024 ** 3), summary: { code: "backup_created", params: { count: 38210, feeds: 74, rules: 64, threads: 86, secrets_included: args.includeSecrets } } };
               case "backup_inspect":
                 await wait(80);
                 return {
                   path: args.path ?? "/home/user/Documents/rrss-backup-2026-09-20-2240.zip",
                   file_name: String(args.path ?? "rrss-backup-2026-09-20-2240.zip").split("/").pop(),
-                  taken: "备份于 9 月 20 日 22:40 · 版本 v14",
-                  summary: "文章 37,506 篇 · 订阅 72 个 · 规则 61 条 · 对话 83 个 · 不含密钥，恢复后需重新填写 API Key 与外部工具变量",
+                  created_at: new Date(2026, 8, 20, 22, 40).getTime(), schema_version: 14,
+                  summary: { code: "backup_restore_summary", params: { count: 37506, feeds: 72, rules: 61, threads: 83, secrets_included: false } },
                 };
               case "backup_restore":
                 // 真宿主会重启；这里停住，页面保持「正在重启」。
@@ -1649,7 +1628,6 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 return;
               case "backup_set_schedule":
                 state.backup.schedule = args.value;
-                state.backup.auto_summary = "升级前自动 · 定时" + ({ off: "关闭", daily: "每天", weekly: "每周" } as Record<string, string>)[args.value];
                 return;
               case "backup_dismiss_notice":
                 state.backup.restore_notice = null;
@@ -1658,7 +1636,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 return JSON.stringify({ format: 1, kind: "rrss-prefs", created_at: 0, rules: [] });
               case "prefs_import":
                 return {
-                  summary: "规则 新增 58 条，跳过重复 4 条 · 兴趣 新增 12 个 · 记忆 新增 35 条，跳过重复 2 条",
+                  summary: [{ code: "prefs_rules", params: { count: 58, duplicates: 4 } }, { code: "prefs_interests", params: { count: 12, duplicates: 0 } }, { code: "prefs_memories", params: { count: 35, duplicates: 2 } }],
                   skipped: ["规则 不喜欢标题「广告」：限定的 https://news.example.com/rss 在本机不存在", "规则 喜欢作者「Alice」：限定的 文件夹「技术 / 博客」 在本机不存在"],
                 };
               case "save_translate_settings": {
@@ -1807,7 +1785,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 if (listed.some(feed => feed.url === args.url)) throw new Error("已订阅该地址");
                 const id = Math.max(0, ...listed.map(feed => feed.id)) + 1;
                 state.feeds.uncategorized.push({ id, url: args.url, title: args.url, folder_id: 0, position: id,
-                  retention_days: null, icon_href: "", error: "", noisy: false, health: "", health_label: "", health_detail: "", empty: true });
+                  retention_days: null, icon_href: "", error: null, noisy: false, health: null, empty: true });
                 return { id, message: "已添加，正在后台抓取" };
               }
               case "export_opml":

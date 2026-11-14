@@ -155,8 +155,8 @@ pub async fn run_embed_queue(db_path: &Path, client: &reqwest::Client) -> Result
                 }
                 tokio::select! {
                     biased;
-                    _ = stop.wait_for(|current| *current != epoch) => anyhow::bail!("嵌入任务已停止"),
-                    changed = result.changed() => { changed.map_err(|_| anyhow::anyhow!("嵌入任务已停止"))?; }
+                    _ = stop.wait_for(|current| *current != epoch) => anyhow::bail!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::EmbeddingStopped)),
+                    changed = result.changed() => { changed.map_err(|_| anyhow::anyhow!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::EmbeddingStopped)))?; }
                 }
             }
             // A changed space/configuration needs its own finite attempt after
@@ -179,7 +179,9 @@ pub async fn run_embed_queue(db_path: &Path, client: &reqwest::Client) -> Result
                     if run.result.borrow().is_none() {
                         run.result.send_replace(Some(Err(Failure {
                             reason: "stopped",
-                            message: "嵌入任务已停止".into(),
+                            message: crate::UiError::from(rrss_core::Error::Jobs(
+                                rrss_core::error::JobFailure::EmbeddingStopped,
+                            )),
                         })));
                     }
                 }
@@ -192,7 +194,7 @@ pub async fn run_embed_queue(db_path: &Path, client: &reqwest::Client) -> Result
         };
         let result = tokio::select! {
             biased;
-            _ = stop.wait_for(|current| *current != epoch) => Err(anyhow::anyhow!("嵌入任务已停止")),
+            _ = stop.wait_for(|current| *current != epoch) => Err(anyhow::anyhow!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::EmbeddingStopped))),
             result = run_embed_queue_inner(db_path, client) => result,
         };
         // Publish and remove while holding the same mutex; a different-key waiter
@@ -200,10 +202,7 @@ pub async fn run_embed_queue(db_path: &Path, client: &reqwest::Client) -> Result
         let mut running = capacity.embedding.lock().unwrap();
         if running.as_ref().is_some_and(|run| run.epoch == epoch) {
             let run = running.take().unwrap();
-            let shared = result.as_ref().map(|_| ()).map_err(|error| Failure {
-                reason: crate::scheduler::background::pause_reason(error),
-                message: error.to_string(),
-            });
+            let shared = result.as_ref().map(|_| ()).map_err(Failure::from);
             run.result.send_replace(Some(shared));
         }
         owner.finished = true;
@@ -762,7 +761,9 @@ impl<'a> EmbedQueue<'a> {
                 || bound.model != self.endpoint.model
                 || bound.api_key != self.endpoint.api_key
         }) {
-            return Err(Failure::Stop(anyhow::anyhow!("嵌入绑定已改变")));
+            return Err(Failure::Stop(anyhow::anyhow!(rrss_core::Error::Jobs(
+                rrss_core::error::JobFailure::EmbeddingChanged
+            ))));
         }
         admission.budget_kind = ai_store::BudgetKind::Embedding;
         admission.space = Some((path.clone(), space, binding));
@@ -803,6 +804,20 @@ impl<'a> EmbedQueue<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_embedding_failure_keeps_configuration_code() {
+        let error = anyhow::Error::new(rrss_core::Error::InvalidSetting(
+            rrss_core::error::settings::SettingProblem::VectorDimsInvalid,
+        ));
+        let failure = crate::scheduler::digest_jobs::Failure::from(&error);
+        assert_eq!(
+            failure.reason,
+            crate::scheduler::background::pause_reason(&error)
+        );
+        let ui = crate::views::UiError::from(anyhow::Error::new(failure));
+        assert_eq!(ui.code(), "setting_vector_dims_invalid");
+    }
     use rrss_core::db;
     use serde_json::{Value, json};
     use wiremock::{Mock, MockServer, Request, ResponseTemplate};

@@ -4,6 +4,7 @@
 //! 写回前核对开关与整表刷新标记：其间有整表刷新或开关变化就丢掉结果重算；
 //! 其余输入（行为、新文章）的滞后与原先一样，由防抖 / 每小时整表刷新收敛。
 
+use crate::error::settings::SettingProblem;
 use super::{
     combine::{ALGO_VERSION, Switches},
     model::Model,
@@ -41,9 +42,7 @@ fn set_switch_with(
     between: impl Fn() -> Result<()>,
 ) -> Result<()> {
     if !conn.is_autocommit() {
-        return Err(crate::Error::InvalidSetting(
-            "排序开关须在独立事务中修改".into(),
-        ));
+        return Err(crate::Error::InvalidSetting(SettingProblem::RankTransactionRequired));
     }
     for _ in 0..SNAPSHOT_ATTEMPTS {
         let change = db::read_snapshot(conn, |snapshot| {
@@ -88,7 +87,7 @@ impl<'a> SwitchChange<'a> {
             db::RANK_COVERAGE_ENABLED_KEY => &mut switches.coverage,
             db::RANK_FRESHNESS_ENABLED_KEY => &mut switches.freshness,
             db::RANK_AFFINITY_ENABLED_KEY => &mut switches.affinity,
-            _ => return Err(crate::Error::InvalidSetting("未知的排序开关".into())),
+            _ => return Err(crate::Error::InvalidSetting(SettingProblem::RankSwitchUnknown)),
         };
         *selected = enabled;
         Ok(Self {
@@ -275,12 +274,30 @@ mod tests {
         };
         assert_eq!(time(), 86400000);
         conn.execute(
-            "UPDATE article_rank SET algo_version=0 WHERE article_id=1",
-            [],
+            "UPDATE article_rank SET algo_version=?1,reasons_json=?2 WHERE article_id=1",
+            params![
+                ALGO_VERSION - 1,
+                r#"[{"component":"source","text":"old cache reason"}]"#
+            ],
         )
         .unwrap();
         assert_eq!(update(&conn, &[1], 86400002).unwrap(), 2);
         assert_eq!(time(), 86400002);
+        let cached: Vec<String> = conn
+            .prepare("SELECT reasons_json FROM article_rank")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        for json in cached {
+            let reasons: serde_json::Value = serde_json::from_str(&json).unwrap();
+            for reason in reasons.as_array().unwrap() {
+                assert!(reason.get("code").is_some());
+                assert!(reason.get("params").is_some());
+                assert!(reason.get("text").is_none());
+            }
+        }
         conn.execute_batch("CREATE TEMP TRIGGER fail_rank BEFORE INSERT ON article_rank BEGIN SELECT RAISE(FAIL,'injected'); END;").unwrap();
         assert!(rebuild(&conn, 86400003).is_err());
         assert_eq!(time(), 86400002);

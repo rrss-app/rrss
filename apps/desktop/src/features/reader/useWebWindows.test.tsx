@@ -58,6 +58,27 @@ describe("embedded original page", () => {
     return { host, calls, get controller() { return controller; } };
   }
 
+  it("retains the coded failure when opening a changed proxy route", async () => {
+    box.stub!.handle("openWebView", () => { throw { code: "web_proxy_route_changed", detail: "fixture" }; });
+    const ui = setup();
+    await act(async () => { await ui.controller.launch(url); });
+    expect(ui.controller.panel?.failure?.code).toBe("web_proxy_route_changed");
+    expect(ui.host.querySelector("[data-error-code]")?.getAttribute("data-error-code")).toBe("web_proxy_route_changed");
+    expect(ui.controller.embedded).toBe(false);
+  });
+
+  it("shows a coded extraction failure and allows retry", async () => {
+    const event = { label: "web-1", url, state: "NotExtracted" as const, title: null, article_id: null, text_chars: null, image_count: null, reason: null, error: { code: "web_snapshot_timeout" as const, detail: "diagnostic canary" } };
+    box.stub!.handle("extractWebView", () => event);
+    const ui = setup();
+    await act(async () => { await ui.controller.launch(url); });
+    await act(async () => { await ui.controller.extract(); });
+    expect(ui.controller.verification["web-1"].error?.code).toBe("web_snapshot_timeout");
+    expect(ui.host.querySelector("[data-error-code]")?.getAttribute("data-error-code")).toBe("web_snapshot_timeout");
+    expect(ui.host.textContent).not.toContain("diagnostic canary");
+    expect(ui.controller.extracting).toBeNull();
+  });
+
   it("reuses the current page, drops a late open, and leaves only for its label", async () => {
     const ui = setup();
     const launch = async (page: string) => {

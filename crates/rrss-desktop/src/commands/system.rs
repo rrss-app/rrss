@@ -2,6 +2,7 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use rrss_app::queries;
+use rrss_app::ui_error::host::HostError;
 use rrss_app::views::*;
 
 use crate::state::{AppState, with_db};
@@ -24,7 +25,7 @@ pub async fn log_client(
 pub async fn log_set_level(detailed: bool) -> Result<LogStatusView, UiError> {
     rrss_app::execution::blocking(move || {
         let handle =
-            rrss_app::log::current().ok_or_else(|| UiError::from("日志没有初始化".to_string()))?;
+            rrss_app::log::current().ok_or_else(|| UiError::from(HostError::LogNotInitialized))?;
         let level = if detailed {
             rrss_app::log::Level::Detailed
         } else {
@@ -32,11 +33,11 @@ pub async fn log_set_level(detailed: bool) -> Result<LogStatusView, UiError> {
         };
         handle
             .set_level(level)
-            .map_err(|_| UiError::from("日志文件不可用，无法切换记录级别".to_string()))?;
+            .map_err(|_| UiError::from(HostError::LogLevelUnavailable))?;
         tracing::info!(detailed, "file log level changed");
         handle
             .status_view()
-            .ok_or_else(|| UiError::from("日志文件不可用".to_string()))
+            .ok_or_else(|| UiError::from(HostError::LogUnavailable))
     })
     .await
     .map_err(UiError::from)?
@@ -70,7 +71,15 @@ pub async fn log_export(
         tokio::task::spawn_blocking(move || {
             rrss_app::log::export_diagnostics(&db_path, &dest)
                 .map(|()| dest.display().to_string())
-                .map_err(|error| UiError::from(format!("导出诊断包失败：{error}")))
+                .map_err(|error| {
+                    if error.to_string() == "logging is not initialized" {
+                        HostError::LogExportNotInitialized.into()
+                    } else {
+                        // Preserve platform-specific IO wording until it has a
+                        // typed display contract; do not expose it as a parameter.
+                        UiError::from(format!("导出诊断包失败：{error}"))
+                    }
+                })
         })
         .await
         .map_err(|error| UiError::from(anyhow::Error::from(error)))?
@@ -101,7 +110,10 @@ pub async fn storage_page(state: State<'_, AppState>) -> Result<StoragePage, UiE
 
 /// 清理与压缩可能耗时（`VACUUM` 需要重写整个库），同样不占主线程。
 #[tauri::command]
-pub async fn storage_clean(state: State<'_, AppState>, action: String) -> Result<String, UiError> {
+pub async fn storage_clean(
+    state: State<'_, AppState>,
+    action: String,
+) -> Result<StorageMessage, UiError> {
     let path = state.db_path.clone();
     tracing::info!(%action, "storage cleanup requested");
     with_db("storage_clean", path.clone(), move |conn| {

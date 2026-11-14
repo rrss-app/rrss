@@ -7,6 +7,7 @@ import errors from "../locales/zh-CN/errors.json" with { type: "json" };
 import feeds from "../locales/zh-CN/feeds.json" with { type: "json" };
 import focus from "../locales/zh-CN/focus.json" with { type: "json" };
 import reader from "../locales/zh-CN/reader.json" with { type: "json" };
+import reasons from "../locales/zh-CN/reasons.json" with { type: "json" };
 import search from "../locales/zh-CN/search.json" with { type: "json" };
 import settingsAssistant from "../locales/zh-CN/settingsAssistant.json" with { type: "json" };
 import settingsContent from "../locales/zh-CN/settingsContent.json" with { type: "json" };
@@ -21,7 +22,7 @@ export const SOURCE_LANGUAGE = "zh-CN";
 /** 语言包按功能分命名空间，与 `features/` 对应（设置页按分区再分，壳层与 `lib/` 用 `shell`）；新增命名空间在这里登记。 */
 export const resources = {
   "zh-CN": {
-    chat, common, digest, errors, feeds, focus, reader, search,
+    chat, common, digest, errors, feeds, focus, reader, reasons, search,
     settingsAssistant, settingsContent, settingsJobs, settingsModels, settingsSystem, shell,
   },
 } as const;

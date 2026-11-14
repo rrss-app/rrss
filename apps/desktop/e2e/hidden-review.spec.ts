@@ -5,14 +5,16 @@ import type { HiddenPage, RuleStatsPage } from "../src/bindings";
 const args = (page: Page, command: string) =>
   page.evaluate((name) => (window as any).__mockHost.args[name], command);
 
-const reason = (rule_id: number, label: string, weight: number) => ({ rule_id, dimension: "title_kw", snippet: label, weight, label });
+const reason = (rule_id: number, label: string, weight: number) => ({ rule_id, dimension: "title_kw", snippet: label, weight,
+  code: "legacy_text" as const, params: { text: label, prefix: null } });
 const hidden: HiddenPage = {
   spot_liked_count: 1,
   articles: [
     { id: 501, title: "Zed 编辑器融资后公布路线图", feed_id: 3, feed_title: "Byte Harbor", published_at: Date.now() - 5 * 3_600_000, score: -15, spot_liked: true, reasons: [reason(2, "标题：招聘", -15)] },
     { id: 502, title: "一周招聘速览", feed_id: 1, feed_title: "闲聊广场", published_at: Date.now() - 3_600_000, score: -20, spot_liked: false, reasons: [reason(2, "标题：招聘", -15), reason(4, "URL：/sponsored/", -5)] },
   ],
-  rule_counts: [{ rule_id: 2, label: "标题包含『招聘』", count: 2 }, { rule_id: 4, label: "URL 匹配『/sponsored/』", count: 1 }],
+  rule_counts: [{ rule_id: 2, code: "rule_condition_title_kw", params: { pattern: "招聘" }, count: 2 },
+    { rule_id: 4, code: "legacy_text", params: { text: "URL 匹配『/sponsored/』", prefix: null }, count: 1 }],
 };
 const ruleStats: RuleStatsPage = {
   rules: [

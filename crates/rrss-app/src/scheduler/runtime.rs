@@ -981,7 +981,7 @@ impl Shared {
             if self.cooldown_store.writes.load(Ordering::Acquire) > 0 {
                 return Err(rrss_core::Error::FetchDeferred {
                     until: None,
-                    message: "正在保存订阅限流记录，稍后继续抓取".into(),
+                    reason: rrss_core::ingest::FetchDeferredReason::CooldownSaving,
                 });
             }
             if let Some(deferred) = cooling.blocked_host(&host_key(url), self.clock.now()) {
@@ -989,9 +989,7 @@ impl Shared {
             }
         }
         if self.network_paused() {
-            return Err(rrss_core::Error::FetchPaused(
-                super::offline::UNAVAILABLE.into(),
-            ));
+            return Err(rrss_core::Error::FetchPaused);
         }
         Ok(())
     }
@@ -1005,9 +1003,10 @@ impl Shared {
         if let Some(permit) = reserved {
             return Ok(permit);
         }
-        let closed = |_| rrss_core::Error::Http {
-            status: 0,
-            message: "抓取运行时已停止".into(),
+        let closed = |_| {
+            rrss_core::Error::FeedRequest(
+                rrss_core::ingest::feed_http::FeedRequestError::RuntimeStopped,
+            )
         };
         // Never reserve global capacity while waiting for a busy host.
         let host = self.host(&url).acquire_owned().await.map_err(closed)?;
@@ -1836,25 +1835,30 @@ async fn process_response(state: Arc<Shared>, downloaded: Downloaded) {
             // paused meanwhile. The source did not fail and is not deferred: keep
             // the claim for the retry after connectivity returns.
             Err(FetchFailure {
-                error: rrss_core::Error::FetchPaused(_),
+                error: rrss_core::Error::FetchPaused,
                 ..
             }) => {
                 state.retry_network((id, generation));
                 return None;
             }
             Err(FetchFailure {
-                error: rrss_core::Error::FetchDeferred { until, message },
+                error: rrss_core::Error::FetchDeferred { until, reason },
                 ..
             }) => {
+                let local_message = match reason {
+                    rrss_core::ingest::FetchDeferredReason::CooldownSaving => "正在保存订阅限流记录，稍后继续抓取",
+                    rrss_core::ingest::FetchDeferredReason::QueueBusy => "本地抓取队列繁忙，等待下载名额超时，请稍后重试",
+                    _ => "",
+                };
                 let deferred = state.deferred(feed.id, &feed.url)
-                    .unwrap_or(super::cooldown::Deferred { key: super::cooldown::GLOBAL.into(), until, message });
+                    .unwrap_or_else(|| super::cooldown::Deferred::from_reason(until, reason, local_message));
                 state.deferred_result(&feed, generation, deferred).await;
                 return None;
             }
             Err(error) if error.network => match super::refresh_network_failure(
                 state.clone(),
                 feed,
-                error.error.to_string(),
+                rrss_core::feeds::refresh_error_json(&error.error),
                 schedule.with_failure(error.class).with_error(error.kind, error.status()),
             )
             .await
@@ -1870,7 +1874,7 @@ async fn process_response(state: Arc<Shared>, downloaded: Downloaded) {
                 refresh_failed(
                     state.path.clone(),
                     feed,
-                    error.error.to_string(),
+                    rrss_core::feeds::refresh_error_json(&error.error),
                     schedule.with_failure(error.class).with_error(error.kind, error.status()),
                 )
                 .await
@@ -2010,7 +2014,7 @@ mod admission_tests {
             .failure(&server.uri(), tokio::time::Instant::now());
         let url = reqwest::Url::parse(&server.uri()).unwrap();
         let error = state.check_dispatch(&url).unwrap_err();
-        assert!(matches!(error, rrss_core::Error::FetchPaused(_)));
+        assert!(matches!(error, rrss_core::Error::FetchPaused));
         state.network_response();
         process_response(
             state.clone(),

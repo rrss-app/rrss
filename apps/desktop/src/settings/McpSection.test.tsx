@@ -1,3 +1,4 @@
+import { i18n } from "../i18n";
 import { act, StrictMode, useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { ApiStub } from "../test/api";
@@ -110,4 +111,16 @@ it("consumes a real enable failure and allows the next login to proceed", async 
   expect(attempted).toEqual([7, 8]);
   expect(enabled).toEqual([8]);
   expect(probed).toEqual([8]);
+});
+
+it("opens details for a probe failure supplied by code", async () => {
+  const stub = box.stub = createApiStub();
+  stub.handle("probeMcp", () => ({ ok: false, tools: [], elapsed_ms: 1, error: "", hint: "", output: "", failure: { code: "mcp_http_status" as const, params: { status: 503 }, detail: "fixture" }, hint_code: "remote" as const }));
+  const server = mcpFixture({ id: 7, name: "fixture" });
+  const { host } = harness.mount(<McpSection servers={[server]} writing={false} onAdd={vi.fn()} onImport={vi.fn()} onEdit={vi.fn()} onSave={async () => true} onLoginFailed={vi.fn()} onToggle={async () => true} />);
+  const label = i18n.t("mcp.probeAria", { ns: "settingsAssistant", name: server.name });
+  act(() => host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!.click());
+  await harness.flush();
+  act(() => host.querySelector<HTMLButtonElement>("button[aria-expanded]")!.click());
+  expect(host.querySelector(".mcp-error")?.getAttribute("data-error-code")).toBe("mcp_http_status");
 });

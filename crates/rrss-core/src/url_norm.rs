@@ -4,6 +4,22 @@ use url::Url;
 
 use crate::error::{Error, Result};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum InvalidUrlReason {
+    #[error("malformed address")]
+    Malformed,
+    #[error("HTTP or HTTPS required")]
+    UnsupportedScheme,
+    #[error("missing host")]
+    MissingHost,
+    #[error("only HTTP(S) web pages are supported")]
+    WebPage,
+    #[error("invalid media address")]
+    Media,
+    #[error("invalid feed icon")]
+    FeedIcon,
+}
+
 /// Fetching, snapshots and external link actions require an HTTP(S) host.
 pub fn is_http_url(url: &Url) -> bool {
     matches!(url.scheme(), "http" | "https") && url.host_str().is_some()
@@ -52,15 +68,12 @@ pub fn canonical_article_url(raw: &str, base: Option<&str>) -> Option<String> {
 }
 
 fn parse_http(raw: &str) -> Result<Url> {
-    let url = Url::parse(raw.trim()).map_err(|err| Error::InvalidUrl(err.to_string()))?;
+    let url = Url::parse(raw.trim()).map_err(|_| Error::InvalidUrl(InvalidUrlReason::Malformed))?;
     if url.scheme() != "http" && url.scheme() != "https" {
-        return Err(Error::InvalidUrl(format!(
-            "unsupported scheme {}",
-            url.scheme()
-        )));
+        return Err(Error::InvalidUrl(InvalidUrlReason::UnsupportedScheme));
     }
     if url.host_str().is_none() {
-        return Err(Error::InvalidUrl("missing host".into()));
+        return Err(Error::InvalidUrl(InvalidUrlReason::MissingHost));
     }
     Ok(url)
 }

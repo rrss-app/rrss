@@ -121,7 +121,7 @@ impl NetworkClients {
 }
 
 fn unavailable() -> Error {
-    Error::InvalidNetworkProxy("无法读取网络客户端配置".into())
+    Error::InvalidNetworkProxy(rrss_core::network::ProxyError::ConfigUnavailable)
 }
 
 #[cfg(test)]

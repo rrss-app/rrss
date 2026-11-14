@@ -22,6 +22,8 @@ use super::launch::{self, PiProcess, Prepared, RPC_TIMEOUT};
 use super::profile::ModelSource;
 use super::{ChatError, ChatErrorKind};
 use crate::views::ModelChoice;
+use crate::ui_error::chat::{ChatUiError, ChatHandshakeStep};
+use rrss_core::{Error, error::PiFailure};
 
 /// 关闭 stdin 后等待进程自行退出的时长，超过就强制结束。
 pub const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
@@ -258,7 +260,7 @@ impl Supervisor {
         let (db, data) = (self.cfg.db_path.clone(), self.cfg.data_dir.clone());
         let current = crate::execution::blocking(move || {
             let conn = rrss_core::db::open_at(&db)
-                .map_err(|err| ChatError::new(ChatErrorKind::Internal, err.to_string()))?;
+                .map_err(|err| ChatError::internal(ChatErrorKind::Internal, err))?;
             launch::current_profile(&conn, &data, target.as_ref()).map(|(p, _)| {
                 (
                     p.fingerprint(),
@@ -269,7 +271,7 @@ impl Supervisor {
             })
         })
         .await
-        .map_err(|err| ChatError::new(ChatErrorKind::Internal, err.to_string()))?;
+        .map_err(|err| ChatError::internal(ChatErrorKind::Internal, err))?;
         let (fingerprint, model, source, thinking) = match current {
             Ok(found) => found,
             Err(err) if err.kind == ChatErrorKind::NotInstalled => return Ok(None),
@@ -395,7 +397,7 @@ impl Supervisor {
         if !has_model {
             return Err(ChatError::new(
                 ChatErrorKind::Config,
-                "你自己的 Pi 配置里没有可用的默认模型，请在 Pi 里设置，或在 RRSS 里选择一个模型",
+                Error::Pi(PiFailure::OwnModelUnset),
             ));
         }
         let wanted = file.map(str::trim).filter(|f| !f.is_empty());
@@ -450,7 +452,7 @@ impl Supervisor {
             if is_cancelled(&data) {
                 return Err(ChatError::new(
                     ChatErrorKind::Config,
-                    "对话引擎拒绝新建会话，已取消发送",
+                    Error::Pi(PiFailure::SessionCancelled),
                 ));
             }
         }
@@ -466,7 +468,7 @@ impl Supervisor {
             .ok_or_else(|| {
                 ChatError::new(
                     ChatErrorKind::Config,
-                    "对话引擎未返回可恢复的会话路径，已取消发送",
+                    Error::Pi(PiFailure::SessionPathMissing),
                 )
             })?;
         let current = state.get("model").and_then(model_ref_of);
@@ -576,7 +578,7 @@ impl Supervisor {
         if prompt_was_handled(&data) {
             return Err(ChatError::new(
                 ChatErrorKind::Model,
-                "这条输入被对话引擎的扩展接管了，没有开始回答",
+                Error::Pi(PiFailure::InputHandled),
             ));
         }
         Ok(())
@@ -600,7 +602,7 @@ impl Supervisor {
         process
             .send(response)
             .await
-            .map_err(|err| ChatError::new(ChatErrorKind::ProcessExit, format!("{err:#}")))
+            .map_err(|err| ChatError::new(ChatErrorKind::ProcessExit, crate::views::UiError::from_anyhow_pretty(err)))
     }
 
     /// 有序关闭当前进程。之后的发送会重新启动。
@@ -619,7 +621,7 @@ impl Supervisor {
             .as_ref()
             .filter(|r| r.process.is_alive())
             .map(|r| r.process.clone())
-            .ok_or_else(|| ChatError::new(ChatErrorKind::ProcessExit, "对话引擎未运行"))
+            .ok_or_else(|| ChatError::new(ChatErrorKind::ProcessExit, Error::Pi(PiFailure::NotRunning)))
     }
 
     /// 空闲回收：就绪且空闲达到 `pi_idle_timeout_secs` 秒时有序关闭。0 表示不回收。
@@ -672,32 +674,29 @@ async fn handshake(
     process: &PiProcess,
     prepared: &Prepared,
 ) -> Result<(Vec<String>, Option<String>), ChatError> {
-    let failed = |step: &str, err: RpcError| {
-        let detail = match err {
-            RpcError::Rejected(reason) => rrss_core::logsafe::scrub_secrets(&reason),
-            RpcError::Timeout => "没有响应".into(),
-            RpcError::Closed => "进程已退出".into(),
+    let failed = |step: ChatHandshakeStep, err: RpcError| {
+        let message = match err {
+            RpcError::Timeout => ChatUiError::handshake(step, false),
+            RpcError::Closed => ChatUiError::handshake(step, true),
+            // The engine owns this free-form reason; preserve its display until it has a protocol code.
+            RpcError::Rejected(reason) => crate::views::UiError::from(format!(
+                "对话引擎启动检查失败（{step}：{}），请检查设置 → AI 的连接地址、模型名与密钥",
+                rrss_core::logsafe::scrub_secrets(&reason),
+                step = match step { ChatHandshakeStep::State => "读取状态", ChatHandshakeStep::ThinkingLevels => "读取思考档位", ChatHandshakeStep::SetThinking => "设置思考档位" }
+            )),
         };
-        ChatError::new(
-            ChatErrorKind::Config,
-            format!(
-                "对话引擎启动检查失败（{step}：{detail}），请检查设置 → AI 的连接地址、模型名与密钥"
-            ),
-        )
+        ChatError::new(ChatErrorKind::Config, message)
     };
     let state = process
         .request(cmd_get_state(), RPC_TIMEOUT)
         .await
-        .map_err(|err| failed("读取状态", err))?;
+        .map_err(|err| failed(ChatHandshakeStep::State, err))?;
     let actual = state_model(&state);
     match (&prepared.spec.expected_model, &actual) {
         (Some(expected), actual) if actual.as_deref() != Some(expected.as_str()) => {
             return Err(ChatError::new(
                 ChatErrorKind::Config,
-                format!(
-                    "对话引擎没有加载配置的模型 {expected}（实际：{}），请检查设置 → AI 的连接地址、模型名与密钥",
-                    actual.as_deref().unwrap_or("未选择模型")
-                ),
+                ChatUiError::model_mismatch(expected, actual.as_deref()),
             ));
         }
         // 自有配置没选模型也没有默认模型：进程照常可用（可以列出模型），发送时再报错。
@@ -706,7 +705,7 @@ async fn handshake(
     let data = process
         .request(cmd_get_available_thinking_levels(), RPC_TIMEOUT)
         .await
-        .map_err(|err| failed("读取思考档位", err))?;
+        .map_err(|err| failed(ChatHandshakeStep::ThinkingLevels, err))?;
     let levels: Vec<String> = data
         .get("levels")
         .and_then(Value::as_array)
@@ -733,7 +732,7 @@ async fn handshake(
         process
             .request(cmd_set_thinking_level(closest), RPC_TIMEOUT)
             .await
-            .map_err(|err| failed("设置思考档位", err))?;
+            .map_err(|err| failed(ChatHandshakeStep::SetThinking, err))?;
     }
     Ok((levels, actual))
 }
@@ -782,9 +781,9 @@ fn rpc_error(err: RpcError) -> ChatError {
             rrss_core::logsafe::scrub_secrets(&reason),
         ),
         RpcError::Timeout => {
-            ChatError::new(ChatErrorKind::ProcessExit, "对话引擎没有响应，请稍后重试")
+            ChatError::new(ChatErrorKind::ProcessExit, Error::Pi(PiFailure::Timeout))
         }
-        RpcError::Closed => ChatError::new(ChatErrorKind::ProcessExit, "对话引擎意外退出"),
+        RpcError::Closed => ChatError::new(ChatErrorKind::ProcessExit, Error::Pi(PiFailure::ProcessExit)),
     }
 }
 

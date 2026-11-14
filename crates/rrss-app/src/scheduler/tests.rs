@@ -1129,15 +1129,15 @@ async fn stopping_releases_manual_object_waiter_without_affecting_another_databa
     let other_object = other.shared.capacity.object("summary:1".into());
     assert!(other_object.try_lock().is_ok());
     scheduler.stop();
-    assert!(
-        tokio::time::timeout(Duration::from_secs(10), summary)
-            .await
-            .unwrap()
-            .unwrap()
-            .unwrap_err()
-            .to_string()
-            .contains("已停止")
-    );
+    let error = tokio::time::timeout(Duration::from_secs(10), summary)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert!(matches!(
+        crate::UiError::from(error).code(),
+        "job_runtime_stopped" | "job_model_stopped_retry" | "job_model_stopped"
+    ));
     assert!(!other.snapshot().stopped);
     other.stop();
 }

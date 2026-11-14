@@ -32,7 +32,7 @@ impl FeedKind {
             "json" => Ok(Self::Json),
             "rsshub" => Ok(Self::Rsshub),
             "manual" => Ok(Self::Manual),
-            other => Err(Error::Parse(format!("unknown feed kind {other}"))),
+            _ => Err(Error::FeedParse(crate::parse::FeedParseError::UnknownKind)),
         }
     }
 

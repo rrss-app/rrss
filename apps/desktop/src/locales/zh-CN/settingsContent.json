@@ -1,6 +1,9 @@
 {
   "rules": {
-    "polarity": { "like": "加", "dislike": "减" },
+    "polarity": {
+      "like": "加",
+      "dislike": "减"
+    },
     "dimension": {
       "title_kw": "标题",
       "title_re": "标题正则",
@@ -11,7 +14,16 @@
       "body_phrase": "正文",
       "body_re": "正文正则"
     },
-    "scopeKind": { "global": "全局", "folder": "文件夹", "feed": "订阅源" },
+    "scopeMeta": {
+      "global": "全局",
+      "folder": "文件夹",
+      "feed": "源"
+    },
+    "scopeKind": {
+      "global": "全局",
+      "folder": "文件夹",
+      "feed": "订阅源"
+    },
     "filter": {
       "summary": "筛选规则",
       "all": "全部",
@@ -19,7 +31,10 @@
       "dislike": "减分",
       "pending": "待确认"
     },
-    "verb": { "regex": "匹配正则", "contains": "包含" },
+    "verb": {
+      "regex": "匹配正则",
+      "contains": "包含"
+    },
     "loading": "正在读取规则…",
     "readFailed": "读取规则失败，当前表单未被覆盖：{{error}}",
     "retryRead": "重试读取",
@@ -41,8 +56,14 @@
       "cancel": "取消"
     },
     "group": {
-      "suggested": { "title": "建议规则", "hint": "建议只在这里等待确认，不会自动启用。" },
-      "existing": { "title": "已有规则", "hint": "停用的规则保留，可以随时再打开。" }
+      "suggested": {
+        "title": "建议规则",
+        "hint": "建议只在这里等待确认，不会自动启用。"
+      },
+      "existing": {
+        "title": "已有规则",
+        "hint": "停用的规则保留，可以随时再打开。"
+      }
     },
     "empty": {
       "all": "还没有规则。可以新建规则，或启用下方预设。",
@@ -127,6 +148,22 @@
       "loading": "正在读取生效范围…",
       "empty": "暂无可选范围，请先在「订阅」中添加订阅源或文件夹。",
       "aria": "选择生效范围"
+    },
+    "summary": "{{prefix}}{{condition}}时{{effect}} · {{scope}}",
+    "effect": {
+      "boost": "加分",
+      "hide": "隐藏",
+      "lower": "降分",
+      "none": "不改变分数"
+    },
+    "summaryScope": {
+      "global": "全局",
+      "feed": "仅此源",
+      "folder": "此文件夹及子文件夹"
+    },
+    "summaryPrefix": {
+      "feed": "来自『{{name}}』、",
+      "folder": "在『{{name}}』文件夹内、"
     }
   },
   "subscribe": {
@@ -353,6 +390,36 @@
     "cleaning": "清理中…",
     "cleanNow": "立即清理",
     "previewConfirmTitle": "立即清理旧文章正文",
-    "previewConfirmOk": "清理"
+    "previewConfirmOk": "清理",
+    "messages": {
+      "legacy_text": "{{text}}",
+      "retention_preview_other": "将清理 {{count}} 篇",
+      "retention_preview_empty": "目前没有要清理的文章",
+      "retention_preview_hint": "预计释放约 {{bytes}}，清理后可压缩数据库还给磁盘。每天刷新后自动执行{{first}}。",
+      "retention_daily": "每天刷新后自动检查一次。",
+      "retention_confirm_other": "清理 {{count}} 篇{{scope}}的文章的正文、向量、译文和配图。",
+      "retention_preserve": "标题、链接、阅读记录和赞踩保留，仍能按标题搜到；打开时可以重新抓取正文。",
+      "retention_backup": "这是第一次清理，会先自动备份全部数据。",
+      "retention_cleaned_other": "{{backup}}已清理 {{count}} 篇旧文章的正文。可以压缩数据库把空间还给磁盘。"
+    },
+    "format": {
+      "first": "；第一次执行前会自动备份",
+      "scope": "入库满 {{days}} 天",
+      "customScope": "单独设了保留天数的源里过期",
+      "backedUp": "已先自动备份。",
+      "confirmTitle": "立即清理旧文章正文",
+      "confirmFirst": "备份并清理",
+      "confirm": "清理"
+    }
+  },
+  "ruleConditions": {
+    "author": "作者是『{{pattern}}』",
+    "tag": "带有标签『{{pattern}}』",
+    "title_kw": "标题包含『{{pattern}}』",
+    "title_re": "标题匹配正则『{{pattern}}』",
+    "url_phrase": "URL 包含『{{pattern}}』",
+    "url_re": "URL 匹配正则『{{pattern}}』",
+    "body_phrase": "正文包含『{{pattern}}』",
+    "body_re": "正文匹配正则『{{pattern}}』"
   }
 }

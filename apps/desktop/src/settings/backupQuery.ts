@@ -1,14 +1,12 @@
 import { settingsQueryPolicy } from "./queryPolicy";
 import { queryOptions } from "@tanstack/react-query";
 import { api, type BackupPage } from "../lib/api";
-import { i18n } from "../i18n";
 import { isTauri } from "../lib/preview";
 
 // 浏览器预览只展示结构，不代表本机数据。
 const previewBackup = (): BackupPage => ({
-  last_manual: i18n.t("backup.preview.lastManual", { ns: "settingsSystem" }),
+  last_manual_at: null,
   schedule: "off",
-  auto_summary: i18n.t("backup.preview.autoSummary", { ns: "settingsSystem" }),
   entries: [],
   restore_notice: null,
   rules: 0,

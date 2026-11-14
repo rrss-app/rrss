@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { Trans, useTranslation } from "../../i18n";
+import { i18n, Trans, useTranslation } from "../../i18n";
 import { summarize, type LiveTurn, type Trace, type TraceStep } from "./turnTrace";
 
 /** 刚发出时先等一下再出现，冷启动的「启动对话引擎」不会先闪一下「思考」。 */
@@ -18,20 +18,28 @@ function useNow(tickMs: number, running: boolean) {
 
 const seconds = (ms: number) => (Math.max(0, ms) / 1000).toFixed(1);
 
-type Shown = Pick<TraceStep, "label" | "server" | "serverTool">;
+type Shown = Pick<TraceStep, "kind" | "tool" | "server" | "serverTool">;
 
-/** 当前这一步：还没结束的引擎 / 工具；都结束了就是「思考」（键随上一步变，换字时上推一次）。 */
-function currentStep(turn: LiveTurn, think: string): Shown & { key: string; detail: string } {
-  const open = turn.steps.filter((step) => step.endedAt === null).at(-1);
-  if (open) return { key: open.id, label: open.label, detail: open.detail, server: open.server, serverTool: open.serverTool };
-  const last = turn.steps.at(-1);
-  return { key: `think-${last?.id ?? "start"}`, label: think, detail: "", server: "", serverTool: "" };
+export function chatStepLabel(step: Shown): string {
+  if (step.kind === "think") return i18n.t("progress.think", { ns: "chat" });
+  if (step.kind === "engine") return i18n.t("steps.engine", { ns: "chat" });
+  if (step.server) return i18n.t("steps.external", { ns: "chat", server: step.server, tool: step.serverTool });
+  const key = `steps.tools.${step.tool}`;
+  return i18n.exists(key, { ns: "chat" }) ? String(i18n.t(key as never, { ns: "chat" })) : i18n.t("steps.tool", { ns: "chat", tool: step.tool });
 }
 
-/** 外部工具写「使用 服务 的 工具」，服务名等宽；其余用宿主给的文案。 */
+/** 当前这一步：还没结束的引擎 / 工具；都结束了就是「思考」（键随上一步变，换字时上推一次）。 */
+function currentStep(turn: LiveTurn): Shown & { key: string; detail: string } {
+  const open = turn.steps.filter((step) => step.endedAt === null).at(-1);
+  if (open) return { key: open.id, kind: open.kind, tool: open.tool, detail: open.detail, server: open.server, serverTool: open.serverTool };
+  const last = turn.steps.at(-1);
+  return { key: `think-${last?.id ?? "start"}`, kind: "think", tool: "", detail: "", server: "", serverTool: "" };
+}
+
+/** 外部工具写「使用 服务 的 工具」，服务名等宽；其余按步骤与工具 id 取文案。 */
 function StepText({ step }: { step: Shown }) {
   const { t } = useTranslation("chat");
-  if (!step.server) return <>{step.label}</>;
+  if (!step.server) return <>{chatStepLabel(step)}</>;
   return <Trans t={t} i18nKey="progress.useTool" values={{ server: step.server, tool: step.serverTool }} components={{ srv: <span className="chat-srv" /> }} />;
 }
 
@@ -44,7 +52,7 @@ export function WaitingLine({ turn, since = turn.startedAt }: { turn: LiveTurn; 
   const now = useNow(250, true);
   const visible = turn.steps.length > 0 || now - turn.startedAt >= SHOW_AFTER_MS;
   if (!visible) return null;
-  const step = currentStep(turn, t("progress.think"));
+  const step = currentStep(turn);
   const asking = turn.asking;
   return (
     <p className="chat-wait" role="status" data-paused={asking ? "" : undefined}>
@@ -70,7 +78,7 @@ function StepRow({ step }: { step: TraceStep }) {
   return (
     <li data-error={step.error ? "" : undefined}>
       <span className="chat-trace-icon" aria-hidden="true"><Icon name={step.error ? "info" : "check"} size={12} /></span>
-      <span className="chat-trace-label">{step.server ? <><span className="chat-srv">{step.server}</span> · {step.serverTool}</> : step.label}</span>
+      <span className="chat-trace-label">{step.server ? <><span className="chat-srv">{step.server}</span> · {step.serverTool}</> : chatStepLabel(step)}</span>
       {step.approval ? <span className="chat-trace-approval" data-denied={step.approval === "denied" ? "" : undefined}>
         · {step.approval === "allowed" ? t("progress.allowed") : t("progress.denied")}</span> : null}
       {step.detail ? <span className="chat-trace-detail">{step.detail}</span> : null}

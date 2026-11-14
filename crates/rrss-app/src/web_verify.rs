@@ -5,7 +5,7 @@ fn verification_state(
     url: &str,
     title: &str,
     loaded: bool,
-    last: Option<&Result<OpenWebLinkView, String>>,
+    last: Option<&Result<OpenWebLinkView, crate::UiError>>,
 ) -> WebVerifyState {
     if !loaded || crate::fulltext::detect_waf(&format!("{url}\n{title}"), 200) {
         WebVerifyState::WaitingVerification
@@ -22,7 +22,7 @@ pub fn event(
     label: &str,
     url: &str,
     title: Option<String>,
-    last: Option<&Result<OpenWebLinkView, String>>,
+    last: Option<&Result<OpenWebLinkView, crate::UiError>>,
 ) -> WebVerifyStateEvent {
     let page = last.and_then(|result| result.as_ref().ok());
     WebVerifyStateEvent {
@@ -33,8 +33,12 @@ pub fn event(
         article_id: page.map(|p| p.article_id),
         text_chars: page.map(|p| p.text_chars),
         image_count: page.map(|p| p.image_count),
+        error: last
+            .and_then(|result| result.as_ref().err())
+            .filter(|error| error.code() != "legacy_text")
+            .cloned(),
         reason: last.and_then(|result| match result {
-            Err(reason) => Some(reason.clone()),
+            Err(reason) if reason.code() == "legacy_text" => Some(reason.detail.clone()),
             Ok(page) if !page.suspicious.is_empty() => Some(page.suspicious.join(", ")),
             _ => None,
         }),

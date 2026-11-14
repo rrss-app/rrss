@@ -2,6 +2,9 @@
 //! 每个用例用一次性库和数据目录；场景由提示词里的标记选择。
 #![cfg(unix)]
 
+#[path = "../src/ui_error/test_display.rs"]
+mod test_display;
+
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -257,7 +260,7 @@ fn errors(events: &[ChatEvent]) -> Vec<(String, String)> {
     events
         .iter()
         .filter_map(|e| match e {
-            ChatEvent::Error(err) => Some((err.kind.clone(), err.message.clone())),
+            ChatEvent::Error(err) => Some((err.kind.clone(), test_display::display(&err.message))),
             _ => None,
         })
         .collect()
@@ -274,12 +277,15 @@ fn statuses(events: &[ChatEvent]) -> Vec<String> {
         .collect()
 }
 
-/// 等待过程的步骤：（文案，是否开始）。
-fn steps(events: &[ChatEvent]) -> Vec<(String, bool)> {
+/// Waiting steps: (kind, tool, started).
+fn steps(events: &[ChatEvent]) -> Vec<(&str, &str, bool)> {
     events
         .iter()
         .filter_map(|e| match e {
-            ChatEvent::Status(s) => s.step.as_ref().map(|step| (step.label.clone(), step.start)),
+            ChatEvent::Status(s) => s
+                .step
+                .as_ref()
+                .map(|step| (step.kind.as_str(), step.tool.as_str(), step.start)),
             _ => None,
         })
         .collect()
@@ -348,7 +354,10 @@ async fn deletion_rejects_generation_cascades_and_allows_next_session() {
     h.sink.clear();
     let id = h.chat.send(args(0, "[[slow]]")).await.unwrap();
     let err = h.chat.lock_thread_deletion(id).await.unwrap_err();
-    assert_eq!(err.message, "这条对话正在生成，先停止再删除");
+    assert_eq!(
+        test_display::display(&err.message),
+        "这条对话正在生成，先停止再删除"
+    );
     let conn = db::open_at(&h.db).unwrap();
     let file = threads::get_thread(&conn, id)
         .unwrap()
@@ -395,13 +404,10 @@ async fn plain_turn_streams_persists_and_reports_tools() {
     assert!(matches!(first, Some(ChatEvent::Start(t)) if *t == thread));
     assert_eq!(
         steps(&events)[..2],
-        [
-            ("启动对话引擎".to_string(), true),
-            ("启动对话引擎".to_string(), false)
-        ]
+        [("engine", "", true), ("engine", "", false)]
     );
     assert!(errors(&events).is_empty(), "{events:#?}");
-    assert!(steps(&events).contains(&("查阅本地文章".to_string(), true)));
+    assert!(steps(&events).contains(&("tool", "search_articles", true)));
     assert!(
         !statuses(&events).iter().any(|s| s.contains("查阅")),
         "tool progress stays out of the activity line"
@@ -531,7 +537,7 @@ async fn confirm_requests_can_be_allowed_denied_or_time_out() {
         ),
         (thread, "读取网页", Some(5000))
     );
-    assert!(steps(&events).contains(&("读取网页".to_string(), true)));
+    assert!(steps(&events).contains(&("tool", "fetch_url", true)));
     h.chat.confirm(&request.id, true, false).await.unwrap();
     h.sink.done().await;
     assert_eq!(h.messages(thread).last().unwrap().1, "已读取网页。");
@@ -583,9 +589,9 @@ async fn rejected_prompt_discards_the_user_message_and_releases_the_gate() {
     let err = h.chat.send(args(0, "[[reject]]")).await.unwrap_err();
     assert_eq!(err.kind, ChatErrorKind::Model);
     assert!(
-        err.message.contains("No model configured")
-            && err.message.contains("***")
-            && !err.message.contains("zzzz"),
+        test_display::display(&err.message).contains("No model configured")
+            && test_display::display(&err.message).contains("***")
+            && !test_display::display(&err.message).contains("zzzz"),
         "{}",
         err.message
     );
@@ -839,7 +845,7 @@ async fn pi_receives_its_proxy_environment_on_the_next_start_only() {
     h.sink.clear();
     let err = h.chat.send(args(thread, "第四句")).await.unwrap_err();
     assert_eq!(err.kind, ChatErrorKind::Config, "{}", err.message);
-    assert!(!err.message.contains("private-secret"));
+    assert!(!test_display::display(&err.message).contains("private-secret"));
     assert_eq!(h.starts().len(), 2);
     h.chat.stop_engine().await;
 }
@@ -961,7 +967,7 @@ async fn handshake_rejects_a_model_pi_did_not_load() {
     let err = h.chat.send(args(0, "你好")).await.unwrap_err();
     assert_eq!(err.kind, ChatErrorKind::Config);
     assert!(
-        err.message.contains("rrss-1/wrong-model"),
+        test_display::display(&err.message).contains("rrss-1/wrong-model"),
         "{}",
         err.message
     );
@@ -1178,7 +1184,7 @@ async fn thread_thinking_records_keeps_clears_and_downgrades_without_changing_mo
     invalid.thinking = Some("extreme".into());
     let err = h.chat.send(invalid).await.unwrap_err();
     assert_eq!(err.kind, ChatErrorKind::Config);
-    assert!(err.message.contains("思考强度"));
+    assert!(test_display::display(&err.message).contains("思考强度"));
     assert_eq!(threads::list_threads(&conn, 80).unwrap().len(), 1);
     set_entry(
         &conn,
@@ -1205,7 +1211,11 @@ async fn an_unset_chat_model_is_a_config_error_even_with_models_added() {
     let h = setup_with(0, Model::Unbound);
     let err = h.chat.send(args(0, "你好")).await.unwrap_err();
     assert_eq!(err.kind, ChatErrorKind::Config);
-    assert!(err.message.contains("还没选对话模型"), "{}", err.message);
+    assert!(
+        test_display::display(&err.message).contains("还没选对话模型"),
+        "{}",
+        err.message
+    );
     let conn = db::open_at(&h.db).unwrap();
     assert!(threads::list_threads(&conn, 10).unwrap().is_empty());
     assert!(h.starts().is_empty(), "pi never started");
@@ -1293,7 +1303,11 @@ async fn no_model_is_a_config_error_before_any_thread_exists() {
     let h = setup_with(0, Model::None);
     let err = h.chat.send(args(0, "你好")).await.unwrap_err();
     assert_eq!(err.kind, ChatErrorKind::Config);
-    assert!(err.message.contains("设置"), "{}", err.message);
+    assert!(
+        test_display::display(&err.message).contains("设置"),
+        "{}",
+        err.message
+    );
     let conn = db::open_at(&h.db).unwrap();
     assert!(threads::list_threads(&conn, 10).unwrap().is_empty());
     assert!(h.starts().is_empty(), "pi never started");

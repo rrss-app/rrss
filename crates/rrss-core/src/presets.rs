@@ -1,5 +1,6 @@
 //! 编译进二进制的规则预设包。日志 target：`rrss_core::presets`。
 
+use crate::error::rules::RuleProblem;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
@@ -62,7 +63,7 @@ struct RuleFile {
 
 fn parse_pack(raw: &str) -> Result<PresetPack> {
     let file: PackFile =
-        toml::from_str(raw).map_err(|err| Error::InvalidRule(format!("preset toml: {err}")))?;
+        toml::from_str(raw).map_err(|_| Error::InvalidRule(RuleProblem::PresetInvalid))?;
     let polarity_default = Polarity::parse_str(&file.polarity_default)?;
     let mut rules = Vec::new();
     for rule in file.rules {

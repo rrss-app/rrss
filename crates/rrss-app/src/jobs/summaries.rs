@@ -168,7 +168,7 @@ async fn summarize_job_inner(
         before.title == job.title
             && before.blocks_json == job.blocks_json
             && before.content_html == job.content_html,
-        "正文已改变，请重新生成摘要"
+        rrss_core::Error::Jobs(rrss_core::error::JobFailure::SummaryChanged)
     );
     // 只有手动「本篇摘要」、且档位不是「低」时，放不下的长文才先分段压缩。
     let segments = (segmented && tier != ai_store::InputTier::Low)
@@ -288,7 +288,7 @@ async fn summarize_job_inner(
         })
     })
     .await?;
-    anyhow::ensure!(saved, "正文、摘要或模型配置已改变，已丢弃旧摘要");
+    anyhow::ensure!(saved, rrss_core::Error::Jobs(rrss_core::error::JobFailure::SummaryDiscarded));
     Ok(summary)
 }
 
@@ -331,7 +331,10 @@ async fn segment_notes_payload(
     }
     let mut notes = vec![Value::Null; total];
     while let Some(joined) = set.join_next().await {
-        let (i, parsed) = joined.context("segment task panicked")??;
+        let (i, parsed) = joined.context(crate::views::UiError::new(
+            crate::views::UiErrorKind::Common(crate::ui_error::common::CommonError::Internal),
+            "segment task panicked",
+        ))??;
         notes[i] = parsed;
     }
     Ok(format_segment_notes(title, &notes))

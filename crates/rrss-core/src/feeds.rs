@@ -561,50 +561,117 @@ pub fn display_title(title: &str, url: &str) -> String {
     }
 }
 
-/// 刷新失败给用户看的短句。原始错误仍可写进 `feeds.error`。
-pub fn humanize_refresh_error(raw: &str) -> String {
-    let lower = raw.to_ascii_lowercase();
-    if lower.contains("database is locked")
-        || lower.contains("database lock")
-        || lower.contains("sqlite_busy")
-        || lower.contains("code: 5")
-    {
-        return "数据库正忙，请稍后重试".into();
-    }
-    let http = http_status_code(raw);
-    if let Some(code) = http {
-        return match code {
-            429 => "源限流，请稍后重试".into(),
-            401 | 403 => "源拒绝访问".into(),
-            404 => "找不到这个源（404）".into(),
-            502 | 503 | 504 => format!("源暂时不可用（{code}）"),
-            _ => format!("源返回 {code}"),
-        };
-    }
-    let compact: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
-    if compact.chars().count() > 80 {
-        compact.chars().take(77).collect::<String>() + "…"
-    } else if compact.is_empty() {
-        "刷新失败".into()
-    } else {
-        compact
-    }
+/// Only codes, numbers and fixed transport enums may enter newly stored failures.
+pub fn refresh_error_json(error: &Error) -> String {
+    use crate::ingest::{FetchDeferredReason, feed_http::FeedRequestError};
+    use serde_json::json;
+    let (code, params) = match error {
+        Error::Http { status, .. } => ("feed_refresh_http".into(), json!({ "status": status })),
+        Error::Network {
+            kind,
+            status,
+            message,
+        } => (
+            format!("network_{}", kind.as_str()),
+            json!({ "status": status, "message": message }),
+        ),
+        Error::FeedRequest(reason) => match reason {
+            FeedRequestError::BodyTooLarge { max_bytes } => (
+                "feed_body_too_large".into(),
+                json!({ "max_bytes": max_bytes }),
+            ),
+            FeedRequestError::RedirectLimit => ("feed_redirect_limit".into(), json!({})),
+            FeedRequestError::RedirectMissing => ("feed_redirect_missing".into(), json!({})),
+            FeedRequestError::RedirectInvalid => ("feed_redirect_invalid".into(), json!({})),
+            FeedRequestError::RedirectScheme => ("feed_redirect_scheme".into(), json!({})),
+            FeedRequestError::InvalidAddress => ("feed_address_invalid".into(), json!({})),
+            FeedRequestError::Timeout => ("feed_timeout".into(), json!({})),
+            FeedRequestError::RuntimeStopped => ("feed_runtime_stopped".into(), json!({})),
+            FeedRequestError::ProxyAuth => (
+                "network_proxy_auth".into(),
+                json!({ "status": 407, "message": "proxy_auth" }),
+            ),
+        },
+        Error::FeedParse(crate::parse::FeedParseError::InvalidDocument) => {
+            ("feed_parse_failed".into(), json!({}))
+        }
+        Error::FeedParse(crate::parse::FeedParseError::UnknownKind) => {
+            ("feed_kind_unknown".into(), json!({}))
+        }
+        Error::FetchDeferred { until, reason } => match reason {
+            FetchDeferredReason::HostLimited => {
+                ("feed_host_limited".into(), json!({ "until": until }))
+            }
+            FetchDeferredReason::CooldownSaving => ("feed_cooldown_saving".into(), json!({})),
+            FetchDeferredReason::QueueBusy => ("feed_queue_busy".into(), json!({})),
+            FetchDeferredReason::CooldownSaveFailed => {
+                ("feed_cooldown_save_failed".into(), json!({}))
+            }
+            FetchDeferredReason::CooldownLoadFailed => {
+                ("feed_cooldown_load_failed".into(), json!({}))
+            }
+            FetchDeferredReason::Recovery => ("feed_cooldown_recovery".into(), json!({})),
+        },
+        Error::FetchPaused => ("feed_network_unavailable".into(), json!({})),
+        Error::Sqlite(rusqlite::Error::SqliteFailure(error, _))
+            if matches!(
+                error.code,
+                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+            ) =>
+        {
+            ("database_busy".into(), json!({}))
+        }
+        Error::Sqlite(_) => ("database".into(), json!({})),
+        Error::Io(_) => ("io".into(), json!({})),
+        _ => ("feed_refresh_failed".into(), json!({})),
+    };
+    json!({ "code": code, "params": params }).to_string()
 }
 
-fn http_status_code(raw: &str) -> Option<u16> {
-    if let Some(rest) = raw.strip_prefix("HTTP ") {
-        let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
-        if !digits.is_empty() {
-            return digits.parse().ok();
-        }
-    }
-    raw.split("status=").nth(1).and_then(|rest| {
-        rest.chars()
-            .take_while(|c| c.is_ascii_digit())
-            .collect::<String>()
-            .parse()
-            .ok()
-    })
+// Legacy callers may still supply text. Never copy that text into a new row.
+pub(crate) fn storage_error(raw: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(raw)
+        .ok()
+        .filter(|value| {
+            value
+                .get("code")
+                .and_then(|code| code.as_str())
+                .is_some_and(|code| {
+                    !code.is_empty()
+                        && code != "legacy_text"
+                        && code.len() <= 80
+                        && code
+                            .bytes()
+                            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'_')
+                })
+                && value.get("params").is_some_and(|params| params.is_object())
+        })
+        .map(|mut value| {
+            value["params"]
+                .as_object_mut()
+                .unwrap()
+                .retain(|name, value| {
+                    value.is_number()
+                        || value.is_null()
+                        || (name == "message"
+                            && matches!(
+                                value.as_str(),
+                                Some(
+                                    "timeout"
+                                        | "connect"
+                                        | "redirect"
+                                        | "decode"
+                                        | "other"
+                                        | "http"
+                                        | "proxy_auth"
+                                )
+                            ))
+                });
+            serde_json::json!({ "code": value["code"], "params": value["params"] }).to_string()
+        })
+        .unwrap_or_else(|| {
+            serde_json::json!({ "code": "feed_refresh_failed", "params": {} }).to_string()
+        })
 }
 
 #[cfg(test)]
@@ -614,6 +681,31 @@ mod tests {
     use crate::parse::ParsedEntry;
     use crate::rules::{Dimension, NewRule, Polarity, insert_rule};
     use tempfile::tempdir;
+
+    #[test]
+    fn new_error_records_do_not_copy_raw_failure_text_or_extra_parameters() {
+        let raw = "response body https://user:canary@feed.example/private?q=canary";
+        let value: serde_json::Value = serde_json::from_str(&storage_error(raw)).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({ "code": "feed_refresh_failed", "params": {} })
+        );
+        let value: serde_json::Value = serde_json::from_str(&storage_error(
+            r#"{"code":"legacy_text","params":{},"detail":"canary"}"#,
+        ))
+        .unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({ "code": "feed_refresh_failed", "params": {} })
+        );
+        let value: serde_json::Value = serde_json::from_str(&storage_error(
+            r#"{"code":"feed_refresh_http","params":{"status":503,"url":"https://feed.example/private","body":"canary"},"detail":"canary"}"#,
+        )).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({ "code": "feed_refresh_http", "params": { "status": 503 } })
+        );
+    }
 
     #[test]
     fn display_title_avoids_raw_urls() {
@@ -637,16 +729,6 @@ mod tests {
             "v2ex"
         );
         assert_eq!(display_title("", ""), "未命名源");
-    }
-
-    #[test]
-    fn humanize_refresh_error_is_short() {
-        assert_eq!(
-            humanize_refresh_error("database is locked"),
-            "数据库正忙，请稍后重试"
-        );
-        assert_eq!(humanize_refresh_error("HTTP 503"), "源暂时不可用（503）");
-        assert_eq!(humanize_refresh_error("HTTP 429"), "源限流，请稍后重试");
     }
 
     #[test]

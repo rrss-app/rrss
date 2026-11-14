@@ -6,6 +6,14 @@ use rusqlite::Connection;
 use crate::error::{Error, Result};
 use crate::feeds::{self, SubscribeRequest};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum OpmlError {
+    #[error("invalid document")]
+    InvalidDocument,
+    #[error("document serialization failed")]
+    Serialize,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ImportReport {
     pub imported: u32,
@@ -14,7 +22,7 @@ pub struct ImportReport {
 }
 
 pub fn import_opml(conn: &Connection, xml: &str) -> Result<ImportReport> {
-    let doc = OPML::from_str(xml).map_err(|err| Error::Opml(err.to_string()))?;
+    let doc = OPML::from_str(xml).map_err(|_| Error::Opml(OpmlError::InvalidDocument))?;
     let mut report = ImportReport::default();
     walk_outlines(conn, &doc.body.outlines, None, &mut report)?;
     tracing::info!(
@@ -108,7 +116,8 @@ pub fn export_opml(conn: &Connection) -> Result<String> {
         }),
         body: opml::Body { outlines: root },
     };
-    doc.to_string().map_err(|err| Error::Opml(err.to_string()))
+    doc.to_string()
+        .map_err(|_| Error::Opml(OpmlError::Serialize))
 }
 
 fn build_folder_outlines(

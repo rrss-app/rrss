@@ -6,7 +6,7 @@ import { formatNotice } from "../lib/notice";
 import { Stepper } from "./Stepper";
 import { ChipBar, SaveBar, SettingRow, Toggle } from "./chips";
 import { useEditReport, useSettingsWrite, type SettingsEditState } from "./editState";
-import { formatMinutes, parseMinutes, registryEntry, type SettingId } from "./registry";
+import { formatMinutes, parseMinutes, registryEntry, settingOptions, type SettingId } from "./registry";
 import { settingsKeys, settingsMutationOptions, settingsSchemaOptions } from "./settingsQuery";
 import { tokensToWanText, wanTextToTokens } from "./autoSummary";
 import { Pending } from "../components/Pending";
@@ -114,8 +114,7 @@ export function SettingsRows({ ids, label, title, className, disabled = false, o
     const display = registryEntry(spec.id)?.display;
     if (kind.type === "enum") {
       const allowed = only?.[spec.id as SettingId];
-      const labels = registryEntry(spec.id)?.options;
-      const listed = labels ? kind.options.map((o) => ({ ...o, label: labels[o.id] ?? o.label })) : kind.options;
+      const listed = settingOptions(spec.id, kind.options);
       const options = allowed?.length ? listed.filter((o) => allowed.includes(o.id) || o.id === value) : listed;
       return <ChipBar className="segmented" value={value} options={options} disabled={blocked}
         onChange={(next) => void change(row, next)} />;
@@ -158,7 +157,7 @@ export function SettingsRows({ ids, label, title, className, disabled = false, o
 
   const hint = (row: Row) => {
     const kind = row.spec.kind;
-    const chosen = kind.type === "enum" ? kind.options.find((o) => o.id === row.value)?.hint ?? "" : "";
+    const chosen = kind.type === "enum" ? settingOptions(row.spec.id, kind.options).find((o) => o.id === row.value)?.hint ?? "" : "";
     return [chosen, row.hint].filter(Boolean).join("") || undefined;
   };
 

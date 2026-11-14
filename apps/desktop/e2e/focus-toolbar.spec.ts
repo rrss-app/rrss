@@ -1,6 +1,7 @@
 import { expect, test } from "./fixtures";
 import { installMockHost, MOCK_FOCUS } from "./mockHost";
 import { shot } from "./shots";
+import type { RankReasonView } from "../src/bindings";
 
 const lastArgs = (page: import("@playwright/test").Page, command: string) =>
   page.evaluate((name) => (window as any).__mockHost.args[name], command);
@@ -35,15 +36,15 @@ test("toolbar dropdowns use the shared menu, and the keyboard-selected row has n
 
 test("recommendation details default off, reveal ordinary reasons and keep spot checks blind", async ({ page }) => {
   const [first, second] = MOCK_FOCUS.articles;
-  const reasons = [
-    { text: "按这个源的阅读节奏降低旧文优先级", points: -1 },
-    { text: "你常读这个源", points: 1 },
-    { text: "3 个源在报道", points: 2 },
-    { text: "和你常读的『Rust async』相似", points: 2 },
+  const reasons: RankReasonView[] = [
+    { code: "rank_freshness", params: {}, points: -1 },
+    { code: "rank_source", params: { habit: "read" }, points: 1 },
+    { code: "rank_coverage", params: { count: 3 }, points: 2 },
+    { code: "rank_affinity", params: { pattern: "Rust async" }, points: 2 },
   ];
   await installMockHost(page, { focus: { ...MOCK_FOCUS, articles: [
     { ...first, starred: true, noisy: true, rank_reasons: reasons },
-    { ...second, spot_check: true, score: -10, noisy: true, interest_label: first.interest_label, rank_reasons: reasons },
+    { ...second, spot_check: true, score: -10, noisy: true, interest_reason: first.interest_reason, rank_reasons: reasons },
   ] } });
   await page.goto("/");
   const ordinary = page.getByRole("article", { name: first.title, exact: true });

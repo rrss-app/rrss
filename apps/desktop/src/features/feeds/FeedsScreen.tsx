@@ -1,3 +1,4 @@
+import { feedHealthKind, feedHealthDetail, feedHealthLabel, formatFeedError } from "./feedHealth";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -35,8 +36,8 @@ function timelineItems(articles: ArticleView[], now: number): Item[] {
 function troubledFeeds(tree: FeedTree | undefined, scope: string) {
   if (!tree) return [];
   return feedsInScope(tree, scope)
-    .filter((item) => item.error || item.health === "failing" || item.health === "stale")
-    .map((item) => ({ id: item.id, title: item.title, reason: item.error || item.health_detail || item.health_label }));
+    .filter((item) => item.error || feedHealthKind(item.health) === "failing" || feedHealthKind(item.health) === "stale")
+    .map((item) => ({ id: item.id, title: item.title, reason: formatFeedError(item.error) || feedHealthDetail(item) || feedHealthLabel(item.health) }));
 }
 
 function MeasuredItem({ index, measure, observe, row, position, style, children }: {

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MenuButton } from "../components/MenuSelect";
 import { Icon } from "../components/Icon";
 import { Pending } from "../components/Pending";
+import { settingOptions } from "./registry";
 import { SettingRow } from "./chips";
 import { useEditReport, useMergedEditState, useSettingsWrite, type SettingsEditState } from "./editState";
 import { settingsMutationOptions, settingsSchemaOptions } from "./settingsQuery";
@@ -41,7 +42,7 @@ export function WebReadingPane({ onEditStateChange, onAsk, siteRuleSeed, onSiteR
   if (!query.data) return query.isError ? <div role="alert">{t("webReading.readFailed")}<button type="button" className="btn" onClick={() => void query.refetch()}>{t("webReading.retry")}</button></div> : <Pending>{t("webReading.loading")}</Pending>;
   const mode = query.data.values.find(v => v.id === "web_open_mode")?.value ?? "reader";
   const kind = query.data.specs.find(s => s.id === "web_open_mode")?.kind;
-  const options = kind?.type === "enum" ? kind.options : [];
+  const options = kind?.type === "enum" ? settingOptions("web_open_mode", kind.options) : [];
   return <div className="web-reading-settings">
     <p className="hint">{t("webReading.intro")}</p>
     <section className="settings-group"><div className="settings-group-head"><h4>{t("webReading.open.title")}</h4></div>

@@ -79,7 +79,7 @@ describe("createEventStub", () => {
     const onMedia = vi.fn();
     const offError = await events.onChatError(onError);
     const offMedia = await events.onMediaReady(onMedia);
-    const error = { thread_id: 4, message: "boom", kind: "model" };
+    const error = { thread_id: 4, message: { code: "legacy_text" as const, params: {}, detail: "boom" }, kind: "model" };
     const media = { article_id: 8, media: { src: "a.png", href: "rrss://localhost/media/1", width: null, height: null, error: "" } };
     events.emit("chat:error", error);
     events.emit("media:ready", media);
@@ -89,7 +89,7 @@ describe("createEventStub", () => {
     expect(onMedia).toHaveBeenCalledWith(media);
     offError();
     offMedia();
-    events.emit("chat:error", { thread_id: 4, message: "again", kind: "model" });
+    events.emit("chat:error", { thread_id: 4, message: { code: "legacy_text", params: {}, detail: "again" }, kind: "model" });
     events.emit("media:ready", media);
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onMedia).toHaveBeenCalledTimes(1);

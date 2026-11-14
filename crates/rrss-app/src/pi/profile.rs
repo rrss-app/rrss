@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 use super::workspace::{self, WorkspacePaths};
 use super::{ChatError, ChatErrorKind};
 use crate::views::ModelChoice;
+use rrss_core::{Error, error::PiFailure};
 
 /// 生成的 `models.json` 里 RRSS 的 provider 名前缀：每个连接一个 `rrss-<连接 id>`。
 pub const PROVIDER_PREFIX: &str = "rrss-";
@@ -217,7 +218,7 @@ impl PiProfile {
         target: Option<&ModelChoice>,
     ) -> Result<(Self, PiSecrets), ChatError> {
         let db_err =
-            |err: rrss_core::Error| ChatError::new(ChatErrorKind::Internal, err.to_string());
+            |err: rrss_core::Error| ChatError::new(ChatErrorKind::Internal, err);
         let own = pi_store::use_own_config(conn).map_err(db_err)?;
         let target = target.filter(|t| !t.model.trim().is_empty());
         let (
@@ -361,7 +362,7 @@ fn managed_endpoints(
     conn: &Connection,
     target: Option<&ModelChoice>,
 ) -> Result<Managed, ChatError> {
-    let db_err = |err: rrss_core::Error| ChatError::new(ChatErrorKind::Internal, err.to_string());
+    let db_err = |err: rrss_core::Error| ChatError::new(ChatErrorKind::Internal, err);
     let (default, default_id) = resolve_chat_model(conn)?;
     let pool = rrss_core::model_pool::pool(conn).map_err(db_err)?;
     let described = |provider_id: i64, model: &str| {
@@ -417,10 +418,7 @@ fn managed_endpoints(
             if provider_id == default.id {
                 return Err(ChatError::new(
                     ChatErrorKind::Config,
-                    format!(
-                        "连接「{}」没有填写接口地址，请在设置 → 模型里补全",
-                        provider.name
-                    ),
+                    Error::Pi(PiFailure::ProviderUrlMissing { name: provider.name.clone() }),
                 ));
             }
             continue;
@@ -453,14 +451,14 @@ fn managed_endpoints(
 
 /// 对话默认模型：模型页「对话」选的那个（阶段 19-7 起没有主模型可以继承）。
 fn resolve_chat_model(conn: &Connection) -> Result<(ai_store::AiProvider, String), ChatError> {
-    let db_err = |err: rrss_core::Error| ChatError::new(ChatErrorKind::Internal, err.to_string());
+    let db_err = |err: rrss_core::Error| ChatError::new(ChatErrorKind::Internal, err);
     let binding = ai_store::get_task_binding(conn, ai_store::TASK_CHAT).map_err(db_err)?;
     ai_store::resolve_binding_model(conn, &binding)
         .map_err(db_err)?
         .ok_or_else(|| {
             ChatError::new(
                 ChatErrorKind::Config,
-                "还没选对话模型，请在设置 → 模型的「对话」里选一个",
+                Error::Pi(PiFailure::ChatModelUnset),
             )
         })
 }
@@ -765,17 +763,17 @@ mod tests {
         ai_store::set_task_binding(&k.conn, ai_store::TASK_CHAT, None, None).unwrap();
         let err = k.load().unwrap_err();
         assert_eq!(err.kind, ChatErrorKind::Config);
-        assert!(err.message.contains("还没选对话模型"), "{}", err.message);
+        assert!(crate::ui_error::test_display::display(&err.message).contains("还没选对话模型"), "{}", err.message);
 
         ai_store::set_task_binding(&k.conn, ai_store::TASK_CHAT, Some(k.provider), Some("m1"))
             .unwrap();
         k.update(|p| p.base_url = "  ".into());
         let err = k.load().unwrap_err();
         assert_eq!(err.kind, ChatErrorKind::Config);
-        assert!(err.message.contains("main"), "{}", err.message);
+        assert!(crate::ui_error::test_display::display(&err.message).contains("main"), "{}", err.message);
 
         ai_store::delete_provider(&k.conn, k.provider).unwrap();
-        assert!(k.load().unwrap_err().message.contains("还没选对话模型"));
+        assert!(crate::ui_error::test_display::display(&k.load().unwrap_err().message).contains("还没选对话模型"));
     }
 
     #[test]

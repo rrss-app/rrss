@@ -10,6 +10,7 @@ pub mod coverage;
 pub mod features;
 pub mod freshness;
 pub mod model;
+pub mod reasons;
 pub mod source;
 pub(crate) mod spot_check;
 pub mod store;

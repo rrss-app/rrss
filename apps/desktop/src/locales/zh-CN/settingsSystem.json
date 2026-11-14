@@ -158,6 +158,49 @@
     "preview": {
       "lastManual": "未连接本机数据。",
       "autoSummary": "升级前自动 · 定时关闭"
+    },
+    "format": {
+      "lastManual": "上次备份：{{when}}。",
+      "noManual": "还没有手动备份过。",
+      "autoSummary": "升级前自动 · 定时{{schedule}}",
+      "scheduleOff": "关闭",
+      "whenToday": "今天 {{clock}}",
+      "whenYesterday": "昨天 {{clock}}",
+      "whenMonth": "{{month}} 月 {{day}} 日 {{clock}}",
+      "whenYear": "{{year}} 年 {{month}} 月 {{day}} 日",
+      "entry": "{{kind}} · {{bytes}} · {{secrets}}",
+      "unreadableEntry": "无法读取的文件 · {{bytes}}",
+      "secrets": "包含密钥",
+      "noSecrets": "不含密钥",
+      "createdNoSecrets": "不含密钥，恢复后需重新填写",
+      "restoreNoSecrets": "不含密钥，恢复后需重新填写 API Key 与外部工具变量",
+      "counts": "文章 {{count}} 篇 · 订阅 {{feeds}} 个 · 规则 {{rules}} 条 · 对话 {{threads}} 个",
+      "summary": "{{counts}} · {{secrets}}",
+      "taken": "备份于 {{when}} · 版本 v{{version}}",
+      "separator": " · "
+    },
+    "kinds": {
+      "manual": "手动备份",
+      "upgrade": "升级前自动备份 · v{{version}}",
+      "scheduled": "定时备份",
+      "before_restore": "恢复前的数据",
+      "before_prune": "清理旧文章前自动备份",
+      "unreadable": "无法读取的文件"
+    },
+    "messages": {
+      "legacy_text": "{{text}}",
+      "backup_created_other": "{{summary}}",
+      "backup_restore_summary_other": "{{summary}}",
+      "prefs_rules_other": "规则 新增 {{count}} 条{{duplicates}}",
+      "prefs_packs_other": "预设包 新增 {{count}} 个",
+      "prefs_interests_other": "兴趣 新增 {{count}} 个{{duplicates}}",
+      "prefs_memories_other": "记忆 新增 {{count}} 条{{duplicates}}",
+      "prefs_empty": "文件里没有可导入的内容。"
+    },
+    "duplicates": {
+      "rules_other": "，跳过重复 {{count}} 条",
+      "interests_other": "，跳过重复 {{count}} 个",
+      "memories_other": "，跳过重复 {{count}} 条"
     }
   },
   "diagLog": {
@@ -424,7 +467,12 @@
     },
     "web_open_mode": {
       "label": "点击外部链接",
-      "hint": "右键链接随时可以选别的方式。"
+      "hint": "右键链接随时可以选别的方式。",
+      "options": {
+        "reader": "在 RRSS 阅读视图打开",
+        "web": "打开原网页",
+        "browser": "在系统浏览器打开"
+      }
     },
     "web_original_tip": {
       "label": "打开原网页前提示"
@@ -446,22 +494,42 @@
       "control": "每个网站同时下载几个订阅（1–8）"
     },
     "theme_preference": {
-      "label": "外观"
+      "label": "外观",
+      "options": {
+        "system": "跟随系统",
+        "light": "亮色",
+        "dark": "暗色"
+      }
     },
     "focus_filter": {
-      "label": "焦点筛选"
+      "label": "焦点筛选",
+      "options": {
+        "focus": "只看焦点",
+        "hide_faded": "隐藏淡化",
+        "all": "全部"
+      }
     },
     "focus_columns": {
       "label": "焦点栏目"
     },
     "list_scope": {
-      "label": "列表范围"
+      "label": "列表范围",
+      "options": {
+        "all": "全部",
+        "unread": "未读",
+        "starred": "收藏"
+      }
     },
     "feeds_scope": {
       "label": "订阅范围"
     },
     "feeds_list_scope": {
-      "label": "订阅列表范围"
+      "label": "订阅列表范围",
+      "options": {
+        "all": "全部",
+        "unread": "未读",
+        "starred": "收藏"
+      }
     },
     "feeds_pinned": {
       "label": "置顶"
@@ -540,7 +608,17 @@
     },
     "ai_input_tier": {
       "label": "每次送给模型的正文",
-      "hint": "切换只影响之后生成的摘要和简报，已有摘要不会自动重跑。"
+      "hint": "切换只影响之后生成的摘要和简报，已有摘要不会自动重跑。",
+      "options": {
+        "low": "低",
+        "medium": "中",
+        "high": "高"
+      },
+      "optionHints": {
+        "low": "尽量精简",
+        "medium": "均衡",
+        "high": "少拆分"
+      }
     },
     "digest_generate_minutes": {
       "label": "自动生成",
@@ -581,7 +659,16 @@
     },
     "pi_cache_warming": {
       "label": "缓存保温",
-      "hint": "在对话之外保持服务商的提示缓存，可以让下次回复更快、更省，但会额外计费。"
+      "hint": "在对话之外保持服务商的提示缓存，可以让下次回复更快、更省，但会额外计费。",
+      "options": {
+        "off": "关闭",
+        "streaming": "回复时",
+        "idle": "空闲时也保持"
+      },
+      "optionHints": {
+        "streaming": "回复进行中保持服务商的提示缓存。",
+        "idle": "两次提问之间也保持，没有对话时也可能产生费用。"
+      }
     }
   },
   "storage": {
@@ -634,6 +721,130 @@
     "preview": {
       "dataDir": "浏览器预览",
       "summary": "未连接本机数据"
+    },
+    "groups": {
+      "database": "数据库",
+      "media": "媒体缓存",
+      "engine": "对话引擎",
+      "backups": "自动备份",
+      "logs": "运行日志"
+    },
+    "items": {
+      "articles": "文章",
+      "search_index": "全文索引",
+      "vectors": "向量",
+      "ai_cache": "AI 缓存",
+      "translations": "译文缓存",
+      "recommendation_logs": "推荐日志",
+      "other": "其他",
+      "legacy": "旧版遗留数据",
+      "free": "空闲空间",
+      "images": "配图缓存",
+      "videos": "音视频缓存",
+      "media_other": "封面信息",
+      "untracked_media": "未登记文件",
+      "pi_program": "对话引擎程序",
+      "pi_sessions": "对话记录（引擎侧）",
+      "auto_backups": "自动备份",
+      "logs": "运行日志"
+    },
+    "actions": {
+      "old_vectors": "清除旧模型向量",
+      "ai_cache": "清空",
+      "translations": "清空",
+      "recommendation_logs": "清空",
+      "legacy_tables": "删除",
+      "vacuum": "压缩数据库",
+      "images": "清空",
+      "videos": "清空",
+      "untracked_media": "清理",
+      "logs": "清空"
+    },
+    "confirmTitles": {
+      "old_vectors": "清除旧模型向量",
+      "ai_cache": "清空 AI 缓存",
+      "translations": "清空译文缓存",
+      "recommendation_logs": "清空推荐日志",
+      "legacy_tables": "删除旧版遗留数据",
+      "vacuum": "压缩数据库",
+      "images": "清空配图缓存",
+      "videos": "清空音视频缓存",
+      "untracked_media": "清理未登记文件",
+      "logs": "清空运行日志？"
+    },
+    "passive": {
+      "follows_articles": "随文章变化",
+      "manage_elsewhere": "在各自页面管理",
+      "manage_backups": "在「备份与恢复」管理",
+      "none": "无",
+      "other_log_instance": "另一个 RRSS 窗口正在记录",
+      "log_unavailable": "日志目录无法写入"
+    },
+    "messages": {
+      "legacy_text": "{{text}}",
+      "storage_summary": "数据库 {{database_bytes}} · 媒体缓存 {{media_bytes}} · 对话引擎 {{engine_bytes}}{{backup}}{{logs}}",
+      "storage_articles_other": "{{count}} 篇 · 标题、正文与阅读状态",
+      "storage_search_index": "供搜索使用，随文章增减",
+      "storage_vectors_unset_other": "{{count}} 段 · 未设置向量模型",
+      "storage_vectors_other_other": "{{count}} 段 · 其中 {{old_count}} 段来自其他模型",
+      "storage_vectors_current_other": "{{count}} 段 · 当前模型 {{model}}",
+      "storage_old_vectors_confirm_other": "删除 {{count}} 段不是由当前模型 {{model}} 生成的向量。",
+      "storage_old_vectors_warning": "当前模型的向量不受影响；这些文章之后会按当前模型重新生成向量，远程模型会产生费用。",
+      "storage_ai_cache_other": "{{count}} 条 · 30 天前的会自动清除",
+      "storage_ai_cache_confirm_other": "删除 {{count}} 条缓存的摘要和简报结果。",
+      "storage_ai_cache_warning": "之后遇到相同内容会重新调用模型，可能产生费用。",
+      "storage_translations_other": "{{count}} 篇",
+      "storage_translations_confirm_other": "删除 {{count}} 篇文章的译文。",
+      "storage_translations_warning": "再次查看译文时会重新翻译，可能产生费用。",
+      "storage_recommendation_logs_other": "{{count}} 条 · 曝光、行为与阅读会话合计 · 保留 180 天",
+      "storage_recommendation_logs_confirm_other": "删除 {{count}} 条曝光、行为与阅读会话日志。",
+      "storage_recommendation_logs_warning": "文章、赞踩、收藏与阅读状态不受影响。",
+      "storage_other": "对话与记忆 {{chat_bytes}}（{{threads}} 个对话）· 设置、订阅与规则 {{other_bytes}} · 简报 {{digest_bytes}}（{{periods}} 期）",
+      "storage_legacy": "早期版本留下、已不再使用的表：{{tables}}",
+      "storage_legacy_confirm": "删除 {{tables}} 表。",
+      "storage_legacy_warning": "当前版本不再读取它们；译文已迁移到新表。",
+      "storage_free": "删除数据后留下的空位，压缩后还给磁盘。需要约 {{required_bytes}} 临时空间{{available}}",
+      "storage_vacuum_confirm": "把 {{bytes}} 空闲空间还给磁盘。",
+      "storage_vacuum_space": "需要约 {{required_bytes}} 临时磁盘空间{{available}}，大库可能需要一两分钟。",
+      "storage_vacuum_wait": "期间刷新和后台作业会等待，可以继续阅读。",
+      "storage_wal": "含未写回的日志 {{bytes}}",
+      "storage_images": "上限 256 MB，打开文章时按需下载",
+      "storage_images_confirm": "删除本地保存的配图，释放约 {{bytes}}。",
+      "storage_images_warning": "再打开文章时会重新下载。",
+      "storage_videos": "上限 512 MB",
+      "storage_videos_confirm": "删除本地保存的音视频，释放约 {{bytes}}。",
+      "storage_videos_warning": "再播放时会重新下载。",
+      "storage_media_other": "视频封面等小文件",
+      "storage_untracked_other": "{{count}} 个 · 中断的下载等，可以安全删除",
+      "storage_untracked_confirm_other": "删除媒体目录里没有登记的 {{count}} 个文件，约 {{bytes}}。",
+      "storage_untracked_warning": "不影响任何文章。",
+      "storage_pi_program": "RRSS 托管的 Pi",
+      "storage_pi_sessions": "续接对话所需，随备份保存",
+      "storage_auto_backups_other": "{{count}} 份 · 只保留最近 {{keep}} 份",
+      "storage_logs": "用于排查问题，清空后继续记录",
+      "storage_logs_confirm": "删除现有的日志文件，之后继续记录新的日志。",
+      "storage_logs_warning": "不影响订阅、文章和设置。",
+      "storage_logs_location": "保存在本机日志目录，不进备份。",
+      "storage_cleaned_other": "{{result}}"
+    },
+    "format": {
+      "backup": " · 自动备份 {{bytes}}",
+      "logs": " · 运行日志 {{bytes}}",
+      "available": "，剩余 {{bytes}}",
+      "vacuumAvailable": "（剩余 {{bytes}}）",
+      "tableSeparator": "、"
+    },
+    "results": {
+      "ai_cache_other": "已清空 AI 缓存（{{count}} 条）。",
+      "recommendation_logs_other": "已清空推荐日志（{{count}} 条）。",
+      "translations_other": "已清空译文缓存（{{count}} 篇）。",
+      "images_other": "已清空配图缓存（{{count}} 个文件）。",
+      "videos_other": "已清空音视频缓存（{{count}} 个文件）。",
+      "untracked_media_other": "已清理 {{count}} 个未登记文件。",
+      "old_vectors_other": "已清除 {{count}} 段旧模型向量，之后会按当前模型重新生成。",
+      "legacy_tables_other": "已删除旧版遗留数据。",
+      "vacuum_other": "数据库已压缩。",
+      "logs_other": "运行日志已清空，之后继续记录。"
     }
   },
   "dialog": {
@@ -669,5 +880,10 @@
       "range": "需要在 {{min}} 到 {{max}} 之间。",
       "maxLength": "不能超过 {{max}} 字。"
     }
+  },
+  "inputTier": {
+    "hint": "{{lead}}：每篇摘要最多送 {{summary}}正文（约 {{tokens}} token，收藏或高分的多给一半），简报里每篇最多摘 {{digest}}。",
+    "chars": "{{value}} 字",
+    "wanChars": "{{value}} 万字"
   }
 }

@@ -5,6 +5,7 @@
 //!
 //! 已保存的连接由宿主按 id 取库里的密钥，前端拿不到完整密钥（阶段 19-9）。
 
+use rrss_core::error::models::{ModelChoiceProblem, ProviderProblem};
 use std::path::Path;
 use std::time::Instant;
 
@@ -19,7 +20,7 @@ use crate::views::{ConnectionTestArgs, ConnectionTestView, ModelPoolView};
 /// HTTP(S) 根地址，不含凭据、查询参数或片段。错误里不带原始地址。
 pub fn validate_base_url(raw: &str) -> rrss_core::Result<String> {
     let url = reqwest::Url::parse(raw.trim())
-        .map_err(|_| Error::InvalidProvider("连接地址必须是有效的 HTTP(S) 地址".into()))?;
+        .map_err(|_| Error::InvalidProvider(ProviderProblem::UrlInvalid))?;
     if !matches!(url.scheme(), "http" | "https")
         || url.host_str().is_none()
         || !url.username().is_empty()
@@ -28,7 +29,7 @@ pub fn validate_base_url(raw: &str) -> rrss_core::Result<String> {
         || url.fragment().is_some()
     {
         return Err(Error::InvalidProvider(
-            "连接地址须为 HTTP(S)，且不能包含凭据、查询参数或片段".into(),
+            ProviderProblem::UrlComponentsInvalid,
         ));
     }
     Ok(raw.trim().to_string())
@@ -148,7 +149,11 @@ pub async fn probe_pool_model(
     let read_ref = r.clone();
     let (provider, previous) = crate::execution::core_db(db_path.to_path_buf(), move |conn| {
         let previous = model_pool::get(conn, &read_ref)?
-            .ok_or_else(|| Error::InvalidModelChoice(format!("{} 不在模型列表里", read_ref.model)))?
+            .ok_or_else(|| {
+                Error::InvalidModelChoice(ModelChoiceProblem::NotFound {
+                    model: read_ref.model.clone(),
+                })
+            })?
             .probe;
         Ok((ai_store::get_provider(conn, provider_id)?, previous))
     })

@@ -2,10 +2,11 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { installMockHost, MOCK_FOCUS, MOCK_RULES } from "./mockHost";
 import { shot } from "./shots";
+import type { ArticleView } from "../src/bindings";
 
-const spot = { ...MOCK_FOCUS.articles[1], score: -15, spot_check: true, hide_reasons: [
-  { rule_id: 1, dimension: "title_kw", snippet: "融资", label: "标题含『融资』", weight: -5 },
-  { rule_id: 2, dimension: "title_kw", snippet: "招聘", label: "标题含『招聘』", weight: -10 },
+const spot: ArticleView = { ...MOCK_FOCUS.articles[1], score: -15, spot_check: true, hide_reasons: [
+  { rule_id: 1, dimension: "title_kw", snippet: "融资", code: "legacy_text", params: { text: "标题含『融资』", prefix: null }, weight: -5 },
+  { rule_id: 2, dimension: "title_kw", snippet: "招聘", code: "legacy_text", params: { text: "标题含『招聘』", prefix: null }, weight: -10 },
 ] };
 async function setup(page: Page, details = true) {
   await installMockHost(page, { focus: { ...MOCK_FOCUS, ranking: { ...MOCK_FOCUS.ranking, show_details: details },

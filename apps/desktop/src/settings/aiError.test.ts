@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { UiError } from "../bindings";
+import { i18n } from "../i18n";
 import {
   classifyAiError,
   explainAiError,
@@ -38,6 +40,16 @@ describe("redactAiText", () => {
 });
 
 describe("explainAiError", () => {
+  it("projects coded connection validation through its translation and hides internal detail", () => {
+    const error = { code: "provider_url_invalid", detail: "diagnostic canary" } satisfies UiError;
+    const view = explainAiError(error);
+    expect(view.kind).toBe("other");
+    expect(view.detail).toBe(i18n.t("provider_url_invalid", { ns: "errors" }));
+    expect(view.detail).not.toContain("canary");
+    const missing = explainAiError({ code: "provider_not_found", detail: "AI provider not found" } satisfies UiError);
+    expect(missing.kind).toBe("notFound");
+    expect(missing.detail).toBe(i18n.t("provider_not_found", { ns: "errors" }));
+  });
   it("returns Chinese titles and redacted details", () => {
     const view = explainAiError(new Error("HTTP 401: key sk-ABCDEFGH12345678"), ["sk-ABCDEFGH12345678"]);
     expect(view.kind).toBe("auth");

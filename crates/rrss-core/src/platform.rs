@@ -793,7 +793,7 @@ pub fn webview_direct_args(os: Os) -> crate::Result<&'static str> {
         Ok("")
     } else {
         Err(crate::Error::InvalidNetworkProxy(
-            "当前平台尚不能保证原网页直连，请改用阅读视图或系统浏览器。".into(),
+            crate::network::ProxyError::WebviewDirectUnsupported,
         ))
     }
 }

@@ -1,4 +1,5 @@
 import type { ChatErrorEvent } from "../../lib/api";
+import { formatError } from "../../lib/errors";
 import { Icon } from "../../components/Icon";
 import { i18n, useTranslation } from "../../i18n";
 import type { ChatFailure } from "./conversationStore";
@@ -11,7 +12,7 @@ const DETAIL_MAX = 600;
 
 /** 错误类别的界面文案（阶段 18 错误分类）；`fix` 指向能修好它的设置页。 */
 export function describeChatError(event: ChatErrorEvent): ChatFailure {
-  const message = event.message.trim();
+  const message = formatError(event.message).trim();
   const t = i18n.getFixedT(null, "chat");
   switch (event.kind) {
     case "not_installed": return { title: t("failure.notInstalled.title"), detail: t("failure.notInstalled.detail"), fix: "assistant" };

@@ -78,13 +78,13 @@ describe("chat activity", () => {
     await harness.flush();
     const emit = box.events!.emit;
     const alert = () => host.querySelector<HTMLElement>(".chat-failure[role=alert]");
-    const step = (start: boolean, error: boolean) => ({ id: "c1", kind: "tool", tool: "fetch_url", server: "", server_tool: "", label: "读取网页", detail: "", article_id: null, start, error });
+    const step = (start: boolean, error: boolean) => ({ id: "c1", kind: "tool", tool: "fetch_url", server: "", server_tool: "", detail: "", article_id: null, start, error });
 
     await act(async () => { await chat!.sendMessage(1, "上游挂了吗", [], null); });
     act(() => emit("chat:start", 1));
     act(() => emit("chat:status", { thread_id: 1, text: "", notice_version: "", step: step(true, false) }));
     act(() => emit("chat:status", { thread_id: 1, text: "", notice_version: "", step: step(false, true) }));
-    act(() => emit("chat:error", { thread_id: 1, kind: "model", message: "529 overloaded_error" }));
+    act(() => emit("chat:error", { thread_id: 1, kind: "model", message: { code: "legacy_text", params: {}, detail: "529 overloaded_error" } }));
     act(() => emit("chat:done", 1));
     await harness.flush();
     expect(alert()?.textContent).toContain("模型服务出错");
@@ -94,14 +94,14 @@ describe("chat activity", () => {
     expect(host.querySelector(".chat-failure-turn li[data-error]")?.textContent).toContain("读取网页");
     expect(onError).not.toHaveBeenCalled();
 
-    act(() => emit("chat:error", { thread_id: 1, kind: "config", message: "还没有可用的对话模型" }));
+    act(() => emit("chat:error", { thread_id: 1, kind: "config", message: { code: "pi_chat_model_unset", detail: "fixture config" } }));
     act(() => [...alert()!.querySelectorAll("button")].find((b) => b.textContent === "去设置")!.click());
     expect(onFix).toHaveBeenCalledWith("model");
 
     // 下一轮开始就撤下；不知道线程的错误退回通知。
     act(() => emit("chat:start", 1));
     expect(alert()).toBeNull();
-    act(() => emit("chat:error", { thread_id: 0, kind: "not_installed", message: "raw" }));
+    act(() => emit("chat:error", { thread_id: 0, kind: "not_installed", message: { code: "pi_not_installed", detail: "fixture missing" } }));
     expect(onError.mock.calls).toEqual([["未找到对话引擎：可以在设置里下载。", "assistant"]]);
   });
 });

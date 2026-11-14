@@ -48,7 +48,7 @@ pub fn article_reasons(article: &rrss_core::ArticleRow) -> Vec<ReasonView> {
                 dimension: "interest".into(),
                 snippet: reason.label.clone(),
                 weight: reason.weight,
-                label: format!("接近你标记的兴趣：{}", reason.label),
+                message: reason.message.into(),
             }),
     );
     chips
@@ -253,6 +253,54 @@ mod tests {
             row.get(0)
         })
         .unwrap()
+    }
+
+    #[test]
+    fn old_reason_rows_keep_legacy_text_and_new_rows_expose_codes_without_rewriting_old_rows() {
+        use rrss_core::rules::{Dimension, NewRule, Polarity, insert_rule};
+        let (_dir, conn) = open_temp();
+        insert_rule(
+            &conn,
+            NewRule::manual_global(Polarity::Like, Dimension::TitleKw, "Rust"),
+        )
+        .unwrap();
+        let old = seed_article(&conn, "old", "Rust archive");
+        let current = seed_article(&conn, "current", "Rust current");
+        let old_rules = r#"[{"rule_id":1,"dimension":"title_kw","snippet":"Rust","text":"old rule sentence","weight":10,"points":"ignored legacy field"}]"#;
+        let old_interests =
+            r#"[{"interest_id":2,"label":"Archive","weight":2,"points":"ignored legacy field"}]"#;
+        conn.execute(
+            "UPDATE articles SET reasons_json=?1,interest_reasons_json=?2 WHERE id=?3",
+            rusqlite::params![old_rules, old_interests, old],
+        )
+        .unwrap();
+        conn.execute("UPDATE articles SET interest_reasons_json=?1 WHERE id=?2", rusqlite::params![r#"[{"component":"interest","code":"interest_match","params":{"pattern":"Current"},"points":2,"weight":9,"interest_id":2,"label":"Current"}]"#,current]).unwrap();
+        let legacy = serde_json::to_value(reader_view(&conn, old).unwrap()).unwrap();
+        assert_eq!(legacy["reasons"][0]["code"], "legacy_text");
+        assert_eq!(
+            legacy["reasons"][0]["params"],
+            serde_json::json!({"text":"old rule sentence","prefix":null})
+        );
+        assert_eq!(legacy["reasons"][1]["code"], "legacy_text");
+        assert_eq!(
+            legacy["reasons"][1]["params"],
+            serde_json::json!({"text":"Archive","prefix":"interest"})
+        );
+        let coded = serde_json::to_value(reader_view(&conn, current).unwrap()).unwrap();
+        assert_eq!(coded["reasons"][0]["code"], "rule_title_kw");
+        assert_eq!(
+            coded["reasons"][0]["params"],
+            serde_json::json!({"pattern":"Rust"})
+        );
+        assert_eq!(coded["reasons"][1]["code"], "interest_match");
+        assert_eq!(
+            coded["reasons"][1]["params"],
+            serde_json::json!({"pattern":"Current"})
+        );
+        assert_eq!(coded["reasons"][1]["weight"], 2);
+        let row = articles::get_article(&conn, old).unwrap();
+        assert_eq!(row.reasons_json.as_deref(), Some(old_rules));
+        assert_eq!(row.interest_reasons_json.as_deref(), Some(old_interests));
     }
 
     #[test]

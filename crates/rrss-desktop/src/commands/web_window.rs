@@ -1,4 +1,5 @@
 //! Stable Tauri webview adapters. Policy and directory ownership live in rrss-app.
+use rrss_app::ui_error::web::WebError;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -60,7 +61,7 @@ impl WebWindows {
 }
 
 fn host_error() -> UiError {
-    UiError::from("原网页操作失败，请重试。".to_string())
+    UiError::from(WebError::OperationFailed)
 }
 
 fn finite_bounds(bounds: WebViewBounds) -> Result<WebViewBounds, UiError> {
@@ -68,7 +69,7 @@ fn finite_bounds(bounds: WebViewBounds) -> Result<WebViewBounds, UiError> {
         .into_iter()
         .all(f64::is_finite)
     {
-        return Err(UiError::from("原网页位置无效。".to_string()));
+        return Err(UiError::from(WebError::BoundsInvalid));
     }
     Ok(WebViewBounds {
         x: bounds.x,
@@ -134,13 +135,14 @@ pub async fn open_web_view(
     windows: tauri::State<'_, WebWindows>,
     url: String,
     bounds: WebViewBounds,
+    native_failure_message: String,
 ) -> Result<String, UiError> {
     let bounds = finite_bounds(bounds)?;
     let mut inner = windows.inner.lock().await;
     inner
         .session
         .as_ref()
-        .map_err(|error| UiError::from(error.to_string()))?;
+        .map_err(|_| UiError::from(WebError::SessionUnavailable))?;
     let plan = crate::state::with_db("open_web_view", state.db_path.clone(), move |conn| {
         let native = platform::system_proxy();
         let env = ProxyEnvironment::from_lookup(|key| std::env::var(key).ok());
@@ -159,7 +161,7 @@ pub async fn open_web_view(
     let label = inner
         .session
         .as_mut()
-        .map_err(|error| UiError::from(error.to_string()))?
+        .map_err(|_| UiError::from(WebError::SessionUnavailable))?
         .next_label(&plan.route)
         .map_err(UiError::from)?;
     let navigation_app = app.clone();
@@ -176,7 +178,7 @@ pub async fn open_web_view(
         inner
             .session
             .as_ref()
-            .map_err(|error| UiError::from(error.to_string()))?
+            .map_err(|_| UiError::from(WebError::SessionUnavailable))?
             .directory
             .clone(),
     )
@@ -223,7 +225,7 @@ pub async fn open_web_view(
     inner
         .session
         .as_mut()
-        .map_err(|error| UiError::from(error.to_string()))?
+        .map_err(|_| UiError::from(WebError::SessionUnavailable))?
         .opened(plan.route.clone());
     windows
         .verify
@@ -249,7 +251,9 @@ pub async fn open_web_view(
     };
     // Remember it before native setup so a failed close still blocks a second child.
     inner.current = Some(label.clone());
-    if let Err(error) = crate::webview_native::configure(&webview, plan.route, bounds).await {
+    if let Err(error) =
+        crate::webview_native::configure(&webview, plan.route, bounds, native_failure_message).await
+    {
         destroy_webview(&app, &windows, &webview).await?;
         inner.current = None;
         return Err(UiError::from(error));
@@ -355,9 +359,9 @@ pub async fn clear_web_data(
         inner
             .session
             .as_mut()
-            .map_err(|error| UiError::from(error.to_string()))?
+            .map_err(|_| UiError::from(WebError::SessionUnavailable))?
             .clear(&uuid::Uuid::new_v4().to_string())
-            .map_err(|_| UiError::from("原网页数据未能完全删除，请重启 RRSS 后重试。".to_string()))
+            .map_err(|_| UiError::from(WebError::DataClearFailed))
     })
     .await
     .map_err(|_| host_error())?
@@ -372,7 +376,7 @@ pub fn main_only(
         if invoke.message.webview_ref().label() != "main" {
             invoke
                 .resolver
-                .reject(UiError::from("此窗口无权调用应用命令".to_string()));
+                .reject(UiError::from(WebError::CommandForbidden));
             return true;
         }
         handler(invoke)

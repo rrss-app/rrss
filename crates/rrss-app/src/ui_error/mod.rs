@@ -20,19 +20,28 @@ macro_rules! error_codes {
     };
 }
 
+pub mod backup;
 pub mod chat;
 #[cfg(test)]
 mod codes;
 pub mod common;
 pub mod feeds;
 pub mod folders;
+pub mod host;
+pub mod jobs;
+pub mod mcp;
 pub mod models;
 pub mod network;
-mod params;
+pub(crate) mod params;
+pub mod pi;
 pub mod reader;
 pub mod rules;
+pub mod settings;
+#[cfg(test)]
+pub(crate) mod test_display;
 #[cfg(test)]
 mod tests;
+pub mod web;
 
 impl UiError {
     pub fn new(kind: UiErrorKind, detail: impl AsRef<str>) -> Self {
@@ -40,6 +49,7 @@ impl UiError {
             kind,
             detail: logsafe::scrub_secrets(detail.as_ref()),
             diagnostic: None,
+            cause: None,
         }
     }
 
@@ -52,7 +62,14 @@ impl UiError {
             UiErrorKind::Models(kind) => kind.code(),
             UiErrorKind::Chat(kind) => kind.code(),
             UiErrorKind::Reader(kind) => kind.code(),
+            UiErrorKind::Web(kind) => kind.code(),
+            UiErrorKind::Host(kind) => kind.code(),
             UiErrorKind::Network(kind) => kind.code(),
+            UiErrorKind::Settings(kind) => kind.code(),
+            UiErrorKind::Backup(kind) => kind.code(),
+            UiErrorKind::Pi(kind) => kind.code(),
+            UiErrorKind::Mcp(kind) => kind.code(),
+            UiErrorKind::Jobs(kind) => kind.code(),
         }
     }
 
@@ -68,26 +85,29 @@ impl UiError {
         }
     }
 
-    fn from_core(error: &Error) -> Self {
+    pub(crate) fn from_core(error: &Error) -> Self {
         let kind = common::classify(error)
             .or_else(|| feeds::classify(error))
             .or_else(|| folders::classify(error))
             .or_else(|| rules::classify(error))
             .or_else(|| models::classify(error))
+            .or_else(|| settings::classify(error))
+            .or_else(|| backup::classify(error))
             .or_else(|| chat::classify(error))
             .or_else(|| reader::classify(error))
-            .or_else(|| network::classify(error));
+            .or_else(|| network::classify(error))
+            .or_else(|| pi::classify(error))
+            .or_else(|| mcp::classify(error))
+            .or_else(|| jobs::classify(error))
+            .or_else(|| web::classify(error))
+            .or_else(|| host::classify(error));
         let diagnostic = logsafe::error(error);
         let mut ui = match kind {
             Some(kind) => Self::new(kind, &diagnostic),
-            None => {
-                let source = matches!(error, Error::InvalidNetworkProxy(_))
-                    .then_some(common::LegacyErrorSource::NetworkProxy);
-                Self::new(
-                    UiErrorKind::Common(common::CommonError::LegacyText { source }),
-                    error.to_string(),
-                )
-            }
+            None => Self::new(
+                UiErrorKind::Common(common::CommonError::LegacyText {}),
+                error.to_string(),
+            ),
         };
         ui.diagnostic = Some(diagnostic);
         ui
@@ -96,13 +116,39 @@ impl UiError {
     // Use at the command sites that previously displayed anyhow's full chain.
     pub fn from_anyhow_pretty(error: anyhow::Error) -> Self {
         let detail = format!("{error:#}");
-        Self::from_anyhow(error, detail)
+        Self::from_anyhow(&error, detail)
     }
 
-    fn from_anyhow(error: anyhow::Error, detail: String) -> Self {
-        let core = error
-            .chain()
-            .find_map(|cause| cause.downcast_ref::<Error>());
+    pub(crate) fn from_anyhow_ref(error: &anyhow::Error) -> Self {
+        Self::from_anyhow(error, error.to_string())
+    }
+
+    fn from_anyhow(error: &anyhow::Error, detail: String) -> Self {
+        if let Some(ui) = error
+            .downcast_ref::<Self>()
+            .or_else(|| error.chain().find_map(|cause| cause.downcast_ref::<Self>()))
+        {
+            return ui.clone();
+        }
+        let core = error.downcast_ref::<Error>().or_else(|| {
+            error
+                .chain()
+                .find_map(|cause| cause.downcast_ref::<Error>())
+        });
+        if let Some(core) = core
+            && matches!(core, Error::Pi(_) | Error::Mcp(_) | Error::Jobs(_))
+        {
+            return Self::from_core(core);
+        }
+        if core.is_none()
+            && let Some(ai) = error.downcast_ref::<rrss_ai::Error>().or_else(|| {
+                error
+                    .chain()
+                    .find_map(|cause| cause.downcast_ref::<rrss_ai::Error>())
+            })
+        {
+            return jobs::from_ai(ai, &detail);
+        }
         let mut ui = match core {
             // A context can be the user's actionable message. Code only when
             // unwrapping the core failure preserves the old display projection.
@@ -122,8 +168,7 @@ impl From<Error> for UiError {
 
 impl From<anyhow::Error> for UiError {
     fn from(error: anyhow::Error) -> Self {
-        let detail = error.to_string();
-        Self::from_anyhow(error, detail)
+        Self::from_anyhow_ref(&error)
     }
 }
 
@@ -136,7 +181,7 @@ impl From<rusqlite::Error> for UiError {
 impl From<String> for UiError {
     fn from(detail: String) -> Self {
         Self::new(
-            UiErrorKind::Common(common::CommonError::LegacyText { source: None }),
+            UiErrorKind::Common(common::CommonError::LegacyText {}),
             detail,
         )
     }

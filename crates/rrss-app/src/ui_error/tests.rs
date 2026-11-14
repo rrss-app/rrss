@@ -78,10 +78,9 @@ fn transport_categories_survive_without_unsafe_diagnostics() {
         assert_eq!(error.code(), code);
         assert!(!error.detail.contains("canary"));
     }
-    let error = UiError::from(Error::Http {
-        status: 407,
-        message: rrss_core::ingest::feed_http::PROXY_AUTH_MESSAGE.into(),
-    });
+    let error = UiError::from(Error::FeedRequest(
+        rrss_core::ingest::feed_http::FeedRequestError::ProxyAuth,
+    ));
     let wire = serde_json::to_value(error).unwrap();
     assert_eq!(wire["code"], "network_proxy_auth");
     assert_eq!(
@@ -112,31 +111,41 @@ fn specific_http_messages_keep_the_original_display_and_safe_diagnostic() {
 }
 
 #[test]
-fn sentence_errors_remain_legacy_and_proxy_context_is_typed() {
+fn unmigrated_sentence_errors_remain_legacy() {
     for error in [
         Error::InvalidProvider("fixture".into()),
         Error::InvalidSetting("fixture".into()),
         Error::InvalidRule("fixture".into()),
-        Error::InvalidNetworkProxy("fixture".into()),
-        Error::InvalidPiOverride("fixture".into()),
-        Error::InvalidModelChoice("fixture".into()),
-        Error::InvalidTreeOrder("fixture".into()),
+        Error::InvalidPiOverride("fixture".to_string().into()),
         Error::Backup("fixture".into()),
-        Error::VectorSpaceRebuildRequired {
-            model: "fixture".into(),
-        },
-        Error::VectorSpaceRebuildInProgress,
-        Error::TaskModelUnset("fixture".into()),
-        Error::SchemaTooOld { found: 1, min: 2 },
     ] {
         let original = error.to_string();
         let ui = UiError::from(error);
         assert_eq!(ui.code(), "legacy_text");
         assert_eq!(ui.detail, original);
     }
-    let wire =
-        serde_json::to_value(UiError::from(Error::InvalidNetworkProxy("fixture".into()))).unwrap();
-    assert_eq!(wire["params"]["source"], "network_proxy");
+}
+
+#[test]
+fn migrated_validation_errors_keep_domain_codes() {
+    for (error, code) in [
+        (
+            Error::InvalidNetworkProxy(rrss_core::network::ProxyError::UrlInvalid),
+            "proxy_url_invalid",
+        ),
+        (
+            Error::InvalidTreeOrder(rrss_core::tree_order::TreeOrderError::InvalidItem),
+            "tree_item_invalid",
+        ),
+        (
+            Error::InvalidModelChoice(
+                rrss_core::error::models::ModelChoiceProblem::SelectionIncomplete,
+            ),
+            "model_selection_incomplete",
+        ),
+    ] {
+        assert_code_params(error, code, json!({}));
+    }
 }
 
 #[test]
@@ -159,13 +168,11 @@ fn anyhow_uses_core_codes_only_when_unwrapping_keeps_the_display() {
     assert_eq!(coded.code(), "feed_not_found");
 
     let error = anyhow::Error::new(Error::TaskModelUnset("fixture task".into()));
-    let original = error.to_string();
     let diagnostic = crate::log::error(error.as_ref());
-    let legacy = UiError::from(error);
-    assert_eq!(legacy.code(), "legacy_text");
-    assert_eq!(legacy.detail, original);
-    assert_eq!(legacy.log_detail(), diagnostic);
-    assert!(!legacy.log_detail().contains("fixture task"));
+    let coded = UiError::from(error);
+    assert_eq!(coded.code(), "task_model_unset");
+    assert_eq!(coded.log_detail(), diagnostic);
+    assert!(!coded.log_detail().contains("fixture task"));
 
     let error = anyhow::Error::new(Error::FeedNotFound).context("select another feed");
     let original = error.to_string();
@@ -174,6 +181,21 @@ fn anyhow_uses_core_codes_only_when_unwrapping_keeps_the_display() {
     assert_eq!(context.code(), "legacy_text");
     assert_eq!(context.detail, original);
     assert_eq!(context.log_detail(), diagnostic);
+}
+
+pub(super) fn assert_code_params(error: Error, code: &str, params: serde_json::Value) {
+    let error = UiError::from(error);
+    assert_eq!(error.code(), code);
+    let wire = serde_json::to_value(&error).unwrap();
+    assert_eq!(
+        wire.get("params").cloned().unwrap_or_else(|| json!({})),
+        params,
+        "{code}"
+    );
+    assert_eq!(
+        serde_json::from_value::<UiError>(wire).unwrap().code(),
+        code
+    );
 }
 
 #[test]
@@ -227,4 +249,24 @@ fn parameter_helpers_only_project_allowed_data() {
         serde_json::to_value(error).unwrap()["params"],
         json!({ "name": "preset.example" })
     );
+    for value in [
+        "https://user:canary@model.example/private?q=canary",
+        "/private/fixture/model.example",
+        r"C:\private\fixture\model.example",
+    ] {
+        let error = UiError::from(Error::InvalidModelChoice(
+            rrss_core::error::models::ModelChoiceProblem::NotFound {
+                model: value.into(),
+            },
+        ));
+        assert_eq!(
+            serde_json::to_value(error).unwrap()["params"],
+            json!({"model":"model.example"})
+        );
+    }
+    let error =
+        rrss_core::rules::validate_pattern(rrss_core::rules::Dimension::TitleRe, "[body-canary")
+            .unwrap_err();
+    let error = UiError::from(error);
+    assert!(!serde_json::to_string(&error).unwrap().contains("canary"));
 }

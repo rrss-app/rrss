@@ -2,6 +2,7 @@
 //! 所有选模型的地方只列加进来的模型；`chat` 为真的出现在对话列表。两表都随连接级联删除。
 //! 日志 target：`rrss_core::model_pool`。
 
+use crate::error::models::{CompatProblem, ModelChoiceProblem, ProviderProblem};
 use std::collections::BTreeSet;
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -249,13 +250,16 @@ pub fn get(conn: &Connection, r: &ModelRef) -> Result<Option<PoolEntry>> {
 /// 用途只能选加进来的模型；对话默认还必须用于对话。
 pub fn ensure_selectable(conn: &Connection, r: &ModelRef, for_chat: bool) -> Result<PoolEntry> {
     let entry = get(conn, r)?.ok_or_else(|| {
-        Error::InvalidModelChoice(format!("{} 还没有加进模型列表，先在模型页添加", r.model))
+        Error::InvalidModelChoice(ModelChoiceProblem::NotAdded {
+            model: r.model.clone(),
+        })
     })?;
     if for_chat && !entry.chat {
-        return Err(Error::InvalidModelChoice(format!(
-            "{} 没有打开「用于对话」",
-            r.model
-        )));
+        return Err(Error::InvalidModelChoice(
+            ModelChoiceProblem::ChatDisabled {
+                model: r.model.clone(),
+            },
+        ));
     }
     Ok(entry)
 }
@@ -299,7 +303,7 @@ pub fn update_pool_in_transaction(
     )?;
     for entry in add {
         if entry.model.is_empty() {
-            return Err(Error::InvalidProvider("模型 id 不能为空".into()));
+            return Err(Error::InvalidProvider(ProviderProblem::ModelIdMissing));
         }
         ai_store::get_provider(tx, entry.provider_id)?;
         let chat = chat_empty && !looks_like_embedding(&entry.model);
@@ -319,7 +323,9 @@ pub fn update_pool_in_transaction(
     }
     let replace = match replace {
         Some(r) => Some(get(tx, r)?.ok_or_else(|| {
-            Error::InvalidModelChoice(format!("替换用的 {} 不在模型列表里", r.model))
+            Error::InvalidModelChoice(ModelChoiceProblem::ReplacementMissing {
+                model: r.model.clone(),
+            })
         })?),
         None => None,
     };
@@ -368,12 +374,15 @@ pub const THINKING_LEVELS: &[&str] = &["off", "minimal", "low", "medium", "high"
 
 pub fn update_entry(conn: &Connection, r: &ModelRef, patch: &EntryPatch) -> Result<PoolEntry> {
     let tx = crate::db::write_transaction(conn)?;
-    let mut e = get(&tx, r)?
-        .ok_or_else(|| Error::InvalidModelChoice(format!("{} 不在模型列表里", r.model)))?;
+    let mut e = get(&tx, r)?.ok_or_else(|| {
+        Error::InvalidModelChoice(ModelChoiceProblem::NotFound {
+            model: r.model.clone(),
+        })
+    })?;
     if let Some(chat) = patch.chat {
         if !chat && ai_store::chat_default(&tx)?.as_ref() == Some(r) {
             return Err(Error::InvalidModelChoice(
-                "它是对话默认模型，先在模型页「对话」里改选别的，再关掉".into(),
+                ModelChoiceProblem::ChatDefaultRequired,
             ));
         }
         e.chat = chat;
@@ -384,7 +393,11 @@ pub fn update_entry(conn: &Connection, r: &ModelRef, patch: &EntryPatch) -> Resu
     if let Some(level) = &patch.thinking {
         let level = level.trim();
         if !level.is_empty() && !THINKING_LEVELS.contains(&level) {
-            return Err(Error::InvalidModelChoice(format!("未知的思考强度 {level}")));
+            return Err(Error::InvalidModelChoice(
+                ModelChoiceProblem::ThinkingUnknown {
+                    level: level.into(),
+                },
+            ));
         }
         e.thinking = if level == "off" {
             String::new()
@@ -392,19 +405,19 @@ pub fn update_entry(conn: &Connection, r: &ModelRef, patch: &EntryPatch) -> Resu
             level.to_string()
         };
     }
-    let positive = |v: Option<i64>, what: &str| match v {
-        Some(n) if n <= 0 => Err(Error::InvalidModelChoice(format!("{what}必须大于 0"))),
+    let positive = |v: Option<i64>, problem: ModelChoiceProblem| match v {
+        Some(n) if n <= 0 => Err(Error::InvalidModelChoice(problem)),
         other => Ok(other),
     };
     if let Some(v) = patch.context_window {
-        e.context_window = positive(v, "上下文长度")?;
+        e.context_window = positive(v, ModelChoiceProblem::ContextWindowNonPositive)?;
     }
     if let Some(v) = patch.max_output {
-        e.max_output = positive(v, "单次最多输出")?;
+        e.max_output = positive(v, ModelChoiceProblem::MaxOutputNonPositive)?;
     }
     if let Some(compat) = &patch.compat {
         if compat.as_ref().is_some_and(|c| !c.is_object()) {
-            return Err(Error::InvalidCompat("必须是 JSON 对象".into()));
+            return Err(Error::InvalidCompat(CompatProblem::ObjectRequired));
         }
         e.compat = compat.clone();
     }

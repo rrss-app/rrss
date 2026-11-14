@@ -3,8 +3,8 @@
  * 类型、范围、默认值与生效方式来自后端；生成的 SettingId 在类型检查时核对注册项。
  */
 import type { SettingsSchema } from "../bindings";
-import { i18n } from "../i18n";
-import { SETTING_SPECS, type SettingId } from "./settingsSchemaData";
+import { i18n, locale } from "../i18n";
+import { INPUT_TIER_BUDGETS, SETTING_SPECS, type SettingId } from "./settingsSchemaData";
 export type { SettingId } from "./settingsSchemaData";
 
 /** 预览与测试的独立快照；只覆盖场景当前值，不复制描述符。 */
@@ -33,6 +33,7 @@ export type RegistryEntry = {
   off?: string;
   /** 枚举各项的文字；后端只登记取值时由这里给（新设置项都这样，展示文案不进后端）。 */
   options?: Record<string, string>;
+  optionHints?: Record<string, string>;
 };
 
 /** 注册表里记的是「有哪些文案、怎么展示」；文字在语言包的 `registry.<设置 id>.*`，读取时才取。 */
@@ -44,22 +45,23 @@ type RegistryShape = {
   off?: true;
   /** 枚举各项的取值，文字在 `registry.<id>.options.<取值>`。 */
   options?: readonly string[];
+  optionHints?: readonly string[];
 };
 
 export const REGISTRY = {
   web_javascript: { hint: true },
-  web_open_mode: { hint: true },
+  web_open_mode: { hint: true, options: ["reader", "web", "browser"] },
   web_original_tip: {},
   web_first_tip: {},
   allow_embedding_model_change: { hint: true },
   feed_icons_enabled: { hint: true },
   feed_fetch_per_host: { hint: true, control: true },
-  theme_preference: {},
-  focus_filter: {},
+  theme_preference: { options: ["system", "light", "dark"] },
+  focus_filter: { options: ["focus", "hide_faded", "all"] },
   focus_columns: {},
-  list_scope: {},
+  list_scope: { options: ["all", "unread", "starred"] },
   feeds_scope: {},
-  feeds_list_scope: {},
+  feeds_list_scope: { options: ["all", "unread", "starred"] },
   feeds_pinned: {},
   cluster_group_enabled: {},
   interest_boost_enabled: {},
@@ -82,14 +84,14 @@ export const REGISTRY = {
   ai_daily_budget_tokens: { hint: true, control: true, display: "wan" },
   ai_embed_daily_budget_tokens: { hint: true, control: true, display: "wan" },
   focus_summary_neutral_limit: { hint: true, control: true },
-  ai_input_tier: { hint: true },
+  ai_input_tier: { hint: true, options: ["low", "medium", "high"], optionHints: ["low", "medium", "high"] },
   digest_generate_minutes: { hint: true, control: true, display: "time" },
   pi_idle_timeout_secs: { hint: true, control: true, display: "minutes" },
   pi_assistant_note: { hint: true, display: "multiline" },
   pi_auto_download: { hint: true, control: true, on: true, off: true },
   pi_auto_update: { hint: true, control: true, on: true, off: true },
   close_action: { hint: true, options: ["ask", "tray", "quit"] },
-  pi_cache_warming: { hint: true },
+  pi_cache_warming: { hint: true, options: ["off", "streaming", "idle"], optionHints: ["streaming", "idle"] },
 } satisfies Record<SettingId, RegistryShape>;
 
 /** 语言包里按设置 id 拼出的可选文案键，类型系统只核对必有的 `label`。 */
@@ -106,6 +108,7 @@ export function registryEntry(id: string): RegistryEntry | undefined {
     display: shape.display,
     on: shape.on ? text(id, "on") : undefined,
     off: shape.off ? text(id, "off") : undefined,
+    optionHints: shape.optionHints && Object.fromEntries(shape.optionHints.map((value) => [value, optionHint(id, value)])),
     options: shape.options && Object.fromEntries(shape.options.map((value) => [value, text(id, `options.${value}`)])),
   };
 }
@@ -123,4 +126,20 @@ export function parseMinutes(value: string) {
   const minute = Number(match[2]);
   if (hour > 23 || minute > 59) return null;
   return hour * 60 + minute;
+}
+
+/** Resolve ids into localized option text at render time. */
+export function settingOptions(id: string, options: { id: string }[]) {
+  const entry = registryEntry(id);
+  return options.map(({ id: value }) => ({ id: value, label: entry?.options?.[value] ?? value, hint: entry?.optionHints?.[value] ?? "" }));
+}
+
+function optionHint(id: string, value: string): string {
+  if (id !== "ai_input_tier") return text(id, `optionHints.${value}`);
+  const budget = INPUT_TIER_BUDGETS[value as keyof typeof INPUT_TIER_BUDGETS];
+  if (!budget) return "";
+  const number = (n: number) => new Intl.NumberFormat(locale(), { useGrouping: false, maximumFractionDigits: 1 }).format(n);
+  const chars = (n: number) => i18n.t(n >= 10_000 && n % 10_000 === 0 ? "inputTier.wanChars" : "inputTier.chars", { ns: "settingsSystem", value: number(n >= 10_000 && n % 10_000 === 0 ? n / 10_000 : n) });
+  const tokens = Math.floor(budget.summary_chars * 3 / 4);
+  return i18n.t("inputTier.hint", { ns: "settingsSystem", lead: text(id, `optionHints.${value}`), summary: chars(budget.summary_chars), digest: chars(budget.digest_chars), tokens: tokens >= 1000 ? `${number(Math.floor((tokens + 50) / 100) / 10)}k` : number(tokens) });
 }

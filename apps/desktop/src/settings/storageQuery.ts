@@ -7,8 +7,8 @@ import { isTauri } from "../lib/preview";
 // 浏览器预览只展示结构，不代表本机数据。
 const previewStorage = (): StoragePage => ({
   data_dir: i18n.t("storage.preview.dataDir", { ns: "settingsSystem" }),
-  total: "—",
-  summary: i18n.t("storage.preview.summary", { ns: "settingsSystem" }),
+  total_bytes: null,
+  summary: null,
   groups: [],
   scanned_at: 0,
 });

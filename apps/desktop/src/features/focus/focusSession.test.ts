@@ -20,7 +20,7 @@ it("retains spot explanations across pagination, locks writes and retains undo a
   const changed = vi.fn(async () => {});
   session = createFocusSession(vi.fn(), api.feeds, changed);
   const spot = { ...focusRow(1, "抽查"), spot_check: true, score: -10,
-    hide_reasons: [{ rule_id: 2, dimension: "title_kw", snippet: "招聘", label: "标题含招聘", weight: -10 }] };
+    hide_reasons: [{ rule_id: 2, dimension: "title_kw", snippet: "招聘", code: "rule_title_kw" as const, params: { pattern: "招聘" }, weight: -10 }] };
   vi.spyOn(api, "focus").mockResolvedValue({ ...TWO_ARTICLE_PAGE, articles: [spot], has_more: true });
   vi.spyOn(api, "rules").mockResolvedValue(rulesPageFixture({ rules: [ruleFixture({ id: 2, polarity: "dislike", pattern: "招聘" })] }));
   const pending = deferred<void>();

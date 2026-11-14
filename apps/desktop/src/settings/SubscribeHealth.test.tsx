@@ -19,8 +19,8 @@ const row = (host: HTMLElement, title: string) => [...host.querySelectorAll<HTML
 function treeWithHealth(): FeedTree {
   const tree = structuredClone(PREVIEW_FEEDS);
   const all = [...tree.uncategorized, ...tree.folders.flatMap((f) => f.feeds)];
-  Object.assign(all[0], { health: "stale", health_label: "47 天没有新文章", health_detail: "平时约 6 天一篇；最近一篇入库于 8 月 11 日。\n抓取正常，最近成功：今天 08:02" });
-  Object.assign(all[2], { health: "failing", health_label: "连续失败 12 次 · 9 天", health_detail: "最近错误：源暂时不可用（503）\n最近成功：9 月 18 日 07:40" });
+  Object.assign(all[0], { health: { code: "feed_health_stale", params: { quiet_days: 47, avg_interval_days: 6, failed: false, last_article_at: null, last_success_at: null } } });
+  Object.assign(all[2], { health: { code: "feed_health_failing", params: { fail_count: 12, failing_days: 9, last_success_at: null } } });
   return tree;
 }
 

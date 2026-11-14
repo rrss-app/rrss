@@ -4,6 +4,7 @@
 //! 确认后写待办文件并重启；下次启动、打开数据库之前再换文件，失败时把原文件移回。
 //! 自动备份放在 `<data_dir>/backups/`，只留最近 [`AUTO_KEEP`] 份；手动备份由用户选位置，不在此管理。
 
+use crate::error::backup::BackupProblem;
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -134,7 +135,7 @@ pub fn create(
     let copy_path = copy
         .0
         .to_str()
-        .ok_or_else(|| Error::Backup("备份路径含无法识别的字符".into()))?;
+        .ok_or_else(|| Error::Backup(BackupProblem::PathEncoding))?;
     conn.execute("VACUUM INTO ?1", [copy_path])?;
     // 自动路径无论调用参数如何都不允许带出密钥。
     let secrets_included = include_secrets && kind == BackupKind::Manual;
@@ -220,9 +221,7 @@ fn strip_secrets(conn: &Connection) -> Result<()> {
         };
         for (id, raw) in rows {
             let mut values: std::collections::BTreeMap<String, String> = serde_json::from_str(&raw)
-                .map_err(|_| {
-                    Error::Backup("外部工具变量或请求头格式无效，无法生成不含密钥的备份".into())
-                })?;
+                .map_err(|_| Error::Backup(BackupProblem::SecretStripping))?;
             for value in values.values_mut() {
                 value.clear();
             }
@@ -321,10 +320,10 @@ pub fn read_manifest(zip_path: &Path) -> Result<Manifest> {
     let mut archive = zip::ZipArchive::new(File::open(zip_path)?).map_err(zip_err)?;
     let mut entry = archive
         .by_name(MANIFEST_ENTRY)
-        .map_err(|_| Error::Backup("不是 RRSS 备份文件：缺少清单".into()))?;
+        .map_err(|_| Error::Backup(BackupProblem::ManifestMissing))?;
     let mut text = String::new();
     entry.read_to_string(&mut text)?;
-    serde_json::from_str(&text).map_err(|_| Error::Backup("备份清单无法读取".into()))
+    serde_json::from_str(&text).map_err(|_| Error::Backup(BackupProblem::ManifestInvalid))
 }
 
 /// 启动时、建连接池之前：库版本低于程序时先备份一次。备份失败返回错误，调用方不得继续迁移。
@@ -375,9 +374,7 @@ pub fn inspect(zip_path: &Path, data_dir: &Path) -> Result<RestoreCheck> {
 fn stage(zip_path: &Path, staging: &Path) -> Result<RestoreCheck> {
     let manifest = read_manifest(zip_path)?;
     if manifest.format > FORMAT {
-        return Err(Error::Backup(
-            "备份来自更新版本的 RRSS，请先升级程序".into(),
-        ));
+        return Err(Error::Backup(BackupProblem::FormatUnsupported));
     }
     fs::create_dir_all(staging)?;
     let mut archive = zip::ZipArchive::new(File::open(zip_path)?).map_err(zip_err)?;
@@ -397,29 +394,31 @@ fn stage(zip_path: &Path, staging: &Path) -> Result<RestoreCheck> {
     }
     let db = staging.join(DB_ENTRY);
     if !db.is_file() {
-        return Err(Error::Backup("备份里没有数据库".into()));
+        return Err(Error::Backup(BackupProblem::DatabaseMissing));
     }
     let conn = Connection::open_with_flags(&db, OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|_| Error::Backup("备份里的数据库无法打开".into()))?;
+        .map_err(|_| Error::Backup(BackupProblem::DatabaseUnreadable))?;
     let integrity: String = conn
         .query_row("PRAGMA integrity_check", [], |r| r.get(0))
-        .map_err(|_| Error::Backup("备份里的数据库已损坏".into()))?;
+        .map_err(|_| Error::Backup(BackupProblem::DatabaseCorrupt))?;
     if integrity != "ok" {
-        return Err(Error::Backup("备份里的数据库已损坏".into()));
+        return Err(Error::Backup(BackupProblem::DatabaseCorrupt));
     }
     let schema_version = user_version(&conn)?;
     if schema_version > SCHEMA_VERSION {
-        return Err(Error::Backup(format!(
-            "备份的数据库版本 v{schema_version} 高于当前程序支持的 v{SCHEMA_VERSION}，请先升级程序"
-        )));
+        return Err(Error::Backup(BackupProblem::SchemaUnsupported {
+            found: schema_version,
+            supported: SCHEMA_VERSION,
+        }));
     }
     if schema_version == 0 {
-        return Err(Error::Backup("备份里的数据库是空的".into()));
+        return Err(Error::Backup(BackupProblem::DatabaseEmpty));
     }
     if schema_version < MIN_UPGRADE_VERSION {
-        return Err(Error::Backup(format!(
-            "备份的数据库版本 v{schema_version} 过旧，最低支持 v{MIN_UPGRADE_VERSION}：请先用旧版本打开一次完成升级，或新建数据库"
-        )));
+        return Err(Error::Backup(BackupProblem::SchemaTooOld {
+            found: schema_version,
+            min: MIN_UPGRADE_VERSION,
+        }));
     }
     Ok(RestoreCheck {
         source: zip_path.to_path_buf(),
@@ -454,7 +453,7 @@ struct Pending {
 /// 确认恢复：写待办文件，下次启动时替换。调用方随后重启应用。
 pub fn schedule_restore(data_dir: &Path, source: &Path) -> Result<()> {
     if !data_dir.join(STAGING).join(DB_ENTRY).is_file() {
-        return Err(Error::Backup("暂存的备份已不在，请重新选择备份文件".into()));
+        return Err(Error::Backup(BackupProblem::StagingMissing));
     }
     let pending = Pending {
         source: source.to_path_buf(),
@@ -525,19 +524,20 @@ fn apply_pending_with(
     let exited = pending
         .as_ref()
         .is_none_or(|p| wait_for_exit(p.pid, exit_wait));
-    let outcome = if !exited {
-        // 旧进程还开着库就换文件，它可能继续写到新库旁边，所以宁可不换。
-        Err(SwapError::RolledBack(Error::Backup(format!(
+    let outcome =
+        if !exited {
+            // 旧进程还开着库就换文件，它可能继续写到新库旁边，所以宁可不换。
+            Err(SwapError::RolledBack(Error::Backup(format!(
             "上次运行的 RRSS 在 {} 秒内没有退出，没有替换文件。请关掉所有 RRSS 窗口后重新恢复",
             exit_wait.as_secs()
-        ))))
-    } else if !staging.join(DB_ENTRY).is_file() {
-        Err(SwapError::RolledBack(Error::Backup(
-            "暂存的备份不完整".into(),
-        )))
-    } else {
-        swap(data_dir, db_path, &staging, rollback)
-    };
+        ).into())))
+        } else if !staging.join(DB_ENTRY).is_file() {
+            Err(SwapError::RolledBack(Error::Backup(
+                "暂存的备份不完整".into(),
+            )))
+        } else {
+            swap(data_dir, db_path, &staging, rollback)
+        };
     let result = match outcome {
         Ok(()) => {
             let _ = remove_path(&staging);
@@ -548,7 +548,7 @@ fn apply_pending_with(
             }
         }
         Err(SwapError::RolledBack(err)) => {
-            tracing::error!(error = %err, "restore failed; original data kept");
+            tracing::error!(error = %crate::logsafe::error(&err), "restore failed; original data kept");
             let _ = remove_path(&staging);
             RestoreResult {
                 ok: false,
@@ -557,7 +557,7 @@ fn apply_pending_with(
             }
         }
         Err(SwapError::Partial(err)) => {
-            tracing::error!(error = %err, "restore failed and rollback incomplete");
+            tracing::error!(error = %crate::logsafe::error(&err), "restore failed and rollback incomplete");
             // 暂存里可能还有移回来的备份文件，改名留着，免得下次启动当成没确认的暂存删掉。
             let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
             let kept = data_dir.join(format!("{STAGING}-{stamp}"));
@@ -760,12 +760,12 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
 fn zip_err(err: zip::result::ZipError) -> Error {
     match err {
         zip::result::ZipError::Io(e) => Error::Io(e),
-        _ => Error::Backup("不是有效的 zip 文件".into()),
+        _ => Error::Backup(BackupProblem::ZipInvalid),
     }
 }
 
-fn json_err(err: serde_json::Error) -> Error {
-    Error::Backup(err.to_string())
+fn json_err(_err: serde_json::Error) -> Error {
+    Error::Backup(BackupProblem::Serialization)
 }
 
 /// 出错时删掉的临时文件。
@@ -1368,8 +1368,10 @@ mod tests {
             out.write_all(&newer_bytes).unwrap();
             out.finish().unwrap();
         }
-        let err = inspect(&repacked, dst.path()).unwrap_err().to_string();
-        assert!(err.contains("高于当前程序"), "{err}");
+        let err = inspect(&repacked, dst.path()).unwrap_err();
+        assert!(
+            matches!(err, Error::Backup(BackupProblem::SchemaUnsupported { found, supported }) if found == SCHEMA_VERSION + 1 && supported == SCHEMA_VERSION)
+        );
         assert!(!dst.path().join(STAGING).exists());
 
         let too_old = src.path().join("too-old.zip");
@@ -1384,14 +1386,9 @@ mod tests {
             out.write_all(&older_bytes).unwrap();
             out.finish().unwrap();
         }
-        let err = inspect(&too_old, dst.path()).unwrap_err().to_string();
+        let err = inspect(&too_old, dst.path()).unwrap_err();
         assert!(
-            err.contains(&format!(
-                "备份的数据库版本 v{} 过旧，最低支持 v{}",
-                MIN_UPGRADE_VERSION - 1,
-                MIN_UPGRADE_VERSION
-            )),
-            "{err}"
+            matches!(err, Error::Backup(BackupProblem::SchemaTooOld { found, min }) if found == MIN_UPGRADE_VERSION - 1 && min == MIN_UPGRADE_VERSION)
         );
         assert!(!dst.path().join(STAGING).exists());
 

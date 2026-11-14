@@ -3,6 +3,7 @@ import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "../../lib/api";
 import { formatNotice } from "../../lib/notice";
+import { formatReason, formatReasonNumber } from "../../lib/reasons";
 import { formatPublished, useMinuteClock } from "../../lib/time";
 import { Dialog } from "../../settings/Dialog";
 import { ChipBar } from "../../settings/chips";
@@ -73,7 +74,7 @@ export function HiddenListDialog({ scope, initialFilter = "all", onOpenArticle, 
     estimateSize: () => 128, getItemKey: index => rows[index].id, overscan: 4 });
   const options = [{ id: "all", label: t("hidden.optionAll", { count: data?.articles.length ?? 0 }) },
     ...(data?.spot_liked_count ? [{ id: "spot_liked", label: t("hidden.optionSpotLiked", { count: data.spot_liked_count }) }] : []),
-    ...(data?.rule_counts ?? []).map(rule => ({ id: String(rule.rule_id), label: `${rule.label} ${rule.count}` }))];
+    ...(data?.rule_counts ?? []).map(rule => ({ id: String(rule.rule_id), label: `${formatReason(rule)} ${formatReasonNumber(rule.count)}` }))];
   const threshold = schema.data?.values.find(value => value.id === "hide_threshold")?.value ?? "…";
   const listScope = scope?.listScope ?? schema.data?.values.find(value => value.id === "list_scope")?.value;
   return <Dialog title={t("hidden.title")} dirty={false} busy={writing} onAsk={() => {}} onClose={onClose}
@@ -101,8 +102,8 @@ export function HiddenListDialog({ scope, initialFilter = "all", onOpenArticle, 
                 <strong>{article.title}</strong>
                 <span className="muted">{article.feed_title} · {formatPublished(article.published_at, now) || t("hidden.timeUnknown")}</span>
                 <span className="hidden-list-reasons">{article.reasons.map((reason, index) => <span key={`${reason.rule_id}-${index}`}>
-                  {reason.label} <b className="score down">{reason.weight}</b>{" · "}
-                </span>)}{t("hidden.totalScore")}{" "}<b>{article.score}</b></span>
+                  {formatReason(reason)} <b className="score down">{formatReasonNumber(reason.weight)}</b>{" · "}
+                </span>)}{t("hidden.totalScore")}{" "}<b>{formatReasonNumber(article.score)}</b></span>
                 {article.spot_liked && <span className="hint">{t("hidden.spotLikedNote")}</span>}
                 {done && <span className="hidden-list-released" role="status">{t("hidden.releasedNote")}</span>}
               </div>
@@ -111,7 +112,7 @@ export function HiddenListDialog({ scope, initialFilter = "all", onOpenArticle, 
                 {!done && <MenuButton label={t("hidden.releaseLabel", { title: article.title })} face={t("hidden.releaseFace")} className="btn sm" disabled={writing}>
                   {close => <>
                     <button role="menuitem" onClick={() => { close(); void release(article.id, () => api.releaseArticle(article.id)); }}>{t("hidden.releaseOne")}</button>
-                    <button role="menuitem" disabled={!reason} onClick={() => { close(); void release(article.id, () => api.setRuleAction(reason.rule_id, 2)); }}>{t("hidden.disableRule", { label: reason?.label ?? t("hidden.ruleUnavailable") })}</button>
+                    <button role="menuitem" disabled={!reason} onClick={() => { close(); void release(article.id, () => api.setRuleAction(reason.rule_id, 2)); }}>{t("hidden.disableRule", { label: reason ? formatReason(reason) : t("hidden.ruleUnavailable") })}</button>
                     <button role="menuitem" disabled={!reason} onClick={() => { close(); void release(article.id, () => api.allowRuleForFeed(reason.rule_id, article.feed_id)); }}>{t("hidden.allowFeed", { feed: article.feed_title })}</button>
                   </>}
                 </MenuButton>}

@@ -220,8 +220,12 @@ mod tests {
             &args(rule(NetworkProxyMode::Custom, "127.0.0.1:7890")),
         )
         .unwrap_err();
-        let shown = format!("{error}");
-        assert!(shown.contains("代理地址"), "{shown}");
+        let ui = crate::views::UiError::from(error);
+        assert_eq!(ui.code(), "proxy_url_incomplete");
+        assert_eq!(
+            serde_json::to_value(ui).unwrap()["params"],
+            serde_json::Value::Null
+        );
         assert_eq!(network::load(&conn).unwrap(), old.normalized().unwrap());
     }
 

@@ -4,6 +4,7 @@ import { trackEvent } from "../../lib/signals";
 import { applyStarToFocusPage, flattenFeeds, focusExcludes, mergeFocusPage, refreshFocusRows, rowKey } from "../../lib/focusUtils";
 import { i18n } from "../../i18n";
 import { formatNotice } from "../../lib/notice";
+import { formatReason } from "../../lib/reasons";
 import { isTauri, PREVIEW_FOCUS } from "../../lib/preview";
 import { FALLBACK_RANKING, type RankingToggle } from "../../components/FocusPane";
 import type { SpotAction, SpotReview } from "../../components/SpotCheckReveal";
@@ -164,14 +165,14 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
           if (action === "disable") {
             await api.setRuleAction(rule.id, 2);
             undo = () => api.setRuleAction(rule.id, rule.polarity === "like" ? 0 : 1);
-            result = i18n.t("session.spot.disabled", { ns: "focus", label: reason.label });
+            result = i18n.t("session.spot.disabled", { ns: "focus", label: formatReason(reason) });
           } else {
             const original = { polarity: rule.polarity, dimension: rule.dimension_id, pattern: rule.pattern,
               weight: rule.weight, scope_kind: rule.scope_kind, scope_id: rule.scope_id };
             const weight = Math.max(1, Math.round(rule.weight / 2));
             await api.updateRule(rule.id, { ...original, weight });
             undo = () => api.updateRule(rule.id, original);
-            result = i18n.t("session.spot.halved", { ns: "focus", label: reason.label });
+            result = i18n.t("session.spot.halved", { ns: "focus", label: formatReason(reason) });
           }
         }
       }

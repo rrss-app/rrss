@@ -135,9 +135,12 @@ pub async fn backup_dismiss_notice(state: State<'_, AppState>) -> Result<(), UiE
 #[tauri::command]
 pub async fn backup_reveal(app: AppHandle, path: String) -> Result<(), UiError> {
     rrss_app::execution::blocking(move || {
-        app.opener()
-            .reveal_item_in_dir(path)
-            .map_err(|error| UiError::from(error.to_string()))
+        app.opener().reveal_item_in_dir(path).map_err(|_| {
+            UiError::new(
+                UiErrorKind::Common(rrss_app::ui_error::common::CommonError::Io { file: None }),
+                "failed to reveal backup file",
+            )
+        })
     })
     .await
     .map_err(UiError::from)?
@@ -173,8 +176,11 @@ where
         .map_err(|error| UiError::from(anyhow::Error::from(error)))?;
     picked
         .map(|p| {
-            p.into_path()
-                .map_err(|error| UiError::from(error.to_string()))
+            p.into_path().map_err(|_| {
+                UiError::from(rrss_core::Error::Backup(
+                    rrss_core::error::backup::BackupProblem::SelectionPathInvalid,
+                ))
+            })
         })
         .transpose()
 }
@@ -189,7 +195,9 @@ db_task!(retention_set_days(days: i64) -> () => |conn| actions::set_retention_da
 
 /// 立即清理：第一次会先做完整备份，大库上耗时明显。
 #[tauri::command]
-pub async fn retention_clean_now(state: State<'_, AppState>) -> Result<String, UiError> {
+pub async fn retention_clean_now(
+    state: State<'_, AppState>,
+) -> Result<RetentionMessage, UiError> {
     let data_dir = state.data_dir.clone();
     tracing::info!("retention cleanup requested");
     with_db("retention_clean_now", state.db_path.clone(), move |conn| {

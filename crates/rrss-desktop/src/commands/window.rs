@@ -20,7 +20,7 @@ pub async fn window_close_choice(
 /// 建托盘或换菜单文字；托盘不可用时返回 false。
 #[tauri::command]
 pub fn tray_install(app: AppHandle, labels: TrayLabels) -> Result<bool, UiError> {
-    crate::tray::install(&app, labels).map_err(UiError::from)
+    crate::tray::install(&app, labels)
 }
 
 command_handler![window_close_choice, tray_install];

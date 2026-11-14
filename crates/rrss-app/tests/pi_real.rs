@@ -4,6 +4,9 @@
 //! 测试进程的 HOME 换成一份故意写坏的 `~/.pi`，证明托管模式不读它。
 #![cfg(unix)]
 
+#[path = "../src/ui_error/test_display.rs"]
+mod test_display;
+
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -109,7 +112,7 @@ fn errors(events: &[ChatEvent]) -> Vec<(String, String)> {
     events
         .iter()
         .filter_map(|e| match e {
-            ChatEvent::Error(err) => Some((err.kind.clone(), err.message.clone())),
+            ChatEvent::Error(err) => Some((err.kind.clone(), test_display::display(&err.message))),
             _ => None,
         })
         .collect()
@@ -279,7 +282,7 @@ async fn real_pi_runs_rrss_turns_through_the_managed_config() {
     assert!(
         events
             .iter()
-            .any(|e| matches!(e, ChatEvent::Status(s) if s.step.as_ref().is_some_and(|step| step.label == "查阅本地文章" && step.start))),
+            .any(|e| matches!(e, ChatEvent::Status(s) if s.step.as_ref().is_some_and(|step| step.kind == "tool" && step.tool == "search_articles" && step.start))),
         "tool status missing: {events:#?}"
     );
     let conn = db::open_at(&db_path).unwrap();

@@ -193,5 +193,24 @@
       "none": "没有归档的会话。",
       "note": "归档的会话不在侧栏、不进搜索。打开后发新消息会自动取消归档。"
     }
+  },
+  "steps": {
+    "engine": "启动对话引擎",
+    "tool": "使用工具 {{tool}}",
+    "tools": {
+      "search_articles": "查阅本地文章",
+      "list_focus": "查阅本地文章",
+      "list_feeds": "查阅本地文章",
+      "get_article": "读取文章",
+      "get_digest": "读取简报",
+      "search_memory": "查找记忆",
+      "fetch_url": "读取网页",
+      "open_original": "打开原文",
+      "explain_score": "查看评分原因",
+      "mark_read": "标记已读",
+      "star_article": "收藏文章",
+      "add_interest": "记下兴趣"
+    },
+    "external": "使用 {{server}} 的 {{tool}}"
   }
 }

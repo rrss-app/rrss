@@ -91,7 +91,9 @@ pub fn rule_counts(
         "WITH hidden AS ({sql})
          SELECT json_extract(reason.value, '$.rule_id'), COUNT(DISTINCT a.id)
          FROM hidden a, {REASONS_SQL}
-         WHERE reason.type = 'object' AND json_extract(reason.value, '$.weight') < 0
+         WHERE reason.type = 'object' AND
+           (CASE WHEN json_type(reason.value, '$.code') IS NOT NULL AND json_type(reason.value, '$.points') = 'integer'
+             THEN json_extract(reason.value, '$.points') ELSE json_extract(reason.value, '$.weight') END) < 0
          GROUP BY json_extract(reason.value, '$.rule_id')"
     ))?;
     let rows = stmt.query_map(params_from_iter(hidden_params(conn, scope)?), |row| {
@@ -143,6 +145,16 @@ mod tests {
         articles::set_list_scope(&conn, ListScope::Starred).unwrap();
         let unread = list_hidden(&conn, FeedScope::Folder(1), ListScope::Unread).unwrap();
         assert_eq!(sorted_ids(&unread), vec![1, 6]);
+        conn.execute(
+            "UPDATE articles SET reasons_json=?1 WHERE id=1",
+            [r#"[{"rule_id":9,"dimension":"title_kw","snippet":"Rust","weight":-5,"points":"ignored legacy field"}]"#],
+        )
+        .unwrap();
+        conn.execute("UPDATE articles SET reasons_json=?1 WHERE id=6", [r#"[{"component":"rules","rule_id":9,"dimension":"title_kw","code":"rule_title_kw","params":{"pattern":"Rust"},"points":-5,"weight":7}]"#]).unwrap();
+        assert_eq!(
+            rule_counts(&conn, FeedScope::Folder(1), ListScope::Unread).unwrap(),
+            BTreeMap::from([(9, 2)])
+        );
         assert_eq!(
             hidden_count(&conn, FeedScope::Folder(1), ListScope::Unread).unwrap(),
             unread.len() as i64

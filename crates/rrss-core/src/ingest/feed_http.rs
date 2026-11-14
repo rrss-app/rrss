@@ -8,8 +8,27 @@ pub const TOTAL_TIMEOUT: Duration = Duration::from_secs(30);
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
 const MAX_REDIRECTS: usize = 10;
-// Shared by the two fixed 407 producers and the IPC classifier during migration.
-pub const PROXY_AUTH_MESSAGE: &str = "代理认证失败，请检查网络代理设置";
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum FeedRequestError {
+    #[error("feed body exceeds size limit ({max_bytes} bytes)")]
+    BodyTooLarge { max_bytes: u64 },
+    #[error("too many feed redirects")]
+    RedirectLimit,
+    #[error("feed redirect has no valid location")]
+    RedirectMissing,
+    #[error("invalid feed redirect address")]
+    RedirectInvalid,
+    #[error("feed redirect requires HTTP or HTTPS")]
+    RedirectScheme,
+    #[error("invalid feed address")]
+    InvalidAddress,
+    #[error("feed request timed out")]
+    Timeout,
+    #[error("feed runtime stopped")]
+    RuntimeStopped,
+    #[error("HTTP 407: proxy authentication failed; check network proxy settings")]
+    ProxyAuth,
+}
 
 #[derive(Clone, Copy)]
 pub struct FeedPolicy {
@@ -31,11 +50,8 @@ pub fn client_builder() -> reqwest::ClientBuilder {
         .redirect(reqwest::redirect::Policy::none())
 }
 
-fn error(message: &str) -> Error {
-    Error::Http {
-        status: 0,
-        message: message.into(),
-    }
+fn error(reason: FeedRequestError) -> Error {
+    Error::FeedRequest(reason)
 }
 
 /// Keep transport classification before redacting reqwest's diagnostic. HTTP
@@ -54,6 +70,7 @@ pub struct FetchFailure {
 impl From<Error> for FetchFailure {
     fn from(error: Error) -> Self {
         let response_status = match &error {
+            Error::FeedRequest(FeedRequestError::ProxyAuth) => Some(407),
             Error::Http { status, .. } | Error::Network { status, .. } if *status > 0 => {
                 Some(*status)
             }
@@ -187,14 +204,13 @@ where
     let mut response_status = None;
     let mut recording = false;
     let result = tokio::time::timeout(policy.timeout, async {
-        let mut url = Url::parse(&request.url).map_err(|_| error("无效的订阅地址"))?;
+        let mut url =
+            Url::parse(&request.url).map_err(|_| error(FeedRequestError::InvalidAddress))?;
         let mut visited = Vec::new();
         for hop in 0..=MAX_REDIRECTS {
             if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
-                return Err(
-                    FetchFailure::from(error("订阅重定向地址必须是 HTTP 或 HTTPS"))
-                        .with_kind(crate::network::ErrorKind::Redirect),
-                );
+                return Err(FetchFailure::from(error(FeedRequestError::RedirectScheme))
+                    .with_kind(crate::network::ErrorKind::Redirect));
             }
             let permit = acquire(url.clone()).await?;
             visited.push(url.clone());
@@ -216,15 +232,11 @@ where
             response_status = Some(status);
             received_http = true;
             if status == 407 {
-                return Err(Error::Http {
-                    status,
-                    message: PROXY_AUTH_MESSAGE.into(),
-                }
-                .into());
+                return Err(error(FeedRequestError::ProxyAuth).into());
             }
             if matches!(status, 301 | 302 | 303 | 307 | 308) {
                 if hop == MAX_REDIRECTS {
-                    return Err(response_failure(error("订阅重定向次数过多"))
+                    return Err(response_failure(error(FeedRequestError::RedirectLimit))
                         .with_kind(crate::network::ErrorKind::Redirect));
                 }
                 let location = response
@@ -232,11 +244,11 @@ where
                     .get(header::LOCATION)
                     .and_then(|v| v.to_str().ok())
                     .ok_or_else(|| {
-                        response_failure(error("订阅重定向缺少有效地址"))
+                        response_failure(error(FeedRequestError::RedirectMissing))
                             .with_kind(crate::network::ErrorKind::Redirect)
                     })?;
                 let mut next = url.join(location).map_err(|_| {
-                    response_failure(error("无效的订阅重定向地址"))
+                    response_failure(error(FeedRequestError::RedirectInvalid))
                         .with_kind(crate::network::ErrorKind::Redirect)
                 })?;
                 if next.origin() != url.origin() {
@@ -294,8 +306,10 @@ where
                     ..FetchFailure::transport(&e, started.elapsed())
                 })? {
                     if chunk.len() > policy.max_body_bytes.saturating_sub(out.body.len()) {
-                        return Err(response_failure(error("订阅正文超过大小上限"))
-                            .with_kind(crate::network::ErrorKind::Body));
+                        return Err(response_failure(error(FeedRequestError::BodyTooLarge {
+                            max_bytes: policy.max_body_bytes as u64,
+                        }))
+                        .with_kind(crate::network::ErrorKind::Body));
                     }
                     out.body.extend_from_slice(&chunk);
                     body_read(chunk.len());
@@ -310,7 +324,7 @@ where
         Ok(result) => result,
         Err(_) if recording => Err(response_failure(Error::FetchDeferred {
             until: None,
-            message: "正在保存订阅限流记录，稍后继续抓取".into(),
+            reason: super::FetchDeferredReason::CooldownSaving,
         })),
         Err(_) if !transferring => Err(FetchFailure {
             // Redirect admission waits share the overall deadline, but no
@@ -318,7 +332,7 @@ where
             // changing the source's health, failure streak or due date.
             error: Error::FetchDeferred {
                 until: None,
-                message: "本地抓取队列繁忙，等待下载名额超时，请稍后重试".into(),
+                reason: super::FetchDeferredReason::QueueBusy,
             },
             class: FailureClass::Fast,
             network: false,
@@ -328,7 +342,7 @@ where
             response_status,
         }),
         Err(_) => Err(FetchFailure {
-            error: error("订阅请求超时"),
+            error: error(FeedRequestError::Timeout),
             class: FailureClass::Slow,
             network: transferring,
             http_response: received_http,
@@ -412,6 +426,31 @@ mod tests {
         assert_eq!(failure.class, FailureClass::Fast);
         assert!(!failure.network);
         task.abort();
+    }
+
+    #[test]
+    fn structured_policy_failures_keep_response_and_offline_classification() {
+        for reason in [
+            FeedRequestError::BodyTooLarge { max_bytes: 64 },
+            FeedRequestError::RedirectLimit,
+            FeedRequestError::RedirectMissing,
+            FeedRequestError::RedirectInvalid,
+            FeedRequestError::RedirectScheme,
+            FeedRequestError::InvalidAddress,
+            FeedRequestError::RuntimeStopped,
+        ] {
+            let failure = FetchFailure::from(Error::FeedRequest(reason));
+            assert_eq!(failure.class, FailureClass::Fast);
+            assert!(!failure.network);
+            assert!(!failure.http_response);
+            assert!(!failure.timeout);
+            assert_eq!(failure.status(), None);
+        }
+        let auth = FetchFailure::from(Error::FeedRequest(FeedRequestError::ProxyAuth));
+        assert_eq!(auth.status(), Some(407));
+        assert_eq!(auth.kind, crate::network::ErrorKind::ProxyAuth);
+        assert!(auth.http_response);
+        assert!(!auth.network);
     }
 
     async fn server(reply: &'static [u8], hang: bool) -> (String, tokio::task::JoinHandle<()>) {
@@ -503,7 +542,10 @@ mod tests {
     #[tokio::test]
     async fn bounded_chunked_body_and_stalled_body() {
         let err = get(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n8\r\n12345678\r\n8\r\n12345678\r\n0\r\n\r\n", false, 10, ANSWER).await.unwrap_err();
-        assert!(err.to_string().contains("大小上限"), "{err}");
+        assert!(matches!(
+            err,
+            Error::FeedRequest(FeedRequestError::BodyTooLarge { max_bytes: 10 })
+        ));
         let err = get(
             b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nx",
             true,
@@ -512,14 +554,31 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(err.to_string().contains("超时"), "{err}");
+        assert!(matches!(
+            err,
+            Error::FeedRequest(FeedRequestError::Timeout)
+                | Error::Network {
+                    message: crate::network::RequestErrorMessage::Timeout,
+                    ..
+                }
+        ));
     }
     #[tokio::test]
     async fn body_limit_counts_decompressed_bytes_and_headers_share_the_deadline() {
         let err = get(b"\x48\x54\x54\x50\x2f\x31\x2e\x31\x20\x32\x30\x30\x20\x4f\x4b\x0d\x0a\x43\x6f\x6e\x74\x65\x6e\x74\x2d\x45\x6e\x63\x6f\x64\x69\x6e\x67\x3a\x20\x67\x7a\x69\x70\x0d\x0a\x43\x6f\x6e\x74\x65\x6e\x74\x2d\x4c\x65\x6e\x67\x74\x68\x3a\x20\x32\x34\x0d\x0a\x0d\x0a\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\x03\x4b\x4c\xa4\x3d\x00\x00\x64\x7a\x70\xaf\x64\x00\x00\x00", false, 32, ANSWER).await.unwrap_err();
-        assert!(err.to_string().contains("大小上限"), "{err}");
+        assert!(matches!(
+            err,
+            Error::FeedRequest(FeedRequestError::BodyTooLarge { max_bytes: 32 })
+        ));
         let err = get(b"", true, 32, STALL).await.unwrap_err();
-        assert!(err.to_string().contains("超时"), "{err}");
+        assert!(matches!(
+            err,
+            Error::FeedRequest(FeedRequestError::Timeout)
+                | Error::Network {
+                    message: crate::network::RequestErrorMessage::Timeout,
+                    ..
+                }
+        ));
     }
     #[tokio::test]
     async fn not_modified_and_errors_do_not_wait_for_body_and_proxy_auth_is_redacted() {
@@ -544,6 +603,9 @@ mod tests {
         .await
         .unwrap_err();
         assert!(!format!("{err:?}").contains("secret"));
-        assert!(err.to_string().contains("代理认证"));
+        assert!(matches!(
+            err,
+            Error::FeedRequest(FeedRequestError::ProxyAuth)
+        ));
     }
 }

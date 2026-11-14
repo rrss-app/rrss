@@ -143,5 +143,42 @@
     "apply_other": "放进 {{count}} 个",
     "applyNone": "放进  个",
     "loose": "未放进文件夹"
+  },
+  "health": {
+    "feed_health_failing": {
+      "initialLabel": "抓取失败",
+      "label": "连续失败 {{failures}} 次 · {{days}} 天",
+      "detail": "最近错误：{{error}}\n{{success}}"
+    },
+    "feed_health_stale": {
+      "label": "{{days}} 天没有新文章",
+      "detail": "{{pace}}{{last}}\n{{fetch}}，{{success}}",
+      "pace": "平时约 {{days}} 天一篇；",
+      "lastArticle": "最近一篇入库于 {{date}}。",
+      "noArticles": "订阅以来还没有入库过文章。",
+      "fetchFailed": "最近一次抓取失败",
+      "fetchOk": "抓取正常"
+    },
+    "feed_health_noisy": {
+      "label": "多数内容被隐藏",
+      "detail": "近 {{days}} 天大部分文章被规则隐藏或被踩。可以退订，或在规则页调整。"
+    },
+    "timeout": "订阅请求超时",
+    "recentSuccess": "最近成功：{{date}}",
+    "neverSucceeded": "还没有成功抓取过",
+    "truncated": "{{text}}…",
+    "date": {
+      "today": "今天 {{time}}",
+      "yesterday": "昨天 {{time}}",
+      "monthDay": "{{month}} 月 {{day}} 日 {{time}}",
+      "yearDay": "{{year}} 年 {{month}} 月 {{day}} 日"
+    },
+    "http": {
+      "limited": "源限流，请稍后重试",
+      "denied": "源拒绝访问",
+      "missing": "找不到这个源（404）",
+      "unavailable": "源暂时不可用（{{status}}）",
+      "other": "源返回 {{status}}"
+    }
   }
 }

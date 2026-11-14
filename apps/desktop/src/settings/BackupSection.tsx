@@ -1,3 +1,5 @@
+import { formatBackupEntry, formatBackupMessage, formatBackupWhen, formatStorageBytes } from "./panelText";
+import { isTauri } from "../lib/preview";
 import { useRef, useState } from "react";
 import { Icon } from "../components/Icon";
 import { useTranslation } from "../i18n";
@@ -50,7 +52,7 @@ export function BackupSection({ onAsk, onEditStateChange, onChanged, blocked }: 
         <div className="settings-option">
           <div>
             <strong>{t("backup.all.title")}</strong>
-            <p className="hint">{t("backup.all.hint")}{includeSecrets && <b className="backup-em">{t("backup.all.withSecrets")}</b>}{data?.last_manual}</p>
+            <p className="hint">{t("backup.all.hint")}{includeSecrets && <b className="backup-em">{t("backup.all.withSecrets")}</b>}{data ? isTauri() ? data.last_manual_at === null ? t("backup.format.noManual") : t("backup.format.lastManual", { when: formatBackupWhen(data.last_manual_at) }) : t("backup.preview.lastManual") : ""}</p>
           </div>
           <button type="button" className="btn primary" disabled={disabled} onClick={() => s.backup(includeSecrets)}>
             {s.op === "backup" ? <><Icon name="spinner" size={14} className="spin" />{t("backup.all.running")}</> : <><Icon name="download" size={14} />{t("backup.all.action")}</>}
@@ -63,7 +65,7 @@ export function BackupSection({ onAsk, onEditStateChange, onChanged, blocked }: 
           <div className="notice ok backup-result" role="status">
             <Icon name="check" size={14} />
             <span>
-              {t("backup.done.saved", { path: s.done.path, size: s.done.size })}<br />{s.done.summary}<br />
+              {t("backup.done.saved", { path: s.done.path, size: formatStorageBytes(s.done.bytes) })}<br />{formatBackupMessage(s.done.summary)}<br />
               <small className="muted">{t("backup.done.note")}</small>
             </span>
             <span className="backup-result-actions">
@@ -84,7 +86,7 @@ export function BackupSection({ onAsk, onEditStateChange, onChanged, blocked }: 
         </div>
 
         <details className="advanced-fold backup-fold" data-backup-fold="auto">
-          <summary>{t("backup.auto.title")}<span className="backup-fold-sum">{data?.auto_summary}</span></summary>
+          <summary>{t("backup.auto.title")}<span className="backup-fold-sum">{data ? t("backup.format.autoSummary", { schedule: data.schedule === "off" ? t("backup.format.scheduleOff") : t(`backup.schedule.${data.schedule as typeof SCHEDULES[number]}`) }) : ""}</span></summary>
           <div className="settings-option">
             <div>
               <strong>{t("backup.auto.scheduled")}</strong>
@@ -96,7 +98,7 @@ export function BackupSection({ onAsk, onEditStateChange, onChanged, blocked }: 
             <ul className="backup-list" aria-label={t("backup.auto.title")}>
               {data.entries.map((entry) => (
                 <li key={entry.path} className="backup-entry">
-                  <div><strong>{entry.when}</strong><span className="hint">{entry.note}</span></div>
+                  <div><strong>{formatBackupWhen(entry.created_at)}</strong><span className="hint">{formatBackupEntry(entry)}</span></div>
                   {entry.restorable && (
                     <button type="button" className="btn sm ghost" disabled={disabled} onClick={() => s.restore(entry.path)}>{t("backup.auto.restore")}</button>
                   )}
@@ -137,7 +139,7 @@ export function BackupSection({ onAsk, onEditStateChange, onChanged, blocked }: 
             <div className={s.imported.skipped.length ? "notice warn backup-result" : "notice ok backup-result"} role="status">
               <Icon name={s.imported.skipped.length ? "info" : "check"} size={14} />
               <span>
-                {t("backup.prefs.imported", { summary: s.imported.summary })}
+                {t("backup.prefs.imported", { summary: s.imported.summary.map(formatBackupMessage).join(t("backup.format.separator")) })}
                 {s.imported.skipped.length > 0 && <>
                   <br />{t("backup.prefs.skipped", { count: s.imported.skipped.length })}
                   <ul className="backup-skipped">{s.imported.skipped.map((line) => <li key={line}>{line}</li>)}</ul>

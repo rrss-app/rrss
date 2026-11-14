@@ -17,19 +17,29 @@ fn rule_to_view_with_context(
     hide_threshold: i64,
     scope_name: Option<&str>,
 ) -> RuleView {
-    let summary = rule_summary(&rule, hide_threshold, scope_name);
+    // 与 score::compile_rules 使用同一有符号权重。这里描述单条规则的作用，
+    // 文章是否隐藏仍由所有命中规则的总分决定，不能把所有 Dislike 都称为隐藏。
+    let weight = rule.polarity.signed_weight(rule.weight);
+    let effect = if weight > 0 {
+        RuleEffect::Boost
+    } else if weight < 0 && weight <= hide_threshold {
+        RuleEffect::Hide
+    } else if weight < 0 {
+        RuleEffect::Lower
+    } else {
+        RuleEffect::None
+    };
+    let summary = RuleSummaryView::RuleSummary { effect };
     RuleView {
         id: rule.id,
         polarity: rule.polarity.as_str().into(),
-        dimension: rule.dimension.label_zh().into(),
         dimension_id: rule.dimension.as_str().into(),
         pattern: rule.pattern,
         summary,
-        scope_label: match rule.scope_kind {
-            ScopeKind::Global => "全局".into(),
-            ScopeKind::Feed => "源".into(),
-            ScopeKind::Folder => "文件夹".into(),
-        },
+        scope_name: scope_name
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_default()
+            .into(),
         scope_kind: rule.scope_kind.as_str().into(),
         scope_id: rule.scope_id.unwrap_or(0),
         weight: rule.weight,
@@ -51,40 +61,6 @@ pub(super) fn rule_condition(dimension: Dimension, pattern: &str) -> String {
         Dimension::BodyPhrase => format!("正文包含『{pattern}』"),
         Dimension::BodyRe => format!("正文匹配正则『{pattern}』"),
     }
-}
-
-fn rule_summary(rule: &rrss_core::Rule, hide_threshold: i64, scope_name: Option<&str>) -> String {
-    let condition = rule_condition(rule.dimension, &rule.pattern);
-    // 与 score::compile_rules 使用同一有符号权重。这里描述单条规则的作用，
-    // 文章是否隐藏仍由所有命中规则的总分决定，不能把所有 Dislike 都称为隐藏。
-    let weight = rule.polarity.signed_weight(rule.weight);
-    let effect = if weight > 0 {
-        "加分"
-    } else if weight < 0 && weight <= hide_threshold {
-        "隐藏"
-    } else if weight < 0 {
-        "降分"
-    } else {
-        "不改变分数"
-    };
-    let scope_name = scope_name.filter(|name| !name.trim().is_empty());
-    let (prefix, scope) = match rule.scope_kind {
-        ScopeKind::Global => (String::new(), "全局"),
-        ScopeKind::Feed => (
-            scope_name
-                .map(|name| format!("来自『{name}』、"))
-                .unwrap_or_default(),
-            "仅此源",
-        ),
-        // score::folder_chain 包含祖先文件夹，文件夹规则也会匹配子文件夹的源。
-        ScopeKind::Folder => (
-            scope_name
-                .map(|name| format!("在『{name}』文件夹内、"))
-                .unwrap_or_default(),
-            "此文件夹及子文件夹",
-        ),
-    };
-    format!("{prefix}{condition}时{effect} · {scope}")
 }
 
 pub fn rules_page(conn: &Connection, filter_key: &str) -> rrss_core::Result<RulesPage> {
@@ -176,7 +152,6 @@ pub fn training_features(
     .into_iter()
     .map(|c| FeatureView {
         dimension: c.dimension.as_str().into(),
-        label: rule_condition(c.dimension, &c.pattern),
         pattern: c.pattern,
     })
     .collect())
@@ -188,6 +163,16 @@ mod tests {
     use rrss_core::db::{PooledConnection, open_at};
     use rrss_core::feeds::SubscribeRequest;
     use rrss_core::rules::{NewRule, Rule};
+
+    fn effect(view: &RuleView) -> &'static str {
+        let RuleSummaryView::RuleSummary { effect } = &view.summary;
+        match effect {
+            RuleEffect::Boost => "boost",
+            RuleEffect::Hide => "hide",
+            RuleEffect::Lower => "lower",
+            RuleEffect::None => "none",
+        }
+    }
 
     fn open_temp() -> (tempfile::TempDir, PooledConnection) {
         let dir = tempfile::tempdir().unwrap();
@@ -209,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn training_labels_share_rule_conditions_without_changing_patterns() {
+    fn training_features_preserve_ids_and_patterns() {
         let (_dir, conn) = open_temp();
         let feed_id = subscribe(&conn, "https://example.test/rss", None);
         let entry = rrss_core::parse::ParsedEntry {
@@ -235,10 +220,15 @@ mod tests {
             ("body_phrase", "正文", "正文包含『正文』"),
         ];
         assert_eq!(features.len(), expected.len());
-        for (feature, (dimension, pattern, label)) in features.iter().zip(expected) {
+        for (feature, (dimension, pattern, _label)) in features.iter().zip(expected) {
             assert_eq!(feature.dimension, dimension);
             assert_eq!(feature.pattern, pattern);
-            assert_eq!(feature.label, label);
+            assert!(
+                serde_json::to_value(feature)
+                    .unwrap()
+                    .get("label")
+                    .is_none()
+            );
         }
     }
 
@@ -271,27 +261,27 @@ mod tests {
             ),
         ];
         let effects = [
-            (Polarity::Like, 3, "加分"),
-            (Polarity::Dislike, 3, "降分"),
-            (Polarity::Dislike, 10, "隐藏"),
+            (Polarity::Like, 3, "boost"),
+            (Polarity::Dislike, 3, "lower"),
+            (Polarity::Dislike, 10, "hide"),
         ];
         let mut expected = std::collections::HashMap::new();
-        for (dimension, pattern, condition) in dimensions {
-            for (scope_kind, scope_id, prefix, suffix) in scopes {
+        for (dimension, pattern, _condition) in dimensions {
+            for (scope_kind, scope_id, _prefix, _suffix) in scopes {
                 for (polarity, weight, effect) in effects {
                     let mut spec = NewRule::manual_global(polarity, dimension, pattern);
                     spec.scope_kind = scope_kind;
                     spec.scope_id = scope_id;
                     spec.weight = weight;
                     let id = rules::insert_rule(&conn, spec).unwrap();
-                    expected.insert(id, format!("{prefix}{condition}时{effect} · {suffix}"));
+                    expected.insert(id, effect);
                 }
             }
         }
         let page = rules_page(&conn, "all").unwrap();
         assert_eq!(page.rules.len(), 8 * 3 * 3);
         for view in page.rules {
-            assert_eq!(view.summary, expected[&view.id], "rule {}", view.id);
+            assert_eq!(effect(&view), expected[&view.id], "rule {}", view.id);
             assert!(!view.pending);
         }
     }
@@ -309,18 +299,18 @@ mod tests {
             NewRule::manual_global(Polarity::Like, Dimension::TitleKw, "融资"),
         )
         .unwrap();
-        for (threshold, weight, effect) in [
-            (-10, 9, "降分"),
-            (-10, 10, "隐藏"),
-            (-10, 11, "隐藏"),
-            (-20, 19, "降分"),
-            (-20, 20, "隐藏"),
-            (-20, 21, "隐藏"),
-            (-1, 1, "隐藏"),
-            (0, 1, "隐藏"),
-            (1, 1, "隐藏"),
-            (i64::MIN, i64::MAX, "降分"),
-            (i64::MIN + 1, i64::MAX, "隐藏"),
+        for (threshold, weight, expected_effect) in [
+            (-10, 9, "lower"),
+            (-10, 10, "hide"),
+            (-10, 11, "hide"),
+            (-20, 19, "lower"),
+            (-20, 20, "hide"),
+            (-20, 21, "hide"),
+            (-1, 1, "hide"),
+            (0, 1, "hide"),
+            (1, 1, "hide"),
+            (i64::MIN, i64::MAX, "lower"),
+            (i64::MIN + 1, i64::MAX, "hide"),
         ] {
             articles::set_hide_threshold(&conn, threshold).unwrap();
             for id in [negative_id, positive_id] {
@@ -332,12 +322,12 @@ mod tests {
             assert_eq!(page.hide_threshold, threshold);
             let negative = page.rules.iter().find(|r| r.id == negative_id).unwrap();
             assert_eq!(
-                negative.summary,
-                format!("标题包含『融资』时{effect} · 全局"),
+                effect(negative),
+                expected_effect,
                 "threshold={threshold}, weight={weight}"
             );
             let positive = page.rules.iter().find(|r| r.id == positive_id).unwrap();
-            assert_eq!(positive.summary, "标题包含『融资』时加分 · 全局");
+            assert_eq!(effect(positive), "boost");
         }
     }
 
@@ -360,11 +350,12 @@ mod tests {
                 let view = rule_to_view(rule.clone());
                 assert_eq!(view.id, id);
                 assert_eq!(view.polarity, "dislike");
-                assert_eq!(view.dimension, "作者");
                 assert_eq!(view.dimension_id, "author");
                 assert_eq!(view.pattern, "某某");
-                assert_eq!(view.scope_label, "全局");
                 assert_eq!(view.scope_kind, "global");
+                let json = serde_json::to_value(&view).unwrap();
+                assert!(json.get("dimension").is_none());
+                assert!(json.get("scope_label").is_none());
                 assert_eq!(view.scope_id, 0);
                 assert_eq!(view.weight, rule.weight);
                 assert_eq!(view.source, source.as_str());
@@ -372,21 +363,21 @@ mod tests {
                 assert_eq!(view.pending, source == RuleSource::Suggested && !enabled);
                 assert_eq!(view.pack_id, "test-pack");
                 // 原单参数入口使用默认阈值；待确认只由来源与开关决定。
-                assert_eq!(view.summary, "作者是『某某』时隐藏 · 全局");
+                assert_eq!(effect(&view), "hide");
             }
         }
         let page = rules_page(&conn, "all").unwrap();
         assert_eq!(page.rules.len(), 4);
         for view in page.rules {
             assert_eq!(view.pending, Some(view.id) == expected_pending);
-            assert_eq!(view.summary, "作者是『某某』时降分 · 全局");
+            assert_eq!(effect(&view), "lower");
         }
         let pending = rules_page(&conn, "pending").unwrap().rules;
         assert_eq!(pending.len(), 1);
         assert_eq!(Some(pending[0].id), expected_pending);
         assert!(pending[0].pending);
         assert!(!pending[0].enabled);
-        assert_eq!(pending[0].summary, "作者是『某某』时降分 · 全局");
+        assert_eq!(effect(&pending[0]), "lower");
     }
 
     #[test]
@@ -404,10 +395,7 @@ mod tests {
         let folder_rule_id = rules::insert_rule(&conn, spec).unwrap();
         let page = rules_page(&conn, "all").unwrap();
         let feed_view = page.rules.iter().find(|r| r.id == feed_rule_id).unwrap();
-        assert_eq!(
-            feed_view.summary,
-            "来自『https://sspai.example/rss』、作者是『某某』时隐藏 · 仅此源"
-        );
+        assert_eq!(feed_view.scope_name, "https://sspai.example/rss");
         assert_eq!(feed_view.scope_kind, "feed");
         assert_eq!(feed_view.scope_id, feed_id);
         feeds::rename_feed(&conn, feed_id, "少数派").unwrap();
@@ -417,13 +405,24 @@ mod tests {
                 .iter()
                 .find(|r| r.id == feed_rule_id)
                 .unwrap()
-                .summary,
-            "来自『少数派』、作者是『某某』时隐藏 · 仅此源"
+                .scope_name,
+            feeds::list_feeds(&conn)
+                .unwrap()
+                .into_iter()
+                .find(|feed| feed.id == feed_id)
+                .unwrap()
+                .title
+                .unwrap()
         );
         let folder_view = page.rules.iter().find(|r| r.id == folder_rule_id).unwrap();
         assert_eq!(
-            folder_view.summary,
-            "在『技术』文件夹内、作者是『某某』时隐藏 · 此文件夹及子文件夹"
+            folder_view.scope_name,
+            feeds::list_folders(&conn)
+                .unwrap()
+                .into_iter()
+                .find(|folder| folder.id == folder_id)
+                .unwrap()
+                .name
         );
         assert_eq!(folder_view.scope_kind, "folder");
         assert_eq!(folder_view.scope_id, folder_id);
@@ -448,7 +447,7 @@ mod tests {
 
     #[test]
     fn context_free_scopes_never_become_global_or_invent_conditions() {
-        for (scope_kind, suffix) in [
+        for (scope_kind, _suffix) in [
             (ScopeKind::Global, "全局"),
             (ScopeKind::Feed, "仅此源"),
             (ScopeKind::Folder, "此文件夹及子文件夹"),
@@ -466,10 +465,9 @@ mod tests {
                 pack_id: None,
             };
             let view = rule_to_view(rule);
-            assert_eq!(
-                view.summary,
-                format!("正文匹配正则『融资.*』时加分 · {suffix}")
-            );
+            assert_eq!(effect(&view), "boost");
+            assert!(view.scope_name.is_empty());
+            assert_eq!(view.scope_kind, scope_kind.as_str());
             assert_eq!(
                 view.scope_id,
                 if scope_kind == ScopeKind::Global {

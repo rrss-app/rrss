@@ -23,7 +23,7 @@ export function focusRow(id: number, title: string): ArticleView {
     cluster_size: 1,
     cluster_label: "",
     cluster_span: "",
-    interest_label: "",
+    interest_reason: null,
   rank_reasons: [],
     noisy: false,
     spot_check: false,

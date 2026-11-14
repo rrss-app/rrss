@@ -3,10 +3,9 @@ use std::path::Path;
 use chrono::{Datelike, Local, TimeZone};
 use rusqlite::Connection;
 
-use rrss_core::backup::{self, BackupKind, Counts, Manifest};
+use rrss_core::backup::{self, BackupKind};
 use rrss_core::db;
 
-use super::storage::{fmt_bytes, fmt_count};
 use crate::views::*;
 
 pub const SCHEDULE_KEY: &str = "backup_schedule";
@@ -40,71 +39,43 @@ pub fn fmt_when(ms: i64) -> String {
     }
 }
 
-pub fn counts_summary(c: &Counts) -> String {
-    format!(
-        "文章 {} 篇 · 订阅 {} 个 · 规则 {} 条 · 对话 {} 个",
-        fmt_count(c.articles),
-        fmt_count(c.feeds),
-        fmt_count(c.rules),
-        fmt_count(c.threads)
-    )
-}
-
-fn kind_label(m: &Manifest) -> String {
-    match m.kind {
-        BackupKind::Manual => "手动备份".into(),
-        BackupKind::Upgrade => format!("升级前自动备份 · v{}", m.schema_version),
-        BackupKind::Scheduled => "定时备份".into(),
-        BackupKind::BeforeRestore => "恢复前的数据".into(),
-        BackupKind::BeforePrune => "清理旧文章前自动备份".into(),
-    }
-}
-
 pub fn backup_page(conn: &Connection, data_dir: &Path) -> rrss_core::Result<BackupPage> {
-    let last_manual = db::get_setting(conn, LAST_MANUAL_KEY)?
-        .and_then(|v| v.parse::<i64>().ok())
-        .map(|ms| format!("上次备份：{}。", fmt_when(ms)))
-        .unwrap_or_else(|| "还没有手动备份过。".into());
+    let last_manual_at =
+        db::get_setting(conn, LAST_MANUAL_KEY)?.and_then(|v| v.parse::<i64>().ok());
     let schedule = backup_schedule(conn)?;
-    let entries: Vec<BackupEntryView> = backup::list_auto(data_dir)
+    let entries = backup::list_auto(data_dir)
         .into_iter()
-        .map(|e| match &e.manifest {
-            Some(m) => BackupEntryView {
-                path: e.path.display().to_string(),
-                when: fmt_when(m.created_at),
-                note: format!(
-                    "{} · {} · {}",
-                    kind_label(m),
-                    fmt_bytes(e.bytes as i64),
-                    if m.secrets_included {
-                        "包含密钥"
-                    } else {
-                        "不含密钥"
-                    }
+        .map(|e| {
+            let (created_at, kind, schema_version, secrets_included) = match e.manifest.as_ref() {
+                Some(m) => (
+                    m.created_at,
+                    match m.kind {
+                        BackupKind::Manual => BackupEntryKind::Manual,
+                        BackupKind::Upgrade => BackupEntryKind::Upgrade,
+                        BackupKind::Scheduled => BackupEntryKind::Scheduled,
+                        BackupKind::BeforeRestore => BackupEntryKind::BeforeRestore,
+                        BackupKind::BeforePrune => BackupEntryKind::BeforePrune,
+                    },
+                    m.schema_version,
+                    Some(m.secrets_included),
                 ),
-                restorable: true,
-            },
-            None => BackupEntryView {
+                None => (e.modified_ms, BackupEntryKind::Unreadable, 0, None),
+            };
+            BackupEntryView {
                 path: e.path.display().to_string(),
-                when: fmt_when(e.modified_ms),
-                note: format!("无法读取的文件 · {}", fmt_bytes(e.bytes as i64)),
-                restorable: false,
-            },
+                created_at,
+                kind,
+                schema_version: i64::from(schema_version),
+                bytes: e.bytes as i64,
+                secrets_included,
+                restorable: e.manifest.is_some(),
+            }
         })
         .collect();
-    let auto_summary = format!(
-        "升级前自动 · 定时{}",
-        match schedule.as_str() {
-            "daily" => "每天",
-            "weekly" => "每周",
-            _ => "关闭",
-        }
-    );
     let counts = rrss_core::prefs::export_counts(conn)?;
     Ok(BackupPage {
-        last_manual,
+        last_manual_at,
         schedule,
-        auto_summary,
         entries,
         restore_notice: backup::restore_result(data_dir).map(|r| RestoreNoticeView {
             ok: r.ok,
@@ -141,7 +112,7 @@ mod tests {
         let conn = db::open_at(&dir.path().join("rrss.db")).unwrap();
         let page = backup_page(&conn, dir.path()).unwrap();
         assert_eq!(page.schedule, "off");
-        assert_eq!(page.last_manual, "还没有手动备份过。");
+        assert_eq!(page.last_manual_at, None);
         assert!(page.entries.is_empty());
         assert!(page.restore_notice.is_none());
 
@@ -150,11 +121,10 @@ mod tests {
         db::set_setting(&conn, SCHEDULE_KEY, "weekly").unwrap();
         let page = backup_page(&conn, dir.path()).unwrap();
         assert_eq!(page.schedule, "weekly");
-        assert_eq!(page.auto_summary, "升级前自动 · 定时每周");
         assert_eq!(page.entries.len(), 2);
         let good = page.entries.iter().find(|e| e.restorable).unwrap();
-        assert!(good.when.starts_with("今天 "));
-        assert!(good.note.starts_with("定时备份 · "), "{}", good.note);
+        assert!(good.created_at > 0);
+        assert_eq!(good.kind, BackupEntryKind::Scheduled);
         assert!(page.entries.iter().any(|e| !e.restorable));
     }
 }

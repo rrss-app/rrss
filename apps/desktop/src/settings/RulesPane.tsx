@@ -1,3 +1,4 @@
+import { formatRuleSummary } from "../lib/ruleLabels";
 import { useRef, useState } from "react";
 import { api, type PresetView, type RuleView, type ScopeOption } from "../lib/api";
 import { Icon } from "../components/Icon";
@@ -102,8 +103,8 @@ export function RulesPane({ onChanged, onEditStateChange, onAsk, onOpenArticle }
               return <div key={r.id} data-rule-id={r.id} data-pending={r.pending} className={`rule-row${r.enabled || r.pending ? "" : " off"}`}>
               <span aria-hidden="true" className={`rule-score ${r.polarity === "like" ? "up" : "down"}`}><ThumbIcon down={r.polarity !== "like"} /></span>
               <div className="rule-pick">
-                <span className="rule-summary">{r.summary}</span>
-                <span className="muted rule-meta">{r.dimension} · {r.pattern} · {r.scope_label} · {r.pack_id ? t("rules.meta.preset") : ["manual", "user"].includes(r.source) ? t("rules.meta.manual") : r.source === "suggest" ? t("rules.meta.suggest") : r.source}
+                <span className="rule-summary">{formatRuleSummary(r)}</span>
+                <span className="muted rule-meta">{t(`rules.dimension.${r.dimension_id as typeof DIMENSIONS[number]}`)} · {r.pattern} · {t(`rules.scopeMeta.${r.scope_kind as typeof SCOPES[number]}`)} · {r.pack_id ? t("rules.meta.preset") : ["manual", "user"].includes(r.source) ? t("rules.meta.manual") : r.source === "suggest" ? t("rules.meta.suggest") : r.source}
                   {r.pending ? ` · ${t("rules.meta.pending")}` : ""}{!r.enabled && !r.pending ? ` · ${t("rules.meta.disabled")}` : ""}</span>
                 {stat && <span className="muted rule-stats">{t(stat.hidden_count > 0 ? "rules.stats.withHidden" : "rules.stats.hits", { hits: stat.hits_30d, last: formatPublished(stat.last_hit_at, now) || t("rules.stats.none"), hidden: stat.hidden_count })}</span>}
                 {stat && r.enabled && stat.advice !== "none" && <div className="rule-advice">

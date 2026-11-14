@@ -95,7 +95,7 @@ pub use features::{FeatureChip, extract_features};
 pub use feedback::{FeedbackKind, RateResult, feedback_for_article, rate_article};
 pub use feeds::{
     FeedRow, FolderRow, FolderView, SubscribeRequest, create_folder, delete_folder, display_title,
-    humanize_refresh_error, list_folder_views, list_folders, rename_feed, rename_folder,
+    list_folder_views, list_folders, rename_feed, rename_folder,
     set_folder, subscribe, unsubscribe, update_feed_url,
 };
 pub use ingest::{

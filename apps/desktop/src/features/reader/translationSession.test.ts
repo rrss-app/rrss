@@ -46,6 +46,15 @@ describe("progressive reader session", () => {
     box.api!.handle("translate", () => ({ ...translationReply(reader, snapshot), kind: "started" as const }));
     await controller!.start(); await flush();
   }
+  it("keeps typed proxy failures visible when starting translation", async () => {
+    await setup();
+    box.api!.handle("translate", () => { throw { kind: "configuration", message: "", error: { code: "proxy_url_invalid", detail: "diagnostic canary" } }; });
+    await controller!.start(); await flush();
+    expect(state!.failure).toBe("configuration");
+    expect(state!.issue).toBe(true);
+    expect(state!.note).not.toContain("canary");
+    expect(state!.note.length).toBeGreaterThan(0);
+  });
   it("starts with the latest viewport and bounds continuous hints without queueing passed regions", async () => {
     const hints: TranslationHint[] = [];
     box.api!.handle("translateHint", hint => { hints.push(hint); });

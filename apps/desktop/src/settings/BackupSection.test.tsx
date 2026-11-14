@@ -18,19 +18,18 @@ const harness = createReactHarness();
 
 function page(overrides: Partial<BackupPage> = {}): BackupPage {
   return {
-    last_manual: "上次备份：9 月 20 日 22:40。",
+    last_manual_at: new Date(2026, 8, 20, 22, 40).getTime(),
     schedule: "off",
-    auto_summary: "升级前自动 · 定时关闭",
     entries: [
-      { path: "/data/backups/a.zip", when: "今天 09:12", note: "升级前自动备份 · v14 · 1.21 GB", restorable: true },
-      { path: "/data/backups/broken.zip", when: "9 月 1 日 08:00", note: "无法读取的文件 · 1 KB", restorable: false },
+      { path: "/data/backups/a.zip", created_at: new Date().setHours(9, 12, 0, 0), kind: "upgrade", schema_version: 14, bytes: Math.round(1.21 * 1024 ** 3), secrets_included: false, restorable: true },
+      { path: "/data/backups/broken.zip", created_at: new Date(2026, 8, 1, 8).getTime(), kind: "unreadable", schema_version: 0, bytes: 1024, secrets_included: null, restorable: false },
     ],
     restore_notice: null,
     rules: 64, interests: 12, memories: 37,
     ...overrides,
   };
 }
-const CHECK = { path: "/tmp/b.zip", file_name: "b.zip", taken: "备份于 9 月 20 日 22:40 · 版本 v14", summary: "文章 3 篇 · 订阅 1 个 · 规则 0 条 · 对话 0 个" };
+const CHECK = { path: "/tmp/b.zip", file_name: "b.zip", created_at: new Date(2026, 8, 20, 22, 40).getTime(), schema_version: 14, summary: { code: "backup_restore_summary" as const, params: { count: 3, feeds: 1, rules: 0, threads: 0, secrets_included: false } } };
 
 let client: QueryClient;
 let clock: TestClock;
@@ -81,7 +80,7 @@ describe("backup section", () => {
     const imported: string[] = [];
     box.stub!.handle("prefsImport", (text: string) => {
       imported.push(text);
-      return { summary: "规则 新增 1 条", skipped: ["规则 不喜欢标题「广告」：限定的 https://a/rss 在本机不存在"] };
+      return { summary: [{ code: "prefs_rules" as const, params: { count: 1, duplicates: 0 } }], skipped: ["规则 不喜欢标题「广告」：限定的 https://a/rss 在本机不存在"] };
     });
     const changed = vi.fn();
     const { host } = mount({ onChanged: changed }); await flush();

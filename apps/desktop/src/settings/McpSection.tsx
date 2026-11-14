@@ -1,3 +1,4 @@
+import { probeError, probeHint, probeOutput } from "./mcpRuntime";
 import { useEffect, useId, useRef, useState } from "react";
 import type { McpInput, McpProbeView, McpToolView, McpView } from "../bindings";
 import { useReveal } from "../lib/motion";
@@ -117,7 +118,7 @@ function McpRow({ server: m, writing, probe, login, onEdit, onToggle, onSave }: 
     : needsLogin ? waiting ? { tone: "busy", text: t("mcp.health.waiting") } : { text: t("mcp.health.needsLogin") }
     : busy ? { tone: "busy", text: t("mcp.health.connecting") }
     : result?.ok ? { tone: "ok", text: t("mcp.health.connected", { open: openTools(result.tools, include).size, total: result.tools.length, seconds: seconds(result.elapsed_ms) }) }
-    : result ? { tone: "bad", text: t("mcp.health.failed", { reason: clause(result.error) || t("mcp.health.noConnect") }) }
+    : result ? { tone: "bad", text: t("mcp.health.failed", { reason: clause(probeError(result)) || t("mcp.health.noConnect") }) }
     : { text: oauth ? t("mcp.health.loggedIn") : t("mcp.health.untested") };
 
   const actions = legacy
@@ -171,9 +172,9 @@ export function McpPanel({ id, open, result, include, disabled, onInclude }: {
   return <div className="mcp-reveal" data-state={reveal} id={id}>
     <div className="mcp-reveal-clip">
       {result.ok ? <McpToolList tools={result.tools} include={include} disabled={disabled} onChange={onInclude} />
-        : <div className="mcp-error">
-          <p><strong>{sentence(result.error) || t("mcp.errorFallback")}</strong>{result.hint ? ` ${sentence(result.hint)}` : ""}</p>
-          {result.output && <pre>{result.output}</pre>}
+        : <div className="mcp-error" data-error-code={result.failure?.code}>
+          <p><strong>{sentence(probeError(result)) || t("mcp.errorFallback")}</strong>{probeHint(result) ? ` ${sentence(probeHint(result))}` : ""}</p>
+          {probeOutput(result) && <pre>{probeOutput(result)}</pre>}
         </div>}
     </div>
   </div>;

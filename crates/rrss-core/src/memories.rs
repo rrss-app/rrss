@@ -1,5 +1,6 @@
 //! 可编辑长期记忆。不得静默改过滤。日志 target：`rrss_core::memories`。
 
+use crate::error::rules::MemoryProblem;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
@@ -31,7 +32,9 @@ impl MemoryKind {
             "episode" => Ok(Self::Episode),
             "semantic" => Ok(Self::Semantic),
             "procedural" => Ok(Self::Procedural),
-            other => Err(Error::InvalidMemory(format!("unknown kind {other}"))),
+            other => Err(Error::InvalidMemory(MemoryProblem::KindUnknown {
+                kind: other.into(),
+            })),
         }
     }
 }
@@ -167,7 +170,7 @@ pub fn search_memory_hybrid(
 pub fn update_memory_content(conn: &Connection, id: i64, content: &str) -> Result<()> {
     let content = content.trim();
     if content.is_empty() {
-        return Err(Error::InvalidMemory("empty content".into()));
+        return Err(Error::InvalidMemory(MemoryProblem::ContentMissing));
     }
     let n = conn.execute(
         "UPDATE memories SET content = ?1, embedding = NULL, space_id = NULL WHERE id = ?2",

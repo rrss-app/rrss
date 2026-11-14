@@ -147,7 +147,7 @@ async fn failure_paths_do_not_write_credentials_queries_or_content() {
         tracing::warn!(code = failure.code(), detail = %failure.log_detail(), "complete command failed");
         let shared = crate::scheduler::digest_jobs::Failure {
             reason: "model_error",
-            message: "CANARY_MODEL_BODY".into(),
+            message: "CANARY_MODEL_BODY".to_owned().into(),
         };
         let failure = crate::views::UiError::from(anyhow::Error::new(shared));
         tracing::warn!(code = failure.code(), detail = %failure.log_detail(), "digest command failed");

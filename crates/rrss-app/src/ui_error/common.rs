@@ -1,18 +1,8 @@
 use super::{UiErrorKind, params};
 use rrss_core::Error;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ts_rs::TS)]
-#[serde(rename_all = "snake_case")]
-pub enum LegacyErrorSource {
-    NetworkProxy,
-}
-
 error_codes!(CommonError {
-    LegacyText {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[ts(optional)]
-        source: Option<LegacyErrorSource>,
-    } => "legacy_text",
+    LegacyText {} => "legacy_text",
     Internal => "internal",
     DatabaseBusy => "database_busy",
     Database => "database",

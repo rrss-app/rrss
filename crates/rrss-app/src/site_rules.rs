@@ -80,7 +80,7 @@ fn validate(rule: &db::SiteRule) -> Result<()> {
         if !selector.trim().is_empty() && dom_query::Matcher::new(selector).is_err() {
             return Err(Error::InvalidRule(format!(
                 "{field}的 CSS 选择器无效，请检查语法。"
-            )));
+            ).into()));
         }
     }
     Ok(())

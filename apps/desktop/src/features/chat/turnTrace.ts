@@ -1,12 +1,11 @@
 import { useSyncExternalStore } from "react";
 import type { ChatStepView } from "../../lib/api";
-import { i18n } from "../../i18n";
 
 /** 等待过程里的一步：启动对话引擎、一次工具调用，或两者之间的「思考」。 */
 export type TraceStep = {
   id: string;
   kind: "engine" | "tool" | "think";
-  label: string;
+  tool: string;
   detail: string;
   articleId: number | null;
   /** 外部工具（MCP）的服务显示名与服务里的工具名；其他步骤为空。 */
@@ -108,7 +107,7 @@ export function createTurnStore(now: () => number = Date.now) {
           at,
           pauses: opens ? [...live.pauses, { from: at, to: null }] : live.pauses,
           steps: [...live.steps, {
-            id: event.id || `${kind}-${live.steps.length}`, kind, label: event.label, detail: event.detail,
+            id: event.id || `${kind}-${live.steps.length}`, kind, tool: event.tool, detail: event.detail,
             articleId: event.article_id, server, serverTool, approval: early >= 0 ? live.approvals[early].approval : null,
             startedAt: at, endedAt: null, error: false,
           }],
@@ -120,7 +119,7 @@ export function createTurnStore(now: () => number = Date.now) {
       // 结束按 id 对上；没有 id 的（个别引擎版本）结束最近一个同名、还没结束的。
       let index = -1;
       live.steps.forEach((step, i) => {
-        if (step.endedAt === null && (event.id ? step.id === event.id : step.label === event.label)) index = i;
+        if (step.endedAt === null && (event.id ? step.id === event.id : (step.kind === kind && step.tool === event.tool && step.server === server && step.serverTool === serverTool))) index = i;
       });
       if (index < 0) return;
       const asked = live.asking && live.asking.server === server && live.asking.tool === serverTool;
@@ -193,7 +192,7 @@ export function traceTimeline(turn: Timed, until: number): TraceStep[] {
   const out: TraceStep[] = [];
   const think = (from: number, to: number) => {
     if (to - from >= THINK_MIN_MS) {
-      out.push({ id: `think-${from}`, kind: "think", label: i18n.t("progress.think", { ns: "chat" }), detail: "", articleId: null, server: "", serverTool: "", approval: null, startedAt: from, endedAt: to, error: false });
+      out.push({ id: `think-${from}`, kind: "think", tool: "", detail: "", articleId: null, server: "", serverTool: "", approval: null, startedAt: from, endedAt: to, error: false });
     }
   };
   const segments = waits(turn, until);

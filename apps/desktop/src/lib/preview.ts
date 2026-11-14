@@ -31,7 +31,7 @@ const sample = (
   cluster_size: extra.cluster_size ?? 1,
   cluster_label: extra.cluster_label ?? "",
   cluster_span: extra.cluster_span ?? "",
-  interest_label: extra.interest_label ?? "",
+  interest_reason: extra.interest_reason ?? null,
   noisy: extra.noisy ?? false,
   spot_check: extra.spot_check ?? false,
 });
@@ -83,7 +83,7 @@ export const PREVIEW_FOCUS: FocusPage = {
     sample(3, "sqlite-vec 在桌面端单库里的取舍", "English", hoursAgo(80), {
       summary: "不必上 Qdrant：WAL + FTS5 已经够用到十万级。",
       score: 2,
-      interest_label: " · 本地优先",
+      interest_reason: { code: "legacy_text", params: { text: " · 本地优先", prefix: null } },
     }),
   ],
 };
@@ -97,7 +97,7 @@ export const PREVIEW_FEEDS: FeedTree = {
       indent: 0,
       position: 0,
       feeds: [
-        { id: 1, title: "闲聊广场", url: "https://xianliao.example/index.xml", error: "", noisy: true, folder_id: 1, icon_href: "", retention_days: null, health: "", health_label: "", health_detail: "", position: 0, empty: false },
+        { id: 1, title: "闲聊广场", url: "https://xianliao.example/index.xml", error: null, noisy: true, folder_id: 1, icon_href: "", retention_days: null, health: null, position: 0, empty: false },
       ],
     },
     {
@@ -107,12 +107,12 @@ export const PREVIEW_FEEDS: FeedTree = {
       indent: 0,
       position: 1,
       feeds: [
-        { id: 2, title: "Compiler Notes", url: "https://compiler-notes.example/feed.xml", error: "", noisy: false, folder_id: 2, icon_href: "", retention_days: null, health: "", health_label: "", health_detail: "", position: 0, empty: false },
+        { id: 2, title: "Compiler Notes", url: "https://compiler-notes.example/feed.xml", error: null, noisy: false, folder_id: 2, icon_href: "", retention_days: null, health: null, position: 0, empty: false },
       ],
     },
   ],
   uncategorized: [
-    { id: 3, title: "gadgetwire", url: "http://192.0.2.10:1200/gadgetwire", error: "源暂时不可用（503）", noisy: false, folder_id: 0, icon_href: "", retention_days: null, health: "", health_label: "", health_detail: "", position: 2, empty: false },
+    { id: 3, title: "gadgetwire", url: "http://192.0.2.10:1200/gadgetwire", error: { code: "feed_refresh_http", params: { status: 503 }, detail: "http status 503" }, noisy: false, folder_id: 0, icon_href: "", retention_days: null, health: null, position: 2, empty: false },
   ],
   folder_combo: ["中文", "English"],
 };
@@ -126,7 +126,7 @@ export const PREVIEW_MEMORY: MemoryPage = {
 };
 
 export const PREVIEW_RULES: RulesPage = {
-  rules: [{ id: 1, summary: "标题包含『Rust』时加分 · 全局", polarity: "like", dimension: "标题", dimension_id: "title_kw", pattern: "Rust", scope_label: "全局", scope_kind: "global", scope_id: 0, weight: 10, source: "manual", enabled: true, pending: false, pack_id: "" }],
+  rules: [{ id: 1, summary: { code: "rule_summary", params: { effect: "boost" } }, scope_name: "", polarity: "like", dimension_id: "title_kw", pattern: "Rust", scope_kind: "global", scope_id: 0, weight: 10, source: "manual", enabled: true, pending: false, pack_id: "" }],
   presets: [{ id: "dev-focus", name: "开发关注", description: "Rust 等", rule_count: 3, enabled_count: 0, installed: false }],
   folders: [], feeds: [], hide_threshold: -10,
 };

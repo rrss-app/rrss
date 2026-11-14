@@ -5,14 +5,62 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
+use crate::rank::reasons::{ReasonMessage, ReasonPrefix, StoredReason};
 use crate::rules::{Dimension, Rule, list_enabled_rules};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Reason {
     pub rule_id: i64,
     pub dimension: Dimension,
     pub snippet: String,
     pub weight: i64,
+    // Preserve the model-facing tool's original content-only serialization.
+    #[serde(skip)]
+    pub message: ReasonMessage,
+}
+
+impl<'de> Deserialize<'de> for Reason {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Stored {
+            rule_id: i64,
+            dimension: Dimension,
+            #[serde(default)]
+            snippet: Option<String>,
+            #[serde(default)]
+            weight: Option<i64>,
+            #[serde(flatten)]
+            message: serde_json::Value,
+        }
+        let stored = Stored::deserialize(deserializer)?;
+        let coded = stored.message.get("code").is_some();
+        let weight = if coded {
+            stored
+                .message
+                .get("points")
+                .and_then(serde_json::Value::as_i64)
+                .or(stored.weight)
+        } else {
+            stored.weight
+        }
+        .ok_or_else(|| serde::de::Error::missing_field(if coded { "points" } else { "weight" }))?;
+        let message = ReasonMessage::from_stored(
+            &stored.message,
+            stored.snippet.as_deref().unwrap_or_default(),
+            Some(ReasonPrefix::for_dimension(stored.dimension)),
+        );
+        Ok(Self {
+            rule_id: stored.rule_id,
+            dimension: stored.dimension,
+            snippet: stored
+                .snippet
+                .unwrap_or_else(|| message.content().unwrap_or_default().to_string()),
+            weight,
+            message,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,6 +138,8 @@ pub fn match_rules(compiled: &[CompiledRule], input: &MatchInput<'_>) -> ScoreRe
             reasons.push(Reason {
                 rule_id: item.rule.id,
                 dimension: item.rule.dimension,
+                // Parameters contain the user's rule, not a regex capture of the body/URL.
+                message: ReasonMessage::rule(item.rule.dimension, item.rule.pattern.clone()),
                 snippet,
                 weight: item.signed_weight,
             });
@@ -99,8 +149,34 @@ pub fn match_rules(compiled: &[CompiledRule], input: &MatchInput<'_>) -> ScoreRe
     ScoreResult { score, reasons }
 }
 
+pub(crate) fn stored_reasons_json(result: &ScoreResult) -> String {
+    #[derive(Serialize)]
+    struct StoredRule<'a> {
+        #[serde(flatten)]
+        reason: StoredReason<'a>,
+        rule_id: i64,
+        dimension: Dimension,
+        snippet: &'a str,
+    }
+    let reasons: Vec<_> = result
+        .reasons
+        .iter()
+        .map(|reason| StoredRule {
+            reason: StoredReason {
+                component: "rules",
+                message: &reason.message,
+                points: reason.weight,
+            },
+            rule_id: reason.rule_id,
+            dimension: reason.dimension,
+            snippet: &reason.snippet,
+        })
+        .collect();
+    serde_json::to_string(&reasons).unwrap_or_else(|_| "[]".into())
+}
+
 pub fn write_score(conn: &Connection, article_id: i64, result: &ScoreResult) -> Result<()> {
-    let json = serde_json::to_string(&result.reasons).unwrap_or_else(|_| "[]".into());
+    let json = stored_reasons_json(result);
     conn.execute(
         "UPDATE articles SET score = ?1, reasons_json = ?2 WHERE id = ?3",
         params![result.score, json, article_id],
@@ -416,6 +492,24 @@ mod tests {
         );
         assert_eq!(article.score, 10);
         assert!(!article.reasons_json.as_ref().unwrap().contains("<b>"));
+        let stored: serde_json::Value =
+            serde_json::from_str(article.reasons_json.as_deref().unwrap()).unwrap();
+        for (i, (code, pattern, points)) in [
+            ("rule_author", "Ada Example", -10),
+            ("rule_title_kw", "library", 10),
+            ("rule_url_phrase", "/sponsored/", -10),
+            ("rule_body_phrase", "downtown", 10),
+            ("rule_tag", "City", 10),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert_eq!(stored[i]["component"], "rules");
+            assert_eq!(stored[i]["code"], code);
+            assert_eq!(stored[i]["params"], serde_json::json!({"pattern":pattern}));
+            assert_eq!(stored[i]["points"], points);
+            assert!(stored[i].get("text").is_none());
+        }
     }
 
     #[test]
@@ -438,6 +532,11 @@ mod tests {
             NewRule::manual_global(Polarity::Like, Dimension::BodyRe, r"tokio"),
         )
         .unwrap();
+        insert_rule(
+            &conn,
+            NewRule::manual_global(Polarity::Like, Dimension::UrlRe, r"/posts/(\d+)"),
+        )
+        .unwrap();
         crate::ingest::upsert_entries(
             &conn,
             feed,
@@ -452,10 +551,24 @@ mod tests {
         )
         .unwrap();
         let article = crate::articles::get_article(&conn, 1).unwrap();
-        assert_eq!(article.score, 20);
+        assert_eq!(article.score, 30);
         let reasons = parse_reasons(article.reasons_json.as_deref());
-        assert_eq!(reasons.len(), 2);
+        assert_eq!(reasons.len(), 3);
         assert!(reasons.iter().all(|r| r.weight == 10));
+        let stored: serde_json::Value =
+            serde_json::from_str(article.reasons_json.as_deref().unwrap()).unwrap();
+        for (i, (code, pattern, snippet)) in [
+            ("rule_title_re", r"rust\s+async", "Rust async"),
+            ("rule_body_re", "tokio", "tokio"),
+            ("rule_url_re", r"/posts/(\d+)", "/posts/1"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert_eq!(stored[i]["code"], code);
+            assert_eq!(stored[i]["params"], serde_json::json!({"pattern":pattern}));
+            assert_eq!(reasons[i].snippet, snippet);
+        }
     }
 
     #[test]

@@ -206,12 +206,12 @@ pub fn store_image(
     bytes: &[u8],
 ) -> Result<PathBuf> {
     if !allowed_url(url) {
-        return Err(Error::InvalidUrl(url.into()));
+        return Err(Error::InvalidUrl(crate::url_norm::InvalidUrlReason::Media));
     }
     if bytes.len() > MAX_IMAGE_BYTES {
-        return Err(Error::Http {
-            status: 0,
-            message: format!("image too large: {} bytes", bytes.len()),
+        return Err(Error::MediaTooLarge {
+            bytes: bytes.len() as u64,
+            max_bytes: MAX_IMAGE_BYTES as u64,
         });
     }
     let ext = sniff_image_ext(bytes)
@@ -256,12 +256,12 @@ pub fn store_direct(
     bytes: u64,
 ) -> Result<PathBuf> {
     if !allowed_url(url) {
-        return Err(Error::InvalidUrl(url.into()));
+        return Err(Error::InvalidUrl(crate::url_norm::InvalidUrlReason::Media));
     }
     if !direct_len_allowed(bytes) {
-        return Err(Error::Http {
-            status: 0,
-            message: format!("direct media too large: {bytes} bytes"),
+        return Err(Error::MediaTooLarge {
+            bytes,
+            max_bytes: MAX_DIRECT_BYTES as u64,
         });
     }
     record_cached(conn, data_dir, article_id, url, path, mime, "video", bytes)
@@ -278,7 +278,7 @@ pub fn store_sidecar(
     bytes: u64,
 ) -> Result<PathBuf> {
     if !allowed_url(url) {
-        return Err(Error::InvalidUrl(url.into()));
+        return Err(Error::InvalidUrl(crate::url_norm::InvalidUrlReason::Media));
     }
     record_row(conn, article_id, url, path, mime, "other", bytes)?;
     Ok(path.to_path_buf())

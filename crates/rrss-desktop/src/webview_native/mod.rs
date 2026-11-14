@@ -1,4 +1,5 @@
 //! Native webview handles stay here; policy and persistence stay in rrss-app.
+use rrss_app::{UiError, ui_error::web::WebError};
 use rrss_core::network::WebviewRoute;
 use rrss_core::url_norm::is_http_url;
 use tauri::Manager;
@@ -18,27 +19,29 @@ mod windows;
 use windows as native;
 #[cfg(not(any(target_os = "linux", windows)))]
 mod native {
+    use super::{UiError, WebError};
     // 未实现：其他平台的原生菜单、权限与下载适配。
     pub fn configure(
         _: tauri::webview::PlatformWebview,
         _: &tauri::Webview,
         _: &rrss_core::network::WebviewRoute,
         _: rrss_app::WebViewBounds,
-    ) -> Result<(), String> {
+        _: String,
+    ) -> Result<(), UiError> {
         Ok(())
     }
     pub fn history(_: &tauri::Webview, _: bool) -> tauri::Result<()> {
         Ok(())
     }
     pub fn window_icons(_: &tauri::WebviewWindow) {}
-    pub fn page_title(_: tauri::webview::PlatformWebview) -> Result<Option<String>, String> {
-        Err("原生网页快照未实现".into())
+    pub fn page_title(_: tauri::webview::PlatformWebview) -> Result<Option<String>, UiError> {
+        Err(UiError::from(WebError::SnapshotUnimplemented))
     }
     pub fn snapshot(
         _: tauri::webview::PlatformWebview,
-        send: tokio::sync::oneshot::Sender<Result<Vec<u8>, String>>,
+        send: tokio::sync::oneshot::Sender<Result<Vec<u8>, UiError>>,
     ) {
-        let _ = send.send(Err("原生网页快照未实现".into()));
+        let _ = send.send(Err(UiError::from(WebError::SnapshotUnimplemented)));
     }
 }
 
@@ -48,7 +51,7 @@ pub fn window_icons(window: &tauri::WebviewWindow) {
     native::window_icons(window)
 }
 
-pub async fn page_title(webview: &tauri::Webview) -> Result<Option<String>, String> {
+pub async fn page_title(webview: &tauri::Webview) -> Result<Option<String>, UiError> {
     let (send, receive) = tokio::sync::oneshot::channel();
     webview
         .with_webview(move |handle| {
@@ -58,14 +61,14 @@ pub async fn page_title(webview: &tauri::Webview) -> Result<Option<String>, Stri
     receive.await.map_err(|_| failure())?
 }
 
-pub async fn snapshot_mhtml(webview: &tauri::Webview) -> Result<Vec<u8>, String> {
+pub async fn snapshot_mhtml(webview: &tauri::Webview) -> Result<Vec<u8>, UiError> {
     let (send, receive) = tokio::sync::oneshot::channel();
     webview
         .with_webview(move |handle| native::snapshot(handle, send))
         .map_err(|_| failure())?;
     tokio::time::timeout(std::time::Duration::from_secs(30), receive)
         .await
-        .map_err(|_| "原生网页快照超时".to_string())?
+        .map_err(|_| UiError::from(WebError::SnapshotTimeout))?
         .map_err(|_| failure())?
 }
 
@@ -88,12 +91,19 @@ pub async fn configure(
     webview: &tauri::Webview,
     route: WebviewRoute,
     bounds: rrss_app::WebViewBounds,
-) -> Result<(), String> {
+    native_failure_message: String,
+) -> Result<(), UiError> {
     let target = webview.clone();
     let (send, receive) = tokio::sync::oneshot::channel();
     webview
         .with_webview(move |handle| {
-            let _ = send.send(native::configure(handle, &target, &route, bounds));
+            let _ = send.send(native::configure(
+                handle,
+                &target,
+                &route,
+                bounds,
+                native_failure_message,
+            ));
         })
         .map_err(|_| failure())?;
     // with_webview queues work on the UI thread. Do not navigate until it finishes.
@@ -110,8 +120,8 @@ pub(super) fn emit_escape(app: &tauri::AppHandle, label: &str) {
     );
 }
 
-pub(super) fn failure() -> String {
-    "原网页原生功能配置或操作失败，请重试。".into()
+pub(super) fn failure() -> UiError {
+    WebError::NativeFailed.into()
 }
 
 fn message(app: &tauri::AppHandle, text: impl Into<String>) {
@@ -121,7 +131,7 @@ fn message(app: &tauri::AppHandle, text: impl Into<String>) {
         .show(|_| {});
 }
 
-fn link_result(app: &tauri::AppHandle, url: &tauri::Url, copy: bool) -> Result<(), String> {
+fn link_result(app: &tauri::AppHandle, url: &tauri::Url, copy: bool) -> Result<(), UiError> {
     if copy {
         app.clipboard()
             .write_text(url.as_str())
@@ -133,7 +143,7 @@ fn link_result(app: &tauri::AppHandle, url: &tauri::Url, copy: bool) -> Result<(
     }
 }
 
-pub(super) fn link_action(webview: &tauri::Webview, url: &str, copy: bool) {
+pub(super) fn link_action(webview: &tauri::Webview, url: &str, copy: bool, failure_message: &str) {
     // Native hit-test results are untrusted too. Never forward javascript/file URLs.
     let Ok(url) = tauri::Url::parse(url) else {
         return;
@@ -142,14 +152,14 @@ pub(super) fn link_action(webview: &tauri::Webview, url: &str, copy: bool) {
         return;
     }
     let app = webview.app_handle();
-    if let Err(error) = link_result(app, &url, copy) {
-        message(app, error);
+    if link_result(app, &url, copy).is_err() {
+        message(app, failure_message);
     }
 }
 
 pub async fn dispatch(webview: &tauri::Webview, action: &str) -> Result<(), rrss_app::UiError> {
     if !known_action(action) {
-        return Err(rrss_app::UiError::from("未知的原网页操作。".to_string()));
+        return Err(UiError::from(WebError::ActionUnknown));
     }
     match action {
         "back" | "forward" => native::history(webview, action == "back")
@@ -192,13 +202,13 @@ pub async fn dispatch(webview: &tauri::Webview, action: &str) -> Result<(), rrss
             })
             .await
         }
-        _ => Err(rrss_app::UiError::from("未知的原网页操作。".to_string())),
+        _ => Err(UiError::from(WebError::ActionUnknown)),
     }
 }
 
 /// Windows 和其他平台用逻辑像素 `set_bounds`。
 /// Linux 的子 webview 在 GtkBox 里，`set_bounds` 无效，改为 Overlay 的边距和 size_request。
-pub fn place(webview: &tauri::Webview, bounds: rrss_app::WebViewBounds) -> Result<(), String> {
+pub fn place(webview: &tauri::Webview, bounds: rrss_app::WebViewBounds) -> Result<(), UiError> {
     #[cfg(target_os = "linux")]
     {
         linux::place(webview, bounds)

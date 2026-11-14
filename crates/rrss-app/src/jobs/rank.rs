@@ -39,7 +39,7 @@ impl Batches {
 #[derive(Default)]
 struct Batch {
     ids: std::collections::BTreeSet<i64>,
-    done: std::sync::Arc<std::sync::OnceLock<Result<(), String>>>,
+    done: std::sync::Arc<std::sync::OnceLock<Result<(), crate::UiError>>>,
 }
 
 /// 返回时这些文章已写入排序缓存（或所在批次失败）。
@@ -57,7 +57,7 @@ pub async fn incremental(path: &Path, ids: Vec<i64>) -> anyhow::Result<()> {
     let _turn = batches.turn.lock().await;
     // 前一个轮到的调用者已把本批一起算完。
     if let Some(result) = done.get() {
-        return result.clone().map_err(anyhow::Error::msg);
+        return result.clone().map_err(anyhow::Error::new);
     }
     // 没算过的批次只能是当前待算批次：取批与计算都在持有 turn 时完成。
     let batch = std::mem::take(&mut *batches.pending.lock().unwrap_or_else(|e| e.into_inner()));
@@ -70,7 +70,12 @@ pub async fn incremental(path: &Path, ids: Vec<i64>) -> anyhow::Result<()> {
         store::update(conn, &ids, rrss_core::feeds::now_ms())
     })
     .await;
-    unfinished.finish(result.as_ref().map(|_| ()).map_err(|e| format!("{e:#}")));
+    unfinished.finish(
+        result
+            .as_ref()
+            .map(|_| ())
+            .map_err(crate::UiError::from_anyhow_ref),
+    );
     result.map(|_| ())
 }
 
@@ -81,7 +86,7 @@ struct Unfinished<'a> {
 }
 
 impl Unfinished<'_> {
-    fn finish(mut self, result: Result<(), String>) {
+    fn finish(mut self, result: Result<(), crate::UiError>) {
         if let Some(batch) = self.batch.take() {
             let _ = batch.done.set(result);
         }

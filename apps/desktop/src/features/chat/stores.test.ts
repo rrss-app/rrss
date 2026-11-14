@@ -104,8 +104,20 @@ describe("draft store", () => {
 
 describe("turn store · external tools", () => {
   const mcp = (start: boolean) => ({ kind: "tool", id: "m1", start, tool: "mcp__s1__write_file", server: "filesystem", server_tool: "write_file",
-    label: "使用 filesystem 的 write_file", detail: "", article_id: null, error: false });
+    detail: "", article_id: null, error: false });
 
+
+  it("pairs idless completions by tool id even when two tools share a label", () => {
+    let clock = 0;
+    const turns = createTurnStore(() => clock);
+    turns.begin("t7", 7);
+    const event = (tool: string, start: boolean) => ({ ...mcp(start), id: "", server: "", server_tool: "", tool });
+    turns.step(event("list_feeds", true), 7);
+    turns.step(event("search_articles", true), 7);
+    clock = 500;
+    turns.step(event("list_feeds", false), 7);
+    expect(turns.getLive()!.steps.map(step => [step.tool, step.endedAt])).toEqual([["list_feeds", 500], ["search_articles", null]]);
+  });
   it("records the answer on the step; a denied call ends there and a late end is ignored", () => {
     let clock = 0;
     const turns = createTurnStore(() => clock);

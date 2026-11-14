@@ -1,3 +1,4 @@
+import { formatError } from "../lib/errors";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type PiConfigView } from "../lib/api";
@@ -11,7 +12,7 @@ import { Pending } from "../components/Pending";
 import { Dialog } from "./Dialog";
 import { readGate, useEditReport, useMergedEditState, useSettingsWrite, type SettingsEditState } from "./editState";
 import { generatedConfigOptions, piConfigOptions, piMutationOptions, piQueryOptions, type PiAction, type PiStatus } from "./piQuery";
-import { useTranslation } from "../i18n";
+import { i18n, useTranslation } from "../i18n";
 import { SettingsRows } from "./SettingsRows";
 import type { Ask } from "./SettingsPanel";
 import { NetworkProxyGroup } from "./NetworkProxyGroup";
@@ -235,7 +236,7 @@ function GeneratedConfigDialog({ onAsk, onClose, onEditStateChange }: { onAsk: A
             <p className="notice warn" role="status">{t("advanced.generated.ignored")}{data.ignored.map((key) => <code key={key}>{key}</code>)}</p>
           )}
           <div><strong>{t("advanced.generated.args")}</strong><pre>{[data.program, ...data.args].join(" ")}</pre></div>
-          {data.env.length > 0 && <div><strong>{t("advanced.generated.env")}</strong><pre>{data.env.map(([key, value]) => `${key}=${value}`).join("\n")}</pre></div>}
+          {(data.env.length > 0 || data.proxy_error) && <div><strong>{t("advanced.generated.env")}</strong><pre>{[...data.env.map(([key, value]) => `${key}=${value}`), ...(data.proxy_error ? [i18n.t("pi_proxy_env_failed", { ns: "errors", error: formatError(data.proxy_error) })] : [])].join("\n")}</pre></div>}
           {data.files.map(([path, text]) => <div key={path}><strong>{path}</strong><pre>{text}</pre></div>)}
         </div>
       )}

@@ -126,7 +126,7 @@ pub fn write_files(paths: &WorkspacePaths, files: &[GeneratedFile]) -> Result<()
     static WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _write = WRITES
         .lock()
-        .map_err(|_| anyhow::anyhow!("配置写入锁失效"))?;
+        .map_err(|_| anyhow::Error::new(crate::ui_error::pi::PiUiError::ConfigWriteLock.failure("pi config write lock poisoned")))?;
     for dir in [
         &paths.agent,
         &paths.project,
@@ -191,16 +191,16 @@ pub fn migrate_legacy_skills(data_dir: &Path) -> Result<()> {
     let entries = match std::fs::read_dir(legacy_skills_root(data_dir)) {
         Ok(entries) => Some(entries),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
-        Err(err) => return Err(err).context("读取旧技能目录，保留旧目录"),
+        Err(err) => return Err(err).context("read legacy skill directory; preserve legacy project"),
     };
     if let Some(entries) = entries {
         for entry in entries {
-            let entry = entry.context("读取旧技能目录项，保留旧目录")?;
+            let entry = entry.context("read legacy skill directory entry; preserve legacy project")?;
             let from = entry.path();
             let name = entry
                 .file_name()
                 .into_string()
-                .map_err(|_| anyhow::anyhow!("旧技能名称不是 UTF-8，保留旧目录"))?;
+                .map_err(|_| anyhow::anyhow!("legacy skill name is not UTF-8; preserve legacy project"))?;
             if !entry.file_type()?.is_dir() || name.starts_with('_') {
                 continue;
             }
@@ -208,7 +208,7 @@ pub fn migrate_legacy_skills(data_dir: &Path) -> Result<()> {
                 Ok(meta) if meta.is_file() => {}
                 Ok(_) => continue,
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(err) => return Err(err).context("读取旧技能，保留旧目录"),
+                Err(err) => return Err(err).context("read legacy skill; preserve legacy project"),
             }
             let to = paths.user_skill(&name);
             if !to.join("SKILL.md").try_exists()? {
@@ -217,19 +217,19 @@ pub fn migrate_legacy_skills(data_dir: &Path) -> Result<()> {
                 if staged.try_exists()? {
                     std::fs::remove_dir_all(&staged)?;
                 }
-                copy_dir(&from, &staged).with_context(|| format!("迁移技能 {name}"))?;
+                copy_dir(&from, &staged).with_context(|| format!("migrate skill {name}"))?;
                 if to.try_exists()? {
-                    anyhow::bail!("目标技能目录 {name} 不完整，保留旧目录供检查");
+                    anyhow::bail!("target skill directory {name} incomplete; preserve legacy project");
                 }
                 std::fs::rename(&staged, &to)?;
             }
             if !std::fs::metadata(to.join("SKILL.md"))?.is_file() {
-                anyhow::bail!("技能 {name} 迁移后校验失败，保留旧目录");
+                anyhow::bail!("skill {name} validation after migration failed; preserve legacy project");
             }
         }
     }
     std::fs::remove_dir_all(&legacy_project)
-        .with_context(|| format!("删除 {}", legacy_project.display()))?;
+        .with_context(|| format!("remove {}", legacy_project.display()))?;
     tracing::info!("migrated legacy pi-project skills to pi/user-skills");
     Ok(())
 }

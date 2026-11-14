@@ -1,5 +1,11 @@
 //! 写 SQLite 的动作。无 UI 类型。
 
+use rrss_core::error::{
+    backup::BackupProblem,
+    models::{CompatProblem, ModelChoiceProblem, ProviderProblem},
+    rules::{MemoryProblem, RuleProblem},
+    settings::SettingProblem,
+};
 use rrss_core::ai_store::{AiProvider, NewProvider};
 use rrss_core::articles;
 use rrss_core::backup::{self, BackupKind};
@@ -101,7 +107,7 @@ pub fn save_feed(
             "follow" => None,
             "keep" => Some(0),
             n => Some(n.parse::<i64>().ok().filter(|d| *d > 0).ok_or_else(|| {
-                rrss_core::Error::InvalidRule(format!("保留天数需要是正整数：{n}"))
+                rrss_core::Error::InvalidRule(RuleProblem::RetentionInvalid { value: n.into() })
             })?),
         };
         rrss_core::retention::set_feed_days(&tx, args.id, days)?;
@@ -498,9 +504,7 @@ pub fn memory_as_interest(conn: &Connection, id: i64) -> rrss_core::Result<i64> 
     db::atomic_write(conn, |conn| {
         let memory = memories::get_memory(conn, id)?;
         if !memory.pending() {
-            return Err(rrss_core::Error::InvalidMemory(
-                "这条记忆已确认，请刷新列表后查看，不能重复添加为兴趣".into(),
-            ));
+            return Err(rrss_core::Error::InvalidMemory(MemoryProblem::AlreadyConfirmed));
         }
         memories::confirm_memory(conn, id)?;
         interests::insert_interest(conn, &memory.content, "from_chat")
@@ -559,11 +563,11 @@ pub fn save_ai_settings(
     use rrss_core::error::Error;
     let input = &args.provider;
     if input.name.trim().is_empty() {
-        return Err(Error::InvalidProvider("连接名称不能为空".into()));
+        return Err(Error::InvalidProvider(ProviderProblem::NameMissing));
     }
     crate::capabilities::validate_base_url(&input.base_url)?;
     if !matches!(input.protocol.trim(), "chat" | "responses" | "auto") {
-        return Err(Error::InvalidProvider("不支持的连接协议".into()));
+        return Err(Error::InvalidProvider(ProviderProblem::ProtocolUnsupported));
     }
     let preset = input
         .kind
@@ -573,7 +577,7 @@ pub fn save_ai_settings(
             crate::provider_presets::provider_presets()
                 .into_iter()
                 .find(|preset| preset.id == kind)
-                .ok_or_else(|| Error::InvalidProvider("未知的连接预设".into()))
+                .ok_or_else(|| Error::InvalidProvider(ProviderProblem::PresetUnknown))
         })
         .transpose()?;
     let compat = input
@@ -582,9 +586,9 @@ pub fn save_ai_settings(
         .map(|raw| {
             let raw = if raw.trim().is_empty() { "{}" } else { raw };
             let value: serde_json::Value = serde_json::from_str(raw)
-                .map_err(|_| Error::InvalidCompat("兼容配置必须是 JSON 对象".into()))?;
+                .map_err(|_| Error::InvalidCompat(CompatProblem::ProviderObjectRequired))?;
             if !value.is_object() {
-                return Err(Error::InvalidCompat("兼容配置必须是 JSON 对象".into()));
+                return Err(Error::InvalidCompat(CompatProblem::ProviderObjectRequired));
             }
             Ok(value)
         })
@@ -632,7 +636,7 @@ pub fn save_ai_settings(
         if input.id == 0 {
             if let Some(preset) = preset {
                 let compat = serde_json::from_str(&preset.compat_json)
-                    .map_err(|_| Error::InvalidCompat("预设兼容配置无效".into()))?;
+                    .map_err(|_| Error::InvalidCompat(CompatProblem::PresetInvalid))?;
                 ai_store::set_provider_compat(tx, provider_id, &compat)?;
             }
         }
@@ -652,18 +656,14 @@ fn bind_task(
     model: &str,
 ) -> rrss_core::Result<()> {
     if task == ai_store::TASK_CHAT && pi_store::use_own_config(conn)? {
-        return Err(rrss_core::Error::InvalidProvider(
-            "对话模型由自有 Pi 配置决定".into(),
-        ));
+        return Err(rrss_core::Error::InvalidProvider(ProviderProblem::ChatUsesOwnConfig));
     }
     let model = model.trim();
     if provider_id == 0 && model.is_empty() {
         return ai_store::set_task_binding(conn, task, None, None);
     }
     if provider_id <= 0 || model.is_empty() {
-        return Err(rrss_core::Error::InvalidModelChoice(
-            "请选一个模型，或清空这个用途".into(),
-        ));
+        return Err(rrss_core::Error::InvalidModelChoice(ModelChoiceProblem::SelectionIncomplete));
     }
     rrss_core::model_pool::ensure_selectable(
         conn,
@@ -1053,33 +1053,40 @@ pub fn storage_clean(
     conn: &Connection,
     db_path: &std::path::Path,
     action: &str,
-) -> rrss_core::Result<String> {
+) -> rrss_core::Result<crate::views::StorageMessage> {
+    use crate::views::{StorageAction as A, StorageMessage as M};
     if action == "vacuum" {
         storage::vacuum(conn)?;
-        return Ok("数据库已压缩。".into());
+        return Ok(M::StorageCleaned {
+            action: A::Vacuum,
+            count: 0,
+        });
     }
     if action == "logs" {
         crate::log::current()
             .ok_or_else(|| std::io::Error::other("logging is not initialized"))?
             .clear()?;
-        return Ok("运行日志已清空，之后继续记录。".into());
+        return Ok(M::StorageCleaned {
+            action: A::Logs,
+            count: 0,
+        });
     }
     let what =
         Cleanup::parse(action).ok_or_else(|| rrss_core::Error::UnknownCleanup(action.into()))?;
     let data_dir = db_path.parent().unwrap_or(std::path::Path::new("."));
     let model = ai_store::resolve_embed(conn)?.map(|e| e.model);
-    let n = storage::clean(conn, data_dir, what, model.as_deref())?;
-    let n = crate::queries::storage::fmt_count(n);
-    Ok(match what {
-        Cleanup::AiCache => format!("已清空 AI 缓存（{n} 条）。"),
-        Cleanup::RecommendationLogs => format!("已清空推荐日志（{n} 条）。"),
-        Cleanup::Translations => format!("已清空译文缓存（{n} 篇）。"),
-        Cleanup::Images => format!("已清空配图缓存（{n} 个文件）。"),
-        Cleanup::Videos => format!("已清空音视频缓存（{n} 个文件）。"),
-        Cleanup::UntrackedMedia => format!("已清理 {n} 个未登记文件。"),
-        Cleanup::OldVectors => format!("已清除 {n} 段旧模型向量，之后会按当前模型重新生成。"),
-        Cleanup::LegacyTables => "已删除旧版遗留数据。".into(),
-    })
+    let count = storage::clean(conn, data_dir, what, model.as_deref())?;
+    let action = match what {
+        Cleanup::AiCache => A::AiCache,
+        Cleanup::RecommendationLogs => A::RecommendationLogs,
+        Cleanup::Translations => A::Translations,
+        Cleanup::Images => A::Images,
+        Cleanup::Videos => A::Videos,
+        Cleanup::UntrackedMedia => A::UntrackedMedia,
+        Cleanup::OldVectors => A::OldVectors,
+        Cleanup::LegacyTables => A::LegacyTables,
+    };
+    Ok(M::StorageCleaned { action, count })
 }
 
 /// 写进备份清单的程序版本。
@@ -1107,16 +1114,12 @@ pub fn backup_create(
     )?;
     Ok(BackupDoneView {
         path: dest.display().to_string(),
-        size: crate::queries::fmt_bytes(storage::file_bytes(dest) as i64),
-        summary: format!(
-            "{} · {}",
-            crate::queries::counts_summary(&manifest.counts),
-            if manifest.secrets_included {
-                "包含密钥"
-            } else {
-                "不含密钥，恢复后需重新填写"
-            }
-        ),
+        bytes: storage::file_bytes(dest) as i64,
+        summary: crate::views::BackupMessage::BackupCreated {
+            count: manifest.counts.articles, feeds: manifest.counts.feeds,
+            rules: manifest.counts.rules, threads: manifest.counts.threads,
+            secrets_included: manifest.secrets_included,
+        },
     })
 }
 
@@ -1129,20 +1132,13 @@ pub fn backup_inspect(data_dir: &Path, path: &Path) -> rrss_core::Result<Restore
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default(),
-        taken: format!(
-            "备份于 {} · 版本 v{}",
-            crate::queries::fmt_when(check.manifest.created_at),
-            check.schema_version
-        ),
-        summary: format!(
-            "{} · {}",
-            crate::queries::counts_summary(&check.counts),
-            if check.manifest.secrets_included {
-                "包含密钥"
-            } else {
-                "不含密钥，恢复后需重新填写 API Key 与外部工具变量"
-            }
-        ),
+        created_at: check.manifest.created_at,
+        schema_version: i64::from(check.schema_version),
+        summary: crate::views::BackupMessage::BackupRestoreSummary {
+            count: check.counts.articles, feeds: check.counts.feeds,
+            rules: check.counts.rules, threads: check.counts.threads,
+            secrets_included: check.manifest.secrets_included,
+        },
     })
 }
 
@@ -1175,9 +1171,7 @@ pub fn set_setting(
 
 pub fn set_backup_schedule(conn: &Connection, value: &str) -> rrss_core::Result<()> {
     if !matches!(value, "off" | "daily" | "weekly") {
-        return Err(rrss_core::Error::Backup(format!(
-            "unknown backup schedule: {value}"
-        )));
+        return Err(rrss_core::Error::Backup(BackupProblem::ScheduleUnknown { schedule: value.into() }));
     }
     db::set_setting(conn, crate::queries::SCHEDULE_KEY, value)
 }
@@ -1262,67 +1256,55 @@ pub fn run_retention(
 }
 
 /// 存储页「立即清理」。
-pub fn retention_clean_now(conn: &Connection, data_dir: &Path) -> rrss_core::Result<String> {
-    let (n, backed_up) = run_retention(conn, data_dir, rrss_core::feeds::now_ms(), true)?;
-    Ok(format!(
-        "{}已清理 {} 篇旧文章的正文。可以压缩数据库把空间还给磁盘。",
-        if backed_up {
-            "已先自动备份。"
-        } else {
-            ""
-        },
-        crate::queries::fmt_count(n)
-    ))
+pub fn retention_clean_now(
+    conn: &Connection,
+    data_dir: &Path,
+) -> rrss_core::Result<crate::views::RetentionMessage> {
+    let (count, backed_up) = run_retention(conn, data_dir, rrss_core::feeds::now_ms(), true)?;
+    Ok(crate::views::RetentionMessage::RetentionCleaned { count, backed_up })
 }
 
 /// 只导出偏好（规则、兴趣、记忆），不含密钥。
 pub fn prefs_export(conn: &Connection, parts: prefs::Parts) -> rrss_core::Result<String> {
     let export = prefs::export(conn, parts)?;
-    serde_json::to_string_pretty(&export).map_err(|e| rrss_core::Error::Backup(e.to_string()))
+    serde_json::to_string_pretty(&export)
+        .map_err(|_| rrss_core::Error::Backup(BackupProblem::Serialization))
 }
 
 /// 合并导入偏好；规则变化后重算可见列表。
 pub fn prefs_import(conn: &Connection, text: &str) -> rrss_core::Result<PrefsImportView> {
     let export = prefs::parse(text)?;
     let r = persist_then_rescore(conn, |c| prefs::import(c, &export))?;
+    use crate::views::BackupMessage as M;
     let mut parts = Vec::new();
-    let dup = |n: u32, unit: &str| {
-        if n > 0 {
-            format!("，跳过重复 {n} {unit}")
-        } else {
-            String::new()
-        }
-    };
     if export.rules.is_some() {
-        parts.push(format!(
-            "规则 新增 {} 条{}",
-            r.rules_added,
-            dup(r.rules_duplicate, "条")
-        ));
+        parts.push(M::PrefsRules {
+            count: r.rules_added,
+            duplicates: r.rules_duplicate,
+        });
     }
     if r.packs_added > 0 {
-        parts.push(format!("预设包 新增 {} 个", r.packs_added));
+        parts.push(M::PrefsPacks {
+            count: r.packs_added,
+        });
     }
     if export.interests.is_some() {
-        parts.push(format!(
-            "兴趣 新增 {} 个{}",
-            r.interests_added,
-            dup(r.interests_duplicate, "个")
-        ));
+        parts.push(M::PrefsInterests {
+            count: r.interests_added,
+            duplicates: r.interests_duplicate,
+        });
     }
     if export.memories.is_some() {
-        parts.push(format!(
-            "记忆 新增 {} 条{}",
-            r.memories_added,
-            dup(r.memories_duplicate, "条")
-        ));
+        parts.push(M::PrefsMemories {
+            count: r.memories_added,
+            duplicates: r.memories_duplicate,
+        });
+    }
+    if parts.is_empty() {
+        parts.push(M::PrefsEmpty {});
     }
     Ok(PrefsImportView {
-        summary: if parts.is_empty() {
-            "文件里没有可导入的内容。".into()
-        } else {
-            parts.join(" · ")
-        },
+        summary: parts,
         skipped: r.skipped,
     })
 }
@@ -1337,9 +1319,7 @@ pub fn set_vector_dims(
     db::atomic_write(conn, |conn| {
         let active = spaces::active(conn)?;
         if active.as_ref().is_some_and(|s| s.state == "stale") {
-            return Err(rrss_core::Error::InvalidSetting(
-                "向量库已停写，请先恢复原配置或重建，再改维度。".into(),
-            ));
+            return Err(rrss_core::Error::InvalidSetting(SettingProblem::VectorSpaceStale));
         }
         if spaces::building(conn)?.is_some() {
             return Err(rrss_core::Error::VectorSpaceRebuildInProgress);
@@ -1536,7 +1516,7 @@ mod tests {
         let second = memories::insert_pending_fact(&conn, "local first").unwrap();
         let interest = memory_as_interest(&conn, first).unwrap();
         assert!(!memories::get_memory(&conn, first).unwrap().pending());
-        assert!(memory_as_interest(&conn, first).is_err());
+        assert_eq!(crate::UiError::from(memory_as_interest(&conn, first).unwrap_err()).code(), "memory_already_confirmed");
         let another = memory_as_interest(&conn, second).unwrap();
         assert_ne!(interest, another);
         let count: i64 = conn
@@ -1723,21 +1703,17 @@ mod tests {
         let (dir, conn) = open_temp();
         let dest = dir.path().join("out/manual.zip");
         let done = backup_create(&conn, dir.path(), &dest, false).unwrap();
-        assert!(done.summary.starts_with("文章 0 篇"));
+        assert!(matches!(done.summary, crate::views::BackupMessage::BackupCreated { count: 0, .. }));
         assert!(
             crate::queries::backup_page(&conn, dir.path())
                 .unwrap()
-                .last_manual
-                .starts_with("上次备份：今天")
+                .last_manual_at
+                .is_some()
         );
 
         let check = backup_inspect(dir.path(), &dest).unwrap();
         assert_eq!(check.file_name, "manual.zip");
-        assert!(
-            check
-                .taken
-                .contains(&format!("版本 v{}", db::SCHEMA_VERSION))
-        );
+        assert_eq!(check.schema_version, i64::from(db::SCHEMA_VERSION));
         backup_restore(&conn, dir.path(), &dest).unwrap();
         let entries = backup::list_auto(dir.path());
         assert_eq!(entries.len(), 1);
@@ -1868,9 +1844,9 @@ mod tests {
         );
         set_retention_days(&conn, 90).unwrap();
         let page = crate::queries::retention_page(&conn, now).unwrap();
-        assert_eq!(page.preview, "将清理 205 篇");
-        assert_eq!(page.confirm_ok, "备份并清理");
-        assert!(page.confirm[2].contains("第一次清理"));
+        assert!(matches!(page.preview, Some(crate::views::RetentionMessage::RetentionPreview { count: 205 })));
+        assert!(page.first_run);
+        assert!(matches!(page.confirm[2], crate::views::RetentionMessage::RetentionBackup {}));
 
         let (n, backed_up) = run_retention(&conn, dir.path(), now, false).unwrap();
         assert_eq!((n, backed_up), (rrss_core::retention::BATCH + 5, true));
@@ -1893,10 +1869,7 @@ mod tests {
             "once a day"
         );
         let msg = retention_clean_now(&conn, dir.path()).unwrap();
-        assert_eq!(
-            msg,
-            "已清理 1 篇旧文章的正文。可以压缩数据库把空间还给磁盘。"
-        );
+        assert!(matches!(msg, crate::views::RetentionMessage::RetentionCleaned { count: 1, backed_up: false }));
         assert_eq!(
             backup::list_auto(dir.path()).len(),
             1,
@@ -1904,7 +1877,7 @@ mod tests {
         );
         let page = crate::queries::retention_page(&conn, now).unwrap();
         assert!(!page.can_run);
-        assert_eq!(page.confirm_ok, "清理");
+        assert!(!page.first_run);
     }
 
     #[test]
@@ -1944,15 +1917,14 @@ mod tests {
         )
         .unwrap();
         let a = find_feed(&tree, 1);
-        assert_eq!(a.health, "failing");
-        assert_eq!(a.health_label, "连续失败 12 次 · 9 天");
-        assert!(
-            a.health_detail.contains("还没有成功抓取过"),
-            "{}",
-            a.health_detail
-        );
+        let wire = serde_json::to_value(&a.health).unwrap();
+        assert_eq!(wire["code"], "feed_health_failing");
+        assert_eq!(wire["params"]["fail_count"], 12);
+        assert_eq!(wire["params"]["failing_days"], 9);
+        assert!(wire["params"]["last_success_at"].is_null());
         let b = find_feed(&tree, 2);
-        assert_eq!((b.health.as_str(), b.retention_days), ("", Some(0)));
+        assert!(b.health.is_none());
+        assert_eq!(b.retention_days, Some(0));
         assert!(
             save_feed(
                 &conn,
@@ -1980,7 +1952,7 @@ mod tests {
         assert_eq!(find_feed(&tree, 2).retention_days, Some(30));
 
         let tree = dismiss_feed_health(&conn, 1).unwrap();
-        assert_eq!(find_feed(&tree, 1).health, "");
+        assert!(find_feed(&tree, 1).health.is_none());
         let tree = unsubscribe_many(&conn, &[1, 2]).unwrap();
         assert!(tree.uncategorized.is_empty());
     }
@@ -2005,11 +1977,14 @@ mod tests {
         .unwrap();
         let (_dir2, other) = open_temp();
         let report = prefs_import(&other, &text).unwrap();
-        assert_eq!(report.summary, "规则 新增 1 条 · 兴趣 新增 1 个");
+        assert_eq!(
+            serde_json::to_value(report.summary).unwrap(),
+            serde_json::json!([{ "code": "prefs_rules", "params": { "count": 1, "duplicates": 0 } }, { "code": "prefs_interests", "params": { "count": 1, "duplicates": 0 } }])
+        );
         let again = prefs_import(&other, &text).unwrap();
         assert_eq!(
-            again.summary,
-            "规则 新增 0 条，跳过重复 1 条 · 兴趣 新增 0 个，跳过重复 1 个"
+            serde_json::to_value(again.summary).unwrap(),
+            serde_json::json!([{ "code": "prefs_rules", "params": { "count": 0, "duplicates": 1 } }, { "code": "prefs_interests", "params": { "count": 0, "duplicates": 1 } }])
         );
         assert!(prefs_import(&other, "not json").is_err());
     }
@@ -2024,16 +1999,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            storage_clean(&conn, &path, "ai_cache").unwrap(),
-            "已清空 AI 缓存（1 条）。"
+            serde_json::to_value(storage_clean(&conn, &path, "ai_cache").unwrap()).unwrap(),
+            serde_json::json!({ "code": "storage_cleaned", "params": { "action": "ai_cache", "count": 1 } })
         );
         assert_eq!(
-            storage_clean(&conn, &path, "recommendation_logs").unwrap(),
-            "已清空推荐日志（0 条）。"
+            serde_json::to_value(storage_clean(&conn, &path, "recommendation_logs").unwrap())
+                .unwrap(),
+            serde_json::json!({ "code": "storage_cleaned", "params": { "action": "recommendation_logs", "count": 0 } })
         );
         assert_eq!(
-            storage_clean(&conn, &path, "vacuum").unwrap(),
-            "数据库已压缩。"
+            serde_json::to_value(storage_clean(&conn, &path, "vacuum").unwrap()).unwrap(),
+            serde_json::json!({ "code": "storage_cleaned", "params": { "action": "vacuum", "count": 0 } })
         );
         assert!(matches!(
             storage_clean(&conn, &path, "drop_everything"),
@@ -2234,7 +2210,9 @@ mod tests {
             input(ai_store::TASK_CHAT, "text-embedding-3-small"),
         ])
         .unwrap_err();
-        assert!(err.to_string().contains("用于对话"), "{err}");
+        let error = crate::UiError::from(err);
+        assert_eq!(error.code(), "model_chat_disabled");
+        assert_eq!(serde_json::to_value(error).unwrap()["params"], serde_json::json!({"model":"text-embedding-3-small"}));
         assert!(ai_store::resolve_task(&conn, ai_store::TASK_FOCUS_SUMMARY).is_err());
         save(vec![input(ai_store::TASK_ARTICLE_TRANSLATE, "")]).unwrap();
         assert!(ai_store::resolve_task(&conn, ai_store::TASK_ARTICLE_TRANSLATE).is_err());

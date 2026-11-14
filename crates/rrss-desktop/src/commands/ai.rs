@@ -35,20 +35,8 @@ pub async fn probe_pool_model(
     .map_err(UiError::from)
 }
 
-#[tauri::command]
-pub async fn save_model_bindings(
-    state: State<'_, AppState>,
-    args: SaveModelBindingsArgs,
-) -> Result<ModelBindingsView, ModelBindingError> {
-    rrss_app::execution::with_db(state.db_path.clone(), move |conn| {
-        Ok(rrss_app::actions::save_model_bindings(conn, &args).map_err(ModelBindingError::from))
-    })
-    .await
-    .map_err(|error| ModelBindingError {
-        kind: "other".into(),
-        message: error.to_string(),
-    })?
-}
+db_task!(save_model_bindings(args: SaveModelBindingsArgs) -> ModelBindingsView =>
+    |conn| rrss_app::actions::save_model_bindings(conn, &args));
 
 db_task!(ai_page(selected_id: i64) -> AiPage => |conn| queries::ai_page(conn, selected_id));
 

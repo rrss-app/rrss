@@ -10,6 +10,9 @@ pub struct UiError {
     #[serde(flatten)]
     pub kind: UiErrorKind,
     pub detail: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cause: Option<Box<UiError>>,
     // Preserve the typed error's safe log projection separately from legacy UI text.
     #[serde(skip)]
     #[ts(skip)]
@@ -26,7 +29,14 @@ pub enum UiErrorKind {
     Models(crate::ui_error::models::ModelError),
     Chat(crate::ui_error::chat::ChatUiError),
     Reader(crate::ui_error::reader::ReaderError),
+    Web(crate::ui_error::web::WebError),
+    Host(crate::ui_error::host::HostError),
     Network(crate::ui_error::network::NetworkError),
+    Settings(crate::ui_error::settings::SettingError),
+    Backup(crate::ui_error::backup::BackupError),
+    Pi(crate::ui_error::pi::PiUiError),
+    Mcp(crate::ui_error::mcp::McpUiError),
+    Jobs(crate::ui_error::jobs::JobsUiError),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
@@ -56,7 +66,9 @@ pub struct ArticleView {
     pub cluster_size: i64,
     pub cluster_label: String,
     pub cluster_span: String,
-    pub interest_label: String,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub interest_reason: Option<crate::reasons::ReasonMessage>,
     #[serde(default)]
     #[ts(optional)]
     pub rank_reasons: Option<Vec<RankReasonView>>,
@@ -138,7 +150,8 @@ pub struct RelatedArticleView {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct RankReasonView {
-    pub text: String,
+    #[serde(flatten)]
+    pub message: crate::reasons::ReasonMessage,
     // 这条原因折合的整数分，正为加分。
     pub points: i64,
 }
@@ -149,16 +162,13 @@ pub struct FeedView {
     pub title: String,
     pub icon_href: String,
     pub url: String,
-    pub error: String,
+    pub error: Option<UiError>,
     pub noisy: bool,
     pub folder_id: i64,
     // 保留天数：null 跟随全局，0 永久保留。
     pub retention_days: Option<i64>,
-    // 源健康：failing / stale / noisy，空串表示没有提示（或已忽略）。
-    pub health: String,
-    pub health_label: String,
-    // 展开后显示的详情，多行。
-    pub health_detail: String,
+    // 源健康：码与原始参数；null 表示没有提示（或已忽略）。
+    pub health: Option<crate::ui_error::feeds::FeedHealthNotice>,
     // 与同级文件夹共用的顺序。
     pub position: i64,
     // 手动收录源还没有任何文章；订阅树据此隐藏它。其他源恒为 false。
@@ -230,7 +240,8 @@ pub struct ReasonView {
     pub dimension: String,
     pub snippet: String,
     pub weight: i64,
-    pub label: String,
+    #[serde(flatten)]
+    pub message: crate::reasons::ReasonMessage,
 }
 
 impl From<rrss_core::score::Reason> for ReasonView {
@@ -238,7 +249,7 @@ impl From<rrss_core::score::Reason> for ReasonView {
         Self {
             rule_id: reason.rule_id,
             dimension: reason.dimension.as_str().into(),
-            label: format!("{}：{}", reason.dimension.label_zh(), reason.snippet),
+            message: reason.message.into(),
             snippet: reason.snippet,
             weight: reason.weight,
         }
@@ -260,7 +271,8 @@ pub struct HiddenArticleView {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct HiddenRuleCount {
     pub rule_id: i64,
-    pub label: String,
+    #[serde(flatten)]
+    pub message: crate::reasons::ReasonMessage,
     pub count: i64,
 }
 
@@ -298,18 +310,32 @@ pub struct RuleStatsPage {
 pub struct FeatureView {
     pub dimension: String,
     pub pattern: String,
-    pub label: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum RuleEffect {
+    Boost,
+    Hide,
+    Lower,
+    None,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "code", content = "params", rename_all = "snake_case")]
+pub enum RuleSummaryView {
+    RuleSummary { effect: RuleEffect },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct RuleView {
     pub id: i64,
     pub polarity: String,
-    pub dimension: String,
     pub dimension_id: String,
     pub pattern: String,
-    pub summary: String,
-    pub scope_label: String,
+    pub summary: RuleSummaryView,
+    // Current source or folder name is content data.
+    pub scope_name: String,
     pub scope_kind: String,
     pub scope_id: i64,
     pub weight: i64,
@@ -332,6 +358,7 @@ pub struct PresetView {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct ScopeOption {
     pub id: i64,
+    // Current source or folder name is content data.
     pub label: String,
 }
 
@@ -615,6 +642,9 @@ pub struct TranslationReply {
 pub struct TranslationCommandError {
     pub kind: TranslationFailure,
     pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub error: Option<UiError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -729,7 +759,7 @@ pub struct ChatStreamEvent {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct ChatErrorEvent {
     pub thread_id: i64,
-    pub message: String,
+    pub message: UiError,
     // not_installed / version / config / model / process_exit / busy / internal，文案见阶段 19。
     #[serde(default)]
     pub kind: String,
@@ -761,8 +791,7 @@ pub struct ChatStepView {
     pub tool: String,
     pub server: String,
     pub server_tool: String,
-    // 一行文案，如「查阅本地文章」「启动对话引擎」。
-    pub label: String,
+    // Step labels are resolved from kind and tool in the frontend.
     // 参数摘要：检索词加引号、文章标题加书名号、网址取站点与路径；没有为空。
     pub detail: String,
     // 这一步读的是本地文章时的 id。
@@ -992,6 +1021,15 @@ pub struct McpToolView {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct McpProbeView {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub failure: Option<UiError>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub hint_code: Option<crate::ui_error::mcp::McpProbeHint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub output_omitted: Option<bool>,
     pub ok: bool,
     pub elapsed_ms: i64,
     pub tools: Vec<McpToolView>,
@@ -1002,6 +1040,9 @@ pub struct McpProbeView {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct McpLoginResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub error: Option<UiError>,
     pub ok: bool,
     pub message: String,
 }
@@ -1726,12 +1767,10 @@ pub enum SettingKind {
     Json,
 }
 
-// 枚举项的标签与说明由后端给出（输入档位的说明带着 rrss-core 的数值）。
+// Only option ids cross IPC; labels and hints belong to the frontend registry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct SettingOption {
     pub id: String,
-    pub label: String,
-    pub hint: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1760,12 +1799,183 @@ pub struct SettingsSchema {
     pub values: Vec<SettingValue>,
 }
 
-// 存储页。大小、条数和确认文案都在这里生成；`bytes` 只给前端画比例条。
+// Storage labels use ids. Messages carry raw counts and byte sizes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum StorageGroupKind {
+    Database,
+    Media,
+    Engine,
+    Backups,
+    Logs,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum StorageItemKind {
+    Articles,
+    SearchIndex,
+    Vectors,
+    AiCache,
+    Translations,
+    RecommendationLogs,
+    Other,
+    Legacy,
+    Free,
+    Images,
+    Videos,
+    MediaOther,
+    UntrackedMedia,
+    PiProgram,
+    PiSessions,
+    AutoBackups,
+    Logs,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum StorageAction {
+    OldVectors,
+    AiCache,
+    Translations,
+    RecommendationLogs,
+    LegacyTables,
+    Vacuum,
+    Images,
+    Videos,
+    UntrackedMedia,
+    Logs,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum StoragePassive {
+    FollowsArticles,
+    ManageElsewhere,
+    ManageBackups,
+    None,
+    OtherLogInstance,
+    LogUnavailable,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "code", content = "params", rename_all = "snake_case")]
+pub enum StorageMessage {
+    // Compatibility for an explicitly preserved display projection.
+    LegacyText {
+        text: String,
+    },
+    StorageSummary {
+        database_bytes: i64,
+        media_bytes: i64,
+        engine_bytes: i64,
+        backup_bytes: i64,
+        log_bytes: i64,
+    },
+    StorageArticles {
+        count: i64,
+    },
+    StorageSearchIndex {},
+    StorageVectorsUnset {
+        count: i64,
+    },
+    StorageVectorsOther {
+        count: i64,
+        old_count: i64,
+    },
+    StorageVectorsCurrent {
+        count: i64,
+    },
+    StorageOldVectorsConfirm {
+        count: i64,
+    },
+    StorageOldVectorsWarning {},
+    StorageAiCache {
+        count: i64,
+    },
+    StorageAiCacheConfirm {
+        count: i64,
+    },
+    StorageAiCacheWarning {},
+    StorageTranslations {
+        count: i64,
+    },
+    StorageTranslationsConfirm {
+        count: i64,
+    },
+    StorageTranslationsWarning {},
+    StorageRecommendationLogs {
+        count: i64,
+    },
+    StorageRecommendationLogsConfirm {
+        count: i64,
+    },
+    StorageRecommendationLogsWarning {},
+    StorageOther {
+        chat_bytes: i64,
+        threads: i64,
+        other_bytes: i64,
+        digest_bytes: i64,
+        periods: i64,
+    },
+    StorageLegacy {},
+    StorageLegacyConfirm {},
+    StorageLegacyWarning {},
+    StorageFree {
+        required_bytes: i64,
+        available_bytes: Option<i64>,
+    },
+    StorageVacuumConfirm {
+        bytes: i64,
+    },
+    StorageVacuumSpace {
+        required_bytes: i64,
+        available_bytes: Option<i64>,
+    },
+    StorageVacuumWait {},
+    StorageWal {
+        bytes: i64,
+    },
+    StorageImages {},
+    StorageImagesConfirm {
+        bytes: i64,
+    },
+    StorageImagesWarning {},
+    StorageVideos {},
+    StorageVideosConfirm {
+        bytes: i64,
+    },
+    StorageVideosWarning {},
+    StorageMediaOther {},
+    StorageUntracked {
+        count: i64,
+    },
+    StorageUntrackedConfirm {
+        count: i64,
+        bytes: i64,
+    },
+    StorageUntrackedWarning {},
+    StoragePiProgram {},
+    StoragePiSessions {},
+    StorageAutoBackups {
+        count: i64,
+        keep: i64,
+    },
+    StorageLogs {},
+    StorageLogsConfirm {},
+    StorageLogsWarning {},
+    StorageLogsLocation {},
+    StorageCleaned {
+        action: StorageAction,
+        count: i64,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct StoragePage {
     pub data_dir: String,
-    pub total: String,
-    pub summary: String,
+    pub total_bytes: Option<i64>,
+    pub summary: Option<StorageMessage>,
     pub groups: Vec<StorageGroupView>,
     // 统计时间（Unix 毫秒）。
     pub scanned_at: i64,
@@ -1773,28 +1983,39 @@ pub struct StoragePage {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct StorageGroupView {
-    pub key: String,
-    pub label: String,
-    pub size: String,
-    pub note: String,
+    pub kind: StorageGroupKind,
+    pub bytes: i64,
+    pub note: Option<StorageMessage>,
     pub items: Vec<StorageItemView>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct StorageItemView {
-    pub key: String,
-    pub label: String,
-    pub hint: String,
+    pub kind: StorageItemKind,
+    pub hint: StorageMessage,
     pub bytes: i64,
-    pub size: String,
+    // Content names and internal table ids, never diagnostic parameters.
+    pub model: String,
+    pub tables: Vec<String>,
     // 空闲空间：比例条用斜纹表示可回收。
     pub free: bool,
-    // 传给 `storage_clean` 的动作名；为空表示没有操作，显示 `passive`。
-    pub action: String,
-    pub action_label: String,
-    pub passive: String,
-    pub confirm_title: String,
-    pub confirm: Vec<String>,
+    // None means no cleanup action; the frontend can display a passive label.
+    pub action: Option<StorageAction>,
+    pub passive: Option<StoragePassive>,
+    pub confirm: Vec<StorageMessage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "code", content = "params", rename_all = "snake_case")]
+pub enum RetentionMessage {
+    RetentionPreview { count: i64 },
+    RetentionPreviewEmpty {},
+    RetentionPreviewHint { bytes: i64, first: bool },
+    RetentionDaily {},
+    RetentionConfirm { count: i64, days: i64 },
+    RetentionPreserve {},
+    RetentionBackup {},
+    RetentionCleaned { count: i64, backed_up: bool },
 }
 
 // 存储页「保留策略」分组。
@@ -1806,22 +2027,65 @@ pub struct RetentionPage {
     pub default_days: i64,
     // 单独设过保留的源个数。
     pub custom_feeds: i64,
-    pub preview: String,
-    pub preview_hint: String,
+    pub preview: Option<RetentionMessage>,
+    pub preview_hint: Option<RetentionMessage>,
     pub can_run: bool,
-    pub confirm_title: String,
-    pub confirm: Vec<String>,
-    pub confirm_ok: String,
+    pub first_run: bool,
+    pub confirm: Vec<RetentionMessage>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum BackupEntryKind {
+    Manual,
+    Upgrade,
+    Scheduled,
+    BeforeRestore,
+    BeforePrune,
+    Unreadable,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "code", content = "params", rename_all = "snake_case")]
+pub enum BackupMessage {
+    BackupCreated {
+        count: i64,
+        feeds: i64,
+        rules: i64,
+        threads: i64,
+        secrets_included: bool,
+    },
+    BackupRestoreSummary {
+        count: i64,
+        feeds: i64,
+        rules: i64,
+        threads: i64,
+        secrets_included: bool,
+    },
+    PrefsRules {
+        count: u32,
+        duplicates: u32,
+    },
+    PrefsPacks {
+        count: u32,
+    },
+    PrefsInterests {
+        count: u32,
+        duplicates: u32,
+    },
+    PrefsMemories {
+        count: u32,
+        duplicates: u32,
+    },
+    PrefsEmpty {},
 }
 
 // 存储页「备份与恢复」分组。与占用统计分开读取，打开页面不必等扫库。
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct BackupPage {
-    // 「上次备份：…」或还没有手动备份时的说明。
-    pub last_manual: String,
+    pub last_manual_at: Option<i64>,
     // off / daily / weekly
     pub schedule: String,
-    pub auto_summary: String,
     pub entries: Vec<BackupEntryView>,
     // 上次启动时执行恢复的结果；用户关掉后清除。
     pub restore_notice: Option<RestoreNoticeView>,
@@ -1833,8 +2097,11 @@ pub struct BackupPage {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct BackupEntryView {
     pub path: String,
-    pub when: String,
-    pub note: String,
+    pub created_at: i64,
+    pub kind: BackupEntryKind,
+    pub schema_version: i64,
+    pub bytes: i64,
+    pub secrets_included: Option<bool>,
     // 读不出清单的文件只列出，不能恢复。
     pub restorable: bool,
 }
@@ -1848,22 +2115,23 @@ pub struct RestoreNoticeView {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct BackupDoneView {
     pub path: String,
-    pub size: String,
-    pub summary: String,
+    pub bytes: i64,
+    pub summary: BackupMessage,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct RestoreCheckView {
     pub path: String,
     pub file_name: String,
-    // 「备份于 9 月 20 日 22:40 · 版本 v14」
-    pub taken: String,
-    pub summary: String,
+    pub created_at: i64,
+    pub schema_version: i64,
+    pub summary: BackupMessage,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct PrefsImportView {
-    pub summary: String,
+    pub summary: Vec<BackupMessage>,
+    // Import rejection details belong to the validation/error migration.
     pub skipped: Vec<String>,
 }
 
@@ -2048,11 +2316,11 @@ pub struct PiProbe {
     // 版本闸结论：missing / too_old / unverified / ok（阶段 18 版本闸）。
     pub version_state: String,
     // 按当前配置启动会遇到的配置错误（如没有对话模型）；为空表示可以启动。
-    pub config_error: String,
+    pub config_error: Option<UiError>,
 }
 
 /// 托管 Pi 的下载 / 安装进度。下载在后台进行，离开设置页不中断；完成或失败后保留最后一次结果。
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 pub struct PiInstallView {
     /// idle / downloading / installing / done / failed。
     pub state: String,
@@ -2064,6 +2332,9 @@ pub struct PiInstallView {
     pub message: String,
     /// 托管 Pi 的安装目录，只供展示。
     pub dir: String,
+    #[serde(default)]
+    #[ts(optional)]
+    pub error: Option<UiError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -2108,12 +2379,12 @@ pub fn article_from_card(card: rrss_core::ArticleCard) -> ArticleView {
         cluster_size: card.cluster_size,
         cluster_label: card.cluster_label,
         cluster_span: card.cluster_span,
-        interest_label: card.interest_label,
+        interest_reason: card.interest_reason.map(Into::into),
         rank_reasons: Some(
             card.rank_reasons
                 .into_iter()
                 .map(|reason| RankReasonView {
-                    text: reason.text,
+                    message: reason.message.into(),
                     points: reason.points,
                 })
                 .collect(),
@@ -2353,25 +2624,6 @@ pub struct VectorSpaceStatusView {
     pub estimate_tokens: i64,
     pub local: bool,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct ModelBindingError {
-    pub kind: String,
-    pub message: String,
-}
-impl From<rrss_core::Error> for ModelBindingError {
-    fn from(error: rrss_core::Error) -> Self {
-        let kind = match &error {
-            rrss_core::Error::VectorSpaceRebuildRequired { .. } => "vector_space_rebuild_required",
-            rrss_core::Error::VectorSpaceRebuildInProgress => "vector_space_rebuild_in_progress",
-            _ => "other",
-        };
-        Self {
-            kind: kind.into(),
-            message: error.to_string(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 pub enum WebLinkLayer {
     UserRule,
@@ -2493,7 +2745,7 @@ pub enum WebVerifyState {
     NotExtracted,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS)]
 pub struct WebVerifyStateEvent {
     pub label: String,
     pub state: WebVerifyState,
@@ -2503,6 +2755,9 @@ pub struct WebVerifyStateEvent {
     pub text_chars: Option<i64>,
     pub image_count: Option<i64>,
     pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub error: Option<UiError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

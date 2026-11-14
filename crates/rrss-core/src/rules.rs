@@ -1,5 +1,6 @@
 //! 规则 CRUD。日志 target：`rrss_core::rules`。
 
+use crate::error::rules::RuleProblem;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +28,9 @@ impl Polarity {
         match value {
             "like" => Ok(Self::Like),
             "dislike" => Ok(Self::Dislike),
-            other => Err(Error::InvalidRule(format!("unknown polarity {other}"))),
+            other => Err(Error::InvalidRule(RuleProblem::PolarityUnknown {
+                value: other.into(),
+            })),
         }
     }
 
@@ -76,7 +79,9 @@ impl Dimension {
             "url_re" => Ok(Self::UrlRe),
             "body_phrase" => Ok(Self::BodyPhrase),
             "body_re" => Ok(Self::BodyRe),
-            other => Err(Error::InvalidRule(format!("unknown dimension {other}"))),
+            other => Err(Error::InvalidRule(RuleProblem::DimensionUnknown {
+                value: other.into(),
+            })),
         }
     }
 
@@ -120,7 +125,9 @@ impl ScopeKind {
             "global" => Ok(Self::Global),
             "folder" => Ok(Self::Folder),
             "feed" => Ok(Self::Feed),
-            other => Err(Error::InvalidRule(format!("unknown scope {other}"))),
+            other => Err(Error::InvalidRule(RuleProblem::ScopeUnknown {
+                value: other.into(),
+            })),
         }
     }
 }
@@ -144,7 +151,9 @@ impl RuleSource {
         match value {
             "manual" => Ok(Self::Manual),
             "suggested" => Ok(Self::Suggested),
-            other => Err(Error::InvalidRule(format!("unknown source {other}"))),
+            other => Err(Error::InvalidRule(RuleProblem::SourceUnknown {
+                value: other.into(),
+            })),
         }
     }
 }
@@ -216,13 +225,13 @@ pub enum RuleAction {
 pub fn validate_pattern(dimension: Dimension, pattern: &str) -> Result<()> {
     let pattern = pattern.trim();
     if pattern.is_empty() {
-        return Err(Error::InvalidRule("empty pattern".into()));
+        return Err(Error::InvalidRule(RuleProblem::PatternMissing));
     }
     if dimension.is_regex() {
         regex::RegexBuilder::new(pattern)
             .case_insensitive(true)
             .build()
-            .map_err(|err| Error::InvalidRule(format!("invalid regex: {err}")))?;
+            .map_err(|err| Error::InvalidRule(RuleProblem::RegexInvalid { source: err }))?;
     }
     Ok(())
 }
@@ -235,14 +244,13 @@ fn resolve_scope(
     match scope_kind {
         ScopeKind::Global => Ok(None),
         ScopeKind::Feed => {
-            let id =
-                scope_id.ok_or_else(|| Error::InvalidRule("feed scope needs scope_id".into()))?;
+            let id = scope_id.ok_or_else(|| Error::InvalidRule(RuleProblem::FeedScopeIdMissing))?;
             crate::feeds::get_feed(conn, id)?;
             Ok(Some(id))
         }
         ScopeKind::Folder => {
             let id =
-                scope_id.ok_or_else(|| Error::InvalidRule("folder scope needs scope_id".into()))?;
+                scope_id.ok_or_else(|| Error::InvalidRule(RuleProblem::FolderScopeIdMissing))?;
             let exists: i64 =
                 conn.query_row("SELECT COUNT(*) FROM folders WHERE id = ?1", [id], |row| {
                     row.get(0)

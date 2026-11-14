@@ -6,6 +6,18 @@ use mailparse::{MailHeader, MailHeaderMap};
 use url::Url;
 
 pub const MAX_SNAPSHOT_BYTES: usize = 30 * 1024 * 1024;
+pub(crate) const WEB_SNAPSHOT_TOO_LARGE: &str = "快照超过 30 MiB 上限";
+pub(crate) const WEB_SNAPSHOT_MIME_LIMIT: &str = "快照 MIME 层数或部分数量超限";
+pub(crate) const WEB_SNAPSHOT_HEADERS_INVALID: &str = "快照 MIME 头损坏";
+pub(crate) const WEB_SNAPSHOT_CONTENT_TYPE_MISSING: &str = "快照缺少 Content-Type";
+pub(crate) const WEB_SNAPSHOT_BOUNDARY_MISSING: &str = "快照缺少 MIME boundary";
+pub(crate) const WEB_SNAPSHOT_BOUNDARY_INVALID: &str = "快照 MIME boundary 损坏";
+pub(crate) const WEB_SNAPSHOT_INCOMPLETE: &str = "快照 MIME 未完整结束";
+pub(crate) const WEB_SNAPSHOT_BASE64_INVALID: &str = "快照 base64 损坏";
+pub(crate) const WEB_SNAPSHOT_QUOTED_PRINTABLE_INVALID: &str = "快照 quoted-printable 损坏";
+pub(crate) const WEB_SNAPSHOT_ENCODING_UNSUPPORTED: &str = "快照使用了不支持的传输编码";
+pub(crate) const WEB_SNAPSHOT_HTML_MISSING: &str = "快照中没有 HTML 正文";
+
 const MAX_IMAGES: usize = 200;
 
 #[derive(Debug)]
@@ -31,12 +43,13 @@ struct Part<'a> {
 // recursive tree has no depth limit and accepts truncated multipart bodies.
 fn parts<'a>(raw: &'a [u8], depth: usize, out: &mut Vec<Part<'a>>) -> Result<(), String> {
     if depth > 8 || out.len() >= 1024 {
-        return Err("快照 MIME 层数或部分数量超限".into());
+        return Err(WEB_SNAPSHOT_MIME_LIMIT.into());
     }
-    let (headers, offset) = mailparse::parse_headers(raw).map_err(|_| "快照 MIME 头损坏")?;
+    let (headers, offset) =
+        mailparse::parse_headers(raw).map_err(|_| WEB_SNAPSHOT_HEADERS_INVALID)?;
     let content_type = headers
         .get_first_value("Content-Type")
-        .ok_or("快照缺少 Content-Type")?;
+        .ok_or(WEB_SNAPSHOT_CONTENT_TYPE_MISSING)?;
     let content_type = mailparse::parse_content_type(&content_type);
     if !content_type.mimetype.starts_with("multipart/") {
         out.push(Part {
@@ -48,9 +61,9 @@ fn parts<'a>(raw: &'a [u8], depth: usize, out: &mut Vec<Part<'a>>) -> Result<(),
     let boundary = content_type
         .params
         .get("boundary")
-        .ok_or("快照缺少 MIME boundary")?;
+        .ok_or(WEB_SNAPSHOT_BOUNDARY_MISSING)?;
     if boundary.is_empty() || boundary.len() > 200 || boundary.contains(['\r', '\n']) {
-        return Err("快照 MIME boundary 损坏".into());
+        return Err(WEB_SNAPSHOT_BOUNDARY_INVALID.into());
     }
     let marker = format!("--{boundary}");
     let end = format!("{marker}--");
@@ -74,7 +87,7 @@ fn parts<'a>(raw: &'a [u8], depth: usize, out: &mut Vec<Part<'a>>) -> Result<(),
         }
         cursor += line.len();
     }
-    Err("快照 MIME 未完整结束".into())
+    Err(WEB_SNAPSHOT_INCOMPLETE.into())
 }
 
 fn decode(part: &Part<'_>) -> Result<Vec<u8>, String> {
@@ -93,19 +106,19 @@ fn decode(part: &Part<'_>) -> Result<Vec<u8>, String> {
                     .filter(|b| !b.is_ascii_whitespace())
                     .collect::<Vec<_>>(),
             )
-            .map_err(|_| "快照 base64 损坏".into()),
+            .map_err(|_| WEB_SNAPSHOT_BASE64_INVALID.into()),
         "quoted-printable" => {
             quoted_printable::decode(part.body, quoted_printable::ParseMode::Robust)
-                .map_err(|_| "快照 quoted-printable 损坏".into())
+                .map_err(|_| WEB_SNAPSHOT_QUOTED_PRINTABLE_INVALID.into())
         }
         "" | "7bit" | "8bit" | "binary" => Ok(part.body.to_vec()),
-        _ => Err("快照使用了不支持的传输编码".into()),
+        _ => Err(WEB_SNAPSHOT_ENCODING_UNSUPPORTED.into()),
     }
 }
 
 pub fn parse_mhtml(raw: &[u8], page: &Url) -> Result<Snapshot, String> {
     if raw.len() > MAX_SNAPSHOT_BYTES {
-        return Err("快照超过 30 MiB 上限".into());
+        return Err(WEB_SNAPSHOT_TOO_LARGE.into());
     }
     let mut all = Vec::new();
     parts(raw, 0, &mut all)?;
@@ -145,7 +158,7 @@ pub fn parse_mhtml(raw: &[u8], page: &Url) -> Result<Snapshot, String> {
             }
         }
     }
-    let (main, content_type) = main.ok_or("快照中没有 HTML 正文")?;
+    let (main, content_type) = main.ok_or(WEB_SNAPSHOT_HTML_MISSING)?;
     if skipped_images > 0 {
         tracing::debug!(skipped_images, "snapshot images skipped due to limits");
     }
@@ -161,14 +174,18 @@ pub fn store_snapshot(
     data_dir: &Path,
     url: &str,
     raw: &[u8],
-) -> Result<crate::OpenWebLinkView, String> {
-    let page = Url::parse(url).map_err(|_| "快照页面地址无效")?;
+) -> Result<crate::OpenWebLinkView, crate::UiError> {
+    let page = Url::parse(url)
+        .map_err(|_| crate::UiError::from(crate::ui_error::web::WebError::SnapshotUrlInvalid))?;
     if !rrss_core::url_norm::is_http_url(&page) {
-        return Err("快照只支持 HTTP(S) 页面".into());
+        return Err(crate::UiError::from(
+            crate::ui_error::web::WebError::SnapshotHttpOnly,
+        ));
     }
-    let snapshot = parse_mhtml(raw, &page)?;
-    let canonical = rrss_core::url_norm::canonical_article_url(page.as_str(), None)
-        .ok_or("快照页面地址无效")?;
+    let snapshot = parse_mhtml(raw, &page).map_err(crate::ui_error::web::snapshot_error)?;
+    let canonical = rrss_core::url_norm::canonical_article_url(page.as_str(), None).ok_or(
+        crate::UiError::from(crate::ui_error::web::WebError::SnapshotUrlInvalid),
+    )?;
     crate::web::store_page(
         db_path,
         &canonical,
@@ -176,7 +193,7 @@ pub fn store_snapshot(
         &page,
         Some((data_dir, &snapshot.images)),
     )
-    .map_err(|e| e.message)
+    .map_err(|e| crate::UiError::from(e.message))
 }
 
 #[cfg(test)]

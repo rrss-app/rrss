@@ -8,17 +8,17 @@ import type {
 
 export function trainingFeaturesFixture(): FeatureView[] {
   return [
-    { dimension: "title_kw", pattern: "融资", label: "标题包含『融资』" },
-    { dimension: "author", pattern: "某某", label: "作者是『某某』" },
-    { dimension: "tag", pattern: "产品", label: "带有标签『产品』" },
-    { dimension: "url_phrase", pattern: "example.test", label: "URL 包含『example.test』" },
+    { dimension: "title_kw", pattern: "融资" },
+    { dimension: "author", pattern: "某某" },
+    { dimension: "tag", pattern: "产品" },
+    { dimension: "url_phrase", pattern: "example.test" },
   ];
 }
 
 export function ruleFixture(overrides: Partial<RuleView> = {}): RuleView {
   return {
-    id: 1, polarity: "like", dimension: "标题", dimension_id: "title_kw", pattern: "Rust",
-    summary: "标题包含『Rust』时加分 · 全局", scope_label: "全局", scope_kind: "global", scope_id: 0,
+    id: 1, polarity: "like", dimension_id: "title_kw", pattern: "Rust",
+    summary: { code: "rule_summary", params: { effect: "boost" } }, scope_name: "", scope_kind: "global", scope_id: 0,
     weight: 10, source: "manual", enabled: true, pending: false, pack_id: "",
     ...overrides,
   };
@@ -140,7 +140,7 @@ export function piPageFixture(overrides: Partial<PiPage> = {}): PiPage {
 
 export function piProbeFixture(overrides: Partial<PiProbe> = {}): PiProbe {
   return {
-    binary_source: "fixture-binary", version: "0.87.1", version_state: "ok", config_error: "",
+    binary_source: "fixture-binary", version: "0.87.1", version_state: "ok", config_error: null,
     ...overrides,
   };
 }

@@ -1,5 +1,6 @@
 import type { ArticleView } from "../lib/api";
 import { Trans, useTranslation } from "../i18n";
+import { formatReason, formatReasonNumber } from "../lib/reasons";
 
 export type SpotAction = "disable" | "halve" | "allow" | "keep" | "undo";
 export type SpotReview = { article: ArticleView; up: boolean; result?: string; undo?: () => Promise<unknown> };
@@ -16,9 +17,9 @@ export function SpotCheckReveal({ review, threshold, busy, onAction }: {
   return <div className="spot-check-reveal" role="status" data-tone={up ? undefined : "ok"}
     onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
     {result && up ? <div className="spot-check-result">{t("spot.result", { result })}</div> : <div>
-      <Trans t={t} i18nKey={up ? "spot.wouldHideUp" : "spot.wouldHideDown"} values={{ score: article.score, threshold }}
+      <Trans t={t} i18nKey={up ? "spot.wouldHideUp" : "spot.wouldHideDown"} values={{ score: formatReasonNumber(article.score), threshold: formatReasonNumber(threshold) }}
         components={{ reasons: <>{reasons.length ? reasons.map((reason, index) => <span key={reason.rule_id}>
-          {index ? t("spot.reasonSeparator") : ""}<strong>{reason.label}</strong>{up ? t("spot.weight", { weight: reason.weight }) : ""}
+          {index ? t("spot.reasonSeparator") : ""}<strong>{formatReason(reason)}</strong>{up ? t("spot.weight", { weight: formatReasonNumber(reason.weight) }) : ""}
         </span>) : t("spot.fallbackRule")}</> }} />
     </div>}
     <div className="spot-check-options">

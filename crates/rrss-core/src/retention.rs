@@ -4,6 +4,7 @@
 //! 删行还会级联删掉赞踩。年龄按入库时间 `created_at` 计算。全局 `retention_days` 为 0 表示关闭；
 //! 源上的 `retention_days` 为 NULL 时跟随全局，为 0 时永久保留。
 
+use crate::error::rules::RuleProblem;
 use rusqlite::{Connection, params};
 
 use crate::db;
@@ -25,9 +26,9 @@ pub fn global_days(conn: &Connection) -> Result<i64> {
 
 pub fn set_global_days(conn: &Connection, days: i64) -> Result<()> {
     if !(0..=36_500).contains(&days) {
-        return Err(Error::InvalidRule(format!(
-            "retention days out of range: {days}"
-        )));
+        return Err(Error::InvalidRule(RuleProblem::RetentionOutOfRange {
+            days,
+        }));
     }
     db::set_setting(conn, SETTING, &days.to_string())
 }
@@ -36,9 +37,9 @@ pub fn set_feed_days(conn: &Connection, feed_id: i64, days: Option<i64>) -> Resu
     if let Some(d) = days
         && !(0..=36_500).contains(&d)
     {
-        return Err(Error::InvalidRule(format!(
-            "retention days out of range: {d}"
-        )));
+        return Err(Error::InvalidRule(RuleProblem::RetentionOutOfRange {
+            days: d,
+        }));
     }
     let n = conn.execute(
         "UPDATE feeds SET retention_days = ?1 WHERE id = ?2",

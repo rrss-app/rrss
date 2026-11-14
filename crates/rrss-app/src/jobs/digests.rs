@@ -134,9 +134,7 @@ async fn run_digest_inner(
         let items = ai_store::digest_candidates(conn, candidate_limit, &window)?;
         if items.is_empty() && daily.is_empty() {
             if force {
-                return Err(CoreError::InvalidRule(
-                    "最近没有可用于生成简报的文章：日报只收 36 小时内入库的未读文章，周报收 7 天内的（请先订阅或刷新抓取）".into(),
-                ));
+                return Err(CoreError::Jobs(rrss_core::error::JobFailure::DigestNoArticles));
             }
             return Ok(None);
         }
@@ -168,7 +166,7 @@ async fn run_digest_inner(
         let shallow = ai_store::format_digest_input(&mapped, &noisy, pick_max);
         if shallow.is_empty() && daily.is_empty() {
             if force {
-                return Err(CoreError::InvalidRule("生成 Digest 内容为空".into()));
+                return Err(CoreError::Jobs(rrss_core::error::JobFailure::DigestEmpty));
             }
             return Ok(None);
         }
@@ -244,7 +242,10 @@ async fn run_digest_inner(
     .await?;
     if deep_input.prompt.trim().is_empty() {
         if force {
-            anyhow::bail!("digest deep pack empty");
+            anyhow::bail!(crate::views::UiError::new(
+                crate::views::UiErrorKind::Common(crate::ui_error::common::CommonError::Internal),
+                "digest deep pack empty",
+            ));
         }
         return Ok(());
     }
@@ -295,7 +296,7 @@ async fn run_digest_inner(
         })
     })
     .await?;
-    anyhow::ensure!(stored, "简报输入、配置或生成世代已改变，已丢弃旧结果");
+    anyhow::ensure!(stored, rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestChanged));
     tracing::info!(period, "digest stored");
     Ok(())
 }

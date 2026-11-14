@@ -33,7 +33,7 @@ pub async fn pi_generated_config(
     let data_dir = state.data_dir.clone();
     with_db("pi_generated_config", state.db_path.clone(), move |conn| {
         rrss_app::pi::launch::generated_config(conn, &data_dir)
-            .map_err(|e| UiError::from(e.message))
+            .map_err(|e| e.message)
     })
     .await
 }
@@ -44,7 +44,7 @@ pub async fn pi_available_models(state: State<'_, AppState>) -> Result<Vec<Strin
         .chat
         .available_models()
         .await
-        .map_err(|e| UiError::from(e.message))
+        .map_err(|e| e.message)
 }
 
 #[tauri::command]
@@ -56,7 +56,7 @@ pub async fn acknowledge_pi_version_notice(
         .chat
         .acknowledge_version_notice(&version)
         .await
-        .map_err(|e| UiError::from(e.message))
+        .map_err(|e| e.message)
 }
 
 #[tauri::command]

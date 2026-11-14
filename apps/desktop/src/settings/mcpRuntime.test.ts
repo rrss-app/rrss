@@ -90,3 +90,11 @@ it("keeps only the current probe and removes it when the connection is forgotten
   await flushUpdates();
   expect(runtime.probes.get().has(7)).toBe(false);
 });
+
+it("retains a typed failure from a rejected probe command", async () => {
+  const input = inputFromView(mcpFixture({ id: 7 }));
+  stub.handle("probeMcp", () => Promise.reject({ code: "mcp_http_status", params: { status: 503 }, detail: "fixture" }));
+  runtime.probeServer(input);
+  await flushUpdates();
+  expect(runtime.probes.get().get(7)?.result?.failure).toMatchObject({ code: "mcp_http_status", params: { status: 503 } });
+});

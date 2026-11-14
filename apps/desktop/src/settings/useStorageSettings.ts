@@ -1,3 +1,4 @@
+import { formatStorageMessage, storageConfirmTitle } from "./panelText";
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type StorageItemView } from "../lib/api";
@@ -23,10 +24,11 @@ export function useStorageSettings(
   const { writing, run: write } = useSettingsWrite({
     mutationKey: storageKeys.write,
     mutationFn: async (item: StorageItemView): Promise<Status> => {
+      if (!item.action) return { tone: "ok", text: "" };
       await client.cancelQueries({ queryKey: storageKeys.page, exact: true });
       let done: string;
-      try { done = await api.storageClean(item.action); }
-      catch (error) { return { tone: "err", text: formatNotice(i18n.t("storage.cleanFailed", { ns: "settingsSystem", title: item.confirm_title }), error) }; }
+      try { done = formatStorageMessage(await api.storageClean(item.action)); }
+      catch (error) { return { tone: "err", text: formatNotice(i18n.t("storage.cleanFailed", { ns: "settingsSystem", title: storageConfirmTitle(item.action) }), error) }; }
       await settingsChanged(client);
       if (INDEX_ACTIONS.has(item.action)) changed.current?.();
       try {
@@ -45,7 +47,7 @@ export function useStorageSettings(
 
   const run = async (item: StorageItemView) => {
     if (client.isMutating({ mutationKey: storageKeys.write })) return;
-    setPending(item.action);
+    setPending(item.action ?? "");
     setStatus(null);
     const result = await write(item);
     setPending("");
@@ -53,7 +55,7 @@ export function useStorageSettings(
   };
   const clean = (item: StorageItemView) => {
     if (!item.action || busy || query.isFetching) return;
-    onAsk(item.confirm_title, item.confirm.join("\n"), () => { void run(item); });
+    onAsk(storageConfirmTitle(item.action), item.confirm.map(message => formatStorageMessage(message, item)).join("\n"), () => { void run(item); });
   };
   const refresh = async () => {
     if (busy || query.isFetching) return;

@@ -35,25 +35,19 @@ impl ProxyConfig {
         }
         let config = config.normalized()?;
         let rule = config.effective_for(scope);
-        let denied = |reason| {
-            invalid(&format!(
-                "原网页无法使用此代理：{reason}。请改用阅读视图或系统浏览器，或调整网络代理设置。"
-            ))
-        };
+        let denied = invalid;
         let proxy = |raw: &str| {
             let url = parse_proxy_url(raw)?;
             if !url.username().is_empty() || url.password().is_some() {
-                return Err(denied("不支持代理认证"));
+                return Err(denied(ProxyError::WebviewAuthUnsupported));
             }
             if !matches!(url.scheme(), "http" | "socks5") {
-                return Err(denied("仅支持 HTTP 或 SOCKS5 代理"));
+                return Err(denied(ProxyError::WebviewSchemeUnsupported));
             }
             // tauri-runtime-wry 2.12.2 reads Url::port(), not port_or_known_default().
             // URL strips HTTP :80, which would produce an empty wry proxy port.
             if url.port().is_none() {
-                return Err(denied(
-                    "当前 webview 无法表达此代理端口，请使用显式的非默认端口",
-                ));
+                return Err(denied(ProxyError::WebviewPortUnsupported));
             }
             Ok(WebviewRoute::Proxy(url))
         };
@@ -61,19 +55,19 @@ impl ProxyConfig {
             ProxyMode::Direct => Ok(WebviewRoute::Direct),
             ProxyMode::Custom => {
                 if !rule.no_proxy.is_empty() {
-                    return Err(denied("不支持不代理列表"));
+                    return Err(denied(ProxyError::WebviewBypassUnsupported));
                 }
                 proxy(&rule.url)
             }
             ProxyMode::System => {
                 if native.unavailable {
-                    return Err(denied("无法读取系统代理"));
+                    return Err(denied(ProxyError::WebviewSystemUnavailable));
                 }
                 if os.is_windows() {
                     return Ok(WebviewRoute::System);
                 }
                 if native.pac.is_some() || native.auto_detect {
-                    return Err(denied("不支持 PAC 或自动代理配置"));
+                    return Err(denied(ProxyError::WebviewPacUnsupported));
                 }
                 let env = env.with_system(native);
                 let all = env.value("ALL_PROXY", "all_proxy");
@@ -83,21 +77,21 @@ impl ProxyConfig {
                     return Ok(WebviewRoute::Direct);
                 }
                 if native.bypass_configured || env.value("NO_PROXY", "no_proxy").is_some() {
-                    return Err(denied("不支持不代理列表"));
+                    return Err(denied(ProxyError::WebviewBypassUnsupported));
                 }
                 match (http, https) {
                     (None, None) => Ok(WebviewRoute::Direct),
                     (Some(a), Some(b)) => {
                         let route = proxy(a)?;
                         if route != proxy(b)? {
-                            return Err(denied("HTTP 与 HTTPS 线路不同"));
+                            return Err(denied(ProxyError::WebviewRoutesDiffer));
                         }
                         Ok(route)
                     }
-                    _ => Err(denied("无法统一 HTTP 与 HTTPS 线路")),
+                    _ => Err(denied(ProxyError::WebviewRouteIncomplete)),
                 }
             }
-            ProxyMode::Inherit => Err(denied("无效的代理继承配置")),
+            ProxyMode::Inherit => Err(denied(ProxyError::WebviewInheritInvalid)),
         }
     }
 }

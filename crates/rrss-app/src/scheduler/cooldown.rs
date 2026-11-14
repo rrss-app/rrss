@@ -21,6 +21,7 @@ pub(super) const GLOBAL: &str = "*";
 pub(super) const RECOVERY: &str = "recovery";
 const DAMAGED: &str = "订阅限流记录损坏或版本不兼容，已保守限速";
 const SAVE_FAILED: &str = "无法保存订阅限流记录，已暂停抓取";
+const LOAD_FAILED: &str = "无法读取订阅限流记录，已暂停抓取";
 
 /// Shared across stopping/restarting runtimes for this database, so startup
 /// cannot read an older snapshot while a received limit is still being saved.
@@ -184,8 +185,34 @@ pub(super) struct Deferred {
     pub key: String,
     pub until: Option<i64>,
     pub message: String,
+    pub reason: rrss_core::ingest::FetchDeferredReason,
 }
 impl Deferred {
+    pub fn from_reason(
+        until: Option<i64>,
+        reason: rrss_core::ingest::FetchDeferredReason,
+        local_message: &str,
+    ) -> Self {
+        use rrss_core::ingest::FetchDeferredReason;
+        if reason == FetchDeferredReason::HostLimited
+            && let Some(until) = until
+        {
+            return Self::block(GLOBAL.into(), until);
+        }
+        // Progress views keep their text contract; this never enters feeds.error.
+        let message = match reason {
+            FetchDeferredReason::CooldownSaveFailed => SAVE_FAILED,
+            FetchDeferredReason::CooldownLoadFailed => LOAD_FAILED,
+            FetchDeferredReason::Recovery => DAMAGED,
+            _ => local_message,
+        };
+        Self {
+            key: GLOBAL.into(),
+            until,
+            reason,
+            message: message.into(),
+        }
+    }
     fn block(host: String, until: i64) -> Self {
         let date = chrono::DateTime::from_timestamp_millis(until)
             .map(|date| date.to_rfc3339())
@@ -194,6 +221,7 @@ impl Deferred {
             key: host,
             until: Some(until),
             message: format!("订阅主机限流，已延期至 {date}"),
+            reason: rrss_core::ingest::FetchDeferredReason::HostLimited,
         }
     }
     pub fn status(&self) -> RefreshStatus {
@@ -205,7 +233,7 @@ impl Deferred {
     pub fn error(&self) -> rrss_core::Error {
         rrss_core::Error::FetchDeferred {
             until: self.until,
-            message: self.message.clone(),
+            reason: self.reason,
         }
     }
 }
@@ -435,7 +463,7 @@ impl Cooldowns {
 
     pub fn reason(&self) -> Option<String> {
         if self.load_error {
-            Some("无法读取订阅限流记录，已暂停抓取".into())
+            Some(LOAD_FAILED.into())
         } else if self.persist_error {
             Some(SAVE_FAILED.into())
         } else {
@@ -466,6 +494,11 @@ impl Cooldowns {
                 key: GLOBAL.into(),
                 until: None,
                 message: self.reason().unwrap(),
+                reason: if self.load_error {
+                    rrss_core::ingest::FetchDeferredReason::CooldownLoadFailed
+                } else {
+                    rrss_core::ingest::FetchDeferredReason::CooldownSaveFailed
+                },
             });
         }
         if let Some(value) = &self.overflow
@@ -509,6 +542,7 @@ impl Cooldowns {
             key: RECOVERY.into(),
             until: Some(now.utc.saturating_add(delay.as_millis() as i64)),
             message: DAMAGED.into(),
+            reason: rrss_core::ingest::FetchDeferredReason::Recovery,
         })
     }
 
@@ -1025,7 +1059,7 @@ impl super::runtime::Shared {
         {
             return Err(rrss_core::Error::FetchDeferred {
                 until: None,
-                message: SAVE_FAILED.into(),
+                reason: rrss_core::ingest::FetchDeferredReason::CooldownSaveFailed,
             });
         }
         if limited {

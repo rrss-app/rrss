@@ -23,12 +23,14 @@ pub struct CoverMeta {
     pub open_url: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) const CONTENT_BUSY_MESSAGE: &str = "内容网络繁忙，请稍后重试";
+
+#[derive(Debug, Clone)]
 pub enum DirectFail {
     TooLarge,
     NotDirect,
     Http(u16),
-    Network(String),
+    Network(crate::UiError),
     Store,
 }
 
@@ -208,7 +210,7 @@ pub async fn fetch_official_cover(
         .clone()
         .acquire(crate::scheduler::model_capacity::Priority::Interactive)
         .await
-        .map_err(|_| FetchFail::Network("内容网络繁忙，请稍后重试".into()))?;
+        .map_err(|_| FetchFail::Network(CONTENT_BUSY_MESSAGE.into()))?;
     let body = get_text(client, &request_url, referer).await?;
     drop(permit);
     let meta = if bilibili {
@@ -265,14 +267,18 @@ pub async fn download_direct(
     let client = network
         .client(rrss_core::network::NetworkScope::Content)
         .await
-        .map_err(|err| DirectFail::Network(err.to_string()))?;
+        .map_err(|err| DirectFail::Network(crate::UiError::from(err)))?;
     let capacity = crate::scheduler::model_capacity::Capacity::for_database(db_path);
     let permit = capacity
         .content
         .clone()
         .acquire(crate::scheduler::model_capacity::Priority::Interactive)
         .await
-        .map_err(|_| DirectFail::Network("内容网络繁忙，请稍后重试".into()))?;
+        .map_err(|_| {
+            DirectFail::Network(crate::UiError::from(
+                crate::ui_error::reader::ReaderError::ContentBusy,
+            ))
+        })?;
     let mut resp = send_get(&client, &url, referer)
         .await
         .map_err(DirectFail::Network)?;
@@ -293,7 +299,8 @@ pub async fn download_direct(
         .map(|s| s.split(';').next().unwrap_or(s).trim().to_string());
     let dest = media::cache_path(data_dir, &url);
     if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent).map_err(|err| DirectFail::Network(err.to_string()))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|err| DirectFail::Network(crate::UiError::from(err.to_string())))?;
     }
     let tmp = dest.with_extension("part");
     // 网络中断或取消时同样清理半成品，不把失败下载留在缓存目录。
@@ -304,12 +311,14 @@ pub async fn download_direct(
         }
     }
     let _partial = PartialFile(tmp.clone());
-    let mut file =
-        std::fs::File::create(&tmp).map_err(|err| DirectFail::Network(err.to_string()))?;
+    let mut file = std::fs::File::create(&tmp)
+        .map_err(|err| DirectFail::Network(crate::UiError::from(err.to_string())))?;
     let mut got = 0u64;
     loop {
         let chunk = resp.chunk().await.map_err(|err| {
-            DirectFail::Network(rrss_core::network::request_error(&err).to_string())
+            DirectFail::Network(crate::UiError::from(rrss_core::network::request_error(
+                &err,
+            )))
         })?;
         let Some(chunk) = chunk else { break };
         got += chunk.len() as u64;
@@ -319,7 +328,7 @@ pub async fn download_direct(
             return Err(DirectFail::TooLarge);
         }
         std::io::Write::write_all(&mut file, &chunk)
-            .map_err(|err| DirectFail::Network(err.to_string()))?;
+            .map_err(|err| DirectFail::Network(crate::UiError::from(err.to_string())))?;
     }
     drop(file);
     drop(permit);
@@ -328,8 +337,8 @@ pub async fn download_direct(
         return Err(DirectFail::Store);
     }
     let mime = mime_for_direct(&url, mime.as_deref());
-    let conn =
-        rrss_core::db::open_at(db_path).map_err(|err| DirectFail::Network(err.to_string()))?;
+    let conn = rrss_core::db::open_at(db_path)
+        .map_err(|err| DirectFail::Network(crate::UiError::from(err)))?;
     media::store_direct(&conn, data_dir, article_id, &url, &dest, Some(&mime), got)
         .map_err(|_| DirectFail::Store)?;
     cached_direct(db_path, article_id, &url).ok_or(DirectFail::Store)
@@ -463,10 +472,10 @@ fn write_meta(
     )
 }
 
-fn load_doc(db_path: &Path, article_id: i64) -> Result<Document, String> {
-    let conn = rrss_core::db::open_at(db_path).map_err(|err| err.to_string())?;
+fn load_doc(db_path: &Path, article_id: i64) -> Result<Document, crate::UiError> {
+    let conn = rrss_core::db::open_at(db_path).map_err(crate::UiError::from)?;
     let article =
-        rrss_core::articles::get_article(&conn, article_id).map_err(|err| err.to_string())?;
+        rrss_core::articles::get_article(&conn, article_id).map_err(crate::UiError::from)?;
     let mut doc = crate::document::load_document(&article);
     present_document(&mut doc);
     Ok(doc)
@@ -475,7 +484,7 @@ fn load_doc(db_path: &Path, article_id: i64) -> Result<Document, String> {
 async fn get_text(client: &reqwest::Client, url: &str, referer: &str) -> Result<String, FetchFail> {
     let resp = send_get(client, url, referer)
         .await
-        .map_err(FetchFail::Network)?;
+        .map_err(|error| FetchFail::Network(error.to_string()))?;
     if !resp.status().is_success() {
         return Err(FetchFail::Http(resp.status().as_u16()));
     }
@@ -488,7 +497,7 @@ async fn send_get(
     client: &reqwest::Client,
     url: &str,
     referer: &str,
-) -> Result<reqwest::Response, String> {
+) -> Result<reqwest::Response, crate::UiError> {
     let mut builder = client
         .get(url)
         .header(
@@ -504,7 +513,7 @@ async fn send_get(
     builder
         .send()
         .await
-        .map_err(|err| rrss_core::network::request_error(&err).to_string())
+        .map_err(|err| crate::UiError::from(rrss_core::network::request_error(&err)))
 }
 
 pub fn failed_cover(open_url: &str, site: &str) -> EmbedCoverView {

@@ -1,8 +1,9 @@
 //! Original-page policy and session directories; no Tauri or native UI dependencies.
+use crate::{UiError, ui_error::web::WebError};
 use std::path::{Path, PathBuf};
 
 use rrss_core::{
-    Error, Result, db,
+    db,
     network::{self, NetworkScope, ProxyEnvironment, WebviewRoute},
     platform::{self, Os, SystemProxySnapshot},
 };
@@ -29,11 +30,10 @@ pub fn prepare(
     env: &ProxyEnvironment,
     native: &SystemProxySnapshot,
     os: Os,
-) -> Result<WebWindowPlan> {
-    let url =
-        Url::parse(raw.trim()).map_err(|_| Error::InvalidUrl("仅支持 HTTP(S) 网页".into()))?;
+) -> Result<WebWindowPlan, UiError> {
+    let url = Url::parse(raw.trim()).map_err(|_| UiError::from(WebError::HttpOnly))?;
     if !rrss_core::url_norm::is_http_url(&url) {
-        return Err(Error::InvalidUrl("仅支持 HTTP(S) 网页".into()));
+        return Err(UiError::from(WebError::HttpOnly));
     }
     let site = crate::site_rules::resolve_site_rule(conn, url.host_str().unwrap())?;
     let javascript = db::get_setting(conn, "web_javascript")?.as_deref() != Some("0")
@@ -108,11 +108,9 @@ impl WebSession {
         })
     }
 
-    pub fn next_label(&mut self, route: &WebviewRoute) -> Result<String> {
+    pub fn next_label(&mut self, route: &WebviewRoute) -> Result<String, UiError> {
         if self.route.as_ref().is_some_and(|old| old != route) {
-            return Err(Error::InvalidNetworkProxy(
-                "原网页代理线路已改变，请先清空原网页数据再打开。".into(),
-            ));
+            return Err(WebError::ProxyRouteChanged.into());
         }
         self.serial += 1;
         Ok(format!("web-{}", self.serial))

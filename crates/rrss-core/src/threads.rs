@@ -1,5 +1,6 @@
 //! 会话与消息。引用快照进该条 `messages`。日志 target：`rrss_core::threads`。
 
+use crate::error::rules::RuleProblem;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
@@ -28,7 +29,7 @@ impl MessageRole {
             "user" => Ok(Self::User),
             "assistant" => Ok(Self::Assistant),
             "system" => Ok(Self::System),
-            other => Err(Error::InvalidRule(format!("unknown message role {other}"))),
+            other => Err(Error::InvalidRule(RuleProblem::MessageRoleUnknown { value: other.into() })),
         }
     }
 }

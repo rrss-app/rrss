@@ -1,5 +1,6 @@
 //! 模型与翻译配置的写入边界：统一事务、派生版本与提交后的通知。
 use crate::translate::cache::configuration_fingerprint as fingerprint;
+use rrss_core::error::settings::SettingProblem;
 use rrss_core::{Result, db};
 use rusqlite::Connection;
 
@@ -21,9 +22,9 @@ impl Change {
         if self.0 == fingerprint(conn)? {
             return Ok(None);
         }
-        let revision = translation_revision(conn)?
-            .checked_add(1)
-            .ok_or_else(|| rrss_core::Error::InvalidSetting("翻译配置版本已耗尽".into()))?;
+        let revision = translation_revision(conn)?.checked_add(1).ok_or_else(|| {
+            rrss_core::Error::InvalidSetting(SettingProblem::TranslationRevisionExhausted)
+        })?;
         db::set_setting(conn, KEY, &revision.to_string())?;
         Ok(Some(revision))
     }

@@ -15,10 +15,25 @@ pub enum TreeItem {
     Feed(i64),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum TreeOrderError {
+    #[error("tree item must be folder:<positive integer> or feed:<positive integer>")]
+    InvalidItem,
+    #[error("no items to move")]
+    EmptyMove,
+    #[error("duplicate items in move list")]
+    DuplicateItems,
+    #[error("cannot move folder into itself or a descendant")]
+    Cycle,
+    #[error("insertion position is not in the target parent")]
+    WrongParent,
+    #[error("folder hierarchy is too deep")]
+    TooDeep,
+}
+
 impl TreeItem {
     pub fn parse(raw: &str) -> Result<Self> {
-        let invalid =
-            || Error::InvalidTreeOrder("订阅树项应为 folder:<正整数> 或 feed:<正整数>".into());
+        let invalid = || Error::InvalidTreeOrder(TreeOrderError::InvalidItem);
         let (kind, id) = raw.split_once(':').ok_or_else(invalid)?;
         if id.is_empty() || !id.bytes().all(|byte| byte.is_ascii_digit()) {
             return Err(invalid());
@@ -128,10 +143,10 @@ fn move_within(
     before: Option<TreeItem>,
 ) -> Result<TreeLayout> {
     if items.is_empty() {
-        return Err(Error::InvalidTreeOrder("没有要移动的项".into()));
+        return Err(Error::InvalidTreeOrder(TreeOrderError::EmptyMove));
     }
     if items.iter().collect::<HashSet<_>>().len() != items.len() {
-        return Err(Error::InvalidTreeOrder("移动列表有重复项".into()));
+        return Err(Error::InvalidTreeOrder(TreeOrderError::DuplicateItems));
     }
     if let Some(id) = parent {
         parent_of(conn, TreeItem::Folder(id))?;
@@ -151,12 +166,12 @@ fn move_within(
         })
         .collect();
     if !moved_folders.is_empty() && enters_moved_folder(conn, parent, &moved_folders)? {
-        return Err(Error::InvalidTreeOrder("不能把文件夹移进自身或子孙".into()));
+        return Err(Error::InvalidTreeOrder(TreeOrderError::Cycle));
     }
     if let Some(marker) = before
         && (items.contains(&marker) || parent_of(conn, marker)? != parent)
     {
-        return Err(Error::InvalidTreeOrder("插入位置不在目标父级".into()));
+        return Err(Error::InvalidTreeOrder(TreeOrderError::WrongParent));
     }
     let mut entries = Vec::new();
     for group in &parents {
@@ -180,7 +195,7 @@ fn move_within(
                 Some(marker) => order
                     .iter()
                     .position(|item| *item == marker)
-                    .ok_or_else(|| Error::InvalidTreeOrder("插入位置不在目标父级".into()))?,
+                    .ok_or_else(|| Error::InvalidTreeOrder(TreeOrderError::WrongParent))?,
                 None => order.len(),
             };
             order.splice(index..index, items.iter().copied());
@@ -247,7 +262,7 @@ fn enters_moved_folder(
         }
         current = parent_of(conn, TreeItem::Folder(id))?;
     }
-    Err(Error::InvalidTreeOrder("文件夹层级过深".into()))
+    Err(Error::InvalidTreeOrder(TreeOrderError::TooDeep))
 }
 
 #[cfg(test)]

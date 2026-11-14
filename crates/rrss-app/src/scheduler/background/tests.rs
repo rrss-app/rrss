@@ -413,7 +413,12 @@ fn pause_reasons_are_structured_and_separate() {
         "model_configuration"
     );
     assert_eq!(
-        pause_reason(&rrss_core::Error::InvalidNetworkProxy("test".into()).into()),
+        pause_reason(
+            &rrss_core::Error::InvalidNetworkProxy(
+                rrss_core::network::ProxyError::ConfigUnavailable
+            )
+            .into()
+        ),
         "network_configuration"
     );
     assert_eq!(pause_reason(&SpacePaused.into()), "vector_space");
@@ -678,4 +683,52 @@ fn cluster_summaries_follow_summary_batches_with_independent_pause_recovery() {
         pending.claim(Job::ClusterSummaries, later + Duration::from_secs(15 * 60)),
         Some(1)
     );
+}
+
+#[tokio::test]
+async fn manual_job_result_channel_retains_domain_codes() {
+    let (_dir, path) = crate::scheduler::tests::fixture();
+    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    // These are the same owner and watch boundary used by summary, cluster
+    // summary and embedding jobs, including when their request is coalesced.
+    for (key, error, code) in [
+        (
+            "summary",
+            rrss_core::Error::ArticleNotFound,
+            "article_not_found",
+        ),
+        (
+            "cluster",
+            rrss_core::Error::Jobs(rrss_core::error::JobFailure::ClusterEmpty),
+            "job_cluster_empty",
+        ),
+        (
+            "embed",
+            rrss_core::Error::InvalidSetting(
+                rrss_core::error::settings::SettingProblem::VectorSpaceStale,
+            ),
+            "setting_vector_space_stale",
+        ),
+    ] {
+        let (sender, mut receiver) = watch::channel(None);
+        let sender: ManualResult = sender;
+        scheduler
+            .shared
+            .manual_jobs
+            .lock()
+            .unwrap()
+            .insert(key.into(), sender);
+        let mut owner = ManualOwner {
+            shared: scheduler.shared.clone(),
+            key: key.into(),
+            finished: false,
+        };
+        owner.finish(Err(super::super::digest_jobs::Failure::from(
+            anyhow::Error::new(error),
+        )));
+        let error = receiver.borrow_and_update().clone().unwrap().unwrap_err();
+        let ui = crate::UiError::from(anyhow::Error::new(error));
+        assert_eq!(ui.code(), code);
+    }
+    scheduler.shutdown().await;
 }

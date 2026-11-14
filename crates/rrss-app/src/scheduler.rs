@@ -188,7 +188,13 @@ async fn apply_response(
                 "feed response write failed"
             );
             Ok((
-                refresh_failed(err_path, err_feed, err.to_string(), schedule).await?,
+                refresh_failed(
+                    err_path,
+                    err_feed,
+                    crate::ui_error::feeds::error_record(crate::views::UiError::from(err)),
+                    schedule,
+                )
+                .await?,
                 Vec::new(),
             ))
         }
@@ -200,7 +206,7 @@ async fn refresh_failed(
     raw: String,
     schedule: FetchSchedule,
 ) -> Result<RefreshResult> {
-    let message = rrss_core::feeds::humanize_refresh_error(&raw);
+    let message = raw;
     let fallback = RefreshResult {
         feed_id: feed.id,
         status: RefreshStatus::Failed {
@@ -230,7 +236,7 @@ async fn refresh_network_failure(
     raw: String,
     schedule: FetchSchedule,
 ) -> Result<Option<RefreshResult>> {
-    let message = rrss_core::feeds::humanize_refresh_error(&raw);
+    let message = raw;
     write_db(state.path.clone(), move |conn| {
         let pending = db::atomic_write(conn, |conn| {
             // Acquire the SQLite writer before this short state check. A probe

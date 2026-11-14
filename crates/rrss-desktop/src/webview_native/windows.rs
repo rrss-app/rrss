@@ -1,3 +1,4 @@
+use rrss_app::{UiError, ui_error::web::WebError};
 use rrss_core::network::WebviewRoute;
 use tauri::{Manager, Webview};
 use webview2_com::{
@@ -13,16 +14,18 @@ pub(super) fn configure(
     window: &Webview,
     _: &WebviewRoute,
     _: rrss_app::WebViewBounds,
-) -> Result<(), String> {
+    native_failure_message: String,
+) -> Result<(), UiError> {
     // COM calls run on Tauri's UI thread. The initial document is about:blank;
     // any unsupported interface or failed registration aborts before navigation.
-    unsafe { install(handle, window) }
-        .map_err(|_| "WebView2 原生功能不可用，请更新 WebView2 Runtime 后重试。".into())
+    unsafe { install(handle, window, native_failure_message) }
+        .map_err(|_| UiError::from(WebError::Webview2Unavailable))
 }
 
 unsafe fn install(
     handle: tauri::webview::PlatformWebview,
     window: &Webview,
+    native_failure_message: String,
 ) -> windows::core::Result<()> {
     unsafe {
         let view = handle.controller().CoreWebView2()?;
@@ -102,9 +105,10 @@ unsafe fn install(
                     )?;
                     let window = target_window.clone();
                     let url = url.clone();
+                    let failure_message = native_failure_message.clone();
                     item.add_CustomItemSelected(
                         &CustomItemSelectedEventHandler::create(Box::new(move |_, _| {
-                            super::link_action(&window, &url, copy);
+                            super::link_action(&window, &url, copy, &failure_message);
                             Ok(())
                         })),
                         &mut 0,
@@ -134,21 +138,21 @@ pub(super) fn history(window: &Webview, back: bool) -> tauri::Result<()> {
 
 pub(super) fn page_title(
     handle: tauri::webview::PlatformWebview,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, UiError> {
     unsafe {
         let mut title = PWSTR::null();
         handle
             .controller()
             .CoreWebView2()
             .and_then(|view| view.DocumentTitle(&mut title))
-            .map_err(|_| "WebView2 网页标题读取失败")?;
+            .map_err(|_| UiError::from(WebError::TitleReadFailed))?;
         Ok(Some(take_pwstr(title)))
     }
 }
 
 pub(super) fn snapshot(
     handle: tauri::webview::PlatformWebview,
-    send: tokio::sync::oneshot::Sender<Result<Vec<u8>, String>>,
+    send: tokio::sync::oneshot::Sender<Result<Vec<u8>, UiError>>,
 ) {
     // Invocation and callback stay on the creating STA/UI thread. The helper
     // copies PCWSTR into an owned String before the COM callback returns.
@@ -165,18 +169,21 @@ pub(super) fn snapshot(
                                 data: String,
                             }
                             let result = (|| {
-                                status.map_err(|_| "WebView2 网页快照失败")?;
+                                status
+                                    .map_err(|_| UiError::from(WebError::Webview2SnapshotFailed))?;
                                 // JSON escapes can expand each byte to six ASCII bytes.
                                 if json.len()
                                     > rrss_app::web_snapshot::MAX_SNAPSHOT_BYTES * 6 + 1024
                                 {
-                                    return Err("快照超过 30 MiB 上限".into());
+                                    return Err(UiError::from(WebError::SnapshotTooLarge));
                                 }
-                                let snapshot: Snapshot = serde_json::from_str(&json)
-                                    .map_err(|_| "WebView2 网页快照结果损坏")?;
+                                let snapshot: Snapshot =
+                                    serde_json::from_str(&json).map_err(|_| {
+                                        UiError::from(WebError::Webview2SnapshotInvalid)
+                                    })?;
                                 if snapshot.data.len() > rrss_app::web_snapshot::MAX_SNAPSHOT_BYTES
                                 {
-                                    return Err("快照超过 30 MiB 上限".into());
+                                    return Err(UiError::from(WebError::SnapshotTooLarge));
                                 }
                                 Ok(snapshot.data.into_bytes())
                             })();

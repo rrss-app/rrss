@@ -13,13 +13,19 @@ use tracing::{Instrument, instrument::WithSubscriber};
 #[error("{message}")]
 pub(crate) struct Failure {
     pub reason: &'static str,
-    pub message: String,
+    #[source]
+    pub message: crate::views::UiError,
 }
 impl From<anyhow::Error> for Failure {
     fn from(error: anyhow::Error) -> Self {
+        Self::from(&error)
+    }
+}
+impl From<&anyhow::Error> for Failure {
+    fn from(error: &anyhow::Error) -> Self {
         Self {
-            reason: super::background::pause_reason(&error),
-            message: error.to_string(),
+            reason: super::background::pause_reason(error),
+            message: crate::views::UiError::from_anyhow_ref(error),
         }
     }
 }
@@ -43,12 +49,16 @@ impl Drop for Owner {
         if let Some(entry) = self.capacity.digests.0.lock().unwrap().remove(&self.key) {
             entry.current.send_replace(Some(Err(Failure {
                 reason: "stopped",
-                message: "简报任务已停止".into(),
+                message: crate::UiError::from(rrss_core::Error::Jobs(
+                    rrss_core::error::JobFailure::DigestStopped,
+                )),
             })));
             if let Some(next) = entry.next {
                 next.send_replace(Some(Err(Failure {
                     reason: "stopped",
-                    message: "简报任务已停止".into(),
+                    message: crate::UiError::from(rrss_core::Error::Jobs(
+                        rrss_core::error::JobFailure::DigestStopped,
+                    )),
                 })));
             }
         }
@@ -81,7 +91,10 @@ where
     F: FnMut(i64, bool) -> Fut + Send + 'static,
     Fut: std::future::Future<Output = Result<()>> + Send + 'static,
 {
-    anyhow::ensure!(matches!(period, "daily" | "weekly"), "无效的简报周期");
+    anyhow::ensure!(
+        matches!(period, "daily" | "weekly"),
+        rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestPeriodInvalid)
+    );
     let capacity = Capacity::for_database(path);
     let key = (
         period,
@@ -96,10 +109,16 @@ where
             } else {
                 &mut entry.current
             };
-            anyhow::ensure!(slot.receiver_count() < 32, "简报等待请求过多，请稍后重试");
+            anyhow::ensure!(
+                slot.receiver_count() < 32,
+                rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestWaitLimit)
+            );
             (slot.subscribe(), false)
         } else {
-            anyhow::ensure!(jobs.len() < 4, "简报任务繁忙，请稍后重试");
+            anyhow::ensure!(
+                jobs.len() < 4,
+                rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestBusy)
+            );
             let (current, receiver) = watch::channel(None);
             jobs.insert(
                 key,
@@ -159,10 +178,11 @@ where
         if let Some(result) = receiver.borrow_and_update().clone() {
             return result.map_err(anyhow::Error::new);
         }
-        receiver
-            .changed()
-            .await
-            .map_err(|_| anyhow::anyhow!("简报任务已停止"))?;
+        receiver.changed().await.map_err(|_| {
+            anyhow::anyhow!(rrss_core::Error::Jobs(
+                rrss_core::error::JobFailure::DigestStopped
+            ))
+        })?;
     }
 }
 
@@ -170,6 +190,31 @@ where
 mod tests {
     use super::*;
     use tokio::sync::{mpsc, oneshot};
+
+    #[tokio::test]
+    async fn shared_digest_failure_keeps_model_code_and_parameters() {
+        let dir = tempfile::tempdir().unwrap();
+        let error = run_task(&dir.path().join("test.db"), "daily", false, |_, _| async {
+            Err(
+                rrss_core::Error::TaskModelUnset(rrss_core::error::models::TaskModelLabel::Id(
+                    "digest_daily".into(),
+                ))
+                .into(),
+            )
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(
+            super::super::background::pause_reason(&error),
+            "model_configuration"
+        );
+        let ui = crate::views::UiError::from(error.context("digest request"));
+        assert_eq!(ui.code(), "task_model_unset");
+        assert_eq!(
+            serde_json::to_value(ui).unwrap()["params"],
+            serde_json::json!({"task":"digest_daily","label":"id"})
+        );
+    }
 
     fn request(
         path: &Path,

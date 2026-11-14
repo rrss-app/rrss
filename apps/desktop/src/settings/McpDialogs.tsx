@@ -9,7 +9,7 @@ import { ChipBar, Field } from "./chips";
 import { Dialog } from "./Dialog";
 import type { SettingsEditState } from "./editState";
 import { McpPanel } from "./McpSection";
-import { clause, connectionKey, forgetProbe, guessHostName, includeFrom, openTools, probeDraft, startLogin, transportName } from "./mcpRuntime";
+import { clause, connectionKey, forgetProbe, guessHostName, includeFrom, openTools, probeDraft, probeError, startLogin, transportName } from "./mcpRuntime";
 import { guessName, joinCommand, parseCommand } from "./mcpCommand";
 import { piKeys, type PiAction, type PiStatus } from "./piQuery";
 import type { Ask } from "./SettingsPanel";
@@ -196,7 +196,7 @@ export function McpDialog({ server, run, status, onPaste, ...props }: Props & { 
       <div className="mcp-probe-bar">
         <p className="mcp-health" role="status" data-tone={probe.busy ? "busy" : probe.result?.ok ? "ok" : "bad"}>
           {probe.busy ? t("mcp.health.connecting") : probe.result?.ok ? t("mcpDialog.probe.ok", { count: probe.result.tools.length, seconds: (probe.result.elapsed_ms / 1000).toFixed(1) })
-            : t("mcpDialog.probe.failed", { reason: clause(probe.result?.error ?? "") || t("mcpDialog.probe.noConnect") })}
+            : t("mcpDialog.probe.failed", { reason: clause(probe.result ? probeError(probe.result) : "") || t("mcpDialog.probe.noConnect") })}
         </p>
         {probe.result && !probe.busy && <button type="button" className="btn sm ghost" aria-expanded={probe.open} aria-controls={panelId}
           onClick={() => setProbe((old) => ({ ...old, open: !old.open }))}>

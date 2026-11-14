@@ -15,7 +15,7 @@ const TREE: FeedTree = {
   folders: [
     { id: 10, name: "技术", label: "技术", indent: 0, position: 0, feeds: [feed(11, "Compiler Notes", 10)] },
     { id: 12, name: "前端", label: "技术 / 前端", indent: 1, position: 0, feeds: [feed(13, "CSS Weekly", 12)] },
-    { id: 20, name: "新闻", label: "新闻", indent: 0, position: 1, feeds: [feed(21, "晚报", 20, { error: "源暂时不可用（503）" })] },
+    { id: 20, name: "新闻", label: "新闻", indent: 0, position: 1, feeds: [feed(21, "晚报", 20, { error: { code: "feed_refresh_http", params: { status: 503 }, detail: "http status 503" } })] },
   ],
   uncategorized: [feed(30, "随笔", 0)],
   folder_combo: ["技术", "技术 / 前端", "新闻"],

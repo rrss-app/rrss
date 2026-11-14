@@ -1,3 +1,4 @@
+import { formatBackupMessage, formatBackupWhen } from "./panelText";
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type BackupDoneView, type PrefsImportView, type RestoreCheckView } from "../lib/api";
@@ -16,8 +17,8 @@ function restoreMessage(check: RestoreCheckView) {
   const t = (key: "checked" | "replace" | "autoBackup" | "restart", options: Record<string, string> = {}) => i18n.t(`backup.restoreMessage.${key}`, { ns: "settingsSystem", ...options });
   return [
     t("checked", { name: check.file_name }),
-    check.taken,
-    check.summary,
+    i18n.t("backup.format.taken", { ns: "settingsSystem", when: formatBackupWhen(check.created_at), version: check.schema_version }),
+    formatBackupMessage(check.summary),
     "",
     t("replace"),
     t("autoBackup"),

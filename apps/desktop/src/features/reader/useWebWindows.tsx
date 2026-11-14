@@ -363,7 +363,7 @@ export function WebWindowScene({ controller, covered, onBack, onOpenLink, onProx
         <div className="web-tip-actions"><label><input type="checkbox" checked={never} disabled={writing} onChange={event => setNever(event.target.checked)} />{t("web.firstTip.never")}</label><button type="button" className="btn sm primary" disabled={writing} aria-busy={writing} onClick={() => void confirm()}>{t("web.openOriginal")}</button><button type="button" className="btn sm ghost" disabled={writing} onClick={onBack}>{t("webWindow.tip.cancel")}</button></div>
         {error && <small role="alert">{error}</small>}
       </div> : <div className="web-tip web-original-tip web-warning" data-tone="warn" role="alert" data-error-code={panel.failure?.code}>
-        <div className="web-tip-text"><strong>{isProxyError(panel.failure) ? t("webWindow.error.proxy") : t("webWindow.error.open")}</strong><p>{panel.error}</p></div>
+        <div className="web-tip-text"><strong>{(isProxyError(panel.failure) || panel.failure?.code === "web_proxy_route_changed") ? t("webWindow.error.proxy") : t("webWindow.error.open")}</strong><p>{panel.error}</p></div>
         <div className="web-tip-actions"><button type="button" className="btn primary" onClick={() => open("reader")}>{t("webWindow.error.useReader")}</button><button type="button" className="btn" onClick={() => open("browser")}>{t("web.openInBrowser")}</button><button type="button" className="btn ghost" onClick={() => { onBack(); onProxySettings(); }}>{t("webWindow.error.proxySettings")}</button></div>
         <small>{t("webWindow.error.retryHint")}</small>
       </div>}

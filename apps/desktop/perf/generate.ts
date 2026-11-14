@@ -216,7 +216,7 @@ function articleView(
     cluster_size: 1,
     cluster_label: "",
     cluster_span: "",
-    interest_label: extra.interest_label ?? "",
+    interest_reason: extra.interest_reason ?? null,
     noisy: extra.noisy ?? false,
     spot_check: extra.spot_check ?? false,
   };

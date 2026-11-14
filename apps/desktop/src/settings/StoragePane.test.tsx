@@ -1,3 +1,4 @@
+import type { StorageMessage } from "../bindings";
 import { deferred } from "../test/deferred";
 import { act, type ComponentProps } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -16,10 +17,12 @@ vi.mock("../lib/api", async () => {
 });
 const harness = createReactHarness();
 
-function row(key: string, label: string, bytes: number, extra: Partial<StorageItemView> = {}): StorageItemView {
+type FixtureExtra = Omit<Partial<StorageItemView>, "hint" | "confirm" | "passive"> & { hint?: string; confirm?: string[]; passive?: string; action_label?: string; confirm_title?: string };
+const legacy = (text: string): StorageMessage => ({ code: "legacy_text", params: { text } });
+function row(kind: StorageItemView["kind"], _label: string, bytes: number, extra: FixtureExtra = {}): StorageItemView {
   return {
-    key, label, hint: "", bytes, size: `${bytes} MB`, free: false,
-    action: "", action_label: "", passive: "", confirm_title: "", confirm: [], ...extra,
+    kind, hint: legacy(extra.hint ?? ""), bytes, free: extra.free ?? false, model: "", tables: [],
+    action: extra.action ?? null, passive: extra.passive ? "follows_articles" : null, confirm: (extra.confirm ?? []).map(legacy),
   };
 }
 function page(overrides: Partial<Record<string, StorageItemView>> = {}): StoragePage {
@@ -29,10 +32,10 @@ function page(overrides: Partial<Record<string, StorageItemView>> = {}): Storage
     row("vectors", "向量", 200, { action: "old_vectors", action_label: "清除旧模型向量", confirm_title: "清除旧模型向量", confirm: ["删除 8,120 段。", "之后重新生成。"] }),
     row("ai_cache", "AI 缓存", 30, { action: "ai_cache", action_label: "清空", confirm_title: "清空 AI 缓存", confirm: ["删除 9,870 条。", "可能产生费用。"] }),
     row("free", "空闲空间", 118, { free: true, action: "vacuum", action_label: "压缩数据库", confirm_title: "压缩数据库", confirm: ["还给磁盘。"] }),
-  ].map((item) => overrides[item.key] ?? item);
+  ].map((item) => overrides[item.kind] ?? item);
   return {
-    data_dir: "/data/rrss", total: "2.14 GB", summary: "数据库 1.41 GB · 媒体缓存 632 MB",
-    groups: [{ key: "database", label: "数据库", size: "1.41 GB", note: "含未写回的日志 12 MB", items }],
+    data_dir: "/data/rrss", total_bytes: Math.round(2.14 * 1024 ** 3), summary: legacy("数据库 1.41 GB · 媒体缓存 632 MB"),
+    groups: [{ kind: "database", bytes: Math.round(1.41 * 1024 ** 3), note: legacy("含未写回的日志 12 MB"), items }],
     scanned_at: Date.UTC(2026, 8, 27, 6, 32),
   };
 }
@@ -56,11 +59,11 @@ describe("storage page", () => {
     box.stub = createApiStub();
     box.stub.handle("storagePage", () => page());
     box.stub.handle("retentionPage", () => ({
-      days: 0, default_days: 90, custom_feeds: 0, preview: "", preview_hint: "", can_run: false,
-      confirm_title: "立即清理旧文章正文", confirm: [], confirm_ok: "清理",
+      days: 0, default_days: 90, custom_feeds: 0, preview: null, preview_hint: null, can_run: false,
+      first_run: false, confirm: [],
     }));
     box.stub.handle("backupPage", () => ({
-      last_manual: "还没有手动备份过。", schedule: "off", auto_summary: "升级前自动 · 定时关闭",
+      last_manual_at: null, schedule: "off",
       entries: [], restore_notice: null, rules: 0, interests: 0, memories: 0,
     }));
   });
@@ -80,7 +83,7 @@ describe("storage page", () => {
 
     const seen: string[] = [];
     const gate = deferred<void>();
-    box.stub!.handle("storageClean", async (action: string) => { seen.push(action); await gate.promise; return "已清空 AI 缓存（9,870 条）。"; });
+    box.stub!.handle("storageClean", async (action: string) => { seen.push(action); await gate.promise; return { code: "storage_cleaned" as const, params: { action: "ai_cache" as const, count: 9870 } }; });
     act(() => onAsk.mock.calls[0][2]());
     await flush();
     expect(item(host, "ai_cache").textContent).toContain("清理中…");
@@ -97,7 +100,7 @@ describe("storage page", () => {
   });
 
   it("notifies index consumers only after clearing old vectors", async () => {
-    box.stub!.handle("storageClean", (action: string) => `done ${action}`);
+    box.stub!.handle("storageClean", (action: string) => legacy(`done ${action}`));
     const changed = vi.fn();
     const editState = vi.fn();
     const { host } = mount({ onChanged: changed, onEditStateChange: editState }); await flush();

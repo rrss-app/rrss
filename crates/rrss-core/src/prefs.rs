@@ -4,6 +4,7 @@
 //! 范围在本机找不到的条目跳过并写进报告。预设包里的规则只导出包 id，导入时重新安装。
 //! 待确认的建议规则和记忆不导出；线程范围的记忆不导出。
 
+use crate::error::backup::BackupProblem;
 use std::collections::HashSet;
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -288,15 +289,13 @@ pub struct ImportReport {
 }
 
 pub fn parse(text: &str) -> Result<Export> {
-    let export: Export = serde_json::from_str(text)
-        .map_err(|_| Error::Backup("不是 RRSS 偏好文件，或文件已损坏".into()))?;
+    let export: Export =
+        serde_json::from_str(text).map_err(|_| Error::Backup(BackupProblem::PreferencesInvalid))?;
     if export.kind != KIND {
-        return Err(Error::Backup("不是 RRSS 偏好文件".into()));
+        return Err(Error::Backup(BackupProblem::PreferencesKindInvalid));
     }
     if export.format > FORMAT {
-        return Err(Error::Backup(
-            "偏好文件来自更新版本的 RRSS，请先升级程序".into(),
-        ));
+        return Err(Error::Backup(BackupProblem::PreferencesFormatUnsupported));
     }
     Ok(export)
 }
@@ -585,6 +584,9 @@ mod tests {
             r#"{{"format":{},"kind":"rrss-prefs","created_at":0}}"#,
             FORMAT + 1
         );
-        assert!(parse(&newer).unwrap_err().to_string().contains("更新版本"));
+        assert!(matches!(
+            parse(&newer),
+            Err(Error::Backup(BackupProblem::PreferencesFormatUnsupported))
+        ));
     }
 }

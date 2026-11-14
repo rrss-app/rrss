@@ -2,6 +2,7 @@
 //! 复杂对象（连接、用途绑定、工具、技能、MCP）继续走各自的表和命令，不在这里。
 //! 前端文案由生成的 SettingId 检查，预览和测试复用同一份导出描述符。
 
+use rrss_core::error::settings::SettingProblem;
 use rrss_core::ai_store::{self, InputTier};
 use rrss_core::{articles, db, pi_store, translations};
 use rusqlite::Connection;
@@ -14,15 +15,15 @@ use crate::views::{
 enum Kind {
     Bool,
     Int(i64, i64),
-    /// `(id, 标签, 说明)`。
-    Enum(&'static [(&'static str, &'static str, &'static str)]),
-    /// 输入档位：说明里带着 rrss-core 的预算数值，运行时生成。
+    /// Option ids; display text belongs to the frontend registry.
+    Enum(&'static [&'static str]),
+    /// Input-tier budgets are exported as raw numbers alongside the schema.
     InputTier,
     /// 去掉首尾空白后的字数上限。
     Text(usize),
     /// 沿用旧单值入口的规范化与旧库读取语义。
     LegacyEnum(
-        &'static [(&'static str, &'static str, &'static str)],
+        &'static [&'static str],
         fn(&str) -> String,
     ),
     Language,
@@ -39,15 +40,7 @@ struct Def {
     write: Option<fn(&Connection, &str, &str) -> rrss_core::Result<()>>,
 }
 
-const CACHE_WARMING: &[(&str, &str, &str)] = &[
-    ("off", "关闭", ""),
-    ("streaming", "回复时", "回复进行中保持服务商的提示缓存。"),
-    (
-        "idle",
-        "空闲时也保持",
-        "两次提问之间也保持，没有对话时也可能产生费用。",
-    ),
-];
+const CACHE_WARMING: &[&str] = &["off", "streaming", "idle"];
 
 const fn rank_switch(id: &'static str) -> Def {
     Def {
@@ -91,11 +84,7 @@ const DEFS: &[Def] = &[
         id: "web_open_mode",
         domain: SettingDomain::Reader,
         level: SettingLevel::L0,
-        kind: Kind::Enum(&[
-            ("reader", "在 RRSS 阅读视图打开", ""),
-            ("web", "打开原网页", ""),
-            ("browser", "在系统浏览器打开", ""),
-        ]),
+        kind: Kind::Enum(&["reader", "web", "browser"]),
         default: "reader",
         apply: SettingApply::Immediate,
         affects_pi: false,
@@ -146,11 +135,7 @@ const DEFS: &[Def] = &[
         domain: SettingDomain::Reader,
         level: SettingLevel::L0,
         kind: Kind::LegacyEnum(
-            &[
-                ("system", "跟随系统", ""),
-                ("light", "亮色", ""),
-                ("dark", "暗色", ""),
-            ],
+            &["system", "light", "dark"],
             |raw| {
                 if matches!(raw, "light" | "dark") {
                     raw.into()
@@ -169,11 +154,7 @@ const DEFS: &[Def] = &[
         domain: SettingDomain::Reader,
         level: SettingLevel::L0,
         kind: Kind::LegacyEnum(
-            &[
-                ("focus", "只看焦点", ""),
-                ("hide_faded", "隐藏淡化", ""),
-                ("all", "全部", ""),
-            ],
+            &["focus", "hide_faded", "all"],
             |raw| articles::FocusFilter::parse_str(raw).as_str().into(),
         ),
         default: "hide_faded",
@@ -196,11 +177,7 @@ const DEFS: &[Def] = &[
         domain: SettingDomain::Reader,
         level: SettingLevel::L0,
         kind: Kind::LegacyEnum(
-            &[
-                ("all", "全部", ""),
-                ("unread", "未读", ""),
-                ("starred", "收藏", ""),
-            ],
+            &["all", "unread", "starred"],
             |raw| articles::ListScope::parse_str(raw).as_str().into(),
         ),
         default: "all",
@@ -233,11 +210,7 @@ const DEFS: &[Def] = &[
         domain: SettingDomain::Reader,
         level: SettingLevel::L0,
         kind: Kind::LegacyEnum(
-            &[
-                ("all", "全部", ""),
-                ("unread", "未读", ""),
-                ("starred", "收藏", ""),
-            ],
+            &["all", "unread", "starred"],
             |raw| articles::ListScope::parse_str(raw).as_str().into(),
         ),
         default: "all",
@@ -370,7 +343,7 @@ const DEFS: &[Def] = &[
         domain: SettingDomain::Reader,
         level: SettingLevel::L1,
         // 选项文字在前端注册表（多语言约定），这里只登记取值。
-        kind: Kind::Enum(&[("ask", "", ""), ("tray", "", ""), ("quit", "", "")]),
+        kind: Kind::Enum(&["ask", "tray", "quit"]),
         default: "ask",
         apply: SettingApply::Immediate,
         affects_pi: false,
@@ -510,7 +483,7 @@ pub fn current(conn: &Connection, id: &str) -> rrss_core::Result<String> {
     let def = DEFS
         .iter()
         .find(|d| d.id == id)
-        .ok_or_else(|| rrss_core::Error::InvalidSetting(format!("没有名为 {id} 的设置项")))?;
+        .ok_or_else(|| rrss_core::Error::InvalidSetting(SettingProblem::Unknown { id: id.into() }))?;
     read(conn, def)
 }
 
@@ -519,7 +492,7 @@ pub fn set(conn: &Connection, id: &str, raw: &str) -> rrss_core::Result<SettingV
     let def = DEFS
         .iter()
         .find(|d| d.id == id)
-        .ok_or_else(|| rrss_core::Error::InvalidSetting(format!("没有名为 {id} 的设置项")))?;
+        .ok_or_else(|| rrss_core::Error::InvalidSetting(SettingProblem::Unknown { id: id.into() }))?;
     let value = normalize(def, raw)?;
     match def.write {
         Some(write) => write(conn, def.id, &value)?,
@@ -549,13 +522,11 @@ fn write_rank_switch(conn: &Connection, key: &str, value: &str) -> rrss_core::Re
 }
 
 fn spec(def: &Def) -> SettingSpec {
-    let options = |items: &[(&str, &str, &str)]| {
+    let options = |items: &[&str]| {
         items
             .iter()
-            .map(|(id, label, hint)| SettingOption {
+            .map(|id| SettingOption {
                 id: (*id).into(),
-                label: (*label).into(),
-                hint: (*hint).into(),
             })
             .collect()
     };
@@ -587,7 +558,7 @@ fn spec(def: &Def) -> SettingSpec {
 
 fn enum_ids(def: &Def) -> Vec<String> {
     match &def.kind {
-        Kind::Enum(items) => items.iter().map(|(id, _, _)| (*id).to_string()).collect(),
+        Kind::Enum(items) => items.iter().map(|id| (*id).to_string()).collect(),
         Kind::InputTier => [InputTier::Low, InputTier::Medium, InputTier::High]
             .iter()
             .map(|t| t.as_str().to_string())
@@ -606,9 +577,9 @@ fn normalize_scope_list(
     raw: &str,
     allow_feeds: bool,
     max: usize,
-    message: &str,
+    problem: SettingProblem,
 ) -> rrss_core::Result<String> {
-    let invalid = || rrss_core::Error::InvalidSetting(message.into());
+    let invalid = || rrss_core::Error::InvalidSetting(problem.clone());
     let mut out = Vec::new();
     for part in raw.split(',') {
         let part = part.trim();
@@ -641,10 +612,10 @@ fn read(conn: &Connection, def: &Def) -> rrss_core::Result<String> {
 
 fn normalize(def: &Def, raw: &str) -> rrss_core::Result<String> {
     if def.id == db::FEEDS_PINNED_KEY {
-        return normalize_scope_list(raw, true, 10, "置顶项应为 folder:<正整数> 或 feed:<正整数>");
+        return normalize_scope_list(raw, true, 10, SettingProblem::PinnedScopesInvalid);
     }
     if def.id == db::FOCUS_COLUMNS_KEY {
-        return normalize_scope_list(raw, false, 5, "焦点栏目的每一项都要是 folder:<正整数>");
+        return normalize_scope_list(raw, false, 5, SettingProblem::FocusColumnsInvalid);
     }
     match &def.kind {
         Kind::LegacyEnum(_, normalize) => return Ok(normalize(raw)),
@@ -652,29 +623,29 @@ fn normalize(def: &Def, raw: &str) -> rrss_core::Result<String> {
         _ => {}
     }
     let raw = raw.trim();
-    let invalid = |why: String| rrss_core::Error::InvalidSetting(why);
+    let invalid = |problem: SettingProblem| rrss_core::Error::InvalidSetting(problem);
     match &def.kind {
         Kind::Bool => match raw {
             "1" | "true" | "TRUE" => Ok("1".into()),
             "0" | "false" | "FALSE" => Ok("0".into()),
-            _ => Err(invalid(format!("{} 只能是开或关", def.id))),
+            _ => Err(invalid(SettingProblem::BooleanRequired { id: def.id.into() })),
         },
         Kind::Int(min, max) => {
             let n: i64 = raw
                 .parse()
-                .map_err(|_| invalid(format!("「{raw}」不是整数")))?;
+                .map_err(|_| invalid(SettingProblem::IntegerRequired { value: raw.into() }))?;
             if n < *min || n > *max {
-                return Err(invalid(format!("需要在 {min} 到 {max} 之间")));
+                return Err(invalid(SettingProblem::OutOfRange { min: *min, max: *max }));
             }
             if def.id == db::HIDDEN_SPOT_CHECK_RATE_KEY && !db::HIDDEN_SPOT_CHECK_RATES.contains(&n)
             {
-                return Err(invalid("抽查比例只能是 0 / 1 / 3 / 5".into()));
+                return Err(invalid(SettingProblem::SpotCheckRateInvalid));
             }
             Ok(n.to_string())
         }
         Kind::Text(max) => {
             if raw.chars().count() > *max {
-                return Err(invalid(format!("不能超过 {max} 字")));
+                return Err(invalid(SettingProblem::TextTooLong { max: *max }));
             }
             Ok(raw.to_string())
         }
@@ -686,60 +657,17 @@ fn normalize(def: &Def, raw: &str) -> rrss_core::Result<String> {
             if ids.iter().any(|id| id == raw) {
                 Ok(raw.to_string())
             } else {
-                Err(invalid(format!(
-                    "「{raw}」不是可选值（{}）",
-                    ids.join(" / ")
-                )))
+                Err(invalid(SettingProblem::OptionInvalid { value: raw.into(), options: ids }))
             }
         }
     }
 }
 
-/// 输入档位各档的说明：带着 rrss-core 的预算数值，改了预算这里自动跟着变。
 fn input_tier_options() -> Vec<SettingOption> {
-    [
-        (InputTier::Low, "低", "尽量精简"),
-        (InputTier::Medium, "中", "均衡"),
-        (InputTier::High, "高", "少拆分"),
-    ]
-    .into_iter()
-    .map(|(t, label, lead)| {
-        let budget = t.summary_budget(false);
-        SettingOption {
-            id: t.as_str().into(),
-            label: label.into(),
-            hint: format!(
-                "{lead}：每篇摘要最多送 {}正文（约 {} token，收藏或高分的多给一半），简报里每篇最多摘 {}。",
-                chars_label(budget),
-                approx_tokens(budget),
-                chars_label(t.digest_item_chars()),
-            ),
-        }
-    })
-    .collect()
-}
-
-/// 中文正文粗算：约 4 字 3 个 token。只用于界面上的估算。
-fn approx_tokens(chars: usize) -> String {
-    let tokens = chars * 3 / 4;
-    if tokens >= 1_000 {
-        let tenths = (tokens + 50) / 100;
-        if tenths.is_multiple_of(10) {
-            format!("{}k", tenths / 10)
-        } else {
-            format!("{}.{}k", tenths / 10, tenths % 10)
-        }
-    } else {
-        tokens.to_string()
-    }
-}
-
-fn chars_label(chars: usize) -> String {
-    if chars >= 10_000 && chars.is_multiple_of(10_000) {
-        format!("{} 万字", chars / 10_000)
-    } else {
-        format!("{chars} 字")
-    }
+    [InputTier::Low, InputTier::Medium, InputTier::High]
+        .into_iter()
+        .map(|tier| SettingOption { id: tier.as_str().into() })
+        .collect()
 }
 
 #[cfg(test)]
@@ -826,25 +754,11 @@ mod tests {
     }
 
     #[test]
-    fn input_tier_options_describe_core_numbers() {
+    fn input_tier_options_export_only_ids() {
         let options = input_tier_options();
-        let labels: Vec<&str> = options.iter().map(|o| o.label.as_str()).collect();
-        assert_eq!(labels, ["低", "中", "高"]);
-        let hint = |i: usize| options[i].hint.as_str();
-        assert!(
-            hint(0).contains("2000 字") && hint(0).contains("1.5k token"),
-            "{}",
-            hint(0)
-        );
-        assert!(
-            hint(1).contains("4000 字") && hint(1).contains("3k token"),
-            "{}",
-            hint(1)
-        );
-        assert!(
-            hint(2).contains("1 万字") && hint(2).contains("7.5k token"),
-            "{}",
-            hint(2)
+        assert_eq!(
+            serde_json::to_value(options).unwrap(),
+            serde_json::json!([{ "id": "low" }, { "id": "medium" }, { "id": "high" }])
         );
     }
 
@@ -1136,11 +1050,20 @@ mod tests {
             .map(|def| format!("{:?}", def.id))
             .collect::<Vec<_>>()
             .join(" | ");
+        let budgets = [InputTier::Low, InputTier::Medium, InputTier::High]
+            .into_iter()
+            .map(|tier| (tier.as_str().to_string(), serde_json::json!({
+                "summary_chars": tier.summary_budget(false),
+                "digest_chars": tier.digest_item_chars(),
+            })))
+            .collect::<serde_json::Map<_, _>>();
+        let budgets = serde_json::to_string(&budgets).unwrap();
         format!(
             "// Generated by rrss-app export_settings_schema. Do not edit.\n\n\
              import type {{ SettingSpec }} from \"../bindings\";\n\n\
              export type SettingId = {ids};\n\n\
-             export const SETTING_SPECS: SettingSpec[] = [\n{specs}\n];\n"
+             export const SETTING_SPECS: SettingSpec[] = [\n{specs}\n];\n\n\
+             export const INPUT_TIER_BUDGETS = {budgets} as const;\n"
         )
     }
 

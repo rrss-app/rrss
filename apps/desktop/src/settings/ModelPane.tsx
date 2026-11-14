@@ -1,3 +1,4 @@
+import { settingOptions } from "./registry";
 import { useState } from "react";
 import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ModelBindingsView, ModelChoice, ModelPoolView, ProviderView } from "../lib/api";
@@ -64,7 +65,7 @@ export function ModelPane({ onAsk, onNavigate, onEditStateChange }: {
   const presetList = presets.data ?? [];
   const value = (id: string) => schema.data?.values.find((v) => v.id === id)?.value ?? "";
   const tierSpec = schema.data?.specs.find((s) => s.id === "ai_input_tier");
-  const tier = tierSpec?.kind.type === "enum" ? tierSpec.kind.options.find((o) => o.id === value("ai_input_tier"))?.label : "";
+  const tier = tierSpec?.kind.type === "enum" ? settingOptions("ai_input_tier", tierSpec.kind.options).find((o) => o.id === value("ai_input_tier"))?.label : "";
   const budget = Number(value("ai_daily_budget_tokens"));
   const embedBudget = Number(value("ai_embed_daily_budget_tokens"));
   const autoOn = value("focus_auto_summary") === "1";
@@ -367,9 +368,7 @@ function UsesSection({ view, providers, pool, onAsk, onNavigate, onManage }: {
     const outcome = await run({ type: "bindings", args: { bindings: tasks.map((task) => ({ task, ...choice })) } });
     if (outcome.status === "busy" || !outcome.mounted) return;
     if (outcome.status === "failed") {
-      const error = outcome.error;
-      const message = error && typeof error === "object" && "message" in error ? error.message : error;
-      setStatus({ tone: "err", text: formatNotice(t("pane.saveFailed"), message) });
+      setStatus({ tone: "err", text: formatNotice(t("pane.saveFailed"), outcome.error) });
     }
     else {
       setStatus({ tone: "ok", text: done });

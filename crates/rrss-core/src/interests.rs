@@ -1,5 +1,6 @@
 //! 显式兴趣 CRUD 与可见列表弱偏向。不改隐藏。日志 target：`rrss_core::interests`。
 
+use crate::error::rules::MemoryProblem;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -11,6 +12,7 @@ use crate::db::{
 use crate::error::{Error, Result};
 use crate::feeds::now_ms;
 use crate::rag::{SelectedArticle, cosine_distance, le_to_f32s, load_selected_article_vectors};
+use crate::rank::reasons::{ReasonMessage, ReasonPrefix, StoredReason};
 
 pub const INTEREST_DIST: f32 = 0.35;
 pub const DEFAULT_WEIGHT: i64 = 2;
@@ -28,11 +30,56 @@ pub struct Interest {
     pub hit_count: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct InterestReason {
     pub interest_id: i64,
     pub label: String,
     pub weight: i64,
+    // Only the database/IPC projection changes; rrss tool keeps these fields.
+    #[serde(skip)]
+    pub message: ReasonMessage,
+}
+
+impl<'de> Deserialize<'de> for InterestReason {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Stored {
+            interest_id: i64,
+            #[serde(default)]
+            label: Option<String>,
+            #[serde(default)]
+            weight: Option<i64>,
+            #[serde(flatten)]
+            message: serde_json::Value,
+        }
+        let stored = Stored::deserialize(deserializer)?;
+        let coded = stored.message.get("code").is_some();
+        let weight = if coded {
+            stored
+                .message
+                .get("points")
+                .and_then(serde_json::Value::as_i64)
+                .or(stored.weight)
+        } else {
+            stored.weight
+        }
+        .ok_or_else(|| serde::de::Error::missing_field(if coded { "points" } else { "weight" }))?;
+        let message = ReasonMessage::from_stored(
+            &stored.message,
+            stored.label.as_deref().unwrap_or_default(),
+            Some(ReasonPrefix::Interest),
+        );
+        Ok(Self {
+            interest_id: stored.interest_id,
+            label: stored
+                .label
+                .unwrap_or_else(|| message.content().unwrap_or_default().to_string()),
+            weight,
+            message,
+        })
+    }
 }
 
 pub fn boost_enabled(conn: &Connection) -> Result<bool> {
@@ -121,7 +168,7 @@ pub fn list_interests(conn: &Connection) -> Result<Vec<Interest>> {
 pub fn insert_interest(conn: &Connection, label: &str, source: &str) -> Result<i64> {
     let label = label.trim();
     if label.is_empty() {
-        return Err(Error::InvalidMemory("empty interest label".into()));
+        return Err(Error::InvalidMemory(MemoryProblem::InterestLabelMissing));
     }
     conn.execute(
         "INSERT INTO interests (label, weight, source, enabled, created_at)
@@ -347,10 +394,19 @@ pub(crate) fn calculate_boost(vec: &[f32], prototypes: &[Prototype]) -> (i64, Ve
             let scaled = ((proto.weight as f32) * (1.0 - dist / INTEREST_DIST)).round() as i64;
             let weight = scaled.max(1);
             boost += weight;
+            let pattern = crate::rank::reasons::safe_text(&proto.label);
             reasons.push(InterestReason {
                 interest_id: proto.id,
                 label: proto.label.clone(),
                 weight,
+                message: if pattern == proto.label {
+                    ReasonMessage::InterestMatch { pattern }
+                } else {
+                    ReasonMessage::LegacyText {
+                        text: proto.label.clone(),
+                        prefix: Some(ReasonPrefix::Interest),
+                    }
+                },
             });
         }
     }
@@ -365,10 +421,29 @@ fn write_boost(
     prototypes: &[Prototype],
 ) -> Result<bool> {
     let (boost, reasons) = calculate_boost(vec, prototypes);
+    #[derive(Serialize)]
+    struct StoredInterest<'a> {
+        #[serde(flatten)]
+        reason: StoredReason<'a>,
+        interest_id: i64,
+        label: &'a str,
+    }
     let json = if reasons.is_empty() {
         None
     } else {
-        Some(serde_json::to_string(&reasons).unwrap_or_else(|_| "[]".into()))
+        let stored: Vec<_> = reasons
+            .iter()
+            .map(|reason| StoredInterest {
+                reason: StoredReason {
+                    component: "interest",
+                    message: &reason.message,
+                    points: reason.weight,
+                },
+                interest_id: reason.interest_id,
+                label: &reason.label,
+            })
+            .collect();
+        Some(serde_json::to_string(&stored).unwrap_or_else(|_| "[]".into()))
     };
     conn.execute(
         "UPDATE articles SET interest_boost = ?1, interest_reasons_json = ?2 WHERE id = ?3",
@@ -603,6 +678,36 @@ mod tests {
             )
             .unwrap();
         assert!(boost > 0);
+        let stored: serde_json::Value =
+            serde_json::from_str(&article_reasons(&conn, focus)).unwrap();
+        assert_eq!(stored[0]["component"], "interest");
+        assert_eq!(stored[0]["code"], "interest_match");
+        assert_eq!(
+            stored[0]["params"],
+            serde_json::json!({"pattern":"Rust async"})
+        );
+        assert_eq!(stored[0]["points"], boost);
+        let tool =
+            serde_json::to_value(parse_interest_reasons(Some(&article_reasons(&conn, focus))))
+                .unwrap();
+        assert_eq!(
+            tool,
+            serde_json::json!([{"interest_id":iid,"label":"Rust async","weight":boost}])
+        );
+        let label = "https://interest.example/notes?q=topic";
+        conn.execute(
+            "UPDATE interests SET label=?1 WHERE id=?2",
+            params![label, iid],
+        )
+        .unwrap();
+        recompute_interest_boost(&conn).unwrap();
+        let updated: serde_json::Value =
+            serde_json::from_str(&article_reasons(&conn, focus)).unwrap();
+        assert_eq!(updated[0]["code"], "legacy_text");
+        assert_eq!(
+            updated[0]["params"],
+            serde_json::json!({"text":label,"prefix":"interest"})
+        );
         let hidden_boost: i64 = conn
             .query_row(
                 "SELECT interest_boost FROM articles WHERE id = ?1",

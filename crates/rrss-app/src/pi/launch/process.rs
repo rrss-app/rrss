@@ -1,7 +1,8 @@
 //! One owner waits/reaps the child. Pipe tasks drain before publishing Exited,
 //! so final text and the diagnostic tail cannot arrive after turn settlement.
 use super::{ChatError, ChatErrorKind, log_stderr};
-use anyhow::{Context, Result};
+use anyhow::Result;
+use rrss_core::{Error, error::PiFailure};
 use rrss_ai::pi::{self, JsonlDecoder, PiEvent, RpcCorrelator, encode_line, rpc::RpcError};
 use std::{
     collections::VecDeque,
@@ -33,7 +34,7 @@ pub struct PiProcess {
 impl PiProcess {
     pub async fn send(&self, value: &serde_json::Value) -> Result<()> {
         let mut stdin = self.stdin.lock().await;
-        let stdin = stdin.as_mut().context("Pi 的输入已关闭")?;
+        let stdin = stdin.as_mut().ok_or(Error::Pi(PiFailure::InputClosed))?;
         stdin.write_all(encode_line(value).as_bytes()).await?;
         stdin.flush().await?;
         Ok(())
@@ -83,7 +84,7 @@ impl PiProcess {
         else {
             return Err(ChatError::new(
                 ChatErrorKind::Internal,
-                "对话引擎的管道未建立",
+                Error::Pi(PiFailure::PipeMissing),
             ));
         };
         let rpc = Arc::new(RpcCorrelator::default());

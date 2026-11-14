@@ -66,15 +66,15 @@ pub fn cite_selection(
     revision: &str,
     selections: &[DigestSelection],
 ) -> Result<Vec<CitationView>> {
-    let row = ai_store::digest_by_id(conn, digest_id)?.context("简报不存在")?;
+    let row = ai_store::digest_by_id(conn, digest_id)?.context(rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestMissing))?;
     let parsed = parse_digest(conn, row);
     if parsed.context.revision != revision {
-        bail!("简报已更新，请重新选择");
+        bail!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestUpdated));
     }
     let digest = &parsed.context;
     let document = &parsed.document;
     if selections.is_empty() || selections.len() > document.blocks.len() {
-        bail!("请先选择带来源的简报条目");
+        bail!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestSelectSources));
     }
     let mut selected: Vec<_> = selections.iter().collect();
     selected.sort_by_key(|selection| selection.block_id);
@@ -82,30 +82,30 @@ pub fn cite_selection(
     let mut lines = Vec::new();
     for selection in selected {
         if !seen_blocks.insert(selection.block_id) {
-            bail!("引用选区包含重复条目，请重新选择");
+            bail!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestDuplicate));
         }
-        let index = usize::try_from(selection.block_id).context("无效的简报块编号")?;
+        let index = usize::try_from(selection.block_id).context(rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestBlockInvalid))?;
         let Some(Block::ListItem { inlines, .. }) = document.blocks.get(index) else {
-            bail!("请选择带来源的简报条目，标题和说明段落不能定位原文");
+            bail!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestBlockNoSources));
         };
         let ordinal = parsed
             .block_ids
             .iter()
             .position(|block_id| *block_id == index)
-            .context("简报条目已变化，请重新选择")?;
+            .context(rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestItemChanged))?;
         let item = digest
             .items
             .get(ordinal)
-            .context("简报条目已变化，请重新选择")?;
+            .context(rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestItemChanged))?;
         if item.sources.is_empty() {
-            bail!("所选简报条目没有可用来源，无法创建引用");
+            bail!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestSourcesMissing));
         }
         let excerpt = selection.excerpt.trim();
         let normalize = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
         if excerpt.is_empty()
             || !normalize(&inlines_to_plain(inlines)).contains(&normalize(excerpt))
         {
-            bail!("简报内容已变化，请重新选择要引用的段落");
+            bail!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestContentChanged));
         }
         lines.push((item, excerpt));
     }
@@ -123,8 +123,8 @@ pub fn cite_selection(
                 .map(|entry| entry.status.as_str());
             match status {
                 Some("available") => {}
-                Some("removed") => bail!("来源文章已移除，请重新生成简报或选择其他条目"),
-                _ => bail!("来源状态暂不可用，请稍后重试"),
+                Some("removed") => bail!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestSourceRemoved)),
+                _ => bail!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestSourceUnavailable)),
             }
         }
     }
@@ -140,7 +140,7 @@ pub fn cite_selection(
                 continue;
             }
             let mut citation = crate::actions::cite_article(conn, source.article_id)
-                .context("来源文章已移除，请重新生成简报或选择其他条目")?;
+                .context(rrss_core::Error::Jobs(rrss_core::error::JobFailure::DigestSourceRemoved))?;
             citation.kind = "digest".into();
             citation.excerpt = excerpt.clone();
             // 当前引用只定位来源文章，不宣称这是原文中的某个块或逐字引文。
@@ -704,8 +704,7 @@ mod tests {
         assert_eq!(view.items[0].sources[1].status, "removed");
         assert!(
             cite_selection(&conn, id, &selection)
-                .unwrap_err()
-                .to_string()
+                .map_err(|error| crate::ui_error::jobs::display_anyhow(&error)).unwrap_err()
                 .contains("已移除")
         );
         conn.execute("DROP TABLE articles", []).unwrap();
@@ -718,8 +717,7 @@ mod tests {
         );
         assert!(
             cite_selection(&conn, id, &selection)
-                .unwrap_err()
-                .to_string()
+                .map_err(|error| crate::ui_error::jobs::display_anyhow(&error)).unwrap_err()
                 .contains("暂不可用")
         );
     }
@@ -765,8 +763,7 @@ mod tests {
         assert_ne!(updated.revision, original.revision);
         assert!(
             super::cite_selection(&conn, id, &original.revision, &selection)
-                .unwrap_err()
-                .to_string()
+                .map_err(|error| crate::ui_error::jobs::display_anyhow(&error)).unwrap_err()
                 .contains("简报已更新")
         );
         assert_eq!(

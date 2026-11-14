@@ -1,6 +1,8 @@
 //! 一次性的 MCP 握手；不写库、不打开服务开关，也不调用工具。
-use crate::{McpInput, McpProbeView, McpToolView};
+use crate::ui_error::mcp::{McpProbeHint, McpUiError};
+use crate::{McpInput, McpProbeView, McpToolView, UiError};
 use anyhow::{Context, Result, bail};
+use rrss_core::{Error, error::McpFailure};
 use rrss_core::{
     network::{self, NetworkScope},
     pi_store, platform,
@@ -33,7 +35,7 @@ struct DiagnosticOutput {
 impl DiagnosticOutput {
     fn text(&self) -> String {
         if self.omitted {
-            "诊断输出过长，已省略".into()
+            String::new()
         } else {
             String::from_utf8_lossy(&self.bytes).into_owned()
         }
@@ -76,7 +78,11 @@ async fn stdout_messages(
         pending.extend_from_slice(&buf[..n]);
         while let Some(end) = pending.iter().position(|b| *b == b'\n') {
             if end > MAX_MESSAGE {
-                let _ = tx.send(Err(anyhow::anyhow!("MCP 消息过大"))).await;
+                let _ = tx
+                    .send(Err(anyhow::anyhow!(Error::Mcp(
+                        McpFailure::MessageTooLarge
+                    ))))
+                    .await;
                 return;
             }
             let line: Vec<_> = pending.drain(..=end).collect();
@@ -90,7 +96,11 @@ async fn stdout_messages(
             }
         }
         if pending.len() > MAX_MESSAGE {
-            let _ = tx.send(Err(anyhow::anyhow!("MCP 消息过大"))).await;
+            let _ = tx
+                .send(Err(anyhow::anyhow!(Error::Mcp(
+                    McpFailure::MessageTooLarge
+                ))))
+                .await;
             return;
         }
     }
@@ -129,7 +139,9 @@ impl Local {
             .or_else(|| std::env::var_os("PATH"));
         let program = platform::expand_mcp_home(server.command.as_deref().unwrap_or_default());
         let mut cmd = platform::mcp_command(
-            program.to_str().context("命令路径无效")?,
+            program
+                .to_str()
+                .context(Error::Mcp(McpFailure::CommandPathInvalid))?,
             cwd,
             path.as_deref(),
         );
@@ -142,9 +154,7 @@ impl Local {
         cmd.stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
-        let mut child = cmd
-            .spawn()
-            .context("无法启动本机程序；请检查命令是否已安装")?;
+        let mut child = cmd.spawn().context(Error::Mcp(McpFailure::SpawnFailed))?;
         let tree = Some(platform::ChildTree::attach(&mut child)?);
         let input = child.stdin.take().unwrap();
         let (tx, rx) = mpsc::channel(32);
@@ -183,13 +193,16 @@ impl Local {
                 self.input.write_all(format!("{}\n", json!({"jsonrpc":"2.0","id":message["id"],"error":{"code":-32601,"message":"RRSS probe does not support client requests"}})).as_bytes()).await?;
             }
         }
-        let after = self.started.elapsed().as_secs_f64();
+        let elapsed_ms = (self.started.elapsed().as_secs_f64() * 10.0).round() as u64 * 100;
         match self.child.try_wait()? {
             Some(status) => match status.code() {
-                Some(code) => bail!("程序启动后 {after:.1} 秒就退出了（退出码 {code}）"),
-                None => bail!("程序启动后 {after:.1} 秒被系统结束"),
+                Some(code) => bail!(Error::Mcp(McpFailure::ProcessExit {
+                    elapsed_ms,
+                    status: code
+                })),
+                None => bail!(Error::Mcp(McpFailure::ProcessKilled { elapsed_ms })),
             },
-            None => bail!("程序在握手完成前关闭了输出"),
+            None => bail!(Error::Mcp(McpFailure::OutputClosed)),
         }
     }
     async fn close(&mut self) {
@@ -207,10 +220,6 @@ impl Local {
         }
     }
 }
-
-#[derive(Debug, thiserror::Error)]
-#[error("远程服务返回 HTTP {0}")]
-struct HttpStatus(u16);
 
 struct Remote {
     client: reqwest::Client,
@@ -241,7 +250,7 @@ impl Remote {
             .json(body)
             .send()
             .await
-            .context("无法连接远程服务")?;
+            .context(Error::Mcp(McpFailure::ConnectFailed))?;
         if let Some(id) = response.headers().get("Mcp-Session-Id") {
             self.session = Some(id.to_str()?.to_owned());
         }
@@ -258,7 +267,7 @@ impl Remote {
         while let Some(chunk) = response.chunk().await? {
             bytes.extend_from_slice(&chunk);
             if bytes.len() > MAX_MESSAGE {
-                bail!("MCP 响应过大");
+                bail!(Error::Mcp(McpFailure::ResponseTooLarge));
             }
             if status.is_success() && sse {
                 let text = String::from_utf8_lossy(&bytes).replace("\r\n", "\n");
@@ -278,14 +287,17 @@ impl Remote {
         }
         if !status.is_success() {
             append(&self.diagnostics, &bytes);
-            return Err(HttpStatus(status.as_u16()).into());
+            return Err(Error::Mcp(McpFailure::HttpStatus {
+                status: status.as_u16(),
+            })
+            .into());
         }
         if sse {
-            bail!("远程流在返回 MCP 响应前关闭");
+            bail!(Error::Mcp(McpFailure::StreamClosed));
         }
         serde_json::from_slice(&bytes).map_err(|_| {
             append(&self.diagnostics, &bytes);
-            anyhow::anyhow!("远程地址没有返回 MCP JSON 响应")
+            anyhow::anyhow!(Error::Mcp(McpFailure::ResponseInvalid))
         })
     }
     async fn close(&self) {
@@ -321,7 +333,7 @@ async fn handshake(transport: &mut Transport) -> Result<Vec<McpToolView>> {
     for (i, version) in VERSIONS.iter().enumerate() {
         let response = match transport.exchange(&json!({"jsonrpc":"2.0","id":i+1,"method":"initialize","params":{"protocolVersion":version,"capabilities":{},"clientInfo":{"name":"rrss-probe","version":env!("CARGO_PKG_VERSION")}}})).await {
             Ok(response) => response,
-            Err(error) if i + 1 < VERSIONS.len() && error.downcast_ref::<HttpStatus>().is_some_and(|s| matches!(s.0, 400 | 406 | 415)) => {
+            Err(error) if i + 1 < VERSIONS.len() && error.downcast_ref::<Error>().is_some_and(|e| matches!(e, Error::Mcp(McpFailure::HttpStatus { status: 400 | 406 | 415 }))) => {
                 if let Transport::Remote(remote) = transport {
                     remote.close().await;
                     remote.session = None;
@@ -334,17 +346,14 @@ async fn handshake(transport: &mut Transport) -> Result<Vec<McpToolView>> {
             if i + 1 < VERSIONS.len() {
                 continue;
             }
-            bail!(
-                "MCP 初始化失败：{}",
-                error
-                    .get("message")
-                    .and_then(Value::as_str)
-                    .unwrap_or("协议版本不兼容")
-            );
+            if let Some(reason) = error.get("message").and_then(Value::as_str) {
+                bail!(UiError::from(format!("MCP 初始化失败：{reason}")));
+            }
+            bail!(McpUiError::InitializeRejected.failure("MCP initialize rejected"));
         }
         let negotiated = response["result"]["protocolVersion"]
             .as_str()
-            .context("MCP 初始化响应缺少协议版本")?;
+            .context(Error::Mcp(McpFailure::ProtocolMissing))?;
         if !VERSIONS.contains(&negotiated) {
             continue;
         }
@@ -355,7 +364,7 @@ async fn handshake(transport: &mut Transport) -> Result<Vec<McpToolView>> {
         break;
     }
     if !initialized {
-        bail!("MCP 协议版本不兼容");
+        bail!(Error::Mcp(McpFailure::ProtocolUnsupported));
     }
     transport
         .exchange(&json!({"jsonrpc":"2.0","method":"notifications/initialized"}))
@@ -372,18 +381,19 @@ async fn handshake(transport: &mut Transport) -> Result<Vec<McpToolView>> {
             .exchange(&json!({"jsonrpc":"2.0","id":100+page,"method":"tools/list","params":params}))
             .await?;
         if let Some(err) = response.get("error") {
-            bail!(
-                "读取工具失败：{}",
-                err.get("message")
-                    .and_then(Value::as_str)
-                    .unwrap_or("服务拒绝请求")
-            );
+            if let Some(reason) = err.get("message").and_then(Value::as_str) {
+                bail!(UiError::from(format!("读取工具失败：{reason}")));
+            }
+            bail!(McpUiError::ToolsRejected.failure("MCP tools request rejected"));
         }
         for tool in response["result"]["tools"]
             .as_array()
-            .context("服务没有返回工具列表")?
+            .context(Error::Mcp(McpFailure::ToolsMissing))?
         {
-            let name = tool["name"].as_str().context("工具缺少名称")?.to_string();
+            let name = tool["name"]
+                .as_str()
+                .context(Error::Mcp(McpFailure::ToolNameMissing))?
+                .to_string();
             tools.insert(
                 name.clone(),
                 McpToolView {
@@ -401,11 +411,11 @@ async fn handshake(transport: &mut Transport) -> Result<Vec<McpToolView>> {
             return Ok(tools.into_values().collect());
         }
         if next == cursor {
-            bail!("工具分页游标没有前进");
+            bail!(Error::Mcp(McpFailure::CursorStalled));
         }
         cursor = next;
     }
-    bail!("工具列表页数超过上限")
+    bail!(Error::Mcp(McpFailure::PageLimit))
 }
 
 /// 只跟随同源跳转（最多 5 次）：常见服务把 `/mcp` 跳到 `/mcp/`；跨站跳转可能把请求头带到别处，不跟。
@@ -436,11 +446,11 @@ pub async fn run(db_path: &Path, data_dir: &Path, input: McpInput) -> McpProbeVi
             let conn = rrss_core::db::open_at(&prepare_db)?;
             let server = super::server(&conn, &prepare_input)?;
             if server.transport == "sse" {
-                bail!("旧式 SSE 已停止支持");
+                bail!(Error::Mcp(McpFailure::SseUnsupported));
             }
             if server.auth == "oauth" {
                 if pi_store::use_own_config(&conn)? {
-                    bail!("自有 Pi 配置模式请在自己的 Pi 中登录和检测 OAuth 服务");
+                    bail!(Error::Mcp(McpFailure::OwnConfigProbe));
                 }
                 let token = super::login::probe_token(&prepare_data, &server)?;
                 secrets.push(token.clone());
@@ -506,7 +516,7 @@ pub async fn run(db_path: &Path, data_dir: &Path, input: McpInput) -> McpProbeVi
         };
         let result = tokio::time::timeout(TIMEOUT, handshake(&mut transport))
             .await
-            .unwrap_or_else(|_| Err(anyhow::anyhow!("连接检测超过 20 秒")));
+            .unwrap_or_else(|_| Err(anyhow::anyhow!(Error::Mcp(McpFailure::ProbeTimeout))));
         transport.close().await;
         result
     }
@@ -514,6 +524,7 @@ pub async fn run(db_path: &Path, data_dir: &Path, input: McpInput) -> McpProbeVi
     let clean = |text: &str| {
         rrss_core::logsafe::scrub_secrets_with(text, secrets.iter().map(String::as_str))
     };
+    let output_omitted = diagnostics.lock().unwrap().omitted;
     let mut raw_output = diagnostics.lock().unwrap().text();
     if let Err(error) = &result {
         let causes: Vec<String> = error
@@ -540,29 +551,40 @@ pub async fn run(db_path: &Path, data_dir: &Path, input: McpInput) -> McpProbeVi
                 tool.name = clean(&tool.name);
                 tool.description = clean(&tool.description);
             }
-            (true, tools, String::new(), String::new())
+            (true, tools, None, None)
         }
         Err(error) => {
-            let error = clean(&error.to_string());
+            let mut error = McpUiError::project(error);
+            error.detail = clean(&error.detail);
             let hint =
                 if input.transport == "sse" || input.url.trim_end_matches('/').ends_with("/sse") {
-                    "地址看起来是旧式 SSE；请向服务提供方获取 Streamable HTTP 的 /mcp 地址"
-                } else if input.auth == "oauth" || error.contains("401") || error.contains("403") {
-                    "请检查请求头令牌，或先完成浏览器登录"
+                    McpProbeHint::Sse
+                } else if input.auth == "oauth"
+                    || matches!(
+                        &error.kind,
+                        crate::UiErrorKind::Mcp(McpUiError::HttpStatus { status: 401 | 403 })
+                    )
+                    || (error.code() == "legacy_text"
+                        && (error.detail.contains("401") || error.detail.contains("403")))
+                {
+                    McpProbeHint::Auth
                 } else if input.transport == "stdio" {
-                    "请确认命令已安装、参数正确，并补齐所需的环境变量后重试"
+                    McpProbeHint::Local
                 } else {
-                    "请检查 Streamable HTTP 地址、请求头与 Pi 用途的代理设置后重试"
+                    McpProbeHint::Remote
                 };
-            (false, vec![], error, hint.into())
+            (false, vec![], Some(error), Some(hint))
         }
     };
     McpProbeView {
         ok,
         elapsed_ms: start.elapsed().as_millis() as i64,
         tools,
-        error,
-        hint,
+        error: String::new(),
+        hint: String::new(),
+        failure: error,
+        hint_code: hint,
+        output_omitted: output_omitted.then_some(true),
         output,
     }
 }
@@ -611,7 +633,10 @@ mod tests {
         let raw = format!("{secret}{}", "x".repeat(MAX_OUTPUT - "suffix-canary".len()));
         stderr_diagnostics(raw.as_bytes(), diagnostics.clone()).await;
         append(&diagnostics, b"more-private-output");
-        let shown = diagnostics.lock().unwrap().text();
+        let diagnostics = diagnostics.lock().unwrap();
+        let shown = crate::ui_error::test_display::probe_output(&serde_json::json!({
+            "output": diagnostics.text(), "output_omitted": diagnostics.omitted,
+        }));
         assert!(shown.contains("已省略"));
         assert!(!shown.contains("private") && !shown.contains("suffix-canary"));
     }
@@ -623,7 +648,12 @@ mod tests {
         let conn = rrss_core::db::open_at(&db).unwrap();
         let mut input = draft();
         let result = run(&db, dir.path(), input.clone()).await;
-        assert!(result.ok, "{} {}", result.error, result.output);
+        assert!(
+            result.ok,
+            "{} {}",
+            crate::ui_error::test_display::probe_error(&result),
+            result.output
+        );
         assert_eq!(result.tools.len(), 3);
         assert!(
             !result
@@ -722,7 +752,10 @@ mod tests {
             value: "fixture-private-\"header".into(),
         }];
         let result = run(&db, dir.path(), input).await;
-        assert!(!result.ok && result.error.contains("403"), "{result:?}");
+        assert!(
+            !result.ok && crate::ui_error::test_display::probe_error(&result).contains("403"),
+            "{result:?}"
+        );
         assert!(result.output.contains("***"));
         let shown = serde_json::to_string(&result).unwrap();
         assert!(!shown.contains("fixture-private-") && !shown.contains("unsaved-canary"));
@@ -787,7 +820,10 @@ mod tests {
         assert_eq!(result.tools.len(), 1);
         input.url = format!("{}/away", server.uri());
         let result = run(&db, dir.path(), input).await;
-        assert!(!result.ok && result.error.contains("307"), "{result:?}");
+        assert!(
+            !result.ok && crate::ui_error::test_display::probe_error(&result).contains("307"),
+            "{result:?}"
+        );
         assert!(other.received_requests().await.unwrap().is_empty());
     }
 
@@ -799,6 +835,9 @@ mod tests {
         let mut input = draft();
         input.args.push("--hang".into());
         let result = run(&db, dir.path(), input).await;
-        assert!(!result.ok && result.error.contains("20 秒"), "{result:?}");
+        assert!(
+            !result.ok && crate::ui_error::test_display::probe_error(&result).contains("20 秒"),
+            "{result:?}"
+        );
     }
 }

@@ -1,5 +1,6 @@
 //! 凭证、模板、缓存、日预算。日志 target：`rrss_core::ai_store`。
 
+use crate::error::models::{CompatProblem, TaskModelLabel};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -401,7 +402,7 @@ pub fn provider_compat(conn: &Connection, id: i64) -> Result<serde_json::Value> 
 /// 只接受 JSON 对象；非法值拒绝写入，保留原配置。
 pub fn set_provider_compat(conn: &Connection, id: i64, compat: &serde_json::Value) -> Result<()> {
     if !compat.is_object() {
-        return Err(Error::InvalidCompat("必须是 JSON 对象".into()));
+        return Err(Error::InvalidCompat(CompatProblem::ObjectRequired));
     }
     let n = conn.execute(
         "UPDATE ai_providers SET compat_json = ?1 WHERE id = ?2",
@@ -601,7 +602,7 @@ pub fn resolve_task(conn: &Connection, task: &str) -> Result<ResolvedTask> {
         None => return Err(Error::TemplateNotFound(task.into())),
     };
     let (provider, model) = resolve_binding_model(conn, &binding)?
-        .ok_or_else(|| Error::TaskModelUnset(task_title(task).into()))?;
+        .ok_or_else(|| Error::TaskModelUnset(TaskModelLabel::Id(task.into())))?;
     Ok(ResolvedTask {
         task: task.to_string(),
         template,
@@ -894,7 +895,7 @@ mod tests {
         assert!(binding.template_id.is_some());
         assert!(matches!(
             resolve_task(&conn, TASK_FOCUS_SUMMARY),
-            Err(Error::TaskModelUnset(title)) if title == "焦点摘要"
+            Err(Error::TaskModelUnset(TaskModelLabel::Id(task))) if task == TASK_FOCUS_SUMMARY
         ));
         let embed = get_task_binding(&conn, TASK_EMBED).unwrap();
         assert!(embed.template_id.is_none());

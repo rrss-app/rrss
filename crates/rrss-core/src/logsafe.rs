@@ -229,10 +229,10 @@ pub fn error(value: &crate::Error) -> String {
         // their type avoids copying display Chinese or arbitrary input/output.
         crate::Error::InvalidProvider(_) => "invalid AI provider".into(),
         crate::Error::InvalidSetting(_) => "invalid setting".into(),
-        crate::Error::InvalidNetworkProxy(_) => "invalid network proxy".into(),
+        crate::Error::InvalidNetworkProxy(_) => text(&value.to_string(), 500),
         crate::Error::InvalidPiOverride(_) => "invalid Pi override".into(),
         crate::Error::InvalidModelChoice(_) => "invalid model choice".into(),
-        crate::Error::InvalidTreeOrder(_) => "invalid tree order".into(),
+        crate::Error::InvalidTreeOrder(_) => text(&value.to_string(), 500),
         crate::Error::InvalidCompat(_) => "invalid Pi compat object".into(),
         crate::Error::Backup(_) => "backup operation failed".into(),
         crate::Error::SchemaTooOld { found, min } => {
@@ -241,8 +241,8 @@ pub fn error(value: &crate::Error) -> String {
         crate::Error::VectorSpaceRebuildRequired { .. } => "vector space rebuild required".into(),
         crate::Error::VectorSpaceRebuildInProgress => "vector space rebuild in progress".into(),
         crate::Error::TaskModelUnset(_) => "task model is unset".into(),
-        crate::Error::FetchDeferred { .. } => "fetch deferred".into(),
-        crate::Error::FetchPaused(_) => "fetch paused".into(),
+        crate::Error::FetchDeferred { .. } => text(&value.to_string(), 500),
+        crate::Error::FetchPaused => "fetch paused".into(),
         _ => text(&value.to_string(), 500),
     }
 }

@@ -9,6 +9,14 @@ use crate::error::{Error, Result};
 use crate::kind::FeedKind;
 use crate::url_norm::canonical_article_url;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum FeedParseError {
+    #[error("invalid feed document")]
+    InvalidDocument,
+    #[error("unknown feed kind")]
+    UnknownKind,
+}
+
 #[derive(Debug, Clone)]
 pub struct ParsedFeed {
     pub title: Option<String>,
@@ -38,7 +46,7 @@ pub fn parse_feed_bytes(bytes: &[u8], source_uri: Option<&str>) -> Result<Parsed
     let feed = builder
         .build()
         .parse(bytes)
-        .map_err(|err| Error::Parse(err.to_string()))?;
+        .map_err(|_| Error::FeedParse(FeedParseError::InvalidDocument))?;
     Ok(from_feed(feed, source_uri))
 }
 

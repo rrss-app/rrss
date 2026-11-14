@@ -365,7 +365,12 @@ mod tests {
                 .collect::<Vec<_>>(),
             [(1, -10), (4, -5)]
         );
-        assert_eq!(hidden[0].label, "标题：融资");
+        let wire = serde_json::to_value(&hidden[0]).unwrap();
+        assert_eq!(wire["code"], "legacy_text");
+        assert_eq!(
+            wire["params"],
+            serde_json::json!({"text":"融资","prefix":"title_kw"})
+        );
         assert!(
             page.articles
                 .iter()
@@ -399,14 +404,19 @@ mod tests {
         .unwrap();
         conn.execute(
             "INSERT INTO article_rank VALUES(1,2,?1,2,0)",
-            [r#"[{"component":"source","text":"你常读这个源"}]"#],
+            [r#"[{"component":"source","text":"old cached reason"},{"component":"source","code":"rank_source","params":{"habit":"read"},"points":2}]"#],
         )
         .unwrap();
         let page = focus_page(&conn, None, &[], &[], false, FeedScope::All).unwrap();
+        let wire = serde_json::to_value(page.articles[0].rank_reasons.as_ref().unwrap()).unwrap();
+        assert_eq!(wire[0]["code"], "legacy_text");
         assert_eq!(
-            page.articles[0].rank_reasons.as_ref().unwrap()[0].text,
-            "你常读这个源"
+            wire[0]["params"],
+            serde_json::json!({"text":"old cached reason","prefix":null})
         );
+        assert_eq!(wire[1]["code"], "rank_source");
+        assert_eq!(wire[1]["params"], serde_json::json!({"habit":"read"}));
+        assert_eq!(wire[1]["points"], 2);
         conn.execute("UPDATE article_rank SET reasons_json='invalid'", [])
             .unwrap();
         assert!(

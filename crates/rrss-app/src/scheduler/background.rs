@@ -7,7 +7,8 @@ use tokio::sync::watch;
 use tokio::task::JoinSet;
 use tracing::{Instrument, instrument::WithSubscriber};
 
-pub(super) type ManualResult = watch::Sender<Option<std::result::Result<String, String>>>;
+pub(super) type ManualResult =
+    watch::Sender<Option<std::result::Result<String, super::digest_jobs::Failure>>>;
 
 #[derive(Clone, Copy)]
 enum ManualJob {
@@ -103,7 +104,7 @@ struct ManualOwner {
 }
 
 impl ManualOwner {
-    fn finish(&mut self, result: std::result::Result<String, String>) {
+    fn finish(&mut self, result: std::result::Result<String, super::digest_jobs::Failure>) {
         if self.finished {
             return;
         }
@@ -116,7 +117,10 @@ impl ManualOwner {
 
 impl Drop for ManualOwner {
     fn drop(&mut self) {
-        self.finish(Err("模型任务已停止，请重试".into()));
+        self.finish(Err(anyhow::Error::new(rrss_core::Error::Jobs(
+            rrss_core::error::JobFailure::ModelStoppedRetry,
+        ))
+        .into()));
     }
 }
 
@@ -131,7 +135,10 @@ impl Scheduler {
             version = *dirty;
             true
         });
-        anyhow::ensure!(version != 0, "后台运行时已停止");
+        anyhow::ensure!(
+            version != 0,
+            rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped)
+        );
         Ok(version)
     }
     /// Wait for a finite round, including local maintenance but not media downloads.
@@ -141,9 +148,9 @@ impl Scheduler {
         let mut stop = self.shared.stop.subscribe();
         tokio::select! {
             biased;
-            _ = stop.wait_for(|stopped| *stopped) => anyhow::bail!("后台运行时已停止"),
+            _ = stop.wait_for(|stopped| *stopped) => anyhow::bail!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped)),
             result = completed.wait_for(|done| *done >= version) => {
-                result.map_err(|_| anyhow::anyhow!("后台运行时已停止"))?;
+                result.map_err(|_| anyhow::anyhow!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped)))?;
                 Ok(())
             },
         }
@@ -158,13 +165,16 @@ impl Scheduler {
             .await
     }
     pub async fn generate_digest(&self, period: &'static str) -> Result<()> {
-        anyhow::ensure!(!*self.shared.stop.borrow(), "后台运行时已停止");
+        anyhow::ensure!(
+            !*self.shared.stop.borrow(),
+            rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped)
+        );
         let shared = self.shared.clone();
-        let admission = shared
-            .manual
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| anyhow::anyhow!("模型任务繁忙，请稍后重试"))?;
+        let admission = shared.manual.clone().try_acquire_owned().map_err(|_| {
+            anyhow::anyhow!(rrss_core::Error::Jobs(
+                rrss_core::error::JobFailure::ModelBusy
+            ))
+        })?;
         let work = shared.capacity.work();
         // The request owns its result even if its IPC waiter goes away.
         let span = crate::jobs::span(period);
@@ -174,7 +184,7 @@ impl Scheduler {
                 let mut stop = shared.stop.subscribe();
                 tokio::select! {
                     biased;
-                    _ = stop.wait_for(|stopped| *stopped) => anyhow::bail!("后台运行时已停止"),
+                    _ = stop.wait_for(|stopped| *stopped) => anyhow::bail!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped)),
                     result = async {
                         let client = shared.network.client(NetworkScope::Api).await?;
                         crate::jobs::run_digest(&shared.path, &client, period, true).await
@@ -187,7 +197,10 @@ impl Scheduler {
         .await?
     }
     pub async fn embed_now(&self) -> Result<()> {
-        anyhow::ensure!(!*self.shared.stop.borrow(), "后台运行时已停止");
+        anyhow::ensure!(
+            !*self.shared.stop.borrow(),
+            rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped)
+        );
         self.shared
             .capacity
             .retries
@@ -198,20 +211,29 @@ impl Scheduler {
     }
 
     async fn manual_job(&self, job: ManualJob) -> Result<String> {
-        anyhow::ensure!(!*self.shared.stop.borrow(), "后台运行时已停止");
+        anyhow::ensure!(
+            !*self.shared.stop.borrow(),
+            rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped)
+        );
         let key =
             crate::jobs::spawn_db(self.shared.path.clone(), move |conn| job.key(conn)).await?;
         let (mut result, owner) = {
             let mut active = self.shared.manual_jobs.lock().unwrap();
-            anyhow::ensure!(!*self.shared.stop.borrow(), "后台运行时已停止");
+            anyhow::ensure!(
+                !*self.shared.stop.borrow(),
+                rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped)
+            );
             if let Some(slot) = active.get(&key) {
                 anyhow::ensure!(
                     slot.receiver_count() < 32,
-                    "该模型任务的等待请求过多，请稍后重试"
+                    rrss_core::Error::Jobs(rrss_core::error::JobFailure::WaitLimit)
                 );
                 (slot.subscribe(), None)
             } else {
-                anyhow::ensure!(active.len() < 32, "模型任务繁忙，请稍后重试");
+                anyhow::ensure!(
+                    active.len() < 32,
+                    rrss_core::Error::Jobs(rrss_core::error::JobFailure::ModelBusy)
+                );
                 let (slot, receiver) = watch::channel(None);
                 active.insert(key.clone(), slot);
                 (
@@ -240,10 +262,10 @@ impl Scheduler {
                         .manual
                         .clone()
                         .try_acquire_owned()
-                        .map_err(|_| anyhow::anyhow!("模型任务繁忙，请稍后重试"))?;
+                        .map_err(|_| anyhow::anyhow!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::ModelBusy)))?;
                     let path = shared.path.clone();
                     let current = crate::jobs::spawn_db(path, move |conn| job.key(conn)).await?;
-                    anyhow::ensure!(current == owner.key, "模型任务的输入或配置已改变，请重试");
+                    anyhow::ensure!(current == owner.key, rrss_core::Error::Jobs(rrss_core::error::JobFailure::InputChanged));
                     let client = shared.network.client(NetworkScope::Api).await?;
                     let path = &shared.path;
                     match job {
@@ -260,20 +282,21 @@ impl Scheduler {
                 };
                 let outcome = tokio::select! {
                     biased;
-                    _ = stop.wait_for(|stopped| *stopped) => Err(anyhow::anyhow!("后台运行时已停止")),
+                    _ = stop.wait_for(|stopped| *stopped) => Err(anyhow::anyhow!(rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped))),
                     result = work => result,
                 };
-                owner.finish(outcome.map_err(|error| error.to_string()));
+                owner.finish(outcome.map_err(super::digest_jobs::Failure::from));
             }.instrument(span).with_current_subscriber());
         }
         loop {
             if let Some(result) = result.borrow_and_update().clone() {
-                return result.map_err(anyhow::Error::msg);
+                return result.map_err(anyhow::Error::new);
             }
-            result
-                .changed()
-                .await
-                .map_err(|_| anyhow::anyhow!("模型任务已停止"))?;
+            result.changed().await.map_err(|_| {
+                anyhow::anyhow!(rrss_core::Error::Jobs(
+                    rrss_core::error::JobFailure::ModelStopped
+                ))
+            })?;
         }
     }
 }
@@ -387,7 +410,10 @@ async fn coordinate<F, Fut>(
                 let span = crate::jobs::span(&format!("{job:?}").to_lowercase());
                 let task = workers.spawn(
                     async move {
-                        anyhow::ensure!(!*stopped.borrow(), "后台运行时已停止");
+                        anyhow::ensure!(
+                            !*stopped.borrow(),
+                            rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped)
+                        );
                         work.await
                     }
                     .instrument(span)
@@ -667,7 +693,10 @@ async fn execute(shared: Arc<Shared>, job: Job) -> Result<bool> {
     } else {
         None
     };
-    anyhow::ensure!(!*shared.stop.borrow(), "后台运行时已停止");
+    anyhow::ensure!(
+        !*shared.stop.borrow(),
+        rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped)
+    );
     if job == Job::Clusters {
         jobs::rank::repair_missing(&shared.path).await?;
     }

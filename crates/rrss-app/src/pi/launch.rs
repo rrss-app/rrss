@@ -20,7 +20,9 @@ use super::compat::{VersionGate, compat};
 use super::profile::{PiBinary, PiProfile, PiSecrets};
 use super::workspace::{self, BUNDLED_SKILLS, WorkspacePaths};
 use super::{ChatError, ChatErrorKind};
+use crate::ui_error::chat::ChatUiError;
 use crate::views::ModelChoice;
+use rrss_core::{Error, error::PiFailure};
 
 mod process;
 pub use process::PiProcess;
@@ -200,7 +202,7 @@ pub struct Prepared {
 pub fn pi_proxy_env(conn: &rusqlite::Connection) -> Result<ChildProxyEnv, ChatError> {
     network::load(conn)
         .and_then(|config| config.child_env(NetworkScope::Pi, &ProxyEnvironment::capture()))
-        .map_err(|err| ChatError::new(ChatErrorKind::Config, err.to_string()))
+        .map_err(|err| ChatError::new(ChatErrorKind::Config, err))
 }
 
 /// 先清掉继承的全部代理变量，再写入 Pi 用途的值；不改父进程环境。
@@ -244,9 +246,13 @@ pub fn current_profile(
     target: Option<&ModelChoice>,
 ) -> Result<(PiProfile, PiSecrets), ChatError> {
     let explicit = db::get_setting(conn, PI_BINARY_KEY)
-        .map_err(|err| ChatError::new(ChatErrorKind::Internal, err.to_string()))?;
-    let binary = find_pi(explicit.as_deref())
-        .ok_or_else(|| ChatError::new(ChatErrorKind::NotInstalled, PI_NOT_FOUND_HINT))?;
+        .map_err(|err| ChatError::internal(ChatErrorKind::Internal, err))?;
+    let binary = find_pi(explicit.as_deref()).ok_or_else(|| {
+        ChatError::new(
+            ChatErrorKind::NotInstalled,
+            Error::Pi(PiFailure::NotInstalled),
+        )
+    })?;
     PiProfile::load(
         conn,
         &WorkspacePaths::new(data_dir),
@@ -281,12 +287,15 @@ fn render_current(
 
 /// 「查看生成的配置」（19-5）要的数据：启动参数、RRSS 设置的环境变量、生成文件与被忽略的覆盖键。
 /// 密钥不在其中：它只在启动时经 `RRSS_PI_KEY_<连接 id>` 传入，`models.json` 里只是变量引用。
-#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
 pub struct GeneratedConfig {
     pub own_config: bool,
     pub program: PathBuf,
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub proxy_error: Option<crate::views::UiError>,
     // `(相对 <data>/pi 的路径, 内容)`；扩展与技能正文不列出。
     pub files: Vec<(PathBuf, String)>,
     pub ignored: Vec<String>,
@@ -303,13 +312,13 @@ pub fn generated_config(
     let spec = adapter.render(&profile, &caps, &WorkspacePaths::new(data_dir));
     // 代理地址去掉认证后展示；坏配置不挡住查看其余配置，但写明 Pi 无法启动。
     let mut env = spec.env.clone();
-    match pi_proxy_env(conn) {
-        Ok(proxy) => env.extend(proxy.redacted()),
-        Err(err) => env.push((
-            "网络代理".into(),
-            format!("{}（修正前 Pi 无法启动）", err.message),
-        )),
-    }
+    let proxy_error = match pi_proxy_env(conn) {
+        Ok(proxy) => {
+            env.extend(proxy.redacted());
+            None
+        }
+        Err(err) => Some(err.message),
+    };
     let files = spec
         .files
         .iter()
@@ -321,6 +330,7 @@ pub fn generated_config(
         program: spec.program,
         args: spec.args,
         env,
+        proxy_error,
         files,
         ignored: spec.ignored,
     })
@@ -387,18 +397,18 @@ pub fn prepare(
     if let Err(err) = workspace::migrate_legacy_skills(data_dir) {
         tracing::warn!(error = %format!("{err:#}"), "migrate legacy pi skills");
     }
-    let conn = db::open_at(db_path)
-        .map_err(|err| ChatError::new(ChatErrorKind::Internal, err.to_string()))?;
+    let conn =
+        db::open_at(db_path).map_err(|err| ChatError::internal(ChatErrorKind::Internal, err))?;
     let prepared = render_current(&conn, data_dir, target)?;
     drop(conn);
     if prepared.gate == VersionGate::TooOld {
         let found = prepared.version.map(|v| v.to_string()).unwrap_or_default();
         return Err(ChatError::new(
             ChatErrorKind::Version,
-            format!(
-                "对话引擎版本过低（{found}，至少需要 {}）：请在设置里更新托管的 Pi，或改用新版的 pi 路径",
-                compat().min
-            ),
+            Error::Pi(PiFailure::VersionTooOld {
+                found,
+                min: compat().min.to_string(),
+            }),
         ));
     }
     let spec = &prepared.spec;
@@ -412,7 +422,7 @@ pub fn prepare(
     workspace::write_files(&paths, &spec.files).map_err(|err| {
         ChatError::new(
             ChatErrorKind::Internal,
-            format!("写入对话引擎配置失败：{err:#}"),
+            ChatUiError::ConfigWriteFailed.caused_by(crate::UiError::from_anyhow_pretty(err)),
         )
     })?;
     for stale in &spec.stale {
@@ -441,7 +451,7 @@ pub async fn spawn(
         let (db_path, data_dir) = (db_path.to_path_buf(), data_dir.to_path_buf());
         crate::execution::blocking(move || prepare(&db_path, &data_dir, target.as_ref()))
             .await
-            .map_err(|err| ChatError::new(ChatErrorKind::Internal, err.to_string()))??
+            .map_err(|err| ChatError::internal(ChatErrorKind::Internal, err))??
     };
     let spec = &prepared.spec;
 
@@ -467,7 +477,7 @@ pub async fn spawn(
     let child = cmd.spawn().map_err(|err| {
         ChatError::new(
             ChatErrorKind::ProcessExit,
-            format!("无法启动对话引擎：{err}"),
+            ChatUiError::EngineStartFailed.failure(err.to_string()),
         )
     })?;
     let mut secrets = prepared
@@ -484,13 +494,13 @@ pub async fn spawn(
 pub fn validate_skill_name(name: &str) -> Result<()> {
     let name = name.trim();
     if name.is_empty() || name.len() > 64 {
-        anyhow::bail!("skill 名称须 1–64 字符");
+        anyhow::bail!(Error::Pi(PiFailure::SkillNameLength));
     }
     if !name
         .chars()
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
     {
-        anyhow::bail!("skill 名称只能是小写字母、数字和连字符");
+        anyhow::bail!(Error::Pi(PiFailure::SkillNameCharacters));
     }
     Ok(())
 }
@@ -498,10 +508,10 @@ pub fn validate_skill_name(name: &str) -> Result<()> {
 pub fn validate_skill_description(description: &str) -> Result<()> {
     let description = description.trim();
     if description.is_empty() {
-        anyhow::bail!("skill 需要 description");
+        anyhow::bail!(Error::Pi(PiFailure::SkillDescriptionMissing));
     }
     if description.chars().count() > 1024 {
-        anyhow::bail!("skill description 不能超过 1024 字");
+        anyhow::bail!(Error::Pi(PiFailure::SkillDescriptionLength));
     }
     Ok(())
 }
@@ -532,7 +542,7 @@ pub fn write_user_skill(
     validate_skill_name(name)?;
     validate_skill_description(description)?;
     let dir = WorkspacePaths::new(data_dir).user_skill(name);
-    std::fs::create_dir_all(&dir)?;
+    std::fs::create_dir_all(&dir).map_err(Error::from)?;
     let body = body.trim();
     let md = if body.starts_with("---") {
         format!("{body}\n")
@@ -540,16 +550,18 @@ pub fn write_user_skill(
         format!("---\nname: {name}\ndescription: {description}\n---\n\n{body}\n")
     };
     let path = dir.join("SKILL.md");
-    std::fs::write(&path, md)?;
+    std::fs::write(&path, md).map_err(Error::from)?;
     Ok(dir)
 }
 
 pub fn delete_user_skill(data_dir: &Path, name: &str) -> Result<()> {
     let dir = WorkspacePaths::new(data_dir).user_skill(name);
     if !dir.exists() {
-        anyhow::bail!("没有名为 {name} 的用户 skill");
+        anyhow::bail!(Error::Pi(PiFailure::SkillNotFound {
+            name: name.to_string()
+        }));
     }
-    std::fs::remove_dir_all(&dir)?;
+    std::fs::remove_dir_all(&dir).map_err(Error::from)?;
     Ok(())
 }
 
@@ -657,7 +669,11 @@ mod tests {
         // 坏配置不挡住查看其余配置，但明确写出 Pi 无法启动，不回显原文。
         db::set_setting(&conn, network::SETTING_KEY, "broken-private-secret").unwrap();
         let shown = generated_config(&conn, dir.path()).unwrap();
-        let rendered = format!("{:?}", shown.env);
+        let rendered = format!(
+            "{:?} {}",
+            shown.env,
+            crate::ui_error::test_display::proxy_env(shown.proxy_error.as_ref().unwrap())
+        );
         assert!(rendered.contains("Pi 无法启动"), "{rendered}");
         assert!(!rendered.contains("private-secret"));
     }

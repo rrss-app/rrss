@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
-import type { McpInput, McpProbeView, McpToolView, McpView } from "../bindings";
+import type { McpInput, McpProbeView, McpToolView, McpView, UiError } from "../bindings";
 import { api } from "../lib/api";
+import { asUiError, formatError } from "../lib/errors";
 import { formatNotice } from "../lib/notice";
 import { i18n } from "../i18n";
 
@@ -49,7 +50,7 @@ export const clause = (text: string) => text.trim().replace(/[。.]$/, "");
 export const sentence = (text: string) => { const t = text.trim(); return !t || /[。.！？!?]$/.test(t) ? t : `${t}。`; };
 
 function failure(error: unknown): McpProbeView {
-  return { ok: false, elapsed_ms: 0, tools: [], error: formatNotice("", error) || i18n.t("mcp.probeIncomplete", { ns: "settingsAssistant" }), hint: "", output: "" };
+  return { ok: false, elapsed_ms: 0, tools: [], error: "", failure: asUiError(error) as UiError, hint: "", output: "" };
 }
 
 /** 一份按服务 id 记的外部状态；检测与登录的结果在本次运行内保留，离开设置页再回来仍在。 */
@@ -108,7 +109,7 @@ export function createMcpRuntime(bridge: Bridge) {
       const work = (loginWork.get(id) ?? Promise.resolve()).then(async () => {
         // 旧登录和取消命令都已收尾；等待中再次取消 / 删除就不再启动。
         if (logins.get().get(id) !== waiting) return;
-        try { const result = await bridge.loginMcp(id); settle(result.ok, result.message); }
+        try { const result = await bridge.loginMcp(id); settle(result.ok, result.error ? formatError(result.error) : result.message); }
         catch (error) { settle(false, formatNotice("", error)); }
       });
       trackLogin(id, work);
@@ -136,3 +137,7 @@ export function useProbes(): ReadonlyMap<number, ProbeEntry> {
 export function useLogins(): ReadonlyMap<number, LoginEntry> {
   return useSyncExternalStore(runtime.logins.subscribe, runtime.logins.get, runtime.logins.get);
 }
+
+export const probeError = (result: McpProbeView) => result.failure ? formatError(result.failure) : result.error;
+export const probeHint = (result: McpProbeView) => result.hint_code ? i18n.t(`mcp_hint.${result.hint_code}`, { ns: "errors" }) : result.hint;
+export const probeOutput = (result: McpProbeView) => result.output_omitted ? i18n.t("mcp_output_omitted", { ns: "errors" }) : result.output;

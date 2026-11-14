@@ -1,4 +1,5 @@
 use gtk::prelude::{BoxExt, Cast, ContainerExt, OverlayExt};
+use rrss_app::{UiError, ui_error::web::WebError};
 use rrss_core::network::WebviewRoute;
 use std::{cell::RefCell, rc::Rc};
 use tauri::{Manager, Webview};
@@ -13,21 +14,24 @@ pub(super) fn configure(
     window: &Webview,
     route: &WebviewRoute,
     bounds: rrss_app::WebViewBounds,
-) -> Result<(), String> {
+    native_failure_message: String,
+) -> Result<(), UiError> {
     let view = handle.inner();
-    let context = view.context().ok_or("原网页缺少 WebKit context")?;
+    let context = view
+        .context()
+        .ok_or(UiError::from(WebError::WebkitContextMissing))?;
     if *route == WebviewRoute::Direct {
         // wry 0.57 new_gtk sets Custom on this same data manager before
         // create_webview, then load_uri. We create only about:blank until here.
         context
             .website_data_manager()
-            .ok_or("原网页缺少数据管理器")?
+            .ok_or(UiError::from(WebError::DataManagerMissing))?
             .set_network_proxy_settings(NetworkProxyMode::NoProxy, None);
     }
     // Async Clipboard (WebKit >= 2.42) emits permission-request; wry's Other
     // branch already denies it. Also disable legacy execCommand paste access.
     view.settings()
-        .ok_or("原网页缺少 WebKit settings")?
+        .ok_or(UiError::from(WebError::WebkitSettingsMissing))?
         .set_javascript_can_access_clipboard(false);
     view.connect_permission_request(|_, request| {
         request.deny();
@@ -44,7 +48,10 @@ pub(super) fn configure(
                 let action = gio::SimpleAction::new(id, None);
                 let target = target.clone();
                 let url = url.to_string();
-                action.connect_activate(move |_, _| super::link_action(&target, &url, copy));
+                let failure_message = native_failure_message.clone();
+                action.connect_activate(move |_, _| {
+                    super::link_action(&target, &url, copy, &failure_message)
+                });
                 menu.append(&webkit2gtk::ContextMenuItem::from_gaction(
                     &action, text, None,
                 ));
@@ -114,12 +121,14 @@ fn no_modifier(event: &gtk::gdk::EventKey) -> bool {
     )
 }
 
-fn embed(view: &webkit2gtk::WebView, bounds: rrss_app::WebViewBounds) -> Result<(), String> {
+fn embed(view: &webkit2gtk::WebView, bounds: rrss_app::WebViewBounds) -> Result<(), UiError> {
     use gtk::prelude::WidgetExt;
-    let parent = view.parent().ok_or("原网页缺少父容器")?;
+    let parent = view
+        .parent()
+        .ok_or(UiError::from(WebError::ParentMissing))?;
     let box_ = parent
         .downcast::<gtk::Box>()
-        .map_err(|_| "原网页父容器不是 GtkBox")?;
+        .map_err(|_| UiError::from(WebError::ParentInvalid))?;
     let mut children = Vec::new();
     box_.foreach(|child| children.push(child.clone()));
     let overlay = if let Some(existing) = children.iter().find_map(|child| {
@@ -137,11 +146,11 @@ fn embed(view: &webkit2gtk::WebView, bounds: rrss_app::WebViewBounds) -> Result<
                 }
                 child.clone().downcast::<webkit2gtk::WebView>().ok()
             })
-            .ok_or("原网页找不到主界面")?;
+            .ok_or(UiError::from(WebError::MainViewMissing))?;
         let index = children
             .iter()
             .position(|child| child == main.upcast_ref::<gtk::Widget>())
-            .ok_or("原网页找不到主界面")?;
+            .ok_or(UiError::from(WebError::MainViewMissing))?;
         // Keep a Rust reference across unparent so GTK does not finalize the main view.
         box_.remove(&main);
         let overlay = gtk::Overlay::new();
@@ -174,7 +183,7 @@ fn position(view: &webkit2gtk::WebView, bounds: rrss_app::WebViewBounds) {
     );
 }
 
-pub(super) fn place(webview: &Webview, bounds: rrss_app::WebViewBounds) -> Result<(), String> {
+pub(super) fn place(webview: &Webview, bounds: rrss_app::WebViewBounds) -> Result<(), UiError> {
     webview
         .with_webview(move |handle| position(&handle.inner(), bounds))
         .map_err(|_| super::failure())
@@ -196,13 +205,13 @@ pub(super) fn history(window: &Webview, back: bool) -> tauri::Result<()> {
 
 pub(super) fn page_title(
     handle: tauri::webview::PlatformWebview,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, UiError> {
     Ok(handle.inner().title().map(|s| s.to_string()))
 }
 
 pub(super) fn snapshot(
     handle: tauri::webview::PlatformWebview,
-    mut send: tokio::sync::oneshot::Sender<Result<Vec<u8>, String>>,
+    mut send: tokio::sync::oneshot::Sender<Result<Vec<u8>, UiError>>,
 ) {
     let view = handle.inner();
     // Neither WebView nor InputStream crosses threads. GioFuture owns its object
@@ -213,10 +222,10 @@ pub(super) fn snapshot(
             result = view.save_future(webkit2gtk::SaveMode::Mhtml) => result,
         };
         let result = match stream {
-            Err(_) => Err("WebKit 网页快照失败".into()),
+            Err(_) => Err(UiError::from(WebError::WebkitSnapshotFailed)),
             Ok(stream) => {
                 let result = tokio::select! {
-                    _ = send.closed() => Err("网页快照已取消".into()),
+                    _ = send.closed() => Err(UiError::from(WebError::SnapshotCancelled)),
                     result = read_snapshot(&stream) => result,
                 };
                 let _ = stream
@@ -229,15 +238,15 @@ pub(super) fn snapshot(
     });
 }
 
-async fn read_snapshot(stream: &gio::InputStream) -> Result<Vec<u8>, String> {
+async fn read_snapshot(stream: &gio::InputStream) -> Result<Vec<u8>, UiError> {
     let mut bytes = Vec::new();
     loop {
         let chunk = stream
             .read_bytes_future(64 * 1024, webkit2gtk::glib::Priority::DEFAULT)
             .await
-            .map_err(|_| "WebKit 网页快照读取失败")?;
+            .map_err(|_| UiError::from(WebError::WebkitSnapshotReadFailed))?;
         if bytes.len() + chunk.len() > rrss_app::web_snapshot::MAX_SNAPSHOT_BYTES {
-            return Err("快照超过 30 MiB 上限".into());
+            return Err(UiError::from(WebError::SnapshotTooLarge));
         }
         if chunk.is_empty() {
             return Ok(bytes);

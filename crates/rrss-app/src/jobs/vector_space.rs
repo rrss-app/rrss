@@ -41,7 +41,9 @@ pub async fn check(db: &Path, client: &reqwest::Client, force: bool) -> Result<b
     );
     failures.retain(|_, at| now.saturating_duration_since(*at) < super::retry::DELAY);
     if !force && failures.contains_key(&key) {
-        anyhow::bail!("最近一次向量核对失败，已暂停本轮写入；可立即核对重试。");
+        anyhow::bail!(rrss_core::Error::Jobs(
+            rrss_core::error::JobFailure::SpaceVerifyFailed
+        ));
     }
     if !due {
         return Ok(false);
@@ -57,7 +59,11 @@ pub async fn check(db: &Path, client: &reqwest::Client, force: bool) -> Result<b
     let mut vectors = vec![Vec::new(); spaces::PROBES.len()];
     while let Some(batch) = queue.next().await {
         for (i, result) in batch? {
-            vectors[i] = result.map_err(|_| anyhow::anyhow!("向量探针核对失败，请重试。"))?;
+            vectors[i] = result.map_err(|_| {
+                anyhow::anyhow!(rrss_core::Error::Jobs(
+                    rrss_core::error::JobFailure::SpaceProbeFailed
+                ))
+            })?;
         }
     }
     drop(queue);
@@ -344,8 +350,8 @@ mod tests {
         for value in ["256", "1024", "native"] {
             let err = crate::actions::set_vector_dims(&conn, value).unwrap_err();
             assert_eq!(
-                err.to_string(),
-                "向量库已停写，请先恢复原配置或重建，再改维度。"
+                crate::UiError::from(err).code(),
+                "setting_vector_space_stale"
             );
         }
         let status = crate::queries::vector_space_status(&conn).unwrap();

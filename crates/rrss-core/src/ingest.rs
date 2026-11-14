@@ -7,6 +7,22 @@ mod log_tests;
 mod schedule;
 pub use schedule::{FailureClass, FetchSchedule, retry_after_deadline, slow_retry_interval};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum FetchDeferredReason {
+    #[error("saving feed cooldown state")]
+    CooldownSaving,
+    #[error("local feed queue is busy")]
+    QueueBusy,
+    #[error("feed cooldown state could not be saved")]
+    CooldownSaveFailed,
+    #[error("feed cooldown state could not be read")]
+    CooldownLoadFailed,
+    #[error("feed host is rate limited")]
+    HostLimited,
+    #[error("conservative throttling after damaged cooldown state")]
+    Recovery,
+}
+
 use rusqlite::{Connection, params};
 
 use crate::error::{Error, Result};
@@ -245,7 +261,10 @@ pub fn apply_fetch_scheduled(
             feed,
             now,
             (None, None),
-            Some(&message),
+            Some(&crate::feeds::refresh_error_json(&Error::Http {
+                status: resp.status,
+                message: String::new(),
+            })),
             RefreshStatus::Failed {
                 message: message.clone(),
             },
@@ -265,7 +284,7 @@ pub fn apply_fetch_scheduled(
                 feed,
                 now,
                 (None, None),
-                Some(&message),
+                Some(&crate::feeds::refresh_error_json(&err)),
                 RefreshStatus::Failed {
                     message: message.clone(),
                 },
@@ -531,7 +550,7 @@ fn stage_entry<'a>(
         score: result.as_ref().map(|r| r.score).unwrap_or(0),
         reasons_json: result
             .as_ref()
-            .map(|r| serde_json::to_string(&r.reasons).unwrap_or_else(|_| "[]".into())),
+            .map(crate::score::stored_reasons_json),
         simhash: crate::simhash::fingerprint_article(&entry.title, entry.content_html.as_deref()),
     }
 }
@@ -579,6 +598,7 @@ fn mark_fetched(
     };
     let next = schedule.next_at(now, interval, slow);
     // 源健康：失败累加连续次数并记下这轮失败的开始；成功（200 / 304）清零并记最近成功。
+    let stored_error = error.map(crate::feeds::storage_error);
     conn.execute(
         "UPDATE feeds SET last_fetched_at = ?1, etag = COALESCE(?2, etag),
                 last_modified = COALESCE(?3, last_modified), error = ?4,
@@ -587,7 +607,7 @@ fn mark_fetched(
                 last_success_at = CASE WHEN ?4 IS NULL THEN ?1 ELSE last_success_at END,
                 next_fetch_at = ?6, slow_fail_count = ?7
          WHERE id = ?5",
-        params![now, etag, last_modified, error, feed.id, next, slow],
+        params![now, etag, last_modified, stored_error, feed.id, next, slow],
     )?;
     Ok((was_failing || error.is_some()).then(|| FeedHealthEvent {
         feed_id: feed.id,
@@ -617,7 +637,9 @@ pub fn refresh_feed(
         last_modified: feed.last_modified.clone(),
     }) {
         Ok(r) => r,
-        Err(err) => return record_fetch_failure(conn, &feed, &err.to_string()),
+        Err(err) => {
+            return record_fetch_failure(conn, &feed, &crate::feeds::refresh_error_json(&err));
+        }
     };
     apply_fetch(conn, &feed, &resp, now_ms())
 }
@@ -781,10 +803,7 @@ pub async fn fetch_http(client: &reqwest::Client, req: FetchRequest) -> Result<F
     let status = resp.status().as_u16();
     // 代理认证失败的响应体可能回显凭据，不能交给订阅解析或 CLI 网页输出。
     if status == 407 {
-        return Err(Error::Http {
-            status,
-            message: feed_http::PROXY_AUTH_MESSAGE.into(),
-        });
+        return Err(Error::FeedRequest(feed_http::FeedRequestError::ProxyAuth));
     }
     let etag = resp
         .headers()

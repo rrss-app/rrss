@@ -9,6 +9,7 @@ impl From<Failure> for TranslationCommandError {
         Self {
             kind,
             message: kind.message().into(),
+            error: None,
         }
     }
 }

@@ -18,7 +18,9 @@ use tar::Archive;
 use super::adapter::PiVersion;
 use super::compat::compat;
 use super::launch::{is_standalone_binary, pi_bin_names, pi_pkg_dir};
-use crate::views::PiInstallView;
+use crate::ui_error::pi::{PiDownloadStage, PiUiError};
+use crate::views::{PiInstallView, UiError};
+use rrss_core::{Error, error::PiFailure};
 
 const REPO: &str = "earendil-works/pi";
 
@@ -174,7 +176,12 @@ async fn ensure_from(
     source: &ReleaseSource<'_>,
 ) -> Result<EnsureReport> {
     let _guard = INSTALL_LOCK.lock().await;
-    let result = ensure_locked(db_path, data_dir, force, source).await;
+    let result = ensure_locked(db_path, data_dir, force, source)
+        .await
+        .map_err(|error| {
+            let ui = PiUiError::project_ref(&error);
+            error.context(ui)
+        });
     // 手动下载总要给出结论；自动检查只在真的下载过时才更新进度。
     match &result {
         Ok(r)
@@ -188,10 +195,14 @@ async fn ensure_from(
         }
         Ok(_) => {}
         Err(err) if force || install_running() => {
-            let message = format!("{err:#}");
+            let error = err
+                .downcast_ref::<UiError>()
+                .cloned()
+                .expect("install error projected above");
             report(data_dir, |s| {
                 s.state = "failed".into();
-                s.message = message;
+                s.message.clear();
+                s.error = Some(error);
             });
         }
         Err(_) => {}
@@ -203,6 +214,7 @@ fn report_done(data_dir: &Path, message: String) {
     report(data_dir, |s| {
         s.state = "done".into();
         s.message = message;
+        s.error = None;
     });
 }
 
@@ -332,20 +344,25 @@ async fn fetch_latest_in_line(
         .send()
         .await
         .redacted()
-        .context("fetch pi releases")?
+        .map_err(|error| PiUiError::download(PiDownloadStage::ReleasesFetch, error))?
         .error_for_status()
         .redacted()
-        .context("github releases status")?
+        .map_err(|error| PiUiError::download(PiDownloadStage::ReleasesStatus, error))?
         .json()
         .await
         .redacted()
-        .context("parse releases json")?;
+        .map_err(|error| PiUiError::download(PiDownloadStage::ReleasesParse, error))?;
     latest_in_line(
         releases
             .iter()
             .filter_map(|rel| rel.get("tag_name").and_then(|v| v.as_str())),
     )
-    .with_context(|| format!("未找到 {}.x 的 GitHub Release", compat().line_label()))
+    .ok_or_else(|| {
+        Error::Pi(PiFailure::ReleaseMissing {
+            line: compat().line_label(),
+        })
+        .into()
+    })
 }
 
 /// 从 tag 列表里挑兼容线内的最高版本；预发布 tag（带 `-`）不算。
@@ -380,14 +397,19 @@ async fn install_release(
         .send()
         .await
         .redacted()
-        .context("download pi asset")?
+        .map_err(|error| PiUiError::download(PiDownloadStage::AssetFetch, error))?
         .error_for_status()
         .redacted()
-        .context("pi asset status")?;
+        .map_err(|error| PiUiError::download(PiDownloadStage::AssetStatus, error))?;
     let total = response.content_length();
     let mut bytes = Vec::with_capacity(total.unwrap_or(0) as usize);
     let mut reported = 0u64;
-    while let Some(chunk) = response.chunk().await.redacted().context("read pi asset")? {
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .redacted()
+        .map_err(|error| PiUiError::download(PiDownloadStage::AssetRead, error))?
+    {
         bytes.extend_from_slice(&chunk);
         let received = bytes.len() as u64;
         if received - reported >= PROGRESS_STEP || Some(received) == total {
@@ -407,9 +429,11 @@ async fn install_release(
 
     let staging = data_dir.join("pi-pkg.staging");
     if staging.exists() {
-        fs::remove_dir_all(&staging).context("清理上次残留的暂存目录")?;
+        fs::remove_dir_all(&staging)
+            .map_err(|error| PiUiError::StagingCleanup.failure(error.to_string()))?;
     }
-    fs::create_dir_all(&staging).context("创建暂存目录")?;
+    fs::create_dir_all(&staging)
+        .map_err(|error| PiUiError::StagingCreate.failure(error.to_string()))?;
     // 失败时不把上百 MB 的半成品留在数据目录里。
     let installed = unpack_and_promote(&bytes, asset, exe_name, &staging, data_dir);
     if installed.is_err() {
@@ -432,12 +456,19 @@ fn unpack_and_promote(
     } else if asset.ends_with(".zip") {
         extract_zip(bytes, staging)?;
     } else {
-        bail!("不支持的安装包格式：{asset}");
+        bail!(Error::Pi(PiFailure::PackageUnsupported {
+            file: asset.to_string()
+        }));
     }
-    let root = package_root(staging, exe_name)
-        .with_context(|| format!("安装包里找不到 {exe_name}（发布包的目录结构可能变了）"))?;
+    let root = package_root(staging, exe_name).ok_or_else(|| {
+        Error::Pi(PiFailure::PackageBinaryMissing {
+            file: exe_name.to_string(),
+        })
+    })?;
     if !is_standalone_binary(&root.join(exe_name)) {
-        bail!("下载的 {exe_name} 不是 Pi 独立程序");
+        bail!(Error::Pi(PiFailure::PackageNotStandalone {
+            file: exe_name.to_string()
+        }));
     }
     promote(&root, staging, data_dir)
 }
@@ -457,13 +488,14 @@ fn promote(root: &Path, staging: &Path, data_dir: &Path) -> Result<()> {
         fs::remove_dir_all(&backup).ok();
     }
     if dest.exists() {
-        fs::rename(&dest, &backup).context("备份旧版本")?;
+        fs::rename(&dest, &backup)
+            .map_err(|error| PiUiError::VersionBackup.failure(error.to_string()))?;
     }
     if let Err(err) = fs::rename(root, &dest) {
         if backup.exists() {
             fs::rename(&backup, &dest).ok();
         }
-        return Err(err).context("换上新版本");
+        return Err(PiUiError::VersionPromote.failure(err.to_string()).into());
     }
     if root != staging {
         fs::remove_dir_all(staging).ok();
@@ -488,14 +520,14 @@ async fn verify_sha256(
         .send()
         .await
         .redacted()
-        .context("fetch SHA256SUMS")?
+        .map_err(|error| PiUiError::download(PiDownloadStage::ChecksumsFetch, error))?
         .error_for_status()
         .redacted()
-        .context("SHA256SUMS status")?
+        .map_err(|error| PiUiError::download(PiDownloadStage::ChecksumsStatus, error))?
         .text()
         .await
         .redacted()
-        .context("read SHA256SUMS")?;
+        .map_err(|error| PiUiError::download(PiDownloadStage::ChecksumsRead, error))?;
 
     let mut expected = None;
     for line in text.lines() {
@@ -512,14 +544,18 @@ async fn verify_sha256(
         }
     }
     let Some(expected) = expected else {
-        bail!("SHA256SUMS 里没有 {asset}");
+        bail!(Error::Pi(PiFailure::ChecksumMissing {
+            file: asset.to_string()
+        }));
     };
 
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     let got = format!("{:x}", hasher.finalize());
     if got != expected {
-        bail!("SHA256 校验失败：期望 {expected}，得到 {got}");
+        bail!(UiError::from(format!(
+            "SHA256 校验失败：期望 {expected}，得到 {got}"
+        )));
     }
     Ok(())
 }
@@ -590,7 +626,7 @@ fn read_pi_version(path: &Path) -> Result<String> {
 fn platform_asset() -> Result<(&'static str, &'static str)> {
     let release = Os::current()
         .pi_release(Arch::current())
-        .context("这个平台没有可下载的 Pi 独立包，请手动安装并在设置里填写路径")?;
+        .ok_or(Error::Pi(PiFailure::PlatformUnsupported))?;
     Ok((release.asset, release.program))
 }
 
@@ -851,7 +887,12 @@ mod tests {
                 .unwrap_err(),
         ] {
             assert_safe_error(&error);
-            assert!(format!("{error:#}").contains("网络连接失败"));
+            let ui = PiUiError::project(error);
+            assert_eq!(ui.code(), "pi_download_failed");
+            assert_eq!(
+                serde_json::to_value(ui).unwrap()["params"]["message"],
+                "connect"
+            );
         }
         report_done(dir.path(), String::new());
     }

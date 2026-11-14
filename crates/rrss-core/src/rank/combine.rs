@@ -2,8 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::reasons::{Habit, ReasonMessage, ReasonPrefix, safe_text};
 use crate::{features::FeatureChip, rules::Dimension};
-pub const ALGO_VERSION: i64 = 7;
+pub const ALGO_VERSION: i64 = 8;
 
 /// 文章级特征总和最多 ±4：长中文标题的二元组不能叠加压过一条 ±10 的明确规则。
 pub const MAX_FEATURE_SCORE: f64 = 4.0;
@@ -44,13 +45,33 @@ pub enum Component {
     Affinity,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Reason {
     pub component: Component,
-    pub text: String,
+    #[serde(flatten)]
+    pub message: ReasonMessage,
     /// 这条原因折合的整数分；不足 1 分的分量不出原因。
     #[serde(default)]
     pub points: i64,
+}
+
+impl<'de> Deserialize<'de> for Reason {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Stored {
+            component: Component,
+            #[serde(default)]
+            points: i64,
+            #[serde(flatten)]
+            message: serde_json::Value,
+        }
+        let stored = Stored::deserialize(deserializer)?;
+        Ok(Self {
+            component: stored.component,
+            message: ReasonMessage::from_stored(&stored.message, "", None),
+            points: stored.points,
+        })
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -98,12 +119,12 @@ pub fn combine(input: Input<'_>, on: Switches) -> Boost {
         .sum::<f64>()
         .round() as i64;
     let mut reasons = Vec::new();
-    let mut add = |component, text, value: f64, weight: f64| {
+    let mut add = |component, message, value: f64, weight: f64| {
         let points = (value * weight).round() as i64;
         if points != 0 {
             reasons.push(Reason {
                 component,
-                text,
+                message,
                 points,
             });
         }
@@ -124,25 +145,36 @@ pub fn combine(input: Input<'_>, on: Switches) -> Boost {
                 .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs()))
         };
         for (chip, w) in [strongest(true), strongest(false)].into_iter().flatten() {
-            let habit = if *w > 0.0 { "常读" } else { "常跳过" };
-            let text = match chip.dimension {
-                Dimension::TitleKw => format!("标题含你{habit}的『{}』", chip.pattern),
-                Dimension::Author => format!("你{habit}作者『{}』", chip.pattern),
-                Dimension::Tag => format!("你{habit}标签『{}』", chip.pattern),
-                _ => format!("你{habit}域名『{}』", chip.pattern),
+            let habit = if *w > 0.0 { Habit::Read } else { Habit::Skip };
+            let pattern = safe_text(&chip.pattern);
+            let message = if pattern != chip.pattern {
+                // Preserve displayed content when a safe host projection would
+                // change it; legacy content never enters diagnostics.
+                ReasonMessage::LegacyText {
+                    text: chip.pattern.clone(),
+                    prefix: Some(ReasonPrefix::for_feature(chip.dimension, habit)),
+                }
+            } else {
+                match chip.dimension {
+                    Dimension::TitleKw => ReasonMessage::RankTitleKw { habit, pattern },
+                    Dimension::Author => ReasonMessage::RankAuthor { habit, pattern },
+                    Dimension::Tag => ReasonMessage::RankTag { habit, pattern },
+                    _ => ReasonMessage::RankDomain { habit, pattern },
+                }
             };
-            add(Component::Features, text, *w, WEIGHTS[0]);
+            add(Component::Features, message, *w, WEIGHTS[0]);
         }
     }
     if on.source && input.source.abs() > f64::EPSILON {
         add(
             Component::Source,
-            if input.source > 0.0 {
-                "你常读这个源"
-            } else {
-                "你较少打开这个源"
-            }
-            .into(),
+            ReasonMessage::RankSource {
+                habit: if input.source > 0.0 {
+                    Habit::Read
+                } else {
+                    Habit::Skip
+                },
+            },
             input.source,
             WEIGHTS[1],
         );
@@ -150,7 +182,9 @@ pub fn combine(input: Input<'_>, on: Switches) -> Boost {
     if on.coverage && input.coverage.0 > 1 {
         add(
             Component::Coverage,
-            format!("{} 个源在报道", input.coverage.0),
+            ReasonMessage::RankCoverage {
+                count: input.coverage.0 as u64,
+            },
             input.coverage.1,
             WEIGHTS[2],
         );
@@ -158,7 +192,7 @@ pub fn combine(input: Input<'_>, on: Switches) -> Boost {
     if on.freshness && input.freshness > 0.0 {
         add(
             Component::Freshness,
-            "按这个源的阅读节奏降低旧文优先级".into(),
+            ReasonMessage::RankFreshness {},
             input.freshness,
             WEIGHTS[3],
         );
@@ -168,9 +202,17 @@ pub fn combine(input: Input<'_>, on: Switches) -> Boost {
         && let Some(title) = input.affinity.1
     {
         let short: String = title.chars().take(16).collect();
+        let pattern = safe_text(&short);
         add(
             Component::Affinity,
-            format!("和你常读的『{short}』相似"),
+            if pattern == short {
+                ReasonMessage::RankAffinity { pattern }
+            } else {
+                ReasonMessage::LegacyText {
+                    text: short,
+                    prefix: Some(ReasonPrefix::RankAffinity),
+                }
+            },
             input.affinity.0,
             AFFINITY_WEIGHT,
         );
@@ -186,11 +228,11 @@ mod tests {
     fn fixed_input_snapshot_and_independent_switches() {
         let features: Vec<_> = [
             ("Rust", 2.0),
-            ("开发", 1.5),
-            ("类型", 1.5),
-            ("系统", 1.5),
-            ("广告", -2.0),
-            ("推广", -0.25),
+            ("development", 1.5),
+            ("types", 1.5),
+            ("systems", 1.5),
+            ("spam", -2.0),
+            ("ads", -0.25),
         ]
         .into_iter()
         .map(|(word, weight)| {
@@ -198,7 +240,7 @@ mod tests {
                 FeatureChip {
                     dimension: Dimension::TitleKw,
                     pattern: word.into(),
-                    label: format!("标题：{word}"),
+                    label: word.into(),
                 },
                 weight,
             )
@@ -209,12 +251,20 @@ mod tests {
             source: 0.5,
             coverage: (3, 3_f64.ln()),
             freshness: 0.5,
-            affinity: (0.8, Some("Rust async 的运行时与任务调度原理")),
+            affinity: (0.8, Some("Rust async runtime and task scheduling")),
         };
         let result = combine(input(), Switches::ALL);
+        assert_eq!(result.score, 8);
         assert_eq!(
-            format!("{result:?}"),
-            "Boost { score: 8, reasons: [Reason { component: Features, text: \"标题含你常读的『Rust』\", points: 2 }, Reason { component: Features, text: \"标题含你常跳过的『广告』\", points: -2 }, Reason { component: Source, text: \"你常读这个源\", points: 1 }, Reason { component: Coverage, text: \"3 个源在报道\", points: 2 }, Reason { component: Freshness, text: \"按这个源的阅读节奏降低旧文优先级\", points: -1 }, Reason { component: Affinity, text: \"和你常读的『Rust async 的运行时与』相似\", points: 2 }] }"
+            serde_json::to_value(&result.reasons).unwrap(),
+            serde_json::json!([
+                {"component":"features","code":"rank_title_kw","params":{"habit":"read","pattern":"Rust"},"points":2},
+                {"component":"features","code":"rank_title_kw","params":{"habit":"skip","pattern":"spam"},"points":-2},
+                {"component":"source","code":"rank_source","params":{"habit":"read"},"points":1},
+                {"component":"coverage","code":"rank_coverage","params":{"count":3},"points":2},
+                {"component":"freshness","code":"rank_freshness","params":{},"points":-1},
+                {"component":"affinity","code":"rank_affinity","params":{"pattern":"Rust async runti"},"points":2},
+            ])
         );
         // 平滑后的源偏好几乎总不为 0；不足 1 分时不出原因。
         let faint = combine(
@@ -267,5 +317,103 @@ mod tests {
             assert_eq!(result.reasons.len(), if i == 0 { 2 } else { 1 });
             assert_eq!(result.score, [4, 1, 2, -1, 2][i]);
         }
+    }
+
+    #[test]
+    fn feature_dimensions_and_skipped_sources_keep_typed_habits() {
+        for (dimension, code) in [
+            (Dimension::Author, "rank_author"),
+            (Dimension::Tag, "rank_tag"),
+            (Dimension::UrlPhrase, "rank_domain"),
+        ] {
+            for (weight, habit) in [(2.0, "read"), (-2.0, "skip")] {
+                let features = [(
+                    FeatureChip {
+                        dimension,
+                        pattern: "Example".into(),
+                        label: String::new(),
+                    },
+                    weight,
+                )];
+                let boost = combine(
+                    Input {
+                        features: &features,
+                        source: -0.5,
+                        coverage: (0, 0.0),
+                        freshness: 0.0,
+                        affinity: (0.0, None),
+                    },
+                    Switches::ALL,
+                );
+                let wire = serde_json::to_value(boost.reasons).unwrap();
+                assert_eq!(wire[0]["code"], code);
+                assert_eq!(
+                    wire[0]["params"],
+                    serde_json::json!({"pattern":"Example","habit":habit})
+                );
+                assert_eq!(wire[1]["code"], "rank_source");
+                assert_eq!(wire[1]["params"], serde_json::json!({"habit":"skip"}));
+            }
+        }
+    }
+
+    #[test]
+    fn url_feature_content_uses_legacy_prefixes_instead_of_changing_the_display() {
+        let pattern = "https://author.example/notes?q=topic";
+        for (dimension, prefixes) in [
+            (
+                Dimension::TitleKw,
+                ["rank_title_kw_read", "rank_title_kw_skip"],
+            ),
+            (Dimension::Author, ["rank_author_read", "rank_author_skip"]),
+            (Dimension::Tag, ["rank_tag_read", "rank_tag_skip"]),
+            (
+                Dimension::UrlPhrase,
+                ["rank_domain_read", "rank_domain_skip"],
+            ),
+        ] {
+            for (i, weight) in [2.0, -2.0].into_iter().enumerate() {
+                let features = [(
+                    FeatureChip {
+                        dimension,
+                        pattern: pattern.into(),
+                        label: String::new(),
+                    },
+                    weight,
+                )];
+                let boost = combine(
+                    Input {
+                        features: &features,
+                        source: 0.0,
+                        coverage: (0, 0.0),
+                        freshness: 0.0,
+                        affinity: (0.0, None),
+                    },
+                    Switches::ALL,
+                );
+                let wire = serde_json::to_value(boost.reasons).unwrap();
+                assert_eq!(wire[0]["code"], "legacy_text");
+                assert_eq!(
+                    wire[0]["params"],
+                    serde_json::json!({"text":pattern,"prefix":prefixes[i]})
+                );
+            }
+        }
+        let boost = combine(
+            Input {
+                features: &[],
+                source: 0.0,
+                coverage: (0, 0.0),
+                freshness: 0.0,
+                affinity: (0.8, Some("https://reading.example/notes")),
+            },
+            Switches::ALL,
+        );
+        let wire = serde_json::to_value(boost.reasons).unwrap();
+        assert_eq!(wire[0]["code"], "legacy_text");
+        assert_eq!(
+            wire[0]["params"],
+            serde_json::json!({"text":"https://reading.","prefix":"rank_affinity"})
+        );
     }
 }

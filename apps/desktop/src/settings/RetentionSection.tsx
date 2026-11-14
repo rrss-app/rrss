@@ -1,3 +1,4 @@
+import { formatRetentionMessage } from "./panelText";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
@@ -68,12 +69,12 @@ export function RetentionSection({ onAsk, onEditStateChange, onChanged, blocked 
   };
   const clean = () => {
     if (!data?.can_run) return;
-    onAsk(data.confirm_title, data.confirm.join("\n"), () => {
+    onAsk(t("retention.format.confirmTitle"), data.confirm.map(formatRetentionMessage).join("\n"), () => {
       void run("clean", t("retention.cleanFailed"), () => api.retentionCleanNow(), (message) => {
-        setStatus({ tone: "ok", text: message });
+        setStatus({ tone: "ok", text: formatRetentionMessage(message) });
         changed.current?.();
       });
-    }, { okLabel: data.confirm_ok });
+    }, { okLabel: t(data.first_run ? "retention.format.confirmFirst" : "retention.format.confirm") });
   };
 
   const on = saved > 0;
@@ -119,8 +120,8 @@ export function RetentionSection({ onAsk, onEditStateChange, onChanged, blocked 
           {data?.preview && (
             <div className="settings-option">
               <div>
-                <strong>{data.preview}</strong>
-                {data.preview_hint && <p className="hint">{data.preview_hint}</p>}
+                <strong>{formatRetentionMessage(data.preview)}</strong>
+                {data.preview_hint && <p className="hint">{formatRetentionMessage(data.preview_hint)}</p>}
               </div>
               {data.can_run && (
                 <button type="button" className="btn danger" disabled={disabled} onClick={clean}>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { SELECTION_TRANSLATE_MAX_CHARS, type SelectionTranslation, type SelectionTranslationConfig, type TranslationCommandError } from "../bindings";
+import { formatError } from "../lib/errors";
 import { api, copyText } from "../lib/api";
 import { i18n, useTranslation } from "../i18n";
 import type { ReaderSelection } from "./BlockView";
@@ -98,7 +99,7 @@ export function ReaderSelectionTranslation({ selection, onClose, onCite, onSetti
       {loading ? <div className="reader-selection-skeleton" role="status" aria-label={t("selection.translating")}><i /><i /></div> : null}
       {result ? <p className="reader-selection-result">{result.text}</p> : null}
       {tooLong ? <p role="alert">{t("selection.tooLong", { max: SELECTION_TRANSLATE_MAX_CHARS })}</p> : null}
-      {error ? <p role="alert">{error.kind === "configuration" && !config ? t("selection.notConfiguredNotice") : error.message}
+      {error ? <p role="alert">{error.kind === "configuration" && !config ? t("selection.notConfiguredNotice") : error.error ? formatError(error.error) : error.message}
         {error.kind === "configuration" || error.kind === "authentication" ? <button type="button" className="reader-selection-settings" onClick={() => { onClose(); onSettings(); }}>{t("selection.goSettings")}</button> : null}
       </p> : null}
     </div>

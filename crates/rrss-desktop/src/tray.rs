@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use rrss_app::views::TrayLabels;
 use rrss_app::window_close::{CloseChoice, CloseDecision};
+use rrss_app::{UiError, ui_error::host::HostError};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, Wry};
@@ -66,19 +67,20 @@ pub async fn close_choice(
 }
 
 /// 建托盘（已建时只换菜单文字）。文字来自前端；托盘不可用时不建，返回 false。
-pub fn install(app: &AppHandle, labels: TrayLabels) -> Result<bool, String> {
+pub fn install(app: &AppHandle, labels: TrayLabels) -> Result<bool, UiError> {
     let tray = app.state::<Tray>();
     let mut items = tray
         .items
         .lock()
-        .map_err(|_| "tray state poisoned".to_string())?;
+        .map_err(|_| UiError::from(HostError::TrayStateUnavailable))?;
     if let Some([open, refresh, quit]) = items.as_ref() {
         for (item, text) in [
             (open, &labels.open),
             (refresh, &labels.refresh),
             (quit, &labels.quit),
         ] {
-            item.set_text(text).map_err(|error| error.to_string())?;
+            item.set_text(text)
+                .map_err(|error| UiError::from(error.to_string()))?;
         }
         return Ok(true);
     }
@@ -87,14 +89,14 @@ pub fn install(app: &AppHandle, labels: TrayLabels) -> Result<bool, String> {
         return Ok(false);
     }
     let open = MenuItem::with_id(app, "open", &labels.open, true, None::<&str>)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| UiError::from(e.to_string()))?;
     let refresh = MenuItem::with_id(app, "refresh", &labels.refresh, true, None::<&str>)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| UiError::from(e.to_string()))?;
     let quit = MenuItem::with_id(app, "quit", &labels.quit, true, None::<&str>)
-        .map_err(|e| e.to_string())?;
-    let separator = PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?;
-    let menu =
-        Menu::with_items(app, &[&open, &refresh, &separator, &quit]).map_err(|e| e.to_string())?;
+        .map_err(|e| UiError::from(e.to_string()))?;
+    let separator = PredefinedMenuItem::separator(app).map_err(|e| UiError::from(e.to_string()))?;
+    let menu = Menu::with_items(app, &[&open, &refresh, &separator, &quit])
+        .map_err(|e| UiError::from(e.to_string()))?;
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip("RRSS")
         .menu(&menu)
@@ -118,7 +120,9 @@ pub fn install(app: &AppHandle, labels: TrayLabels) -> Result<bool, String> {
     if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());
     }
-    builder.build(app).map_err(|error| error.to_string())?;
+    builder
+        .build(app)
+        .map_err(|error| UiError::from(error.to_string()))?;
     *items = Some([open, refresh, quit]);
     Ok(true)
 }

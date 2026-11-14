@@ -7,7 +7,7 @@ import { installMockHost, MOCK_FEEDS, MOCK_FOCUS } from "./mockHost";
 const lastArgs = (page: Page, command: string) => page.evaluate((name) => (window as any).__mockHost.args[name], command);
 const baseFeed = MOCK_FEEDS.folders[1].feeds[0];
 const feed = (id: number, title: string, folder_id: number, position: number): FeedView =>
-  ({ ...baseFeed, id, title, folder_id, position, url: `https://feeds.example/${id}`, error: "" });
+  ({ ...baseFeed, id, title, folder_id, position, url: `https://feeds.example/${id}`, error: null });
 
 // 根层：随笔 0、技术 1、新闻 2。技术里有两个源。
 const TREE: FeedTree = {

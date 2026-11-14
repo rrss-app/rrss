@@ -154,7 +154,7 @@ mod proxy_tests {
                 }
             );
         }
-        let error = anyhow::Error::new(rrss_core::Error::InvalidNetworkProxy("safe".into()));
+        let error = anyhow::Error::new(rrss_core::Error::InvalidNetworkProxy(rrss_core::network::ProxyError::ConfigUnavailable));
         assert_eq!(classify(&error), Failure::Configuration);
         let error = anyhow::Error::new(rrss_ai::Error::ServiceCooldown).context("outer");
         assert_eq!(classify(&error), Failure::RateLimited);

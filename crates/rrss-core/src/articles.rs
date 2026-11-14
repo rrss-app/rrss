@@ -77,6 +77,7 @@ pub struct ArticleCard {
     #[serde(default)]
     pub cluster_members: Vec<i64>,
     pub interest_label: String,
+    pub interest_reason: Option<crate::rank::reasons::ReasonMessage>,
     pub noisy: bool,
     #[serde(default)]
     pub spot_check: bool,
@@ -507,6 +508,7 @@ pub(crate) fn map_card(row: &rusqlite::Row<'_>) -> rusqlite::Result<ArticleCard>
         cluster_feeds: Vec::new(),
         cluster_members: Vec::new(),
         interest_label,
+        interest_reason: reasons.first().map(|reason| reason.message.clone()),
         noisy: false,
         spot_check: false,
         row_kind: ROW_CARD,
@@ -748,6 +750,7 @@ fn cluster_header(meta: &crate::cluster::ClusterMeta, members: &[ArticleCard]) -
         cluster_feeds,
         cluster_members: members.iter().map(|m| m.id).collect(),
         interest_label: String::new(),
+        interest_reason: None,
         noisy: false,
         spot_check: false,
         row_kind: ROW_HEADER,

@@ -1,3 +1,4 @@
+use rrss_app::reasons::{ReasonMessage, ReasonPrefix};
 use rrss_app::{actions, queries};
 use rrss_core::{articles, db, feeds, rules};
 use rusqlite::{Connection, params};
@@ -133,7 +134,13 @@ fn hidden_range_matches_feed_and_list_scope_and_only_returns_negative_reasons() 
         (article.reasons[0].rule_id, article.reasons[0].weight),
         (10, -15)
     );
-    assert_eq!(article.reasons[0].label, "标题：Rust");
+    assert_eq!(
+        article.reasons[0].message,
+        ReasonMessage::LegacyText {
+            text: "Rust".into(),
+            prefix: Some(ReasonPrefix::TitleKw),
+        }
+    );
     assert_eq!(
         queries::hidden_page(&conn, Some("feed:2"), None)
             .unwrap()
@@ -183,12 +190,23 @@ fn hidden_rule_counts_count_articles_once_in_the_capped_list() {
         (page.rule_counts[0].rule_id, page.rule_counts[0].count),
         (rule, 200)
     );
-    assert_eq!(page.rule_counts[0].label, "标题包含『Rust』");
+    assert_eq!(
+        page.rule_counts[0].message,
+        ReasonMessage::RuleConditionTitleKw {
+            pattern: "Rust".into(),
+        }
+    );
     assert_eq!(
         (page.rule_counts[1].rule_id, page.rule_counts[1].count),
         (99, 200)
     );
-    assert_eq!(page.rule_counts[1].label, "作者：old");
+    assert_eq!(
+        page.rule_counts[1].message,
+        ReasonMessage::LegacyText {
+            text: "old".into(),
+            prefix: Some(ReasonPrefix::Author),
+        }
+    );
 }
 
 #[test]

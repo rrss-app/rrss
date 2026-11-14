@@ -1,3 +1,4 @@
+import { formatFeedError } from "./feedHealth";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -422,7 +423,7 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
                   if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setEditing(null); }
                 }} />
                 : <span className="feeds-row-name"><Highlight text={row.name} query={filter} /></span>}
-              {row.feed?.error ? <span className="feeds-row-flag" title={row.feed.error} aria-label={t("tree.fetchError", { error: row.feed.error })} /> : null}
+              {row.feed?.error ? <span className="feeds-row-flag" title={formatFeedError(row.feed.error)} aria-label={t("tree.fetchError", { error: formatFeedError(row.feed.error) })} /> : null}
               <span className="feeds-row-count">{row.kind === "folder" && row.open ? "" : row.count || ""}</span>
               {row.kind === "all" || renaming ? null : <button type="button" className="feeds-row-more" aria-label={t("tree.rowActions", { name: row.name })} aria-haspopup="menu"
                 aria-expanded={menu?.key === row.key}

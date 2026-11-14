@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import type { ArticleView, ChatMessageView, ClusterArticleView, ClusterSummaryView, DigestSourceView, DigestView, FeedTree, FeedView, ReaderView } from "../src/bindings";
+import type { ArticleView, ChatMessageView, ClusterArticleView, ClusterSummaryView, DigestSourceView, DigestView, FeedTree, FeedView, ReaderView, RulesPage } from "../src/bindings";
 import { threadFixture } from "../src/test/fixtures/chat";
 import { expect, test, type Page } from "./fixtures";
 import { installMockHost, MOCK_FOCUS, MOCK_RULES, settingsTab, type MockHostOptions } from "./mockHost";
@@ -28,8 +28,8 @@ const todayLabel = `${today.getMonth() + 1}月${today.getDate()}日`;
 
 // ── 订阅 ────────────────────────────────────────────────
 const feed = (id: number, title: string, folder_id: number, url: string, extra: Partial<FeedView> = {}): FeedView => ({
-  id, title, url, folder_id, icon_href: "", error: "", noisy: false, retention_days: null,
-  health: "", health_label: "", health_detail: "", position: id, empty: false, ...extra,
+  id, title, url, folder_id, icon_href: "", error: null, noisy: false, retention_days: null,
+  health: null, position: id, empty: false, ...extra,
 });
 
 const FEEDS: FeedTree = {
@@ -44,8 +44,7 @@ const FEEDS: FeedTree = {
       feed(5, "纸上谈码", 2, "https://zhishang.example/feed"),
       feed(6, "慢读札记", 2, "https://mandu.example/atom.xml"),
       feed(7, "开源前哨", 2, "https://kaiyuan.example/rss"),
-      feed(8, "闲聊广场", 2, "https://xianliao.example/index.xml", { noisy: true, health: "noisy", health_label: "多数内容被隐藏",
-        health_detail: "近 14 天大部分文章被规则隐藏或被踩。可以退订，或在规则页调整。" }),
+      feed(8, "闲聊广场", 2, "https://xianliao.example/index.xml", { noisy: true, health: { code: "feed_health_noisy", params: { window_days: 14 } } }),
     ] },
     { id: 3, name: "科技新闻", label: "科技新闻", indent: 0, position: 2, feeds: [
       feed(9, "Circuit Review", 3, "https://circuit-review.example/feed"),
@@ -61,11 +60,11 @@ const feedTitle = (id: number) => [...FEEDS.folders.flatMap(f => f.feeds), ...FE
 const article = (id: number, title: string, feed_id: number, published_at: number, extra: Partial<ArticleView> = {}): ArticleView => ({
   id, title, feed_id, feed_title: feedTitle(feed_id), feed_icon_href: "", published_at, url: `https://example.org/${id}`,
   read: false, starred: false, score: 0, summary: "", row_kind: 0, cluster_id: 0, cluster_size: 1, cluster_label: "",
-  cluster_span: "", interest_label: "", rank_reasons: [], noisy: false, spot_check: false, ...extra,
+  cluster_span: "", interest_reason: null, rank_reasons: [], noisy: false, spot_check: false, ...extra,
 });
 
 const LOCAL_FIRST = article(101, "本地优先软件的第二个十年：同步引擎、CRDT 与单文件数据库", 1, ago(18), {
-  score: 14, interest_label: " · 本地优先",
+  score: 14, interest_reason: { code: "legacy_text", params: { text: " · 本地优先", prefix: null } },
   summary: "五个本地优先应用的架构复盘：数据先落本机 SQLite，同步只是后台的一层。离线可用、可迁移，服务关停也不丢数据。",
 });
 const WAYLAND_REP = article(901, "Wayland 成为默认会话之后：X11 会话进入维护模式", 2, ago(42), {
@@ -89,7 +88,7 @@ const FOCUS_ARTICLES: ArticleView[] = [
     summary: "规则比黑盒更可控：关键词、作者与来源三类过滤覆盖了九成需求，剩下的交给手动收藏。",
   }),
   article(103, "SQLite 为什么适合做应用的文件格式", 6, ago(3 * 60 + 25), {
-    score: 5, interest_label: " · SQLite",
+    score: 5, interest_reason: { code: "legacy_text", params: { text: " · SQLite", prefix: null } },
     summary: "单文件、带事务、可查询，比自定义二进制格式或一堆 JSON 更耐用，也更容易备份与迁移。",
   }),
   article(104, "长文阅读体验：行宽、字号与段落节奏", 4, ago(5 * 60 + 40), {
@@ -131,9 +130,9 @@ const READER: ReaderView = {
   summary: "作者复盘了五个本地优先应用：数据先写进本机单文件数据库，同步引擎只在后台合并变更。结论是离线体验与数据可迁移性带来的收益，远大于同步实现的复杂度。",
   score: 14, feedback: 0, starred: false,
   reasons: [
-    { rule_id: 11, dimension: "标题", snippet: "本地优先", label: "标题含 本地优先", weight: 10 },
-    { rule_id: 12, dimension: "正文", snippet: "CRDT", label: "正文含 CRDT", weight: 2 },
-    { rule_id: 0, dimension: "兴趣", snippet: "", label: "兴趣 · 本地优先", weight: 2 },
+    { rule_id: 11, dimension: "title_kw", snippet: "本地优先", code: "legacy_text", params: { text: "标题含 本地优先", prefix: null }, weight: 10 },
+    { rule_id: 12, dimension: "body_phrase", snippet: "CRDT", code: "legacy_text", params: { text: "正文含 CRDT", prefix: null }, weight: 2 },
+    { rule_id: 0, dimension: "interest", snippet: "", code: "legacy_text", params: { text: "兴趣 · 本地优先", prefix: null }, weight: 2 },
   ],
   media: [], embed_covers: [], translated_title: "", translated_document: null, translation_ready: false, translation_note: "",
   truncated: false, pruned: false, summary_stale: false,
@@ -262,14 +261,14 @@ const TIMELINE: ArticleView[] = [
   article(109, "把 Newsletter 转成 RSS 的几种方法", 5, yesterdayAt(8, 30), { read: true }),
 ];
 
-const RULES = {
+const RULES: RulesPage = {
   ...MOCK_RULES,
   rules: [
-    { ...MOCK_RULES.rules[0], id: 11, summary: "标题包含『本地优先』时加分 · 全局", pattern: "本地优先" },
-    { ...MOCK_RULES.rules[1], id: 13, summary: "标题包含『招聘』时隐藏 · 全局" },
-    { ...MOCK_RULES.rules[2], id: 14, summary: "来自『Byte Harbor』、正文包含『local-first』时加分 · 仅此源", scope_label: "源 · Byte Harbor", scope_id: 1 },
-    { ...MOCK_RULES.rules[0], id: 12, summary: "正文包含『CRDT』时加分 · 全局", dimension: "正文", dimension_id: "body_phrase", pattern: "CRDT", weight: 2 },
-    { ...MOCK_RULES.rules[3], id: 15, summary: "在『科技新闻』文件夹内、URL 匹配正则『/sponsored/』时隐藏 · 此文件夹及子文件夹", scope_label: "文件夹 · 科技新闻", scope_id: 3, enabled: true },
+    { ...MOCK_RULES.rules[0], id: 11, summary: { code: "rule_summary", params: { effect: "boost" } }, scope_name: "", pattern: "本地优先" },
+    { ...MOCK_RULES.rules[1], id: 13, summary: { code: "rule_summary", params: { effect: "hide" } }, scope_name: "" },
+    { ...MOCK_RULES.rules[2], id: 14, summary: { code: "rule_summary", params: { effect: "boost" } }, scope_name: "Byte Harbor", scope_id: 1 },
+    { ...MOCK_RULES.rules[0], id: 12, summary: { code: "rule_summary", params: { effect: "boost" } }, scope_name: "", dimension_id: "body_phrase", pattern: "CRDT", weight: 2 },
+    { ...MOCK_RULES.rules[3], id: 15, summary: { code: "rule_summary", params: { effect: "hide" } }, scope_name: "科技新闻", scope_id: 3, enabled: true },
   ],
   folders: FEEDS.folders.map(f => ({ id: f.id, label: f.label })),
   feeds: FEEDS.folders.flatMap(f => f.feeds).map(f => ({ id: f.id, label: f.title })),

@@ -92,7 +92,7 @@ test("a configuration problem points to the model page", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => {
     const state = (window as any).__mockHost.state;
-    state.probe = { ...state.probe, config_error: "还没有可用的对话模型：先在模型页添加连接" };
+    state.probe = { ...state.probe, config_error: { code: "legacy_text", params: {}, detail: "还没有可用的对话模型：先在模型页添加连接" } };
   });
   const settings = await openAssistant(page);
   await settings.getByRole("alert").getByRole("button", { name: "去设置对话模型", exact: true }).click();

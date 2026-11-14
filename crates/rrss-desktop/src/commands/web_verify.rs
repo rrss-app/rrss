@@ -1,4 +1,5 @@
 //! Host scheduling only; MIME, extraction, persistence and state policy are app code.
+use rrss_app::ui_error::web::WebError;
 use std::sync::{Arc, Mutex};
 
 use rrss_app::{UiError, WebVerifyState, WebVerifyStateEvent, web_verify};
@@ -28,15 +29,15 @@ impl Verification {
     }
 }
 
-fn session(window: &Webview) -> Result<Arc<Verification>, String> {
+fn session(window: &Webview) -> Result<Arc<Verification>, UiError> {
     window
         .state::<super::WebWindows>()
         .verify
         .lock()
-        .map_err(|_| "网页抽取状态不可用")?
+        .map_err(|_| UiError::from(WebError::ExtractionUnavailable))?
         .get(window.label())
         .cloned()
-        .ok_or_else(|| "原网页已关闭".into())
+        .ok_or_else(|| UiError::from(WebError::Closed))
 }
 
 pub(super) fn navigated(window: &Webview) {
@@ -68,7 +69,10 @@ fn publish(
     if revision.has_changed().unwrap_or(true) {
         return;
     }
-    if previous.as_ref() == Some(event) {
+    if previous
+        .as_ref()
+        .is_some_and(|old| serde_json::to_value(old).ok() == serde_json::to_value(event).ok())
+    {
         return;
     }
     super::web_window::emit_main(window.app_handle(), "web:verify-state", event);
@@ -81,14 +85,14 @@ async fn run(
     mut revision: watch::Receiver<u64>,
     url: String,
     automatic: bool,
-) -> Result<WebVerifyStateEvent, String> {
+) -> Result<WebVerifyStateEvent, UiError> {
     let ticket = revision.clone();
     tokio::select! {
         biased;
-        _ = revision.changed() => Err("页面已导航或窗口已关闭，抽取已取消".into()),
+        _ = revision.changed() => Err(UiError::from(WebError::ExtractionCancelled)),
         result = async {
             if window.url().ok().as_ref().map(|u| u.as_str()) != Some(url.as_str()) {
-                return Err("页面地址已改变，抽取已取消".into());
+                return Err(UiError::from(WebError::ExtractionUrlChanged));
             }
             let title = crate::webview_native::page_title(&window).await;
             let title_error = title.as_ref().err().cloned().map(Err);
@@ -106,7 +110,7 @@ async fn run(
                     // Compare again after the native operation; no snapshot may be
                     // attributed to a different URL after a redirect/navigation.
                     if window.url().ok().as_ref().map(|u| u.as_str()) != Some(url.as_str()) {
-                        return Err("页面地址已改变，抽取已取消".into());
+                        return Err(UiError::from(WebError::ExtractionUrlChanged));
                     }
                     let state = window.state::<crate::AppState>();
                     let (db, data, page) = (state.db_path.clone(), state.data_dir.clone(), url.clone());
@@ -117,11 +121,11 @@ async fn run(
                         // document can never overwrite a newer manual extraction.
                         let _capture = capture;
                         if ticket.has_changed().unwrap_or(true) {
-                            return Err("页面已改变，抽取已取消".into());
+                            return Err(UiError::from(WebError::ExtractionPageChanged));
                         }
                         rrss_app::web_snapshot::store_snapshot(&db, &data, &page, &bytes)
                     })
-                        .await.unwrap_or_else(|_| Err("网页快照处理失败".into()))
+                        .await.unwrap_or_else(|_| Err(UiError::from(WebError::SnapshotProcessingFailed)))
                 }
             };
             let event = web_verify::event(window.label(), &url, title, Some(&result));
@@ -142,7 +146,7 @@ pub async fn extract_web_view(
     let revision = session.revision.subscribe();
     let url = window
         .url()
-        .map_err(|_| UiError::from("无法读取原网页地址".to_string()))?
+        .map_err(|_| UiError::from(WebError::UrlReadFailed))?
         .to_string();
     run(window, session, revision, url, false)
         .await

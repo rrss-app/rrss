@@ -3,6 +3,7 @@ import type { ArticleView } from "../lib/api";
 import type { RankReasonView } from "../bindings";
 import { localIconHref, sourceHue, sourceInitial } from "../lib/sourceAvatar";
 import { useTranslation } from "../i18n";
+import { formatReason, formatReasonNumber } from "../lib/reasons";
 import { Icon } from "./Icon";
 import { RelativeTime } from "./RelativeTime";
 import { ThumbIcon } from "./ThumbIcon";
@@ -75,13 +76,13 @@ export function ArticleCard({
             {row.published_at != null ? <span className="meta-sep">·</span> : null}
             {row.published_at != null ? <RelativeTime className="article-time" ms={row.published_at} /> : null}
             {representative ? <><span className="meta-sep">·</span><span className="article-rep">{t("card.representative")}</span></> : null}
-            {showReasons && row.interest_label ? <span className="meta-tag interest">{row.interest_label.replace(/^\s*·\s*/, "")}</span> : null}
-            {showReasons && learned ? <span className="meta-tag learned" title={row.rank_reasons?.map((r) => r.text).join(t("card.reasonSeparator"))}>{learned.text}</span> : null}
+            {showReasons && row.interest_reason ? <span className="meta-tag interest">{formatReason(row.interest_reason).replace(/^\s*·\s*/, "")}</span> : null}
+            {showReasons && learned ? <span className="meta-tag learned" title={row.rank_reasons?.map(formatReason).join(t("card.reasonSeparator"))}>{formatReason(learned)}</span> : null}
             {showReasons && row.noisy ? <span className="meta-tag">{t("card.noisy")}</span> : null}
             {details && (row.spot_check || review) ? <span className="meta-tag" title={t("card.spotCheckTitle")}>{t("card.spotCheck")}</span> : null}
             {row.starred ? <span className="meta-tag starred"><Icon name="star" size={11} filled />{t("card.starred")}</span> : null}
           </div>
-          {showReasons && score !== 0 ? <span className={`score ${scoreClass}`} title={t("card.scoreTitle")}>{score > 0 ? "+" : ""}{score}</span> : null}
+          {showReasons && score !== 0 ? <span className={`score ${scoreClass}`} title={t("card.scoreTitle")}>{score > 0 ? "+" : ""}{formatReasonNumber(score)}</span> : null}
           <div className="acts" role="group" aria-label={t("card.actions")}
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => {

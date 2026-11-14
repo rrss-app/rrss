@@ -14,7 +14,14 @@ fn frontend_source() -> String {
         models::ModelError::CODES,
         chat::ChatUiError::CODES,
         reader::ReaderError::CODES,
+        web::WebError::CODES,
+        host::HostError::CODES,
         network::NetworkError::CODES,
+        settings::SettingError::CODES,
+        backup::BackupError::CODES,
+        pi::PiUiError::CODES,
+        mcp::McpUiError::CODES,
+        jobs::JobsUiError::CODES,
     ]
     .concat();
     errors.sort_unstable();
@@ -22,13 +29,17 @@ fn frontend_source() -> String {
         !errors.windows(2).any(|pair| pair[0] == pair[1]),
         "duplicate UI error code"
     );
-    // Reason domains can contribute their CODES here through the same exporter.
-    // There are no reason codes until a reason-producing caller is migrated.
-    let reasons: Vec<&str> = Vec::new();
+    let mut reasons = [crate::reasons::ReasonMessage::CODES].concat();
+    reasons.sort_unstable();
+    assert!(
+        !reasons.windows(2).any(|pair| pair[0] == pair[1]),
+        "duplicate UI reason code"
+    );
     format!(
         "{}\n",
         serde_json::to_string_pretty(&serde_json::json!({
             "errors": errors, "reasons": reasons,
+            "feed_health": feeds::FeedHealthNotice::CODES,
         }))
         .unwrap()
     )

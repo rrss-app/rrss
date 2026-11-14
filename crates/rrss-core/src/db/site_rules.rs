@@ -1,4 +1,5 @@
 //! Declarative extraction rules. Matching is offline and independent of storage.
+use crate::error::rules::RuleProblem;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 
@@ -97,12 +98,12 @@ pub fn upsert(conn: &Connection, rule: &SiteRule, enabled: bool) -> Result<()> {
     let domain = normalize_domain(&rule.domain);
     let host = domain.strip_prefix("*.").unwrap_or(&domain);
     if host.contains('*') || url::Host::parse(host).is_err() {
-        return Err(Error::InvalidRule("invalid site domain".into()));
+        return Err(Error::InvalidRule(RuleProblem::SiteDomainInvalid));
     }
     let strip = (!rule.strip.is_empty())
         .then(|| serde_json::to_string(&rule.strip))
         .transpose()
-        .map_err(|e| Error::InvalidRule(e.to_string()))?;
+        .map_err(|_| Error::InvalidRule(RuleProblem::SiteSerialization))?;
     conn.execute(
         "INSERT INTO site_rules(domain, body, title, author, date, strip, enabled, updated_at, javascript_disabled)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)

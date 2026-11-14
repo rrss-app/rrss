@@ -1,3 +1,4 @@
+import { formatError } from "../lib/errors";
 import { useState } from "react";
 import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { McpView, PiToolView } from "../bindings";
@@ -183,18 +184,18 @@ function EngineStatus({ probe, loading, failed, disabled, install, onInstall, on
   const pct = install?.total ? Math.min(100, Math.round((install.received / install.total) * 100)) : null;
   const view: { tone: "ok" | "warn" | "err"; text: string; action?: [string, () => void] } =
     installing && install ? { tone: "ok", text: installProgressText(install) }
-    : installFailed ? { tone: "err", text: t("engine.downloadFailed", { message: install.message }), action: [t("engine.redownload"), onInstall] }
+    : installFailed ? { tone: "err", text: t("engine.downloadFailed", { message: install.error ? formatError(install.error) : install.message }), action: [t("engine.redownload"), onInstall] }
     : loading || !probe
       ? failed ? { tone: "err", text: t("engine.detectFailed"), action: [t("engine.redetect"), onRetry] } : { tone: "ok", text: t("engine.detecting") }
       : probe.version_state === "missing" ? { tone: "err", text: t("engine.missing"), action: [t("engine.download"), onInstall] }
       : probe.version_state === "too_old" ? { tone: "err", text: t("engine.tooOld", { version: version || probe.version }), action: [t("engine.upgrade"), onInstall] }
-      : probe.config_error ? { tone: "err", text: probe.config_error, action: [t("engine.setModel"), onModels] }
+      : probe.config_error ? { tone: "err", text: formatError(probe.config_error), action: [t("engine.setModel"), onModels] }
       : probe.version_state === "unverified"
         ? { tone: "warn", text: t("engine.ready") }
         : { tone: "ok", text: t("engine.ready") };
   return (
     <>
-    <div className="engine-status" data-tone={view.tone} role={view.tone === "err" ? "alert" : "status"} aria-busy={installing}>
+    <div className="engine-status" data-tone={view.tone} data-error-code={installFailed ? install?.error?.code : probe?.config_error?.code} role={view.tone === "err" ? "alert" : "status"} aria-busy={installing}>
       {/* 下载中由进度条表示状态，不再叠一个圆点。 */}
       {!installing && <span className="status-dot" data-state={view.tone === "ok" ? (loading ? "busy" : "ok") : view.tone === "warn" ? "warn" : "err"} aria-hidden="true" />}
       <span>{view.text}</span>

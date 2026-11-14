@@ -25,8 +25,8 @@ test("adding continues while feeds load; background updates preserve drafts and 
     const host = (window as any).__mockHost;
     const [first, second] = host.state.feeds.uncategorized;
     first.title = "后台完成的来源"; first.empty = false;
-    second.error = "订阅请求超时";
-    second.health = "failing"; second.health_label = "抓取失败"; second.health_detail = second.error;
+    second.error = { code: "feed_timeout", detail: "feed request timed out" };
+    second.health = { code: "feed_health_failing", params: { fail_count: 1, failing_days: 0, last_success_at: null } };
     host.state.focus.articles.unshift(article);
     // Deliver only the overflow event: per-source events must not mask a
     // missing global-invalidation handler. Queries restore both sources.

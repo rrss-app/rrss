@@ -1,5 +1,6 @@
 //! Pi 工具清单、MCP 配置与对话用量。日志 target：`rrss_core::pi_store`。
 
+use crate::error::settings::PiOverrideProblem;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
@@ -634,9 +635,7 @@ pub fn assistant_note(conn: &Connection) -> Result<String> {
 pub fn set_assistant_note(conn: &Connection, note: &str) -> Result<()> {
     let note = note.trim();
     if note.chars().count() > ASSISTANT_NOTE_MAX_CHARS {
-        return Err(Error::InvalidPiOverride(format!(
-            "助手说明不能超过 {ASSISTANT_NOTE_MAX_CHARS} 字"
-        )));
+        return Err(Error::InvalidPiOverride(PiOverrideProblem::NoteTooLong { max: ASSISTANT_NOTE_MAX_CHARS }));
     }
     db::set_setting(conn, PI_ASSISTANT_NOTE_KEY, note)
 }
@@ -661,16 +660,16 @@ pub fn pi_override(conn: &Connection, key: &str) -> Result<serde_json::Value> {
 /// 保存一项覆盖。必须是合法的 JSON 对象，否则拒绝，原值不动；空白表示清除。
 pub fn set_pi_override(conn: &Connection, key: &str, raw: &str) -> Result<()> {
     if key != PI_SETTINGS_OVERRIDE_KEY && key != PI_MODELS_OVERRIDE_KEY {
-        return Err(Error::InvalidPiOverride(format!("未知的覆盖项 {key}")));
+        return Err(Error::InvalidPiOverride(PiOverrideProblem::KeyUnknown { key: key.into() }));
     }
     let raw = raw.trim();
     if raw.is_empty() {
         return db::set_setting(conn, key, "{}");
     }
     let value: serde_json::Value = serde_json::from_str(raw)
-        .map_err(|err| Error::InvalidPiOverride(format!("不是合法的 JSON：{err}")))?;
+        .map_err(|err| Error::InvalidPiOverride(format!("不是合法的 JSON：{err}").into()))?;
     if !value.is_object() {
-        return Err(Error::InvalidPiOverride("必须是 JSON 对象".into()));
+        return Err(Error::InvalidPiOverride(PiOverrideProblem::ObjectRequired));
     }
     db::set_setting(conn, key, &value.to_string())
 }
@@ -695,9 +694,7 @@ pub fn set_own_model(conn: &Connection, model: &str) -> Result<()> {
     if !model.is_empty() {
         let (provider, id) = model.split_once('/').unwrap_or(("", ""));
         if provider.trim().is_empty() || id.trim().is_empty() {
-            return Err(Error::InvalidPiOverride(format!(
-                "模型要写成 provider/id：{model}"
-            )));
+            return Err(Error::InvalidPiOverride(PiOverrideProblem::ModelInvalid { model: model.into() }));
         }
     }
     db::set_setting(conn, PI_OWN_MODEL_KEY, model)

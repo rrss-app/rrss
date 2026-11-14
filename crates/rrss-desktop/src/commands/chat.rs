@@ -27,7 +27,7 @@ pub async fn delete_thread(state: State<'_, AppState>, thread_id: i64) -> Result
         .chat
         .lock_thread_deletion(thread_id)
         .await
-        .map_err(|e| UiError::from(e.message))?;
+        .map_err(|e| e.message)?;
     let data_dir = state.data_dir.clone();
     crate::state::with_db("delete_thread", state.db_path.clone(), move |conn| {
         let _guard = guard;
@@ -57,7 +57,7 @@ pub async fn send_message(
             .chat
             .send(args)
             .await
-            .map_err(|e| UiError::from(e.message))
+            .map_err(|e| e.message)
     })
     .await
 }
@@ -69,7 +69,7 @@ pub async fn abort_generation(state: State<'_, AppState>) -> Result<(), UiError>
             .chat
             .abort()
             .await
-            .map_err(|e| UiError::from(e.message))
+            .map_err(|e| e.message)
     })
     .await
 }
@@ -82,7 +82,7 @@ pub async fn restart_pi(state: State<'_, AppState>) -> Result<(), UiError> {
             .chat
             .restart_engine()
             .await
-            .map_err(|e| UiError::from(e.message))
+            .map_err(|e| e.message)
     })
     .await
 }
@@ -104,7 +104,7 @@ pub async fn confirm_fetch(
         .chat
         .confirm(&id, ok, remember)
         .await
-        .map_err(|e| UiError::from(e.message))
+        .map_err(|e| e.message)
 }
 
 command_handler![

@@ -131,10 +131,10 @@ pub fn store(
     bytes: &[u8],
     mime: Option<&str>,
 ) -> Result<()> {
-    let mime =
-        image_type(bytes, mime).ok_or_else(|| Error::InvalidUrl("invalid feed icon".into()))?;
+    let mime = image_type(bytes, mime)
+        .ok_or_else(|| Error::InvalidUrl(crate::url_norm::InvalidUrlReason::FeedIcon))?;
     if !media::allowed_url(url) {
-        return Err(Error::InvalidUrl(url.into()));
+        return Err(Error::InvalidUrl(crate::url_norm::InvalidUrlReason::Media));
     }
     let tx = db::write_transaction(conn)?;
     // 关闭设置或退订期间到达的下载结果不再落盘。
