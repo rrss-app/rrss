@@ -23,7 +23,6 @@ pub async fn translate_selection(
             .await
             .map_err(|e| TranslationCommandError {
                 kind: TranslationFailure::Configuration,
-                message: String::new(),
                 error: Some(UiError::from(e)),
             })?,
         text,

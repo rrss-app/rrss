@@ -55,7 +55,7 @@ export function resetSelectionTranslations() {
 async function translate(text: string, configured: (config: SelectionTranslationConfig) => void) {
   // 每次点击只读当前身份，不依赖设置页是否挂载、预载是否过期或写入从哪里发生。
   const { selection_config: config } = await api.translatePage();
-  if (!config) throw { kind: "configuration", message: i18n.t("selection.notConfigured", { ns: "reader" }) } satisfies TranslationCommandError;
+  if (!config) throw { kind: "configuration" } satisfies TranslationCommandError;
   configured(config);
   const key = JSON.stringify([config.identity, text]);
   return rememberSelectionTranslation(key, () => api.translateSelection(text, config.identity));
@@ -80,9 +80,9 @@ export function ReaderSelectionTranslation({ selection, onClose, onCite, onSetti
       value => { if (active) setResult(value); },
       reason => {
         if (!active) return;
-        setError(reason && typeof reason === "object" && "kind" in reason && "message" in reason
+        setError(reason && typeof reason === "object" && "kind" in reason
           ? reason as TranslationCommandError
-          : { kind: "network", message: i18n.t("selection.networkFailed", { ns: "reader" }) });
+          : { kind: "network" });
       },
     );
     return () => { active = false; };
@@ -92,14 +92,14 @@ export function ReaderSelectionTranslation({ selection, onClose, onCite, onSetti
     label={t("selection.label")} className="reader-selection-translation" onClose={onClose} restoreFocusTo={selection.opener}>
     <div className="reader-selection-translation-head">
       <span><Icon name="translate" size={14} />{t("selection.head")}</span>
-      {config ? <span className="reader-selection-service">{config.service}</span> : null}
+      {config ? <span className="reader-selection-service">{config.service_code === "http" ? t("selection.httpService") : config.service}</span> : null}
       <button type="button" aria-label={t("selection.close")} onClick={onClose}><Icon name="close" size={14} /></button>
     </div>
     <div className="reader-selection-translation-content" aria-live="polite" aria-busy={loading}>
       {loading ? <div className="reader-selection-skeleton" role="status" aria-label={t("selection.translating")}><i /><i /></div> : null}
       {result ? <p className="reader-selection-result">{result.text}</p> : null}
       {tooLong ? <p role="alert">{t("selection.tooLong", { max: SELECTION_TRANSLATE_MAX_CHARS })}</p> : null}
-      {error ? <p role="alert">{error.kind === "configuration" && !config ? t("selection.notConfiguredNotice") : error.error ? formatError(error.error) : error.message}
+      {error ? <p role="alert">{error.kind === "configuration" && !config ? t("selection.notConfiguredNotice") : error.error ? formatError(error.error) : t("selection.networkFailed")}
         {error.kind === "configuration" || error.kind === "authentication" ? <button type="button" className="reader-selection-settings" onClick={() => { onClose(); onSettings(); }}>{t("selection.goSettings")}</button> : null}
       </p> : null}
     </div>

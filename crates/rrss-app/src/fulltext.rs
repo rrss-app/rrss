@@ -18,28 +18,37 @@ pub enum FulltextErrorKind {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ts_rs::TS)]
 pub struct FulltextError {
     pub kind: FulltextErrorKind,
-    pub message: String,
+    pub error: crate::UiError,
 }
 
 impl FulltextError {
     pub(crate) fn new(kind: FulltextErrorKind, message: impl std::fmt::Display) -> Self {
-        Self {
-            kind,
-            message: message.to_string(),
-        }
+        let mut error = Self::kind_error(&kind);
+        error.detail = rrss_core::logsafe::text(&message.to_string(), 200);
+        Self::coded(kind, Some(error))
     }
-
-    pub(crate) fn network(error: impl std::fmt::Display) -> Self {
+    pub(crate) fn coded(kind: FulltextErrorKind, error: Option<crate::UiError>) -> Self {
+        let error = error.unwrap_or_else(|| Self::kind_error(&kind));
+        Self { kind, error }
+    }
+    fn kind_error(kind: &FulltextErrorKind) -> crate::UiError {
+        use crate::ui_error::reader::ReaderError;
+        match kind {
+            FulltextErrorKind::Waf => ReaderError::FulltextWaf,
+            FulltextErrorKind::Network => ReaderError::FulltextNetwork,
+            FulltextErrorKind::Empty => ReaderError::FulltextEmpty,
+            FulltextErrorKind::NotArticle => ReaderError::FulltextNotArticle,
+        }
+        .into()
+    }
+    pub fn network(error: impl std::fmt::Display) -> Self {
         Self::new(FulltextErrorKind::Network, error)
     }
-
+    pub fn ui_error(self) -> crate::UiError {
+        self.into()
+    }
     pub fn user_message(&self) -> &'static str {
-        match self.kind {
-            FulltextErrorKind::Waf => "站点做了访问防护，无法抓取全文",
-            FulltextErrorKind::Network => "打不开原文站点",
-            FulltextErrorKind::Empty => "没提取到正文",
-            FulltextErrorKind::NotArticle => "这个页面不是文章",
-        }
+        self.error.code()
     }
 }
 
@@ -86,7 +95,12 @@ pub async fn fetch_and_store(
         .clone()
         .acquire(crate::scheduler::model_capacity::Priority::Interactive)
         .await
-        .map_err(FulltextError::network)?;
+        .map_err(|error| {
+            FulltextError::coded(
+                FulltextErrorKind::Network,
+                Some(crate::UiError::from(anyhow::Error::new(error))),
+            )
+        })?;
     let html = fetch_page(network, &url).await?;
     drop(permit);
 
@@ -146,7 +160,10 @@ pub(crate) async fn fetch_page_with_url(
     let status = resp.status().as_u16();
     // 不让代理认证响应作为文章正文存入数据库。
     if status == 407 {
-        return Err(FulltextError::network("HTTP 407：代理认证失败"));
+        return Err(FulltextError::coded(
+            FulltextErrorKind::Network,
+            Some(crate::ui_error::web::WebError::FulltextProxyAuth.into()),
+        ));
     }
     if status == 403 || status == 429 || status == 503 {
         return Err(FulltextError::new(
@@ -187,7 +204,10 @@ pub(crate) async fn fetch_page_with_url(
 }
 
 fn page_too_large() -> FulltextError {
-    FulltextError::network("页面过大，超过 5 MiB 下载上限")
+    FulltextError::coded(
+        FulltextErrorKind::Network,
+        Some(crate::ui_error::web::WebError::FulltextTooLarge.into()),
+    )
 }
 
 fn charset_parameter(value: &str) -> Option<&'static encoding_rs::Encoding> {

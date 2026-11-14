@@ -6,17 +6,28 @@ use mailparse::{MailHeader, MailHeaderMap};
 use url::Url;
 
 pub const MAX_SNAPSHOT_BYTES: usize = 30 * 1024 * 1024;
-pub(crate) const WEB_SNAPSHOT_TOO_LARGE: &str = "快照超过 30 MiB 上限";
-pub(crate) const WEB_SNAPSHOT_MIME_LIMIT: &str = "快照 MIME 层数或部分数量超限";
-pub(crate) const WEB_SNAPSHOT_HEADERS_INVALID: &str = "快照 MIME 头损坏";
-pub(crate) const WEB_SNAPSHOT_CONTENT_TYPE_MISSING: &str = "快照缺少 Content-Type";
-pub(crate) const WEB_SNAPSHOT_BOUNDARY_MISSING: &str = "快照缺少 MIME boundary";
-pub(crate) const WEB_SNAPSHOT_BOUNDARY_INVALID: &str = "快照 MIME boundary 损坏";
-pub(crate) const WEB_SNAPSHOT_INCOMPLETE: &str = "快照 MIME 未完整结束";
-pub(crate) const WEB_SNAPSHOT_BASE64_INVALID: &str = "快照 base64 损坏";
-pub(crate) const WEB_SNAPSHOT_QUOTED_PRINTABLE_INVALID: &str = "快照 quoted-printable 损坏";
-pub(crate) const WEB_SNAPSHOT_ENCODING_UNSUPPORTED: &str = "快照使用了不支持的传输编码";
-pub(crate) const WEB_SNAPSHOT_HTML_MISSING: &str = "快照中没有 HTML 正文";
+pub(crate) const WEB_SNAPSHOT_TOO_LARGE: crate::ui_error::web::WebError =
+    crate::ui_error::web::WebError::SnapshotTooLarge;
+pub(crate) const WEB_SNAPSHOT_MIME_LIMIT: crate::ui_error::web::WebError =
+    crate::ui_error::web::WebError::SnapshotMimeLimit;
+pub(crate) const WEB_SNAPSHOT_HEADERS_INVALID: crate::ui_error::web::WebError =
+    crate::ui_error::web::WebError::SnapshotHeadersInvalid;
+pub(crate) const WEB_SNAPSHOT_CONTENT_TYPE_MISSING: crate::ui_error::web::WebError =
+    crate::ui_error::web::WebError::SnapshotContentTypeMissing;
+pub(crate) const WEB_SNAPSHOT_BOUNDARY_MISSING: crate::ui_error::web::WebError =
+    crate::ui_error::web::WebError::SnapshotBoundaryMissing;
+pub(crate) const WEB_SNAPSHOT_BOUNDARY_INVALID: crate::ui_error::web::WebError =
+    crate::ui_error::web::WebError::SnapshotBoundaryInvalid;
+pub(crate) const WEB_SNAPSHOT_INCOMPLETE: crate::ui_error::web::WebError =
+    crate::ui_error::web::WebError::SnapshotIncomplete;
+pub(crate) const WEB_SNAPSHOT_BASE64_INVALID: crate::ui_error::web::WebError =
+    crate::ui_error::web::WebError::SnapshotBase64Invalid;
+pub(crate) const WEB_SNAPSHOT_QUOTED_PRINTABLE_INVALID: crate::ui_error::web::WebError =
+    crate::ui_error::web::WebError::SnapshotQuotedPrintableInvalid;
+pub(crate) const WEB_SNAPSHOT_ENCODING_UNSUPPORTED: crate::ui_error::web::WebError =
+    crate::ui_error::web::WebError::SnapshotEncodingUnsupported;
+pub(crate) const WEB_SNAPSHOT_HTML_MISSING: crate::ui_error::web::WebError =
+    crate::ui_error::web::WebError::SnapshotHtmlMissing;
 
 const MAX_IMAGES: usize = 200;
 
@@ -41,7 +52,11 @@ struct Part<'a> {
 
 // Parse headers with mailparse, but bound our own MIME traversal: parse_mail's
 // recursive tree has no depth limit and accepts truncated multipart bodies.
-fn parts<'a>(raw: &'a [u8], depth: usize, out: &mut Vec<Part<'a>>) -> Result<(), String> {
+fn parts<'a>(
+    raw: &'a [u8],
+    depth: usize,
+    out: &mut Vec<Part<'a>>,
+) -> Result<(), crate::ui_error::web::WebError> {
     if depth > 8 || out.len() >= 1024 {
         return Err(WEB_SNAPSHOT_MIME_LIMIT.into());
     }
@@ -90,7 +105,7 @@ fn parts<'a>(raw: &'a [u8], depth: usize, out: &mut Vec<Part<'a>>) -> Result<(),
     Err(WEB_SNAPSHOT_INCOMPLETE.into())
 }
 
-fn decode(part: &Part<'_>) -> Result<Vec<u8>, String> {
+fn decode(part: &Part<'_>) -> Result<Vec<u8>, crate::ui_error::web::WebError> {
     match part
         .headers
         .get_first_value("Content-Transfer-Encoding")
@@ -116,7 +131,7 @@ fn decode(part: &Part<'_>) -> Result<Vec<u8>, String> {
     }
 }
 
-pub fn parse_mhtml(raw: &[u8], page: &Url) -> Result<Snapshot, String> {
+pub fn parse_mhtml(raw: &[u8], page: &Url) -> Result<Snapshot, crate::ui_error::web::WebError> {
     if raw.len() > MAX_SNAPSHOT_BYTES {
         return Err(WEB_SNAPSHOT_TOO_LARGE.into());
     }
@@ -193,7 +208,7 @@ pub fn store_snapshot(
         &page,
         Some((data_dir, &snapshot.images)),
     )
-    .map_err(|e| crate::UiError::from(e.message))
+    .map_err(|e| e.ui_error())
 }
 
 #[cfg(test)]

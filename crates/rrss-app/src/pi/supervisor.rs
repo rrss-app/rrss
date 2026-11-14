@@ -21,8 +21,8 @@ use super::compat::VersionGate;
 use super::launch::{self, PiProcess, Prepared, RPC_TIMEOUT};
 use super::profile::ModelSource;
 use super::{ChatError, ChatErrorKind};
+use crate::ui_error::chat::{ChatHandshakeStep, ChatUiError};
 use crate::views::ModelChoice;
-use crate::ui_error::chat::{ChatUiError, ChatHandshakeStep};
 use rrss_core::{Error, error::PiFailure};
 
 /// 关闭 stdin 后等待进程自行退出的时长，超过就强制结束。
@@ -226,7 +226,7 @@ impl Supervisor {
             prepared
                 .version
                 .map(|v| v.to_string())
-                .unwrap_or_else(|| "未知".into())
+                .unwrap_or_else(|| "unknown".into())
         });
         *guard = Some(Running {
             process: process.clone(),
@@ -432,9 +432,9 @@ impl Supervisor {
                     );
                     false
                 }
-                Err(RpcError::Rejected(reason)) => {
+                Err(RpcError::Rejected(_reason)) => {
                     tracing::warn!(
-                        error = %rrss_core::logsafe::text(&reason, 200),
+                        code = "pi_session_rejected",
                         "pi could not resume session; starting a new session"
                     );
                     false
@@ -540,10 +540,7 @@ impl Supervisor {
             .map_err(|err| match err {
                 RpcError::Rejected(reason) => ChatError::new(
                     ChatErrorKind::Config,
-                    format!(
-                        "没能切换到模型「{want}」：{}",
-                        rrss_core::logsafe::scrub_secrets(&reason)
-                    ),
+                    ChatUiError::model_switch_rejected(want, reason.as_deref()),
                 ),
                 other => rpc_error(other),
             })?;
@@ -569,7 +566,7 @@ impl Supervisor {
         let data = result.map_err(|err| match err {
             RpcError::Rejected(reason) => ChatError::new(
                 ChatErrorKind::Model,
-                rrss_core::logsafe::scrub_secrets(&reason),
+                ChatUiError::rpc_rejected(reason.as_deref()),
             ),
             other => rpc_error(other),
         })?;
@@ -599,10 +596,12 @@ impl Supervisor {
     /// 回应扩展的对话框请求。
     pub async fn answer_ui(&self, response: &Value) -> Result<(), ChatError> {
         let process = self.current().await?;
-        process
-            .send(response)
-            .await
-            .map_err(|err| ChatError::new(ChatErrorKind::ProcessExit, crate::views::UiError::from_anyhow_pretty(err)))
+        process.send(response).await.map_err(|err| {
+            ChatError::new(
+                ChatErrorKind::ProcessExit,
+                crate::views::UiError::from_anyhow_pretty(err),
+            )
+        })
     }
 
     /// 有序关闭当前进程。之后的发送会重新启动。
@@ -621,7 +620,9 @@ impl Supervisor {
             .as_ref()
             .filter(|r| r.process.is_alive())
             .map(|r| r.process.clone())
-            .ok_or_else(|| ChatError::new(ChatErrorKind::ProcessExit, Error::Pi(PiFailure::NotRunning)))
+            .ok_or_else(|| {
+                ChatError::new(ChatErrorKind::ProcessExit, Error::Pi(PiFailure::NotRunning))
+            })
     }
 
     /// 空闲回收：就绪且空闲达到 `pi_idle_timeout_secs` 秒时有序关闭。0 表示不回收。
@@ -678,12 +679,7 @@ async fn handshake(
         let message = match err {
             RpcError::Timeout => ChatUiError::handshake(step, false),
             RpcError::Closed => ChatUiError::handshake(step, true),
-            // The engine owns this free-form reason; preserve its display until it has a protocol code.
-            RpcError::Rejected(reason) => crate::views::UiError::from(format!(
-                "对话引擎启动检查失败（{step}：{}），请检查设置 → AI 的连接地址、模型名与密钥",
-                rrss_core::logsafe::scrub_secrets(&reason),
-                step = match step { ChatHandshakeStep::State => "读取状态", ChatHandshakeStep::ThinkingLevels => "读取思考档位", ChatHandshakeStep::SetThinking => "设置思考档位" }
-            )),
+            RpcError::Rejected(reason) => ChatUiError::handshake_rejected(step, reason.as_deref()),
         };
         ChatError::new(ChatErrorKind::Config, message)
     };
@@ -778,12 +774,15 @@ fn rpc_error(err: RpcError) -> ChatError {
     match err {
         RpcError::Rejected(reason) => ChatError::new(
             ChatErrorKind::Config,
-            rrss_core::logsafe::scrub_secrets(&reason),
+            ChatUiError::rpc_rejected(reason.as_deref()),
         ),
         RpcError::Timeout => {
             ChatError::new(ChatErrorKind::ProcessExit, Error::Pi(PiFailure::Timeout))
         }
-        RpcError::Closed => ChatError::new(ChatErrorKind::ProcessExit, Error::Pi(PiFailure::ProcessExit)),
+        RpcError::Closed => ChatError::new(
+            ChatErrorKind::ProcessExit,
+            Error::Pi(PiFailure::ProcessExit),
+        ),
     }
 }
 

@@ -20,10 +20,10 @@ it("keeps the new login pending when a cancelled request finishes late", async (
   await flushUpdates();
   runtime.cancelLogin(7);
   runtime.startLogin(7);
-  old.resolve({ ok: false, message: "cancelled request" });
+  old.resolve({ ok: false, notice: { code: "legacy_text" as const, params: {}, detail: "cancelled request" } });
   await flushUpdates();
   expect(runtime.takeLogin(7)).toBeUndefined();
-  current.resolve({ ok: true, message: "current request" });
+  current.resolve({ ok: true, notice: { code: "legacy_text" as const, params: {}, detail: "current request" } });
   await flushUpdates();
   expect(runtime.takeLogin(7)).toMatchObject({ ok: true, message: "current request" });
 });
@@ -34,13 +34,13 @@ it("waits for the old cancellation to finish before launching another login", as
   let nextStarted = false;
   stub.handle("loginMcp", () => {
     nextStarted = true;
-    return { ok: true, message: "next request" };
+    return { ok: true, notice: { code: "legacy_text" as const, params: {}, detail: "next request" } };
   });
   runtime.startLogin(7);
   await flushUpdates();
   runtime.cancelLogin(7);
   runtime.startLogin(7);
-  old.resolve({ ok: true, message: "old request" });
+  old.resolve({ ok: true, notice: { code: "legacy_text" as const, params: {}, detail: "old request" } });
   await flushUpdates();
   expect(nextStarted).toBe(false);
   expect(runtime.takeLogin(7)).toBeUndefined();
@@ -54,13 +54,13 @@ it("does not revive a deleted server when its login completes", async () => {
   runtime.startLogin(7);
   await flushUpdates();
   runtime.forgetServer(7);
-  pending.resolve({ ok: true, message: "deleted server" });
+  pending.resolve({ ok: true, notice: { code: "legacy_text" as const, params: {}, detail: "deleted server" } });
   await flushUpdates();
   expect(runtime.takeLogin(7)).toBeUndefined();
 });
 
 it("does not consume a replacement login when an older enable operation settles", async () => {
-  stub.handle("loginMcp", () => ({ ok: true, message: "" }));
+  stub.handle("loginMcp", () => ({ ok: true, notice: { code: "legacy_text" as const, params: {}, detail: "" } }));
   runtime.startLogin(7);
   await flushUpdates();
   const previous = runtime.logins.get().get(7)!;

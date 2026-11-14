@@ -189,8 +189,7 @@ mod tests {
                 message: "test".into(),
             },
             rrss_ai::Error::Request {
-                timeout: true,
-                message: "test",
+                kind: rrss_ai::complete::RequestKind::Timeout,
             },
         ] {
             assert!(!input_failure(&error.into()));

@@ -1041,6 +1041,6 @@ async fn reader_protocol_does_not_attach_old_translation_to_new_source() {
         .unwrap();
     assert_ne!(recovered.reader.source_hash, started.reader.source_hash);
     assert!(recovered.snapshot.is_none());
-    assert!(!recovered.note.is_empty());
+    assert_eq!(recovered.notice.unwrap().code(), "translate_invalidated");
     call.good();
 }

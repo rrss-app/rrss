@@ -76,7 +76,7 @@ impl<F: Fn(Event) + Send + Sync> EventSink for F {
 
 #[derive(Debug, Clone)]
 pub enum StartResult {
-    Noop(&'static str),
+    Noop(crate::UiError),
     Cached {
         title: String,
         document: rrss_render::Document,

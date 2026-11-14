@@ -14,8 +14,15 @@ use serde_json::Value;
 
 use crate::{McpImportEntry, McpInput, McpSecretInput, McpSecretView, McpView};
 
-fn invalid(message: &str) -> Error {
-    Error::InvalidSetting(message.into())
+pub(crate) fn config_error(error: Error) -> Error {
+    match error {
+        Error::InvalidSetting(_) => Error::Mcp(rrss_core::error::McpFailure::ConfigurationInvalid),
+        other => other,
+    }
+}
+
+fn invalid(reason: rrss_core::error::McpFailure) -> Error {
+    Error::Mcp(reason)
 }
 fn strings(raw: Option<&str>) -> Vec<String> {
     raw.and_then(|s| serde_json::from_str(s).ok())
@@ -67,7 +74,7 @@ fn merge(input: &[McpSecretInput], old: Option<&str>, headers: bool) -> Result<S
                 })
         };
         if !valid {
-            return Err(invalid("变量名或请求头名称无效"));
+            return Err(invalid(rrss_core::error::McpFailure::VariableNameInvalid));
         }
         let value = if item.value.is_empty() {
             old.get(name).cloned().unwrap_or_default()
@@ -75,10 +82,10 @@ fn merge(input: &[McpSecretInput], old: Option<&str>, headers: bool) -> Result<S
             item.value.clone()
         };
         if value.contains('\0') || (headers && (value.contains('\r') || value.contains('\n'))) {
-            return Err(invalid("变量或请求头值包含无效字符"));
+            return Err(invalid(rrss_core::error::McpFailure::VariableValueInvalid));
         }
         if out.insert(name.to_string(), value).is_some() {
-            return Err(invalid("变量或请求头名称重复"));
+            return Err(invalid(rrss_core::error::McpFailure::VariableDuplicate));
         }
     }
     Ok(serde_json::to_string(&out).expect("strings serialize"))
@@ -91,23 +98,23 @@ fn server(conn: &Connection, input: &McpInput) -> Result<McpServer> {
     };
     let name = input.name.trim();
     if input.id < 0 || name.is_empty() || name.chars().any(char::is_control) {
-        return Err(invalid("请填写有效的服务名称"));
+        return Err(invalid(rrss_core::error::McpFailure::NameInvalid));
     }
     if !["stdio", "http", "sse"].contains(&input.transport.as_str()) {
-        return Err(invalid("不支持的服务类型"));
+        return Err(invalid(rrss_core::error::McpFailure::TransportInvalid));
     }
     if !["none", "token", "oauth"].contains(&input.auth.as_str()) {
-        return Err(invalid("不支持的登录方式"));
+        return Err(invalid(rrss_core::error::McpFailure::AuthInvalid));
     }
     if input.auth == "oauth" && input.transport != "http" {
-        return Err(invalid("浏览器登录只支持远程 HTTP 服务"));
+        return Err(invalid(rrss_core::error::McpFailure::OAuthTransport));
     }
     if input
         .include_tools
         .iter()
         .any(|tool| tool.is_empty() || tool.contains('*') || tool.chars().any(char::is_control))
     {
-        return Err(invalid("开放工具请填写完整名称，不能使用通配符"));
+        return Err(invalid(rrss_core::error::McpFailure::ToolWildcard));
     }
     if input.auth == "oauth"
         && input
@@ -115,7 +122,7 @@ fn server(conn: &Connection, input: &McpInput) -> Result<McpServer> {
             .iter()
             .any(|h| h.name.eq_ignore_ascii_case("authorization"))
     {
-        return Err(invalid("浏览器登录不能同时填写 Authorization 请求头"));
+        return Err(invalid(rrss_core::error::McpFailure::OAuthHeader));
     }
     let local = input.transport == "stdio";
     if local
@@ -123,17 +130,17 @@ fn server(conn: &Connection, input: &McpInput) -> Result<McpServer> {
             || input.command.contains('\0')
             || input.args.iter().any(|a| a.contains('\0')))
     {
-        return Err(invalid("请填写有效的启动命令和参数"));
+        return Err(invalid(rrss_core::error::McpFailure::CommandInvalid));
     }
     if !local {
         let url = reqwest::Url::parse(input.url.trim())
-            .map_err(|_| invalid("请填写 HTTP 或 HTTPS 地址"))?;
+            .map_err(|_| invalid(rrss_core::error::McpFailure::UrlInvalid))?;
         if !["http", "https"].contains(&url.scheme())
             || url.host_str().is_none()
             || !url.username().is_empty()
             || url.password().is_some()
         {
-            return Err(invalid("请填写 HTTP 或 HTTPS 地址，凭据请放在请求头中"));
+            return Err(invalid(rrss_core::error::McpFailure::UrlCredentials));
         }
     }
     Ok(McpServer {
@@ -179,37 +186,40 @@ pub fn save(conn: &Connection, input: &McpInput) -> Result<i64> {
         .iter()
         .any(|s| s.name == input.name.trim() && s.id != input.id)
     {
-        return Err(invalid("服务名称已存在"));
+        return Err(invalid(rrss_core::error::McpFailure::NameDuplicate));
     }
     let id = pi_store::upsert_mcp_server(&tx, &server(&tx, input)?)?;
     tx.commit()?;
     Ok(id)
 }
 fn parse(raw: &str) -> Result<Vec<McpInput>> {
-    let doc: Value = serde_json::from_str(raw).map_err(|_| invalid("无法解析 JSON，请检查格式"))?;
+    let doc: Value = serde_json::from_str(raw)
+        .map_err(|_| invalid(rrss_core::error::McpFailure::JsonInvalid))?;
     let map = doc
         .get("mcpServers")
         .unwrap_or(&doc)
         .as_object()
-        .ok_or_else(|| invalid("需要 mcpServers 对象或服务名称到配置的对象"))?;
+        .ok_or_else(|| invalid(rrss_core::error::McpFailure::ServersObjectMissing))?;
     if map.is_empty() {
-        return Err(invalid("JSON 中没有服务"));
+        return Err(invalid(rrss_core::error::McpFailure::ServersEmpty));
     }
     map.iter()
         .map(|(name, v)| {
-            let obj = v.as_object().ok_or_else(|| invalid("服务配置必须是对象"))?;
+            let obj = v
+                .as_object()
+                .ok_or_else(|| invalid(rrss_core::error::McpFailure::ServerObjectRequired))?;
             let string = |key: &str, default: &str| -> Result<String> {
                 match obj.get(key) {
                     None => Ok(default.into()),
                     Some(Value::String(s)) => Ok(s.clone()),
-                    _ => Err(invalid("服务文本字段格式错误")),
+                    _ => Err(invalid(rrss_core::error::McpFailure::TextFieldInvalid)),
                 }
             };
             let array = |key: &str| -> Result<Vec<String>> {
                 obj.get(key)
                     .map(|v| {
                         serde_json::from_value(v.clone())
-                            .map_err(|_| invalid("参数与工具白名单必须是字符串数组"))
+                            .map_err(|_| invalid(rrss_core::error::McpFailure::ArrayFieldInvalid))
                     })
                     .unwrap_or_else(|| Ok(vec![]))
             };
@@ -218,7 +228,7 @@ fn parse(raw: &str) -> Result<Vec<McpInput>> {
                     .get(key)
                     .map(|v| {
                         serde_json::from_value(v.clone())
-                            .map_err(|_| invalid("变量与请求头必须是字符串键值对象"))
+                            .map_err(|_| invalid(rrss_core::error::McpFailure::MapFieldInvalid))
                     })
                     .unwrap_or_else(|| Ok(BTreeMap::new()))?;
                 Ok(map
@@ -267,7 +277,10 @@ fn prepare(conn: &Connection, raw: &str) -> Result<(Vec<McpServer>, Vec<McpImpor
             || servers.iter().any(|s: &McpServer| s.name == input.name);
         if !skipped {
             servers.push(server(conn, &input).map_err(|e| match e {
-                Error::InvalidSetting(m) => invalid(&format!("「{}」：{m}", input.name)),
+                Error::Mcp(reason) => Error::Mcp(rrss_core::error::McpFailure::Import {
+                    name: input.name.clone(),
+                    reason: Box::new(reason),
+                }),
                 e => e,
             })?);
         }
@@ -330,7 +343,7 @@ fn apply_environment(
     crate::pi::launch::apply_proxy_env(command, proxy);
     let mut enabled = server.clone();
     enabled.enabled = true;
-    let (_, refs) = pi_store::mcp_config_for(&[enabled])?;
+    let (_, refs) = pi_store::mcp_config_for(&[enabled]).map_err(config_error)?;
     command.envs(refs).envs(values(server.env_json.as_deref()));
     command
         .env("PI_OFFLINE", "1")
@@ -342,6 +355,34 @@ fn apply_environment(
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn damaged_stored_configuration_is_coded_before_launch() {
+        let dir = tempdir().unwrap();
+        let conn = rrss_core::db::open_at(&dir.path().join("mcp.db")).unwrap();
+        import(&conn, r#"{"sample-service":{"command":"example-tool"}}"#).unwrap();
+        let id = pi_store::list_mcp_servers(&conn).unwrap()[0].id;
+        conn.execute(
+            "UPDATE mcp_servers SET env_json=?1 WHERE id=?2",
+            ("malformed-config-marker", id),
+        )
+        .unwrap();
+        let server = pi_store::get_mcp_server(&conn, id).unwrap();
+        let mut command = tokio::process::Command::new("example-tool");
+        let error = apply_environment(
+            &mut command,
+            &rrss_core::network::ChildProxyEnv::default(),
+            &server,
+        )
+        .unwrap_err();
+        let error = crate::UiError::from(error);
+        assert_eq!(error.code(), "mcp_configuration_invalid");
+        assert!(
+            !serde_json::to_string(&error)
+                .unwrap()
+                .contains("malformed-config-marker")
+        );
+    }
 
     #[test]
     fn write_policy_annotation_precedence_and_name_fallback() {
@@ -433,9 +474,12 @@ mod tests {
         let dir = tempdir().unwrap();
         let conn = rrss_core::db::open_at(&dir.path().join("mcp.db")).unwrap();
         let raw = r#"{"good":{"command":"echo"},"bad":{"url":"secret-invalid-url"}}"#;
-        let error = import(&conn, raw).unwrap_err().to_string();
-        assert!(!error.contains("secret-invalid-url"));
-        assert!(error.contains("「bad」"), "{error}");
+        let error = crate::UiError::from(import(&conn, raw).unwrap_err());
+        let wire = serde_json::to_value(error).unwrap();
+        assert_eq!(wire["code"], "mcp_import_invalid");
+        assert_eq!(wire["params"]["name"], "bad");
+        assert_eq!(wire["cause"]["code"], "mcp_url_invalid");
+        assert!(!wire.to_string().contains("secret-invalid-url"));
         assert!(pi_store::list_mcp_servers(&conn).unwrap().is_empty());
         let raw = r#"{"one":{"command":"echo","args":["a b"]}}"#;
         import(&conn, raw).unwrap();
@@ -464,7 +508,7 @@ pub fn toggle(conn: &Connection, data_dir: &std::path::Path, id: i64, enabled: b
         && server.auth == "oauth"
         && (pi_store::use_own_config(conn)? || !logged_in(data_dir, &server))
     {
-        return Err(invalid("请先完成浏览器登录，再开启此服务"));
+        return Err(invalid(rrss_core::error::McpFailure::EnableLoginRequired));
     }
     pi_store::set_mcp_server_enabled(conn, id, enabled)
 }

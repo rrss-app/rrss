@@ -411,22 +411,30 @@ impl Runtime {
             let tx = conn.unchecked_transaction()?;
             let article = articles::get_article(&tx, id)?;
             if !rrss_core::translations::is_enabled(&tx)? {
-                return Ok(Err("翻译功能未开启"));
+                return Ok(Err(
+                    crate::ui_error::reader::ReaderError::TranslateDisabled.into_ui()
+                ));
             }
             if article.pruned_at.is_some() {
-                return Ok(Err("正文已清理，请先重新抓取正文"));
+                return Ok(Err(
+                    crate::ui_error::reader::ReaderError::TranslatePruned.into_ui()
+                ));
             }
             let document = crate::document::load_document(&article);
             let plan = TranslationPlan::new(&article.title, &document);
             if plan.units.is_empty() {
-                return Ok(Err("没有可翻译的正文"));
+                return Ok(Err(
+                    crate::ui_error::reader::ReaderError::TranslateEmpty.into_ui()
+                ));
             }
             let config = Config::read(&tx)?;
             if rrss_render::already_target_lang(
                 &rrss_render::units_plain(&plan.units),
                 &config.lang,
             ) {
-                return Ok(Err("已是目标语言，无需翻译"));
+                return Ok(Err(
+                    crate::ui_error::reader::ReaderError::TranslateTargetSame.into_ui(),
+                ));
             }
             let cached = cache::read_progress(&tx, &article, &document, &config)?;
             let hash = crate::document::source_hash(&article.title, &document);
@@ -1026,7 +1034,9 @@ impl Runtime {
                     if matches!(
                         error.downcast_ref::<rrss_core::Error>(),
                         Some(
-                            rrss_core::Error::InvalidSetting(_) | rrss_core::Error::ArticleNotFound
+                            rrss_core::Error::InvalidSetting(_)
+                                | rrss_core::Error::Translation(_)
+                                | rrss_core::Error::ArticleNotFound
                         )
                     ) =>
                 {

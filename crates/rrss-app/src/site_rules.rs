@@ -59,8 +59,8 @@ fn domain(raw: &str) -> Result<String> {
         || host.contains(['/', ':', '@', '?', '#', '%'])
         || url::Host::parse(host).is_err()
     {
-        return Err(Error::InvalidRule(
-            "请填写有效域名，例如 example.com 或 *.example.com，不要填写网址。".into(),
+        return Err(Error::Web(
+            rrss_core::error::WebFailure::SiteInputDomainInvalid,
         ));
     }
     Ok(normalized)
@@ -68,19 +68,21 @@ fn domain(raw: &str) -> Result<String> {
 fn validate(rule: &db::SiteRule) -> Result<()> {
     domain(&rule.domain)?;
     for (field, selector) in [
-        ("正文", &rule.body),
-        ("标题", &rule.title),
-        ("作者", &rule.author),
-        ("时间", &rule.date),
+        ("body", &rule.body),
+        ("title", &rule.title),
+        ("author", &rule.author),
+        ("date", &rule.date),
     ]
     .into_iter()
     .filter_map(|(name, s)| s.as_deref().map(|s| (name, s)))
-    .chain(rule.strip.iter().map(|s| ("删除", s.as_str())))
+    .chain(rule.strip.iter().map(|s| ("strip", s.as_str())))
     {
         if !selector.trim().is_empty() && dom_query::Matcher::new(selector).is_err() {
-            return Err(Error::InvalidRule(format!(
-                "{field}的 CSS 选择器无效，请检查语法。"
-            ).into()));
+            return Err(Error::Web(
+                rrss_core::error::WebFailure::SiteSelectorInvalid {
+                    field: field.into(),
+                },
+            ));
         }
     }
     Ok(())
@@ -123,9 +125,10 @@ pub fn set_site_rule_enabled(conn: &Connection, raw: &str, enabled: bool) -> Res
 /// Create an exact host policy, preserving the effective extraction rule rather
 /// than changing a wildcard policy for unrelated hosts.
 pub fn disable_site_javascript(conn: &Connection, raw: &str) -> Result<()> {
-    let url = url::Url::parse(raw).map_err(|_| Error::InvalidRule("无效网页地址".into()))?;
+    let url = url::Url::parse(raw)
+        .map_err(|_| Error::Web(rrss_core::error::WebFailure::SiteUrlInvalid))?;
     if !rrss_core::url_norm::is_http_url(&url) {
-        return Err(Error::InvalidRule("只支持 HTTP(S) 网页".into()));
+        return Err(Error::Web(rrss_core::error::WebFailure::SiteHttpOnly));
     }
     let host = domain(url.host_str().unwrap_or_default())?;
     let mut rule = resolve_site_rule(conn, &host)?.rule.unwrap_or_default();
@@ -139,13 +142,15 @@ pub async fn test_site_rule(
     rule: SiteRuleView,
 ) -> std::result::Result<SiteRuleTestView, FulltextError> {
     let started = Instant::now();
-    let invalid = |message: String| FulltextError::new(FulltextErrorKind::Empty, message);
+    let invalid = |error: UiError| FulltextError::coded(FulltextErrorKind::Empty, Some(error));
     let rule = rule.into();
-    validate(&rule).map_err(|e| invalid(e.to_string()))?;
+    validate(&rule).map_err(|e| invalid(e.into()))?;
     let url = url::Url::parse(raw.trim())
-        .map_err(|_| invalid("请填写有效的 HTTP(S) 测试链接。".into()))?;
+        .map_err(|_| invalid(crate::ui_error::web::WebError::SiteTestUrlInvalid.into()))?;
     if !rrss_core::url_norm::is_http_url(&url) {
-        return Err(invalid("请填写有效的 HTTP(S) 测试链接。".into()));
+        return Err(invalid(
+            crate::ui_error::web::WebError::SiteTestUrlInvalid.into(),
+        ));
     }
     let (html, actual_url) = crate::fulltext::fetch_page_with_url(network, url.as_str()).await?;
     tokio::task::spawn_blocking(move || {
@@ -163,7 +168,7 @@ pub async fn test_site_rule(
         })
     })
     .await
-    .map_err(|_| invalid("规则测试未能完成，请重试。".into()))?
+    .map_err(|_| invalid(crate::ui_error::web::WebError::SiteTestFailed.into()))?
 }
 
 #[cfg(test)]

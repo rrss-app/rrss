@@ -26,14 +26,14 @@ describe("createApiStub", () => {
     const second = stub.deferNext("pi");
     const seen: string[] = [];
     const p1 = stub.api.pi().then((page) => {
-      seen.push(page.manage_status);
+      seen.push(page.binary_source);
     });
     const p2 = stub.api.pi().then((page) => {
-      seen.push(page.manage_status);
+      seen.push(page.binary_source);
     });
-    second.resolve({ ...FIXTURE_PI_PAGE, manage_status: "second" });
+    second.resolve({ ...FIXTURE_PI_PAGE, binary_source: "second" });
     await p2;
-    first.resolve({ ...FIXTURE_PI_PAGE, manage_status: "first" });
+    first.resolve({ ...FIXTURE_PI_PAGE, binary_source: "first" });
     await p1;
     expect(seen).toEqual(["second", "first"]);
     expect(stub.callCount("pi")).toBe(2);
@@ -86,10 +86,10 @@ describe("createApiStub", () => {
   it("isolates handlers across stub instances", async () => {
     const a = createApiStub();
     const b = createApiStub();
-    a.handle("pi", () => ({ ...FIXTURE_PI_PAGE, manage_status: "a" }));
-    b.handle("pi", () => ({ ...FIXTURE_PI_PAGE, manage_status: "b" }));
-    await expect(a.api.pi()).resolves.toMatchObject({ manage_status: "a" });
-    await expect(b.api.pi()).resolves.toMatchObject({ manage_status: "b" });
+    a.handle("pi", () => ({ ...FIXTURE_PI_PAGE, binary_source: "a" }));
+    b.handle("pi", () => ({ ...FIXTURE_PI_PAGE, binary_source: "b" }));
+    await expect(a.api.pi()).resolves.toMatchObject({ binary_source: "a" });
+    await expect(b.api.pi()).resolves.toMatchObject({ binary_source: "b" });
     expect(a.callCount("pi")).toBe(1);
     expect(b.callCount("pi")).toBe(1);
   });

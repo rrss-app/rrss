@@ -8,7 +8,7 @@ test("失败入口预填，新建规则测试、保存、停用和删除", async
   await installMockHost(page, {
     focus: TWO_ARTICLE_PAGE,
     readers: { 1: readerView(1, { document: { v: 1, blocks: [{ t: "p", inlines: [{ t: "a", href: url, children: [{ t: "t", text: "测试网页" }] }] }] } }) },
-    webLinks: { [url]: { kind: "Empty", message: "empty" } },
+    webLinks: { [url]: { kind: "Empty", error: { code: "reader_fulltext_empty", detail: "empty" } } },
     siteRuleReport: { layer: "UserRule", title: "规则测试文章", author: "作者甲", date: "2026-10-18", text_chars: 2216, image_count: 1, paragraphs: ["正文第一段。", "正文第二段。", "正文第三段。"], stripped_elements: 3, elapsed_ms: 1200 },
   });
   await page.setViewportSize({ width: 1280, height: 900 });

@@ -94,3 +94,7 @@ export function formatBackupMessage(message: BackupMessage): string {
   }
   return render("settingsSystem", `backup.messages.${message.code}`, raw, values);
 }
+
+export function formatPiSource(source: string, code?: string): string {
+  return code ? String(i18n.t(`piSource.${code}` as never, { ns: "settingsAssistant", replace: { path: source } })) : source;
+}

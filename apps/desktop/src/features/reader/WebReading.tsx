@@ -9,7 +9,7 @@ import { RelativeTime } from "../../components/RelativeTime";
 import { Icon } from "../../components/Icon";
 import { locale, Trans, useTranslation } from "../../i18n";
 
-export type WebPage = { url: string; info?: OpenWebLinkView; error?: FulltextError };
+export type WebPage = { url: string; info?: OpenWebLinkView; error?: Pick<FulltextError, "kind"> };
 function webHost(page: WebPage) {
   return new URL(page.info?.actual_url ?? page.url).hostname;
 }
@@ -69,7 +69,7 @@ export function WebOrigin({ info, extractedAt, url, onExtract, extracting = fals
   </div>;
 }
 
-export function WebFailure({ page, onRetry }: { page: WebPage & { error: FulltextError }; onRetry: () => void }) {
+export function WebFailure({ page, onRetry }: { page: WebPage & { error: Pick<FulltextError, "kind"> }; onRetry: () => void }) {
   const { t } = useTranslation("reader");
   const waf = page.error.kind === "Waf";
   const actions = useContext(WebLinksContext);

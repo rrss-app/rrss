@@ -147,7 +147,7 @@ describe("ReaderHost standalone", () => {
     act(() => { void ref.current!.openWebLink("https://web.example.test/story"); });
     act(() => { ref.current!.close(); });
     await harness.flush();
-    pending.reject({ kind: "Network", message: "offline" });
+    pending.reject({ kind: "Network", error: { code: "reader_fulltext_network", detail: "offline" } });
     await harness.flush();
     expect(calls.onRequestOpen).not.toHaveBeenCalled();
     expect(host.querySelector(".web-failure")).toBeNull();

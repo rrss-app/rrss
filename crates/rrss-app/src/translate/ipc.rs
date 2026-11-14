@@ -8,8 +8,7 @@ impl From<Failure> for TranslationCommandError {
     fn from(kind: Failure) -> Self {
         Self {
             kind,
-            message: kind.message().into(),
-            error: None,
+            error: Some(kind.error()),
         }
     }
 }
@@ -158,7 +157,7 @@ async fn reply(
     id: i64,
     mut kind: TranslationReplyKind,
     mut state: Option<TranslationSnapshot>,
-    mut note: String,
+    mut notice: Option<UiError>,
 ) -> Result<TranslationReply, Failure> {
     let retain_cache = state
         .as_ref()
@@ -196,13 +195,13 @@ async fn reply(
     }) {
         kind = TranslationReplyKind::Missing;
         state = None;
-        note = Failure::Invalidated.message().into();
+        notice = Some(Failure::Invalidated.error());
     }
     Ok(TranslationReply {
         kind,
         reader,
         snapshot: state,
-        note,
+        notice,
         reconcile_after_ms: super::runtime::WINDOW_TIMEOUT.as_millis() as u64,
     })
 }
@@ -215,17 +214,9 @@ pub async fn start(
     initial: Option<TranslationInitialViewport>,
 ) -> Result<TranslationReply, Failure> {
     let (kind, state, note) = match runtime.start(id, mode, initial).await? {
-        StartResult::Noop(note) => (TranslationReplyKind::Noop, None, note.into()),
-        StartResult::Started(state) => (
-            TranslationReplyKind::Started,
-            Some(snapshot(state)),
-            String::new(),
-        ),
-        StartResult::Resumed(state) => (
-            TranslationReplyKind::Resumed,
-            Some(snapshot(state)),
-            String::new(),
-        ),
+        StartResult::Noop(note) => (TranslationReplyKind::Noop, None, Some(note)),
+        StartResult::Started(state) => (TranslationReplyKind::Started, Some(snapshot(state)), None),
+        StartResult::Resumed(state) => (TranslationReplyKind::Resumed, Some(snapshot(state)), None),
         StartResult::Cached {
             title,
             document,
@@ -244,7 +235,7 @@ pub async fn start(
                 source_hash,
                 config_hash,
             )),
-            String::new(),
+            None,
         ),
     };
     reply(path, id, kind, state, note).await
@@ -287,7 +278,7 @@ pub async fn recover(
             )),
         ),
     };
-    reply(path, id, kind, state, String::new()).await
+    reply(path, id, kind, state, None).await
 }
 
 pub async fn retry_save(
@@ -297,12 +288,5 @@ pub async fn retry_save(
     generation: u64,
 ) -> Result<TranslationReply, Failure> {
     let state = snapshot(runtime.retry_save(id, generation).await?);
-    reply(
-        path,
-        id,
-        TranslationReplyKind::Resumed,
-        Some(state),
-        String::new(),
-    )
-    .await
+    reply(path, id, TranslationReplyKind::Resumed, Some(state), None).await
 }

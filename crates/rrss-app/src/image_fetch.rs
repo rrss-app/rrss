@@ -255,7 +255,7 @@ async fn fetch_and_store_inner(
         .clone()
         .acquire(priority)
         .await
-        .map_err(|_| FetchFail::Network("内容网络繁忙，请稍后重试".into()))?;
+        .map_err(|_| FetchFail::Network("content capacity busy".into()))?;
     let bytes = fetch_image_bytes(client, url, referer).await;
     drop(permit);
     match bytes {
@@ -291,14 +291,14 @@ pub enum FetchFail {
 impl FetchFail {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Http(403) | Self::Http(401) => "HTTP 403",
-            Self::Http(404) => "HTTP 404",
-            Self::Http(status) if *status >= 500 => "HTTP 5xx",
-            Self::Http(_) => "下载失败",
-            Self::TooLarge => "图片过大",
-            Self::Network(_) => "网络失败",
-            Self::Decode => "解码失败",
-            Self::Store => "缓存失败",
+            Self::Http(403) | Self::Http(401) => "image_http_403",
+            Self::Http(404) => "image_http_404",
+            Self::Http(status) if *status >= 500 => "image_http_5xx",
+            Self::Http(_) => "image_download_failed",
+            Self::TooLarge => "image_too_large",
+            Self::Network(_) => "image_network_failed",
+            Self::Decode => "image_decode_failed",
+            Self::Store => "image_store_failed",
         }
     }
 }
@@ -388,11 +388,11 @@ mod tests {
 
     #[test]
     fn labels_cover_common_failures() {
-        assert_eq!(FetchFail::Http(403).label(), "HTTP 403");
-        assert_eq!(FetchFail::Http(404).label(), "HTTP 404");
-        assert_eq!(FetchFail::Http(502).label(), "HTTP 5xx");
-        assert_eq!(FetchFail::TooLarge.label(), "图片过大");
-        assert_eq!(FetchFail::Decode.label(), "解码失败");
+        assert_eq!(FetchFail::Http(403).label(), "image_http_403");
+        assert_eq!(FetchFail::Http(404).label(), "image_http_404");
+        assert_eq!(FetchFail::Http(502).label(), "image_http_5xx");
+        assert_eq!(FetchFail::TooLarge.label(), "image_too_large");
+        assert_eq!(FetchFail::Decode.label(), "image_decode_failed");
     }
 
     #[tokio::test]

@@ -25,10 +25,10 @@ pub(super) struct Config {
 
 fn endpoint(url: &str) -> CoreResult<String> {
     let mut url = reqwest::Url::parse(url.trim())
-        .map_err(|_| Error::InvalidSetting("翻译服务地址无效".into()))?;
+        .map_err(|_| Error::Translation(rrss_core::error::TranslationFailure::UrlInvalid))?;
     if !matches!(url.scheme(), "http" | "https") {
-        return Err(Error::InvalidSetting(
-            "翻译服务地址必须使用 HTTP 或 HTTPS".into(),
+        return Err(Error::Translation(
+            rrss_core::error::TranslationFailure::SchemeUnsupported,
         ));
     }
     url.set_fragment(None);
@@ -62,8 +62,9 @@ impl Config {
             }
             TranslateBackend::Http { base_url, api_key }
             | TranslateBackend::DeepLx { base_url, api_key } => {
-                let url = http_translate_url(base_url)
-                    .map_err(|_| Error::InvalidSetting("翻译服务地址无效".into()))?;
+                let url = http_translate_url(base_url).map_err(|_| {
+                    Error::Translation(rrss_core::error::TranslationFailure::UrlInvalid)
+                })?;
                 (serde_json::json!(endpoint(&url)?), api_key.as_deref())
             }
             TranslateBackend::DeepL { base_url, api_key } => {
@@ -102,7 +103,8 @@ impl Config {
                 Error::ProviderNotFound
                 | Error::TaskModelUnset(_)
                 | Error::TemplateNotFound(_)
-                | Error::InvalidSetting(_),
+                | Error::InvalidSetting(_)
+                | Error::Translation(_),
             ) => Ok(None),
             Err(err) => Err(err),
         }
@@ -150,7 +152,7 @@ pub(super) fn encode(config: &Config, document: Document) -> CoreResult<String> 
         document,
         states: None,
     })
-    .map_err(|_| Error::Parse("无法编码翻译缓存".into()))
+    .map_err(|_| Error::Translation(rrss_core::error::TranslationFailure::CacheEncode))
 }
 
 pub(super) fn read(
@@ -249,8 +251,8 @@ fn commit_encoded(
 ) -> CoreResult<Commit> {
     let tx = db::write_transaction(conn)?;
     if !matches_current(&tx, id, source_hash, config)? {
-        return Err(Error::InvalidSetting(
-            "正文或翻译配置已更新，请重新翻译".into(),
+        return Err(Error::Translation(
+            rrss_core::error::TranslationFailure::InputChanged,
         ));
     }
     // 与 upsert 同一写事务核对，避免另一作业刚写入的完整译文被部分结果覆盖。
@@ -350,8 +352,8 @@ pub(super) fn commit_progress(
             .iter()
             .any(|state| matches!(state, UnitState::Pending | UnitState::Inflight))
     {
-        return Err(Error::InvalidSetting(
-            "翻译结果尚未结束或没有有效译文".into(),
+        return Err(Error::Translation(
+            rrss_core::error::TranslationFailure::ResultIncomplete,
         ));
     }
     let complete = cache.states.iter().all(|state| *state == UnitState::Done);
@@ -361,6 +363,6 @@ pub(super) fn commit_progress(
         document: cache.document,
         states: Some(cache.states),
     })
-    .map_err(|_| Error::Parse("无法编码翻译缓存".into()))?;
+    .map_err(|_| Error::Translation(rrss_core::error::TranslationFailure::CacheEncode))?;
     commit_encoded(conn, id, source_hash, config, cache.title, json, !complete)
 }

@@ -160,10 +160,7 @@ pub async fn link_safety(
 ) -> Result<LinkSafety, rrss_app::fulltext::FulltextError> {
     rrss_app::execution::blocking(move || rrss_app::web::link_safety(&href, &link_text))
         .await
-        .map_err(|error| rrss_app::fulltext::FulltextError {
-            kind: rrss_app::fulltext::FulltextErrorKind::Network,
-            message: error.to_string(),
-        })?
+        .map_err(rrss_app::fulltext::FulltextError::network)?
 }
 
 db_task!(site_rules_page() -> SiteRulesPage => rrss_app::site_rules::site_rules_page);

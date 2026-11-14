@@ -6,20 +6,22 @@ use std::{future::Future, path::Path, pin::Pin};
 pub use crate::views::TranslationFailure as Failure;
 
 impl Failure {
-    pub fn message(self) -> &'static str {
+    pub fn error(self) -> crate::UiError {
+        use crate::ui_error::reader::ReaderError;
         match self {
-            Self::Timeout => "本段翻译超时，可重试未译部分",
-            Self::Network => "翻译服务连接失败，可重试未译部分",
-            Self::InvalidOutput => "部分译文格式无效，已保留原文",
-            Self::Authentication => "翻译服务认证失败，请检查密钥",
-            Self::Quota => "翻译服务额度不足，请检查账户",
-            Self::RateLimited => "翻译服务限流，请稍后重试",
-            Self::Configuration => "翻译配置不可用，请检查模型和服务设置",
-            Self::Invalidated => "正文或翻译配置已更新，请重新翻译",
-            Self::Storage => "译文未能保存，可重试保存",
-            Self::RetryUnavailable => "未译部分的记录已失效，请重新翻译全文",
-            Self::Capacity => "翻译任务已满，请等待已有任务结束",
+            Self::Timeout => ReaderError::TranslateTimeout,
+            Self::Network => ReaderError::TranslateNetwork,
+            Self::InvalidOutput => ReaderError::TranslateInvalidOutput,
+            Self::Authentication => ReaderError::TranslateAuthentication,
+            Self::Quota => ReaderError::TranslateQuota,
+            Self::RateLimited => ReaderError::TranslateRateLimited,
+            Self::Configuration => ReaderError::TranslateConfiguration,
+            Self::Invalidated => ReaderError::TranslateInvalidated,
+            Self::Storage => ReaderError::TranslateStorage,
+            Self::RetryUnavailable => ReaderError::TranslateRetryUnavailable,
+            Self::Capacity => ReaderError::TranslateCapacity,
         }
+        .into()
     }
     pub(super) fn stops_job(self) -> bool {
         matches!(
@@ -35,7 +37,7 @@ impl Failure {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("翻译服务 HTTP {0}")]
+#[error("translation service HTTP {0}")]
 pub(super) struct HttpStatus(pub u16);
 
 fn status_failure(status: u16) -> Failure {
@@ -50,14 +52,21 @@ fn status_failure(status: u16) -> Failure {
 
 pub(super) fn classify(err: &anyhow::Error) -> Failure {
     for cause in err.chain() {
+        if let Some(ui) = cause.downcast_ref::<crate::UiError>() {
+            return classify_ui(ui);
+        }
         if let Some(error) = cause.downcast_ref::<rrss_core::Error>() {
             match error {
-                rrss_core::Error::ArticleNotFound => return Failure::Invalidated,
+                rrss_core::Error::Translation(
+                    rrss_core::error::TranslationFailure::InputChanged,
+                )
+                | rrss_core::Error::ArticleNotFound => return Failure::Invalidated,
                 rrss_core::Error::ProviderNotFound
                 | rrss_core::Error::TaskModelUnset(_)
                 | rrss_core::Error::TemplateNotFound(_)
                 | rrss_core::Error::InvalidNetworkProxy(_)
-                | rrss_core::Error::InvalidSetting(_) => return Failure::Configuration,
+                | rrss_core::Error::InvalidSetting(_)
+                | rrss_core::Error::Translation(_) => return Failure::Configuration,
                 _ => {}
             }
         }
@@ -70,8 +79,8 @@ pub(super) fn classify(err: &anyhow::Error) -> Failure {
                 rrss_ai::complete::Error::Capacity => return Failure::Capacity,
                 rrss_ai::complete::Error::ServiceCooldown => return Failure::RateLimited,
                 rrss_ai::complete::Error::Http { status, .. } => return status_failure(*status),
-                rrss_ai::complete::Error::Request { timeout, .. } => {
-                    return if *timeout {
+                rrss_ai::complete::Error::Request { kind } => {
+                    return if *kind == rrss_ai::complete::RequestKind::Timeout {
                         Failure::Timeout
                     } else {
                         Failure::Network
@@ -92,6 +101,41 @@ pub(super) fn classify(err: &anyhow::Error) -> Failure {
         }
     }
     Failure::InvalidOutput
+}
+
+fn classify_ui(error: &crate::UiError) -> Failure {
+    if let Some(cause) = &error.cause {
+        return classify_ui(cause);
+    }
+    use crate::ui_error::{jobs::JobsUiError, reader::ReaderError};
+    match &error.kind {
+        crate::UiErrorKind::Reader(
+            ReaderError::TranslateServiceHttp { status }
+            | ReaderError::TranslateHttpRejected { status, .. }
+            | ReaderError::TranslateDeepLRejected { status, .. }
+            | ReaderError::TranslateDeepLxRejected { status, .. },
+        ) => status_failure(*status),
+        crate::UiErrorKind::Reader(
+            ReaderError::TranslateKeyMissing
+            | ReaderError::TranslateEndpointMissing
+            | ReaderError::TranslateUrlInvalid
+            | ReaderError::TranslateSchemeUnsupported,
+        ) => Failure::Configuration,
+        crate::UiErrorKind::Jobs(JobsUiError::RequestTimeout) => Failure::Timeout,
+        crate::UiErrorKind::Jobs(
+            JobsUiError::RequestConnect | JobsUiError::RequestDecode | JobsUiError::RequestFailed,
+        ) => Failure::Network,
+        crate::UiErrorKind::Jobs(
+            JobsUiError::ModelHttp { status } | JobsUiError::ModelProxyAuth { status },
+        ) => status_failure(*status),
+        crate::UiErrorKind::Jobs(JobsUiError::EndpointBusy) => Failure::Capacity,
+        crate::UiErrorKind::Jobs(JobsUiError::ModelCooldown) => Failure::RateLimited,
+        crate::UiErrorKind::Jobs(
+            JobsUiError::AdmissionReason { .. } | JobsUiError::EndpointInvalid,
+        ) => Failure::Configuration,
+        crate::UiErrorKind::Network(_) => Failure::Configuration,
+        _ => Failure::InvalidOutput,
+    }
 }
 
 #[cfg(test)]
@@ -140,10 +184,17 @@ mod proxy_tests {
     #[test]
     fn sanitized_ai_errors_keep_the_translation_failure_kind() {
         for timeout in [false, true] {
-            let error = anyhow::Error::new(rrss_ai::Error::Request {
-                timeout,
-                message: "safe",
-            })
+            let error = anyhow::Error::new(
+                crate::ui_error::reader::ReaderError::TranslateRead.caused_by(
+                    crate::UiError::from(anyhow::Error::new(rrss_ai::Error::Request {
+                        kind: if timeout {
+                            rrss_ai::complete::RequestKind::Timeout
+                        } else {
+                            rrss_ai::complete::RequestKind::Other
+                        },
+                    })),
+                ),
+            )
             .context("outer");
             assert_eq!(
                 classify(&error),
@@ -154,7 +205,9 @@ mod proxy_tests {
                 }
             );
         }
-        let error = anyhow::Error::new(rrss_core::Error::InvalidNetworkProxy(rrss_core::network::ProxyError::ConfigUnavailable));
+        let error = anyhow::Error::new(rrss_core::Error::InvalidNetworkProxy(
+            rrss_core::network::ProxyError::ConfigUnavailable,
+        ));
         assert_eq!(classify(&error), Failure::Configuration);
         let error = anyhow::Error::new(rrss_ai::Error::ServiceCooldown).context("outer");
         assert_eq!(classify(&error), Failure::RateLimited);

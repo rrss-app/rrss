@@ -13,12 +13,12 @@ use super::protocol::PiEvent;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RpcError {
     /// Pi 返回 `success: false`。
-    #[error("{0}")]
-    Rejected(String),
-    #[error("Pi 命令响应超时")]
+    #[error("Pi command rejected: {0:?}")]
+    Rejected(Option<String>),
+    #[error("Pi command response timed out")]
     Timeout,
     /// 进程退出或关联表被清空，响应不会再来。
-    #[error("Pi 进程已退出")]
+    #[error("Pi process exited")]
     Closed,
 }
 
@@ -70,9 +70,7 @@ impl RpcCorrelator {
         let _ = sender.send(if *success {
             Ok(data.clone())
         } else {
-            Err(RpcError::Rejected(
-                error.clone().unwrap_or_else(|| "Pi 命令执行失败".into()),
-            ))
+            Err(RpcError::Rejected(error.clone()))
         });
         true
     }
@@ -139,9 +137,16 @@ mod tests {
         let t = Duration::from_secs(1);
         assert_eq!(
             rpc.wait(a, t).await,
-            Err(RpcError::Rejected("model unavailable".into()))
+            Err(RpcError::Rejected(Some("model unavailable".into())))
         );
         assert_eq!(rpc.wait(b, t).await.unwrap()["ok"], true);
+        let (command, missing) = rpc.register(json!({"type": "prompt"}));
+        let mut rejected = response(command["id"].as_str().unwrap(), false);
+        if let PiEvent::Response { error, .. } = &mut rejected {
+            *error = None;
+        }
+        rpc.resolve(&rejected);
+        assert_eq!(rpc.wait(missing, t).await, Err(RpcError::Rejected(None)));
         assert_eq!(rpc.pending_len(), 0);
     }
 

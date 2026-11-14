@@ -36,7 +36,7 @@ export function usePiInstallNotice(notify: (notice: { message: string }) => void
     const unlisten = onPiInstall((view) => {
       if (view.state !== "done" && view.state !== "failed") return;
       void client.invalidateQueries({ queryKey: piKeys.probe });
-      notify({ message: i18n.t(view.state === "done" ? "install.done" : "install.failed", { ns: "settingsAssistant", message: view.error ? formatError(view.error) : view.message }) });
+      notify({ message: i18n.t(view.state === "done" ? "install.done" : "install.failed", { ns: "settingsAssistant", message: view.notice ? formatError(view.notice) : view.error ? formatError(view.error) : view.message }) });
     }).catch(() => () => {});
     return () => { void unlisten.then((stop) => stop()); };
   }, [client, notify]);

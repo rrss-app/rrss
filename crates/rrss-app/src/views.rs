@@ -633,7 +633,9 @@ pub struct TranslationReply {
     pub kind: TranslationReplyKind,
     pub reader: ReaderView,
     pub snapshot: Option<TranslationSnapshot>,
-    pub note: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub notice: Option<UiError>,
     // 无事件时核对状态的周期来自后端窗期限。
     pub reconcile_after_ms: u64,
 }
@@ -641,7 +643,6 @@ pub struct TranslationReply {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct TranslationCommandError {
     pub kind: TranslationFailure,
-    pub message: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub error: Option<UiError>,
@@ -765,12 +766,14 @@ pub struct ChatErrorEvent {
     pub kind: String,
 }
 
-/// chat:status：一行状态（压缩、重试、提示），`text` 为空表示清除；或者一步过程（`step`），只给回复位置的等待过程用。
+// chat:status: an optional notice (absence clears it), or a waiting step.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct ChatStatusEvent {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub notice: Option<UiError>,
     // 冷启动时「启动对话引擎」可能早于线程建立，此时为发送时的线程 id（新对话为 0）。
     pub thread_id: i64,
-    pub text: String,
     // 仅「未验证版本」提示带版本号：界面实际展示后用它调用 acknowledge_pi_version_notice。
     #[serde(default)]
     pub notice_version: String,
@@ -1042,9 +1045,11 @@ pub struct McpProbeView {
 pub struct McpLoginResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
+    pub notice: Option<UiError>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub error: Option<UiError>,
     pub ok: bool,
-    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -1715,6 +1720,9 @@ pub struct TranslatePage {
 pub struct SelectionTranslationConfig {
     pub identity: String,
     pub service: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub service_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -2285,13 +2293,18 @@ pub struct LogStatusView {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 // 空闲超时、思考强度、自动下载 / 更新走选项注册表；版本由 `PiProbe` 返回。
 pub struct PiPage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub binary_source_code: Option<String>,
     pub developer_tools: bool,
     pub fetch_url: bool,
     #[serde(default)]
     pub pi_path: String,
     pub binary_source: String,
     pub session_dir: String,
-    pub manage_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub manage_notice: Option<UiError>,
     // 固定系统提示模板原文，只读展示；助手说明追加在它之后。
     pub system_prompt: String,
     // 最近一次握手得到的可用思考档位；从未启动过时为空。
@@ -2311,6 +2324,9 @@ pub struct SavePiSettingsArgs {
 /// `pi --version` / `pi list` 探测结果；与 `PiPage` 分开返回，页面切换不等子进程。
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct PiProbe {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub binary_source_code: Option<String>,
     pub binary_source: String,
     pub version: String,
     // 版本闸结论：missing / too_old / unverified / ok（阶段 18 版本闸）。
@@ -2335,6 +2351,9 @@ pub struct PiInstallView {
     #[serde(default)]
     #[ts(optional)]
     pub error: Option<UiError>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub notice: Option<UiError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

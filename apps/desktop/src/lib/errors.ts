@@ -39,13 +39,16 @@ type ErrorKey = UiError["code"];
 type ModelTask = keyof typeof zhErrors.model_task;
 
 export function formatError(error: unknown): string {
+  if (error && typeof error === "object" && "error" in error && error.error) return formatError(error.error);
   // Existing command-specific errors own their message projection. Do not run
-  // FulltextError or TranslationCommandError through legacy
+  // Legacy command envelopes through
   // notice humanization just because they have no UI code.
   try {
     if (error && typeof error === "object" && !(error instanceof Error)
       && !("code" in error && typeof error.code === "string")
-      && "message" in error && typeof error.message === "string") return error.message;
+      && "message" in error && typeof error.message === "string") {
+      return error.message;
+    }
   } catch { /* asUiError supplies the unreadable-input fallback. */ }
   const value = asUiError(error);
   if (value.code === "legacy_text") {
@@ -85,7 +88,12 @@ export function formatError(error: unknown): string {
       if (i18n.exists(step, { ns: "errors" })) params.step = String(i18n.t(step, { ns: "errors" }));
     }
     if (value.code === "chat_model_mismatch" && params.actual === undefined) {
-      params.actual = i18n.t("chat_model_unselected", { ns: "errors" });
+      params.actual = String(i18n.t("chat_model_unselected", { ns: "errors" }));
+    }
+    if (value.code === "chat_version_unverified" && params.version === "unknown") params.version = String(i18n.t("chat_version_unknown", { ns: "errors" }));
+    if (value.code === "site_rule_selector_invalid") {
+      const key = `site_rule_field.${params.field}` as "site_rule_field.body";
+      if (i18n.exists(key, { ns: "errors" })) params.field = String(i18n.t(key, { ns: "errors" }));
     }
     // Parameters are interpolation data, rather than i18next control options.
     return i18n.t(value.code as ErrorKey, { ns: "errors", replace: { ...params, detail: value.cause ? formatError(value.cause) : value.detail } });
@@ -93,6 +101,10 @@ export function formatError(error: unknown): string {
   return value.detail.trim()
     ? i18n.t("unknown_detail", { ns: "errors", detail: value.detail.trim() })
     : i18n.t("unknown", { ns: "errors" });
+}
+
+export function formatMediaFailure(code: string): string {
+  return ERROR_CODES.has(code) ? formatError({ code, params: {}, detail: "" }) : code;
 }
 
 export function isProxyError(error: unknown): boolean {

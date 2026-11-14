@@ -88,7 +88,13 @@ async fn request_errors_keep_timeout_classification_without_url_or_source() {
         .unwrap_err();
     assert!(raw.is_timeout());
     let error = Error::from(raw);
-    assert!(matches!(error, Error::Request { timeout: true, .. }));
+    assert!(matches!(
+        error,
+        Error::Request {
+            kind: rrss_ai::complete::RequestKind::Timeout,
+            ..
+        }
+    ));
     assert!(std::error::Error::source(&error).is_none());
     assert!(!format!("{error:?} {error}").contains("private-"));
 }

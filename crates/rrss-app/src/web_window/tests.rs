@@ -1,10 +1,10 @@
 use super::*;
 
 #[test]
-fn title_uses_page_host() {
+fn title_returns_the_localization_id() {
     assert_eq!(
         title(&Url::parse("https://example.com/a").unwrap()),
-        "example.com · 原网页 — RRSS"
+        "web_original_title"
     );
 }
 
@@ -123,9 +123,12 @@ fn new_session_directory_failure_is_a_displayable_feature_error() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("web-sessions"), b"synthetic blocker").unwrap();
     let error = WebSession::initialize(dir.path(), "new-run").err().unwrap();
-    assert!(error.contains("无法创建原网页数据目录"));
-    assert!(error.contains("阅读视图或系统浏览器"));
-    assert!(!error.contains(dir.path().to_str().unwrap()));
+    assert_eq!(error.code(), "web_session_unavailable");
+    assert!(
+        !serde_json::to_string(&error)
+            .unwrap()
+            .contains(dir.path().to_str().unwrap())
+    );
     // Initialization reports the failure without unwinding or terminating the host.
     std::fs::write(dir.path().join("main-still-usable"), b"synthetic").unwrap();
 }

@@ -11,6 +11,32 @@ pub enum McpProbeHint {
 }
 
 error_codes!(McpUiError {
+    ConfigurationInvalid => "mcp_configuration_invalid",
+    VariableNameInvalid => "mcp_variable_name_invalid",
+    VariableValueInvalid => "mcp_variable_value_invalid",
+    VariableDuplicate => "mcp_variable_duplicate",
+    NameInvalid => "mcp_name_invalid",
+    TransportInvalid => "mcp_transport_invalid",
+    AuthInvalid => "mcp_auth_invalid",
+    OAuthTransport => "mcp_o_auth_transport",
+    ToolWildcard => "mcp_tool_wildcard",
+    OAuthHeader => "mcp_o_auth_header",
+    CommandInvalid => "mcp_command_invalid",
+    UrlInvalid => "mcp_url_invalid",
+    UrlCredentials => "mcp_url_credentials",
+    NameDuplicate => "mcp_name_duplicate",
+    JsonInvalid => "mcp_json_invalid",
+    ServersObjectMissing => "mcp_servers_object_missing",
+    ServersEmpty => "mcp_servers_empty",
+    ServerObjectRequired => "mcp_server_object_required",
+    TextFieldInvalid => "mcp_text_field_invalid",
+    ArrayFieldInvalid => "mcp_array_field_invalid",
+    MapFieldInvalid => "mcp_map_field_invalid",
+    EnableLoginRequired => "mcp_enable_login_required",
+    Import { name: String } => "mcp_import_invalid",
+    InitializeReason { reason: String } => "mcp_initialize_reason",
+    ToolsReason { reason: String } => "mcp_tools_reason",
+    LoggedIn => "mcp_logged_in",
     InitializeRejected => "mcp_initialize_rejected",
     ToolsRejected => "mcp_tools_rejected",
     MessageTooLarge => "mcp_message_too_large",
@@ -56,6 +82,31 @@ pub(super) fn classify(error: &Error) -> Option<UiErrorKind> {
         return None;
     };
     Some(UiErrorKind::Mcp(match reason {
+        McpFailure::ConfigurationInvalid => McpUiError::ConfigurationInvalid,
+        McpFailure::VariableNameInvalid => McpUiError::VariableNameInvalid,
+        McpFailure::VariableValueInvalid => McpUiError::VariableValueInvalid,
+        McpFailure::VariableDuplicate => McpUiError::VariableDuplicate,
+        McpFailure::NameInvalid => McpUiError::NameInvalid,
+        McpFailure::TransportInvalid => McpUiError::TransportInvalid,
+        McpFailure::AuthInvalid => McpUiError::AuthInvalid,
+        McpFailure::OAuthTransport => McpUiError::OAuthTransport,
+        McpFailure::ToolWildcard => McpUiError::ToolWildcard,
+        McpFailure::OAuthHeader => McpUiError::OAuthHeader,
+        McpFailure::CommandInvalid => McpUiError::CommandInvalid,
+        McpFailure::UrlInvalid => McpUiError::UrlInvalid,
+        McpFailure::UrlCredentials => McpUiError::UrlCredentials,
+        McpFailure::NameDuplicate => McpUiError::NameDuplicate,
+        McpFailure::JsonInvalid => McpUiError::JsonInvalid,
+        McpFailure::ServersObjectMissing => McpUiError::ServersObjectMissing,
+        McpFailure::ServersEmpty => McpUiError::ServersEmpty,
+        McpFailure::ServerObjectRequired => McpUiError::ServerObjectRequired,
+        McpFailure::TextFieldInvalid => McpUiError::TextFieldInvalid,
+        McpFailure::ArrayFieldInvalid => McpUiError::ArrayFieldInvalid,
+        McpFailure::MapFieldInvalid => McpUiError::MapFieldInvalid,
+        McpFailure::EnableLoginRequired => McpUiError::EnableLoginRequired,
+        McpFailure::Import { name, .. } => McpUiError::Import {
+            name: super::params::name(name),
+        },
         McpFailure::MessageTooLarge => McpUiError::MessageTooLarge,
         McpFailure::CommandPathInvalid => McpUiError::CommandPathInvalid,
         McpFailure::SpawnFailed => McpUiError::SpawnFailed,
@@ -101,6 +152,15 @@ pub(super) fn classify(error: &Error) -> Option<UiErrorKind> {
 }
 
 impl McpUiError {
+    pub(crate) fn rejected(reason: &str, initialize: bool) -> super::UiError {
+        let reason = super::params::remote_reason(reason);
+        let kind = if initialize {
+            Self::InitializeReason { reason }
+        } else {
+            Self::ToolsReason { reason }
+        };
+        kind.failure("MCP request rejected")
+    }
     pub fn failure(self, detail: impl AsRef<str>) -> super::UiError {
         super::UiError::new(UiErrorKind::Mcp(self), detail)
     }
@@ -128,6 +188,25 @@ mod tests {
     use super::*;
     #[test]
     fn mcp_failures_keep_their_codes_through_contexts() {
+        let ui = McpUiError::rejected(
+            "remote reason https://service.example/path?token=canary workspace=/tmp/private-path/safe-file",
+            true,
+        );
+        let wire = serde_json::to_value(ui).unwrap();
+        assert_eq!(wire["code"], "mcp_initialize_reason");
+        assert!(
+            !wire["params"]["reason"]
+                .as_str()
+                .unwrap()
+                .contains("canary")
+        );
+        assert!(
+            !wire["params"]["reason"]
+                .as_str()
+                .unwrap()
+                .contains("private-path")
+        );
+
         for (reason, code) in [
             (McpFailure::MessageTooLarge, "mcp_message_too_large"),
             (McpFailure::CommandPathInvalid, "mcp_command_path_invalid"),
@@ -190,5 +269,13 @@ mod tests {
         .unwrap();
         assert_eq!(wire["code"], "mcp_http_status");
         assert_eq!(wire["params"]["status"], 403);
+    }
+}
+
+pub(super) fn cause(error: &Error) -> Option<Box<super::UiError>> {
+    if let Error::Mcp(McpFailure::Import { reason, .. }) = error {
+        Some(Box::new(super::UiError::from(Error::Mcp(*reason.clone()))))
+    } else {
+        None
     }
 }

@@ -25,19 +25,20 @@ pub fn pi_page(conn: &Connection, data_dir: &Path) -> PiPage {
     let explicit = db::get_setting(conn, ai_store::PI_BINARY_KEY)
         .ok()
         .flatten();
-    let (source, _bin) = crate::pi::launch::locate_pi(explicit.as_deref());
+    let (source, bin) = crate::pi::launch::locate_pi(explicit.as_deref());
     let managed = pi_store::pi_managed_version(conn).ok().flatten();
-    let manage_status = managed
+    let manage_notice = managed
         .filter(|v| !v.is_empty())
-        .map(|v| format!("托管 Pi {v}"))
+        .map(|v| crate::ui_error::pi::PiUiError::managed(&v))
         .unwrap_or_else(|| {
-            if crate::pi::install::uses_custom_pi_binary(conn, data_dir) {
-                "使用自定义 pi 路径".into()
+            let kind = if crate::pi::install::uses_custom_pi_binary(conn, data_dir) {
+                crate::ui_error::pi::PiUiError::CustomPath
             } else if crate::pi::install::managed_executable(data_dir).is_file() {
-                "托管 Pi 已安装".into()
+                crate::ui_error::pi::PiUiError::ManagedInstalled
             } else {
-                "未安装托管 Pi".into()
-            }
+                crate::ui_error::pi::PiUiError::ManagedMissing
+            };
+            kind.failure("pi management status")
         });
     let tools = pi_store::list_tools(conn)
         .unwrap_or_default()
@@ -88,9 +89,12 @@ pub fn pi_page(conn: &Connection, data_dir: &Path) -> PiPage {
             .as_deref()
             == Some("1"),
         pi_path: explicit.clone().unwrap_or_default(),
-        binary_source: source,
+        binary_source: bin
+            .map(|path| path.display().to_string())
+            .unwrap_or_default(),
+        binary_source_code: Some(source),
         session_dir: data_dir.join("pi/sessions").display().to_string(),
-        manage_status,
+        manage_notice: Some(manage_notice),
         system_prompt: crate::pi::workspace::SYSTEM_TEMPLATE.to_string(),
         thinking_levels: pi_store::cached_thinking_levels(conn).unwrap_or_default(),
         tools,
@@ -121,7 +125,8 @@ pub fn pi_probe(conn: &Connection, data_dir: &Path) -> PiProbe {
         _ => None,
     };
     PiProbe {
-        binary_source,
+        binary_source: bin,
+        binary_source_code: Some(binary_source),
         version,
         version_state: version_state.into(),
         config_error,
@@ -134,8 +139,9 @@ pub fn pi_skill(data_dir: &Path, name: &str) -> anyhow::Result<SkillDraft> {
     let path = crate::pi::workspace::WorkspacePaths::new(data_dir)
         .user_skill(name)
         .join("SKILL.md");
-    let raw = std::fs::read_to_string(&path)
-        .map_err(|_| anyhow::Error::new(crate::ui_error::pi::PiUiError::skill_draft_missing(name)))?;
+    let raw = std::fs::read_to_string(&path).map_err(|_| {
+        anyhow::Error::new(crate::ui_error::pi::PiUiError::skill_draft_missing(name))
+    })?;
     let body = raw
         .strip_prefix("---")
         .and_then(|rest| {

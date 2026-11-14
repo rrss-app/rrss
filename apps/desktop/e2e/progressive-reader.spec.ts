@@ -13,7 +13,7 @@ test("viewport hints follow the latest scroll, mode and layout, and stop on clos
     const host = (window as any).__TAURI_INTERNALS__, original = host.invoke;
     const state = { starts: [] as TranslationInitialViewport[], hints: [] as TranslationHint[], snapshot: null as TranslationSnapshot | null };
     (window as any).__viewport = state;
-    const reply = () => ({ kind: state.snapshot ? "resumed" : "missing", reader: fixture.reader, snapshot: state.snapshot, note: "", reconcile_after_ms: 45000 });
+    const reply = () => ({ kind: state.snapshot ? "resumed" : "missing", reader: fixture.reader, snapshot: state.snapshot, reconcile_after_ms: 45000 });
     host.invoke = async (command: string, args: Record<string, any> = {}) => {
       switch (command) {
         case "translate_article": state.starts.push(args.initial); state.snapshot = structuredClone(fixture.first); return { ...reply(), kind: "started" };
@@ -96,7 +96,7 @@ test("progressive results, recovery and opt-in diagnostics stay inside the reade
     const host = (window as any).__TAURI_INTERNALS__, mock = (window as any).__mockHost;
     const original = host.invoke;
     const state = { reader: fixture.reader, snapshot: null as any, starts: [] as string[], saves: 0, attaches: 0, detaches: 0, generation: 20 };
-    const reply = (kind = state.snapshot ? "resumed" : "missing") => ({ kind, reader: state.reader, snapshot: state.snapshot, note: "", reconcile_after_ms: 45000 });
+    const reply = (kind = state.snapshot ? "resumed" : "missing") => ({ kind, reader: state.reader, snapshot: state.snapshot, reconcile_after_ms: 45000 });
     const persist = () => {
       const document = structuredClone(fixture.reader.document) as { blocks: unknown[] };
       for (const block of state.snapshot.blocks) document.blocks[block.index] = block.ir;

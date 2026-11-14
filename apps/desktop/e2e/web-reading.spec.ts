@@ -14,8 +14,8 @@ test("外链阅读、收录与失败重试保留返回路径", async ({ page }) 
     },
     webLinks: {
       [url]: { article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: "http://web.example.test/story", layer: "UserRule", text_chars: 1842, image_count: 3 },
-      [links[1]]: { kind: "Waf", message: "HTTP 403" },
-      [links[2]]: { kind: "Empty", message: "empty" },
+      [links[1]]: { kind: "Waf", error: { code: "reader_fulltext_waf", detail: "HTTP 403" } },
+      [links[2]]: { kind: "Empty", error: { code: "reader_fulltext_empty", detail: "empty" } },
     },
   });
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -144,7 +144,7 @@ test("引用链接添加整篇 chip；抽取失败只通知，不换篇或添加
     },
     webLinks: {
       [good]: { article_id: 10, temporary: true, actual_host: "web.example.test", actual_url: good, layer: "General", text_chars: 300, image_count: 0 },
-      [bad]: { kind: "Waf", message: "challenge" },
+      [bad]: { kind: "Waf", error: { code: "reader_fulltext_waf", detail: "challenge" } },
     },
   });
   await page.goto("/");
@@ -197,7 +197,7 @@ test("打开原网页后验证事件不关掉页面", async ({ page }) => {
   await installMockHost(page, {
     focus: TWO_ARTICLE_PAGE, settingValues: { web_original_tip: "0", web_first_tip: "0" },
     readers: { 1: readerView(1, { document: { v: 1, blocks: [{ t: "p", inlines: [{ t: "a", href: url, children: [{ t: "t", text: "受保护网页" }] }] }] } }), 10: readerView(10, { url, title: "过盾后正文" }) },
-    webLinks: { [url]: { kind: "Waf", message: "HTTP 403" } },
+    webLinks: { [url]: { kind: "Waf", error: { code: "reader_fulltext_waf", detail: "HTTP 403" } } },
     webExtractions: { [url]: result },
   });
   await page.goto("/");

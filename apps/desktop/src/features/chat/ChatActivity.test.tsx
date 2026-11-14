@@ -46,7 +46,7 @@ describe("chat activity", () => {
     await harness.flush();
     const emit = box.events!.emit;
 
-    act(() => emit("chat:status", { thread_id: 3, text: "正在查阅本地文章", notice_version: "" }));
+    act(() => emit("chat:status", { thread_id: 3, notice: { code: "chat_remote_reason", params: { reason: "正在查阅本地文章" }, detail: "engine status" }, notice_version: "" }));
     expect(host.querySelector(".chat-status-line")?.textContent).toBe("正在查阅本地文章");
 
     act(() => emit("chat:confirm", { thread_id: 3, id: "c1", title: "读取网页", message: "https://example.test", server: "", tool: "", args: "", can_remember: false, timeout_ms: 120000 }));
@@ -58,7 +58,7 @@ describe("chat activity", () => {
     expect(answers).toEqual([["c1", true]]);
     expect(host.querySelector('[role="alertdialog"]')).toBeNull();
 
-    act(() => emit("chat:status", { thread_id: 3, text: "对话引擎 0.99.0 不在已验证的版本线内", notice_version: "0.99.0" }));
+    act(() => emit("chat:status", { thread_id: 3, notice: { code: "chat_remote_reason", params: { reason: "对话引擎 0.99.0 不在已验证的版本线内" }, detail: "fixture notice" }, notice_version: "0.99.0" }));
     await harness.flush();
     expect(acks).toEqual(["0.99.0"]);
     act(() => [...host.querySelectorAll("button")].find((b) => b.textContent === "知道了")!.click());
@@ -82,8 +82,8 @@ describe("chat activity", () => {
 
     await act(async () => { await chat!.sendMessage(1, "上游挂了吗", [], null); });
     act(() => emit("chat:start", 1));
-    act(() => emit("chat:status", { thread_id: 1, text: "", notice_version: "", step: step(true, false) }));
-    act(() => emit("chat:status", { thread_id: 1, text: "", notice_version: "", step: step(false, true) }));
+    act(() => emit("chat:status", { thread_id: 1, notice_version: "", step: step(true, false) }));
+    act(() => emit("chat:status", { thread_id: 1, notice_version: "", step: step(false, true) }));
     act(() => emit("chat:error", { thread_id: 1, kind: "model", message: { code: "legacy_text", params: {}, detail: "529 overloaded_error" } }));
     act(() => emit("chat:done", 1));
     await harness.flush();

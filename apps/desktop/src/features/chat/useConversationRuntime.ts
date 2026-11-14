@@ -1,3 +1,4 @@
+import { formatError } from "../../lib/errors";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api, onChatConfirm, onChatContext, onChatDelta, onChatDone, onChatError, onChatStart, onChatStatus,
@@ -184,8 +185,8 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
     subscribe(onChatStatus((event) => {
       // 一步过程只进回复位置的等待过程，不进输入框上方的过程条。
       if (event.step) { turns.step(event.step, event.thread_id); return; }
-      if (event.notice_version) activity.set({ notice: { text: event.text, version: event.notice_version } });
-      else activity.set({ line: event.text });
+      if (event.notice_version) activity.set({ notice: { text: event.notice ? formatError(event.notice) : "", version: event.notice_version } });
+      else activity.set({ line: event.notice ? formatError(event.notice) : "" });
     }));
     subscribe(onChatConfirm((event) => {
       activity.set({ confirm: event });

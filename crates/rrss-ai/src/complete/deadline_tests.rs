@@ -61,7 +61,13 @@ async fn repair_shares_deadline_and_preserves_received_usage() {
         tokio::time::Instant::now() + DEADLINE,
     )
     .await;
-    assert!(matches!(out, Err(Error::Request { timeout: true, .. })));
+    assert!(matches!(
+        out,
+        Err(Error::Request {
+            kind: crate::complete::RequestKind::Timeout,
+            ..
+        })
+    ));
     assert_eq!(*usage.lock().unwrap(), vec![(3, 2)]);
     wait_for_requests(&server, 2).await;
     assert_eq!(*calls.lock().unwrap(), 2);
@@ -108,7 +114,10 @@ async fn protocol_fallback_does_not_reset_deadline() {
             tokio::time::Instant::now() + DEADLINE
         )
         .await,
-        Err(Error::Request { timeout: true, .. })
+        Err(Error::Request {
+            kind: crate::complete::RequestKind::Timeout,
+            ..
+        })
     ));
     wait_for_requests(&server, 2).await;
     assert_eq!(server.received_requests().await.unwrap().len(), 2);

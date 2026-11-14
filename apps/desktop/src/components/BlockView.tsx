@@ -1,3 +1,4 @@
+import { formatMediaFailure } from "../lib/errors";
 import { memo, useContext, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { DigestLineView, MediaRef } from "../bindings";
@@ -442,7 +443,7 @@ function ImageFallback({ alt, src, error, loading, articleId, onMediaRef }: {
   };
   if (loading) return <>{t("image.loading")}</>;
   const label = alt || src;
-  const reason = retryError || error;
+  const reason = retryError || formatMediaFailure(error);
   return (
     <>
       {reason ? t("image.cacheFailedReason", { reason, label }) : t("image.cacheFailed", { label })}

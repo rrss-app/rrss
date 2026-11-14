@@ -568,7 +568,7 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
       case "translate_page":
         return clone(payload.translate);
       case "translate_snapshot":
-        return { kind: "missing", reader: readerFor(asNumber(rawArgs.id), false), snapshot: null, note: "", reconcile_after_ms: 45000 };
+        return { kind: "missing", reader: readerFor(asNumber(rawArgs.id), false), snapshot: null, reconcile_after_ms: 45000 };
       case "translate_attach":
       case "translate_detach":
         return null;

@@ -134,6 +134,7 @@
     "returnToSearch": "回到搜索"
   },
   "selection": {
+    "httpService": "HTTP 服务",
     "notConfigured": "翻译服务还没配置",
     "notConfiguredNotice": "翻译服务还没配置。",
     "networkFailed": "翻译服务连接失败，请稍后再试",

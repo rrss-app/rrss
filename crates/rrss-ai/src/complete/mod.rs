@@ -21,11 +21,11 @@ pub enum Error {
     Admission(&'static str),
     #[error("{0}")]
     Configuration(&'static str),
-    #[error("自动模型预算已用尽")]
+    #[error("automatic model budget exhausted")]
     BudgetExhausted,
-    #[error("模型服务限流，冷却后自动重试")]
+    #[error("model service cooling down")]
     ServiceCooldown,
-    #[error("模型端点繁忙，请稍后重试")]
+    #[error("model endpoint busy")]
     Capacity,
     #[error("HTTP {status}: {message}")]
     Http { status: u16, message: String },
@@ -42,36 +42,63 @@ pub enum Error {
     #[error("invalid JSON: {0}")]
     InvalidJson(String),
     // 不保留 reqwest source：Debug / anyhow 错误链也不能带出代理地址或认证。
-    #[error("{message}")]
-    Request {
-        timeout: bool,
-        message: &'static str,
-    },
+    #[error("model request failed: {kind:?}")]
+    Request { kind: RequestKind },
 }
 
 impl From<reqwest::Error> for Error {
     fn from(error: reqwest::Error) -> Self {
         let timeout = error.is_timeout();
-        let message = if timeout {
-            "模型请求超时"
+        let kind = if timeout {
+            RequestKind::Timeout
         } else if error.is_connect() {
-            "模型网络连接失败，请检查服务和代理设置"
+            RequestKind::Connect
         } else if error.is_decode() {
-            "模型响应解码失败"
+            RequestKind::Decode
         } else {
-            "模型网络请求失败"
+            RequestKind::Other
         };
-        Self::Request { timeout, message }
+        Self::Request { kind }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequestKind {
+    Timeout,
+    Connect,
+    Decode,
+    Other,
+}
+impl RequestKind {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::Timeout => "model_request_timeout",
+            Self::Connect => "model_request_connect",
+            Self::Decode => "model_request_decode",
+            Self::Other => "model_request_failed",
+        }
     }
 }
 
 impl Error {
+    pub fn request_kind(&self) -> Option<RequestKind> {
+        let Self::Request { kind } = self else {
+            return None;
+        };
+        Some(*kind)
+    }
+
     /// 日志不复述模型 / HTTP 的任意正文；界面错误与重试判定仍保留原信息。
     pub fn log_message(&self) -> String {
         match self {
             Self::Http { status, .. } => format!("http status {status}"),
             Self::InvalidJson(_) => "invalid model json".into(),
             Self::Content { source, .. } => source.log_message(),
+            Self::Admission(_) => "model admission failed".into(),
+            Self::Request { .. } => self
+                .request_kind()
+                .map_or("model_request_failed", RequestKind::code)
+                .into(),
             _ => rrss_core::logsafe::text(&self.to_string(), 200),
         }
     }
@@ -81,7 +108,7 @@ pub(crate) fn check_proxy_auth(status: reqwest::StatusCode) -> Result<()> {
     if status == reqwest::StatusCode::PROXY_AUTHENTICATION_REQUIRED {
         return Err(Error::Http {
             status: 407,
-            message: "代理认证失败，请检查代理凭据".into(),
+            message: "proxy authentication failed; check proxy credentials".into(),
         });
     }
     Ok(())

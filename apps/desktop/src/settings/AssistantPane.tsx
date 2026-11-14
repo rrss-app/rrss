@@ -1,3 +1,4 @@
+import { formatPiSource } from "./panelText";
 import { formatError } from "../lib/errors";
 import { useState } from "react";
 import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -315,8 +316,8 @@ function Engine({ page, probe, writing, run, report }: {
         </div>
         <SettingsRows ids={["pi_idle_timeout_secs"]} label={t("engine.idle")} onEditStateChange={report("idle")} />
         <dl className="diag-list">
-          <div className="diag-row"><dt>{t("engine.version")}</dt><dd>{probe?.version || "—"}</dd></div>
-          <div className="diag-row"><dt>{t("engine.source")}</dt><dd>{page?.manage_status || "—"} · {probe?.binary_source || page?.binary_source || "—"}</dd></div>
+          <div className="diag-row"><dt>{t("engine.version")}</dt><dd>{probe?.version || (probe?.binary_source_code && probe.binary_source_code !== "missing" ? t("piVersionUnknown") : "—")}</dd></div>
+          <div className="diag-row"><dt>{t("engine.source")}</dt><dd>{page?.manage_notice ? formatError(page.manage_notice) : "—"} · {probe?.binary_source_code ? formatPiSource(probe.binary_source, probe.binary_source_code) : page?.binary_source_code ? formatPiSource(page.binary_source, page.binary_source_code) : probe?.binary_source || page?.binary_source || "—"}</dd></div>
         </dl>
         <SettingsRows ids={["pi_auto_download", "pi_auto_update"]} label={t("engine.autoUpdate")} onEditStateChange={report("engine")} />
       </div>

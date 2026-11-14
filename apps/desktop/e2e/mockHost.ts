@@ -9,6 +9,7 @@ import type { Locator, Page } from "@playwright/test";
 import { createSettingsSchema } from "../src/settings/registry";
 import type {
   UiError,
+  McpLoginResult,
   ClusterSummaryView,
   WebVerifyStateEvent,
   SiteRulesPage,
@@ -416,7 +417,7 @@ export const MOCK_MEMORY: MemoryPage = {
 export const MOCK_PI: PiPage = piPageFixture({
   fetch_url: true,
   binary_source: "托管目录 ~/.local/share/rrss/bin/pi",
-  manage_status: "托管 Pi 0.87.1",
+  manage_notice: { code: "legacy_text" as const, params: {}, detail: "托管 Pi 0.87.1" },
   system_prompt: "<!-- rrss-system v3 -->\n你是 RRSS 阅读助手，只用本地工具和引用里实际存在的 ID。",
   thinking_levels: ["off", "low", "medium"],
   tools: [
@@ -762,10 +763,10 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
             { name: "write_file", description: "写入或覆盖文件", writes: true },
           ] },
         } as Record<string, unknown>,
-        mcpLogins: {} as Record<number, (result: { ok: boolean; message: string }) => void>,
+        mcpLogins: {} as Record<number, (result: McpLoginResult) => void>,
         finishMcpLogin: (id: number, ok = true) => {
           if (ok) state.pi.mcp_servers = state.pi.mcp_servers.map((s) => s.id === id ? { ...s, logged_in: true } : s);
-          harness.mcpLogins[id]?.({ ok, message: ok ? "" : "授权页已关闭" });
+          harness.mcpLogins[id]?.({ ok, error: ok ? undefined : { code: "legacy_text" as const, params: {}, detail: "授权页已关闭" } });
           delete harness.mcpLogins[id];
         },
         /** 推荐评测日志写入（record_*），供 e2e 断言曝光、行为与阅读会话。 */
@@ -1153,7 +1154,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 return id;
               }
               case "translate_snapshot":
-                return { kind: "missing", reader: readerFor(args.id), snapshot: null, note: "", reconcile_after_ms: 45000 };
+                return { kind: "missing", reader: readerFor(args.id), snapshot: null, reconcile_after_ms: 45000 };
               case "translate_attach":
               case "translate_detach":
               case "translate_hint":
@@ -1551,7 +1552,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               case "login_mcp":
                 return new Promise((resolve) => { harness.mcpLogins[args.id] = resolve; });
               case "cancel_mcp_login":
-                harness.mcpLogins[args.id]?.({ ok: false, message: "已取消" });
+                harness.mcpLogins[args.id]?.({ ok: false, error: { code: "legacy_text" as const, params: {}, detail: "已取消" } });
                 delete harness.mcpLogins[args.id];
                 return;
               case "pi_skill":
@@ -1654,8 +1655,8 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               case "translate_selection": {
                 if (selectionTranslation == null) throw new Error(`mock host: unexpected command ${command}`);
                 const config = structuredClone(state.translate.selection_config);
-                if (!config) throw { kind: "configuration", message: "翻译配置不可用，请检查模型和服务设置" };
-                if (config.identity !== args.configIdentity) throw { kind: "invalidated", message: "正文或翻译配置已更新，请重新翻译" };
+                if (!config) throw { kind: "configuration", error: { code: "translate_configuration", detail: "fixture configuration" } };
+                if (config.identity !== args.configIdentity) throw { kind: "invalidated", error: { code: "translate_invalidated", detail: "fixture identity changed" } };
                 return new Promise<SelectionTranslation>((resolve, reject) => {
                   const finish = () => typeof selectionTranslation === "string"
                     ? resolve({ text: selectionTranslation, config }) : reject(selectionTranslation);

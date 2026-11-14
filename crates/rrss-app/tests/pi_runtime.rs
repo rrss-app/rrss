@@ -266,12 +266,24 @@ fn errors(events: &[ChatEvent]) -> Vec<(String, String)> {
         .collect()
 }
 
+fn notices(events: &[ChatEvent]) -> Vec<&rrss_app::UiError> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            ChatEvent::Status(status) => status.notice.as_ref(),
+            _ => None,
+        })
+        .collect()
+}
+
 /// 过程条里的文字状态（压缩、重试、提示）；等待过程的步骤另看 [`steps`]。
-fn statuses(events: &[ChatEvent]) -> Vec<String> {
+fn statuses(events: &[ChatEvent]) -> Vec<Option<String>> {
     events
         .iter()
         .filter_map(|e| match e {
-            ChatEvent::Status(s) if s.step.is_none() => Some(s.text.clone()),
+            ChatEvent::Status(s) if s.step.is_none() => {
+                Some(s.notice.as_ref().map(|notice| notice.code().to_string()))
+            }
             _ => None,
         })
         .collect()
@@ -409,12 +421,12 @@ async fn plain_turn_streams_persists_and_reports_tools() {
     assert!(errors(&events).is_empty(), "{events:#?}");
     assert!(steps(&events).contains(&("tool", "search_articles", true)));
     assert!(
-        !statuses(&events).iter().any(|s| s.contains("查阅")),
+        statuses(&events).iter().all(Option::is_none),
         "tool progress stays out of the activity line"
     );
     assert_eq!(
-        statuses(&events).last().map(String::as_str),
-        Some(""),
+        statuses(&events).last(),
+        Some(&None),
         "status is cleared on settle"
     );
     assert_eq!(
@@ -442,27 +454,50 @@ async fn plain_turn_streams_persists_and_reports_tools() {
 async fn model_errors_carry_kind_and_are_redacted() {
     let h = setup(0);
     let thread = h.chat.send(args(0, "[[model-error]]")).await.unwrap();
-    let errs = errors(&h.sink.done().await);
+    let first_events = h.sink.done().await;
+    let errs = errors(&first_events);
     assert_eq!(errs.len(), 1);
     assert_eq!(errs[0].0, "model");
     // 消息就是脱敏后的上游原因，不再叠「模型返回错误」前缀（类别已说明）。
-    assert!(
-        errs[0].1.starts_with("401") && errs[0].1.contains("***") && !errs[0].1.contains("abcdef"),
-        "{errs:?}"
-    );
+    let error = first_events
+        .iter()
+        .find_map(|event| match event {
+            ChatEvent::Error(error) => Some(&error.message),
+            _ => None,
+        })
+        .unwrap();
+    let value = serde_json::to_value(error).unwrap();
+    assert_eq!(value["code"], "chat_remote_reason");
+    let reason = value["params"]["reason"].as_str().unwrap();
+    assert!(reason.starts_with("401") && reason.contains("***") && !reason.contains("abcdef"));
     assert_eq!(h.messages(thread).len(), 1, "no empty assistant message");
 
     h.sink.clear();
     h.chat.send(args(thread, "[[retry-fail]]")).await.unwrap();
     let events = h.sink.done().await;
-    assert!(
-        statuses(&events)
-            .iter()
-            .any(|s| s.contains("正在重试（1/2）"))
-    );
+    assert!(notices(&events).iter().any(|notice| {
+        let value = serde_json::to_value(notice).unwrap();
+        value["code"] == "chat_retrying"
+            && value["params"]["attempt"] == 1
+            && value["params"]["max_attempts"] == 2
+    }));
     let errs = errors(&events);
     assert_eq!(errs[0].0, "model");
-    assert!(errs[0].1.contains("529 overloaded_error"), "{errs:?}");
+    let error = events
+        .iter()
+        .find_map(|event| match event {
+            ChatEvent::Error(error) => Some(&error.message),
+            _ => None,
+        })
+        .unwrap();
+    let value = serde_json::to_value(error).unwrap();
+    assert_eq!(value["code"], "chat_remote_reason");
+    assert!(
+        value["params"]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("529 overloaded_error")
+    );
 }
 
 #[tokio::test]
@@ -622,7 +657,11 @@ async fn missing_session_file_starts_a_new_session_with_a_notice() {
     h.chat.send(args(thread, "还记得吗")).await.unwrap();
     let events = h.sink.done().await;
     assert!(errors(&events).is_empty(), "{events:#?}");
-    assert!(statuses(&events).contains(&"之前的对话上下文无法恢复，已从新会话开始".to_string()));
+    assert!(
+        notices(&events)
+            .iter()
+            .any(|notice| notice.code() == "chat_session_restarted")
+    );
     let file = threads::get_thread(&conn, thread)
         .unwrap()
         .pi_session_file
@@ -1287,9 +1326,10 @@ async fn version_notices_ignore_old_markers_and_remember_each_acknowledged_versi
         let events = h.sink.done().await;
         assert!(errors(&events).is_empty());
         assert_eq!(
-            statuses(&events)
-                .iter()
-                .any(|s| s.contains(version) && s.contains("不在已验证")),
+            notices(&events).iter().any(|notice| {
+                let value = serde_json::to_value(notice).unwrap();
+                value["code"] == "chat_version_unverified" && value["params"]["version"] == version
+            }),
             should_notice
         );
         if acknowledge {

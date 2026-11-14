@@ -24,12 +24,18 @@ pub fn configuration(conn: &Connection) -> rrss_core::Result<Option<SelectionTra
     }
     let service = match &config.backend {
         TranslateBackend::Complete => config.complete.as_ref().unwrap().provider.name.clone(),
-        TranslateBackend::Http { .. } => "HTTP 服务".into(),
+        TranslateBackend::Http { .. } => String::new(),
         TranslateBackend::DeepLx { .. } => "DeepLX".into(),
         TranslateBackend::DeepL { .. } => "DeepL".into(),
     };
-    Ok(cache::configuration_fingerprint(conn)?
-        .map(|identity| SelectionTranslationConfig { identity, service }))
+    Ok(
+        cache::configuration_fingerprint(conn)?.map(|identity| SelectionTranslationConfig {
+            identity,
+            service,
+            service_code: matches!(config.backend, TranslateBackend::Http { .. })
+                .then(|| "http".into()),
+        }),
+    )
 }
 
 pub async fn translate_selection(
@@ -41,8 +47,10 @@ pub async fn translate_selection(
     if text.chars().count() > MAX_CHARS {
         return Err(TranslationCommandError {
             kind: TranslationFailure::InvalidOutput,
-            message: format!("选中文字超过 {MAX_CHARS} 字，请改用全文翻译。"),
-            error: None,
+            error: Some(
+                crate::ui_error::reader::ReaderError::TranslateSelectionTooLong { max: MAX_CHARS }
+                    .into(),
+            ),
         });
     }
     if text.trim().is_empty() {

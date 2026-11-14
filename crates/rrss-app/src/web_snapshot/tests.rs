@@ -84,7 +84,10 @@ fn damaged_archives_are_errors_without_panics() {
         ]
         .concat();
     }
-    assert!(parse_mhtml(&nested, &url).unwrap_err().contains("层数"));
+    assert_eq!(
+        parse_mhtml(&nested, &url).unwrap_err().code(),
+        "web_snapshot_mime_limit"
+    );
 }
 
 #[test]
@@ -94,7 +97,10 @@ fn snapshot_image_size_and_count_limits() {
     raw.resize(MAX_SNAPSHOT_BYTES, b' ');
     assert!(parse_mhtml(&raw, &url).is_ok());
     raw.push(b' ');
-    assert!(parse_mhtml(&raw, &url).unwrap_err().contains("30 MiB"));
+    assert_eq!(
+        parse_mhtml(&raw, &url).unwrap_err().code(),
+        "web_snapshot_too_large"
+    );
     drop(raw);
     let image = vec![0; media::MAX_IMAGE_BYTES];
     let snapshot = parse_mhtml(&archive("test", Some(("/big.png", &image))), &url).unwrap();

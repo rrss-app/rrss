@@ -42,8 +42,13 @@ describe("UI error transport", () => {
     expect(formatError(error)).not.toContain("canary");
   });
 
-  it("keeps the message of existing command-specific errors verbatim", () => {
+  it("renders typed command errors by code and preserves legacy message envelopes", () => {
     const message = "  Error: invalid JSON: fixture output\n";
+    for (const [kind, code] of [["Waf", "reader_fulltext_waf"], ["Network", "reader_fulltext_network"], ["Empty", "reader_fulltext_empty"], ["NotArticle", "reader_fulltext_not_article"]] as const) {
+      const coded = { code, detail: "diagnostic canary" } satisfies UiError;
+      expect(formatError({ kind, error: coded })).toBe(i18n.t(code, { ns: "errors" }));
+      expect(formatError({ kind, error: coded })).not.toContain("canary");
+    }
     for (const kind of ["Network", "invalid_output", "other"]) {
       const error = { kind, message };
       expect(asUiError(error)).toMatchObject({ code: "legacy_text", detail: message });

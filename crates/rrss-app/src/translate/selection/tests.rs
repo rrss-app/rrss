@@ -106,7 +106,7 @@ async fn missing_configuration_has_the_full_translation_error_kind() {
             .await
             .unwrap_err();
         assert_eq!(err.kind, TranslationFailure::Configuration, "{backend}");
-        assert_eq!(err.message, TranslationFailure::Configuration.message());
+        assert_eq!(err.error.unwrap().code(), "translate_configuration");
     }
 }
 
@@ -119,7 +119,9 @@ async fn overlong_and_changed_configuration_never_reach_the_service() {
     let err = translate_selection(&path, &client, "字".repeat(MAX_CHARS + 1), old.clone())
         .await
         .unwrap_err();
-    assert!(err.message.contains("全文翻译"));
+    let wire = serde_json::to_value(err.error.unwrap()).unwrap();
+    assert_eq!(wire["code"], "translate_selection_too_long");
+    assert_eq!(wire["params"]["max"], MAX_CHARS);
     translations::set_target_lang(&db::open_at(&path).unwrap(), "en").unwrap();
     let err = translate_selection(&path, &client, "Hello".into(), old)
         .await
@@ -155,13 +157,12 @@ async fn http_and_model_results_leave_translations_and_cache_unchanged() {
         assert_eq!(out.text, "你好");
         assert_eq!(out.config.identity, config);
         assert_eq!(
-            out.config.service,
-            if complete {
-                "Mock model"
-            } else {
-                "HTTP 服务"
-            }
+            out.config.service_code.as_deref(),
+            if complete { None } else { Some("http") }
         );
+        if complete {
+            assert_eq!(out.config.service, "Mock model");
+        }
         assert_eq!(stable_rows(&path), before, "translations and AI cache");
         assert_eq!(
             usage(&path),

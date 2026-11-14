@@ -5,7 +5,7 @@ import { installMockHost, MOCK_THREADS } from "./mockHost";
 const emit = (page: Page, event: string, payload: unknown) =>
   page.evaluate(([name, value]) => (window as any).__mockHost.emit(name, value), [event, payload] as const);
 const step = (threadId: number, patch: Record<string, unknown>) => ({
-  thread_id: threadId, text: "", notice_version: "",
+  thread_id: threadId, notice_version: "",
   step: { server: "", server_tool: "", kind: "tool", id: "", start: true, tool: "", detail: "", article_id: null, error: false, ...patch },
 });
 

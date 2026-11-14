@@ -190,8 +190,8 @@ pub async fn login(db_path: &Path, data_dir: &Path, id: i64) -> McpLoginResult {
         let mut jobs = active().lock().unwrap();
         if jobs.contains_key(&key) {
             return McpLoginResult {
+                notice: None,
                 ok: false,
-                message: String::new(),
                 error: Some(Error::Mcp(McpFailure::LoginBusy).into()),
             };
         }
@@ -252,12 +252,12 @@ pub async fn login(db_path: &Path, data_dir: &Path, id: i64) -> McpLoginResult {
     match result {
         Ok(()) => McpLoginResult {
             ok: true,
-            message: "已登录".into(),
+            notice: Some(McpUiError::LoggedIn.failure("MCP login completed")),
             error: None,
         },
         Err(error) => McpLoginResult {
+            notice: None,
             ok: false,
-            message: String::new(),
             error: Some(McpUiError::project(error)),
         },
     }

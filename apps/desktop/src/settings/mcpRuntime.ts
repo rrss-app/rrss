@@ -109,7 +109,7 @@ export function createMcpRuntime(bridge: Bridge) {
       const work = (loginWork.get(id) ?? Promise.resolve()).then(async () => {
         // 旧登录和取消命令都已收尾；等待中再次取消 / 删除就不再启动。
         if (logins.get().get(id) !== waiting) return;
-        try { const result = await bridge.loginMcp(id); settle(result.ok, result.error ? formatError(result.error) : result.message); }
+        try { const result = await bridge.loginMcp(id); settle(result.ok, result.notice ? formatError(result.notice) : result.error ? formatError(result.error) : ""); }
         catch (error) { settle(false, formatNotice("", error)); }
       });
       trackLogin(id, work);

@@ -64,14 +64,14 @@ impl ChatError {
     }
 
     pub fn internal(kind: ChatErrorKind, error: impl Into<anyhow::Error>) -> Self {
-        Self::new(kind, crate::views::UiError::from(error.into()))
+        Self::new(kind, crate::ui_error::pi::PiUiError::project(error.into()))
     }
 
     /// 从 `anyhow` 错误里还原类别；没有标注的按 `fallback`。
     pub fn classify(err: &anyhow::Error, fallback: ChatErrorKind) -> Self {
         match err.downcast_ref::<ChatError>() {
             Some(e) => e.clone(),
-            None => Self::new(fallback, crate::views::UiError::from_anyhow_ref(err)),
+            None => Self::new(fallback, crate::ui_error::pi::PiUiError::project_ref(err)),
         }
     }
 }

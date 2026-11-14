@@ -217,8 +217,7 @@ impl PiProfile {
         binary: PiBinary,
         target: Option<&ModelChoice>,
     ) -> Result<(Self, PiSecrets), ChatError> {
-        let db_err =
-            |err: rrss_core::Error| ChatError::new(ChatErrorKind::Internal, err);
+        let db_err = |err: rrss_core::Error| ChatError::new(ChatErrorKind::Internal, err);
         let own = pi_store::use_own_config(conn).map_err(db_err)?;
         let target = target.filter(|t| !t.model.trim().is_empty());
         let (
@@ -275,7 +274,8 @@ impl PiProfile {
         }
         let manifest = serde_json::to_value(pi_store::tool_manifest(conn).map_err(db_err)?)
             .unwrap_or(Value::Null);
-        let (config, secrets) = pi_store::mcp_config(conn).map_err(db_err)?;
+        let (config, secrets) =
+            pi_store::mcp_config(conn).map_err(|error| db_err(crate::mcp::config_error(error)))?;
         let enabled_ids: Vec<_> = pi_store::list_mcp_servers(conn)
             .map_err(db_err)?
             .into_iter()
@@ -418,7 +418,9 @@ fn managed_endpoints(
             if provider_id == default.id {
                 return Err(ChatError::new(
                     ChatErrorKind::Config,
-                    Error::Pi(PiFailure::ProviderUrlMissing { name: provider.name.clone() }),
+                    Error::Pi(PiFailure::ProviderUrlMissing {
+                        name: provider.name.clone(),
+                    }),
                 ));
             }
             continue;
@@ -455,12 +457,7 @@ fn resolve_chat_model(conn: &Connection) -> Result<(ai_store::AiProvider, String
     let binding = ai_store::get_task_binding(conn, ai_store::TASK_CHAT).map_err(db_err)?;
     ai_store::resolve_binding_model(conn, &binding)
         .map_err(db_err)?
-        .ok_or_else(|| {
-            ChatError::new(
-                ChatErrorKind::Config,
-                Error::Pi(PiFailure::ChatModelUnset),
-            )
-        })
+        .ok_or_else(|| ChatError::new(ChatErrorKind::Config, Error::Pi(PiFailure::ChatModelUnset)))
 }
 
 /// `ai_providers.protocol` → Pi 的 `api`。`auto` 在测试连接后会被改写成探测到的协议；未探测时按 Chat Completions。
@@ -763,17 +760,28 @@ mod tests {
         ai_store::set_task_binding(&k.conn, ai_store::TASK_CHAT, None, None).unwrap();
         let err = k.load().unwrap_err();
         assert_eq!(err.kind, ChatErrorKind::Config);
-        assert!(crate::ui_error::test_display::display(&err.message).contains("还没选对话模型"), "{}", err.message);
+        assert!(
+            crate::ui_error::test_display::display(&err.message).contains("还没选对话模型"),
+            "{}",
+            err.message
+        );
 
         ai_store::set_task_binding(&k.conn, ai_store::TASK_CHAT, Some(k.provider), Some("m1"))
             .unwrap();
         k.update(|p| p.base_url = "  ".into());
         let err = k.load().unwrap_err();
         assert_eq!(err.kind, ChatErrorKind::Config);
-        assert!(crate::ui_error::test_display::display(&err.message).contains("main"), "{}", err.message);
+        assert!(
+            crate::ui_error::test_display::display(&err.message).contains("main"),
+            "{}",
+            err.message
+        );
 
         ai_store::delete_provider(&k.conn, k.provider).unwrap();
-        assert!(crate::ui_error::test_display::display(&k.load().unwrap_err().message).contains("还没选对话模型"));
+        assert!(
+            crate::ui_error::test_display::display(&k.load().unwrap_err().message)
+                .contains("还没选对话模型")
+        );
     }
 
     #[test]

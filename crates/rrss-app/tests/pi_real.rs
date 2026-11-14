@@ -527,7 +527,11 @@ async fn real_pi_runs_rrss_turns_through_the_managed_config() {
         let id = rrss_app::mcp::save(&conn, &input).unwrap();
         assert!(rrss_app::mcp::toggle(&conn, &data, id, true).is_err());
         let login = rrss_app::mcp::login(&db_path, &data, id).await;
-        assert!(login.ok, "{}", login.message);
+        assert!(
+            login.ok,
+            "{:?}",
+            login.error.as_ref().map(|error| error.code())
+        );
         assert!(opened.exists());
         assert!(!pi_store::get_mcp_server(&conn, id).unwrap().enabled);
         assert!(rrss_app::mcp::logged_in(

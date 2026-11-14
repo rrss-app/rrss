@@ -58,9 +58,9 @@ pub(crate) fn store_page(
     snapshot: Option<(&Path, &[crate::web_snapshot::SnapshotImage])>,
 ) -> Result<OpenWebLinkView, FulltextError> {
     if snapshot.is_some() && crate::fulltext::detect_waf(html, 200) {
-        return Err(FulltextError::new(
+        return Err(FulltextError::coded(
             FulltextErrorKind::Waf,
-            "页面仍在等待验证",
+            Some(crate::ui_error::reader::ReaderError::FulltextVerifyWaiting.into()),
         ));
     }
     let conn = db::open_at(path).map_err(FulltextError::network)?;
@@ -68,9 +68,12 @@ pub(crate) fn store_page(
     let rule = crate::site_rules::resolve_site_rule(&conn, host).map_err(FulltextError::network)?;
     let extracted = extract::extract_article(html, actual_url, rule.rule.as_ref())?;
     if snapshot.is_some() && !extracted.suspicious.is_empty() {
-        return Err(FulltextError::new(
+        return Err(FulltextError::coded(
             FulltextErrorKind::NotArticle,
-            format!("正文抽取结果可疑：{:?}", extracted.suspicious),
+            Some(crate::ui_error::reader::ReaderError::suspicious(&format!(
+                "{:?}",
+                extracted.suspicious
+            ))),
         ));
     }
     let layer = WebLinkLayer::from_extraction(extracted.layer, rule.user_rule);

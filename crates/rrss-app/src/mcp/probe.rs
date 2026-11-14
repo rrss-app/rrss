@@ -1,6 +1,6 @@
 //! 一次性的 MCP 握手；不写库、不打开服务开关，也不调用工具。
 use crate::ui_error::mcp::{McpProbeHint, McpUiError};
-use crate::{McpInput, McpProbeView, McpToolView, UiError};
+use crate::{McpInput, McpProbeView, McpToolView};
 use anyhow::{Context, Result, bail};
 use rrss_core::{Error, error::McpFailure};
 use rrss_core::{
@@ -347,7 +347,7 @@ async fn handshake(transport: &mut Transport) -> Result<Vec<McpToolView>> {
                 continue;
             }
             if let Some(reason) = error.get("message").and_then(Value::as_str) {
-                bail!(UiError::from(format!("MCP 初始化失败：{reason}")));
+                bail!(McpUiError::rejected(reason, true));
             }
             bail!(McpUiError::InitializeRejected.failure("MCP initialize rejected"));
         }
@@ -382,7 +382,7 @@ async fn handshake(transport: &mut Transport) -> Result<Vec<McpToolView>> {
             .await?;
         if let Some(err) = response.get("error") {
             if let Some(reason) = err.get("message").and_then(Value::as_str) {
-                bail!(UiError::from(format!("读取工具失败：{reason}")));
+                bail!(McpUiError::rejected(reason, false));
             }
             bail!(McpUiError::ToolsRejected.failure("MCP tools request rejected"));
         }
@@ -556,6 +556,10 @@ pub async fn run(db_path: &Path, data_dir: &Path, input: McpInput) -> McpProbeVi
         Err(error) => {
             let mut error = McpUiError::project(error);
             error.detail = clean(&error.detail);
+            crate::ui_error::params::scrub_error_params(
+                &mut error,
+                &secrets.iter().map(String::as_str).collect::<Vec<_>>(),
+            );
             let hint =
                 if input.transport == "sse" || input.url.trim_end_matches('/').ends_with("/sse") {
                     McpProbeHint::Sse

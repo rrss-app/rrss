@@ -107,13 +107,13 @@ async fn test_fetch_is_read_only_and_errors_are_visible() {
     );
     let mut invalid = rule();
     invalid.strip = vec!["[".into()];
-    assert!(
-        test_site_rule(&network, &server.uri(), invalid)
-            .await
-            .unwrap_err()
-            .message
-            .contains("CSS")
-    );
+    let error = test_site_rule(&network, &server.uri(), invalid)
+        .await
+        .unwrap_err()
+        .ui_error();
+    let wire = serde_json::to_value(error).unwrap();
+    assert_eq!(wire["code"], "site_rule_selector_invalid");
+    assert_eq!(wire["params"]["field"], "strip");
     server.reset().await;
     Mock::given(method("GET"))
         .respond_with(ResponseTemplate::new(403))

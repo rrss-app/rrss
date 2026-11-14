@@ -17,11 +17,8 @@ pub struct WebWindowPlan {
     pub javascript: bool,
 }
 
-pub fn title(url: &Url) -> String {
-    format!(
-        "{} · 原网页 — RRSS",
-        url.host_str().unwrap_or("about:blank")
-    )
+pub fn title(_url: &Url) -> String {
+    "web_original_title".into()
 }
 
 pub fn prepare(
@@ -69,10 +66,10 @@ fn abandoned_directories(root: &Path) -> std::io::Result<Vec<PathBuf>> {
 
 impl WebSession {
     /// Keep the main application usable even when browser storage is unavailable.
-    pub fn initialize(data_dir: &Path, run_id: &str) -> std::result::Result<Self, &'static str> {
+    pub fn initialize(data_dir: &Path, run_id: &str) -> Result<Self, UiError> {
         Self::start(data_dir, run_id).map_err(|error| {
             tracing::warn!(error_kind = ?error.kind(), "original-page data directory unavailable");
-            "无法创建原网页数据目录，请检查数据目录权限后重启 RRSS；仍可使用阅读视图或系统浏览器。"
+            WebError::SessionUnavailable.into()
         })
     }
 

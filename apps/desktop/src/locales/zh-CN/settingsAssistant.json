@@ -383,5 +383,7 @@
       "rerankHint": "关闭后只按时间和规则分数排。",
       "note": "兴趣只影响可见文章的评分与排序，不会取消规则隐藏。"
     }
-  }
+  },
+  "piSource": {"standalone": "独立二进制：{{path}}", "standalone_explicit": "独立二进制 · 显式路径：{{path}}", "node": "Node 包装（不推荐，会带上 npm 依赖树）：{{path}}", "node_explicit": "Node 包装（不推荐，会带上 npm 依赖树） · 显式路径：{{path}}", "missing": "未找到 pi 独立二进制。从 GitHub Releases 下载 pi-linux-x64.tar.gz / pi-windows-x64.zip，放到 PATH、与 rrss 同目录，或 ~/.local/share/rrss/bin（Windows：%APPDATA%\\rrss\\bin）。"},
+  "piVersionUnknown": "已找到，未能读取版本"
 }

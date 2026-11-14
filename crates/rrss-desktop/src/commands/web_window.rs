@@ -28,13 +28,13 @@ pub struct WebWindows {
         std::sync::Mutex<BTreeMap<String, std::sync::Arc<super::web_verify::Verification>>>,
 }
 pub(crate) struct WebWindowsInner {
-    pub(crate) session: Result<web_window::WebSession, &'static str>,
+    pub(crate) session: Result<web_window::WebSession, UiError>,
     /// The one original-page child webview, if it exists.
     current: Option<String>,
 }
 
 impl WebWindows {
-    pub fn new(session: Result<web_window::WebSession, &'static str>) -> Self {
+    pub fn new(session: Result<web_window::WebSession, UiError>) -> Self {
         Self {
             inner: Arc::new(Mutex::new(WebWindowsInner {
                 session,

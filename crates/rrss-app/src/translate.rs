@@ -7,6 +7,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
+use crate::ui_error::reader::ReaderError;
 use anyhow::{Context, Result};
 use rrss_ai::translate_json_schema;
 use rrss_core::ai_store::{self, TASK_ARTICLE_TRANSLATE};
@@ -145,9 +146,19 @@ async fn translate_units(
 fn redact_error(error: anyhow::Error, backend: &TranslateBackend) -> anyhow::Error {
     let mut ui = crate::views::UiError::from_anyhow_ref(&error);
     if ui.code() == "legacy_text" {
-        anyhow::anyhow!(redact_backend(&format!("{error:#}"), backend))
+        anyhow::Error::new(crate::UiError::new(
+            crate::UiErrorKind::Common(crate::ui_error::common::CommonError::Internal),
+            "translation backend failed",
+        ))
     } else {
         ui.detail = redact_backend(&ui.detail, backend);
+        let key = match backend {
+            TranslateBackend::Complete => None,
+            TranslateBackend::Http { api_key, .. }
+            | TranslateBackend::DeepLx { api_key, .. }
+            | TranslateBackend::DeepL { api_key, .. } => api_key.as_deref(),
+        };
+        crate::ui_error::params::scrub_error_params(&mut ui, &key.into_iter().collect::<Vec<_>>());
         anyhow::Error::new(ui)
     }
 }
@@ -313,6 +324,14 @@ async fn complete_window<T>(
     .await
 }
 
+fn service_error(error: anyhow::Error) -> crate::UiError {
+    if let Some(status) = error.downcast_ref::<window::HttpStatus>() {
+        ReaderError::TranslateServiceHttp { status: status.0 }.into()
+    } else {
+        error.into()
+    }
+}
+
 /// 在读取正文前拒绝代理认证响应；网络错误只保留安全类别及超时标记。
 async fn read_service_response(resp: reqwest::Response) -> Result<(reqwest::StatusCode, String)> {
     let status = resp.status();
@@ -350,15 +369,21 @@ async fn http_translate(
         .send()
         .await
         .map_err(rrss_ai::Error::from)
-        .context("请求翻译端点失败")?;
+        .map_err(|error| ReaderError::TranslateRequest.caused_by(service_error(error.into())))?;
     let (status, text) = read_service_response(resp)
         .await
-        .context("读取翻译响应失败")?;
+        .map_err(|error| ReaderError::TranslateRead.caused_by(service_error(error.into())))?;
     if !status.is_success() {
-        return Err(anyhow::Error::new(window::HttpStatus(status.as_u16()))
-            .context(format!("翻译端点：{}", truncate_err(&text))));
+        return Err(
+            anyhow::Error::new(window::HttpStatus(status.as_u16())).context(ReaderError::rejected(
+                "http",
+                status.as_u16(),
+                &truncate_err(&text),
+            )),
+        );
     }
-    let parsed: Value = serde_json::from_str(&text).context("翻译响应不是 JSON")?;
+    let parsed: Value = serde_json::from_str(&text)
+        .map_err(|error| ReaderError::translation_json("http", &error.to_string()))?;
     let texts = parse_libretranslate_texts(&parsed, batch.len())?;
     for (unit, t) in batch.into_iter().zip(texts) {
         merged.push(TranslateUnit { i: unit.i, t });
@@ -390,15 +415,23 @@ async fn deeplx_translate(
         .send()
         .await
         .map_err(rrss_ai::Error::from)
-        .context("请求 DeepLX 失败")?;
+        .map_err(|error| {
+            ReaderError::TranslateDeepLxRequest.caused_by(service_error(error.into()))
+        })?;
     let (status, text) = read_service_response(resp)
         .await
-        .context("读取 DeepLX 响应失败")?;
+        .map_err(|error| ReaderError::TranslateDeepLxRead.caused_by(service_error(error.into())))?;
     if !status.is_success() {
-        return Err(anyhow::Error::new(window::HttpStatus(status.as_u16()))
-            .context(format!("DeepLX：{}", truncate_err(&text))));
+        return Err(
+            anyhow::Error::new(window::HttpStatus(status.as_u16())).context(ReaderError::rejected(
+                "deeplx",
+                status.as_u16(),
+                &truncate_err(&text),
+            )),
+        );
     }
-    let parsed: Value = serde_json::from_str(&text).context("DeepLX 响应不是 JSON")?;
+    let parsed: Value = serde_json::from_str(&text)
+        .map_err(|error| ReaderError::translation_json("deeplx", &error.to_string()))?;
     merged.push(TranslateUnit {
         i: unit.i,
         t: parse_deeplx_text(&parsed)?,
@@ -416,7 +449,7 @@ async fn deepl_official_translate(
     let key = api_key
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| anyhow::anyhow!("请在设置 → 翻译中填写 DeepL API Key"))?;
+        .ok_or_else(|| anyhow::anyhow!(ReaderError::TranslateKeyMissing.into_ui()))?;
     let url = resolve_deepl_official_url(base_url, key);
     let target = deepl_official_target_lang(target_lang);
     let mut merged = Vec::new();
@@ -430,16 +463,19 @@ async fn deepl_official_translate(
         .send()
         .await
         .map_err(rrss_ai::Error::from)
-        .context("请求 DeepL 官方端点失败")?;
+        .map_err(|error| {
+            ReaderError::TranslateDeepLRequest.caused_by(service_error(error.into()))
+        })?;
     let (status, text) = read_service_response(resp)
         .await
-        .context("读取 DeepL 官方响应失败")?;
+        .map_err(|error| ReaderError::TranslateDeepLRead.caused_by(service_error(error.into())))?;
     if !status.is_success() {
         let detail = parse_deepl_error(&text).unwrap_or_else(|| truncate_err(&text));
         return Err(anyhow::Error::new(window::HttpStatus(status.as_u16()))
-            .context(format!("DeepL：{detail}")));
+            .context(ReaderError::rejected("deepl", status.as_u16(), &detail)));
     }
-    let parsed: Value = serde_json::from_str(&text).context("DeepL 官方响应不是 JSON")?;
+    let parsed: Value = serde_json::from_str(&text)
+        .map_err(|error| ReaderError::translation_json("deepl", &error.to_string()))?;
     let translated_texts = parse_deepl_official_translations(&parsed, batch.len())?;
     for (unit, t) in batch.into_iter().zip(translated_texts) {
         merged.push(TranslateUnit { i: unit.i, t });
@@ -530,7 +566,7 @@ fn parse_deepl_official_translations(value: &Value, expected: usize) -> Result<V
     let arr = value
         .get("translations")
         .and_then(Value::as_array)
-        .context("DeepL 响应缺少 translations 数组")?;
+        .context(ReaderError::TranslateArrayMissing.into_ui())?;
     let texts: Vec<String> = arr
         .iter()
         .filter_map(|item| item.get("text").and_then(Value::as_str))
@@ -538,9 +574,11 @@ fn parse_deepl_official_translations(value: &Value, expected: usize) -> Result<V
         .collect();
     if texts.len() != expected {
         anyhow::bail!(
-            "DeepL 官方返回条数与原文不一致（{} vs {}）",
-            texts.len(),
-            expected
+            ReaderError::TranslateDeeplCount {
+                actual: texts.len(),
+                expected
+            }
+            .into_ui()
         );
     }
     Ok(texts)
@@ -557,7 +595,7 @@ fn parse_deepl_error(raw: &str) -> Option<String> {
 fn http_translate_url(base: &str) -> Result<String> {
     let t = base.trim();
     if t.is_empty() {
-        anyhow::bail!("请在设置 → 翻译里填写 HTTP 端点");
+        anyhow::bail!(ReaderError::TranslateEndpointMissing.into_ui());
     }
     let t = t.trim_end_matches('/');
     if t.rsplit('/').next() == Some("translate") {
@@ -589,26 +627,22 @@ fn deepl_target_lang(lang: &str) -> String {
 fn parse_deeplx_text(value: &Value) -> Result<String> {
     let code = value.get("code").and_then(Value::as_i64).unwrap_or(200);
     if code != 200 {
-        let msg = value
-            .get("message")
-            .and_then(Value::as_str)
-            .unwrap_or("翻译失败");
-        anyhow::bail!("DeepLX {code}：{msg}");
+        return Err(ReaderError::remote(code, value.get("message").and_then(Value::as_str)).into());
     }
     match value.get("data") {
         Some(Value::String(s)) if !s.is_empty() => Ok(s.clone()),
-        _ => anyhow::bail!("DeepLX 响应缺少 data"),
+        _ => anyhow::bail!(ReaderError::TranslateDataMissing.into_ui()),
     }
 }
 
 fn parse_libretranslate_texts(value: &Value, expected: usize) -> Result<Vec<String>> {
     if let Some(err) = value.get("error").and_then(Value::as_str) {
-        anyhow::bail!("{err}");
+        return Err(ReaderError::remote_reason(err).into());
     }
     let raw = value
         .get("translatedText")
         .or_else(|| value.get("translated_text"))
-        .context("翻译响应缺少 translatedText")?;
+        .context(ReaderError::TranslateTextMissing.into_ui())?;
     let texts = match raw {
         Value::String(s) => vec![s.clone()],
         Value::Array(arr) => arr
@@ -616,13 +650,15 @@ fn parse_libretranslate_texts(value: &Value, expected: usize) -> Result<Vec<Stri
             .filter_map(Value::as_str)
             .map(str::to_string)
             .collect(),
-        _ => anyhow::bail!("translatedText 格式无法识别"),
+        _ => anyhow::bail!(ReaderError::TranslateTextInvalid.into_ui()),
     };
     if texts.len() != expected {
         anyhow::bail!(
-            "HTTP 翻译返回条数与原文不一致（{} vs {}）",
-            texts.len(),
-            expected
+            ReaderError::TranslateHttpCount {
+                actual: texts.len(),
+                expected
+            }
+            .into_ui()
         );
     }
     Ok(texts)
@@ -635,7 +671,7 @@ fn truncate_err(s: &str) -> String {
 
 fn parse_units(parsed: &Value) -> Result<Vec<TranslateUnit>> {
     serde_json::from_value(parsed.get("units").cloned().unwrap_or(Value::Null))
-        .map_err(|_| anyhow::anyhow!("翻译服务返回的段落格式无效"))
+        .map_err(|_| anyhow::anyhow!(ReaderError::TranslateUnitsInvalid.into_ui()))
 }
 
 // T1a 仍整篇返回，缺项或重复不能作为完整缓存；T1b 再按单元保留局部成功。
@@ -646,7 +682,7 @@ fn validate_units(source: &[TranslateUnit], translated: &[TranslateUnit]) -> Res
         || actual != expected
         || translated.iter().any(|unit| unit.t.trim().is_empty())
     {
-        anyhow::bail!("翻译服务返回的段落缺失、重复或为空，请重试");
+        anyhow::bail!(ReaderError::TranslateUnitsMissing.into_ui());
     }
     Ok(())
 }
@@ -690,7 +726,7 @@ pub async fn test_translate(db_path: &Path, client: &reqwest::Client) -> Result<
         .next()
         .map(|u| u.t)
         .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| anyhow::anyhow!("端点没有返回译文"))?;
+        .ok_or_else(|| anyhow::anyhow!(ReaderError::TranslateOutputEmpty.into_ui()))?;
     tracing::info!("translation backend test succeeded");
     let translated = redact_backend(&translated, &config.backend);
     Ok(translated)

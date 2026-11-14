@@ -2,10 +2,10 @@
 
 use std::path::PathBuf;
 
-pub mod models;
-pub mod settings;
-pub mod rules;
 pub mod backup;
+pub mod models;
+pub mod rules;
+pub mod settings;
 
 /// `rrss-core` 可恢复 / 应上报的失败。
 #[derive(Debug, thiserror::Error)]
@@ -120,6 +120,8 @@ pub enum Error {
     /// Dispatch paused locally; retain the admitted claim for a later retry.
     #[error("network unavailable; check proxy settings if configured")]
     FetchPaused,
+    #[error("translation failure: {0:?}")]
+    Translation(TranslationFailure),
     #[error("pi failure: {0:?}")]
     Pi(PiFailure),
     #[error("mcp failure: {0:?}")]
@@ -182,13 +184,46 @@ pub enum PiFailure {
 /// Structured failures projected by the application UI error boundary.
 #[derive(Debug, Clone)]
 pub enum McpFailure {
+    ConfigurationInvalid,
+    VariableNameInvalid,
+    VariableValueInvalid,
+    VariableDuplicate,
+    NameInvalid,
+    TransportInvalid,
+    AuthInvalid,
+    OAuthTransport,
+    ToolWildcard,
+    OAuthHeader,
+    CommandInvalid,
+    UrlInvalid,
+    UrlCredentials,
+    NameDuplicate,
+    JsonInvalid,
+    ServersObjectMissing,
+    ServersEmpty,
+    ServerObjectRequired,
+    TextFieldInvalid,
+    ArrayFieldInvalid,
+    MapFieldInvalid,
+    EnableLoginRequired,
+    Import {
+        name: String,
+        reason: Box<McpFailure>,
+    },
     MessageTooLarge,
     CommandPathInvalid,
     SpawnFailed,
-    ProcessExit { elapsed_ms: u64, status: i32 },
-    ProcessKilled { elapsed_ms: u64 },
+    ProcessExit {
+        elapsed_ms: u64,
+        status: i32,
+    },
+    ProcessKilled {
+        elapsed_ms: u64,
+    },
     OutputClosed,
-    HttpStatus { status: u16 },
+    HttpStatus {
+        status: u16,
+    },
     ConnectFailed,
     ResponseTooLarge,
     StreamClosed,
@@ -282,6 +317,13 @@ pub enum JobFailure {
 /// Structured failures projected by the application UI error boundary.
 #[derive(Debug, Clone)]
 pub enum WebFailure {
+    SiteInputDomainInvalid,
+    SiteSelectorInvalid { field: String },
+    SiteUrlInvalid,
+    SiteHttpOnly,
+    SiteTestUrlInvalid,
+    SiteTestFailed,
+
     OperationFailed,
     BoundsInvalid,
     DataClearFailed,
@@ -342,4 +384,14 @@ pub enum HostFailure {
     LogNotInitialized,
     LogLevelUnavailable,
     LogUnavailable,
+}
+
+/// Translation cache and configuration failures without display text.
+#[derive(Debug, Clone)]
+pub enum TranslationFailure {
+    UrlInvalid,
+    SchemeUnsupported,
+    InputChanged,
+    ResultIncomplete,
+    CacheEncode,
 }

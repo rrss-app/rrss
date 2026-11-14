@@ -1019,7 +1019,10 @@ mod tests {
         let error = queue.next().await.unwrap().unwrap_err();
         assert!(matches!(
             error.downcast_ref::<rrss_ai::Error>(),
-            Some(rrss_ai::Error::Request { timeout: true, .. })
+            Some(rrss_ai::Error::Request {
+                kind: rrss_ai::complete::RequestKind::Timeout,
+                ..
+            })
         ));
         assert!(queue.next().await.is_none());
         assert_eq!(server.received_requests().await.unwrap().len(), 2);

@@ -2,6 +2,13 @@ use super::{UiError, UiErrorKind};
 use rrss_core::{Error, error::WebFailure};
 
 error_codes!(WebError {
+    SiteInputDomainInvalid => "site_rule_input_domain_invalid",
+    SiteSelectorInvalid { field: String } => "site_rule_selector_invalid",
+    SiteUrlInvalid => "site_rule_url_invalid",
+    SiteHttpOnly => "site_rule_http_only",
+    SiteTestUrlInvalid => "site_rule_test_url_invalid",
+    SiteTestFailed => "site_rule_test_failed",
+
     SnapshotUnimplemented => "web_snapshot_unimplemented",
     SnapshotTimeout => "web_snapshot_timeout",
     TitleReadFailed => "web_title_read_failed",
@@ -59,8 +66,18 @@ impl From<WebError> for UiError {
 }
 
 pub(super) fn classify(error: &Error) -> Option<UiErrorKind> {
-    let Error::Web(reason) = error else { return None };
+    let Error::Web(reason) = error else {
+        return None;
+    };
     Some(UiErrorKind::Web(match reason {
+        WebFailure::SiteInputDomainInvalid => WebError::SiteInputDomainInvalid,
+        WebFailure::SiteSelectorInvalid { field } => WebError::SiteSelectorInvalid {
+            field: super::params::name(field),
+        },
+        WebFailure::SiteUrlInvalid => WebError::SiteUrlInvalid,
+        WebFailure::SiteHttpOnly => WebError::SiteHttpOnly,
+        WebFailure::SiteTestUrlInvalid => WebError::SiteTestUrlInvalid,
+        WebFailure::SiteTestFailed => WebError::SiteTestFailed,
         WebFailure::OperationFailed => WebError::OperationFailed,
         WebFailure::BoundsInvalid => WebError::BoundsInvalid,
         WebFailure::DataClearFailed => WebError::DataClearFailed,
@@ -101,17 +118,47 @@ pub(super) fn classify(error: &Error) -> Option<UiErrorKind> {
         WebFailure::HtmlMissing => WebError::SnapshotHtmlMissing,
         WebFailure::SnapshotUrlInvalid => WebError::SnapshotUrlInvalid,
         WebFailure::SnapshotSchemeUnsupported => WebError::SnapshotHttpOnly,
-        WebFailure::FulltextWaf => return Some(UiErrorKind::Reader(super::reader::ReaderError::FulltextWaf)),
-        WebFailure::FulltextNetwork => return Some(UiErrorKind::Reader(super::reader::ReaderError::FulltextNetwork)),
-        WebFailure::FulltextEmpty => return Some(UiErrorKind::Reader(super::reader::ReaderError::FulltextEmpty)),
-        WebFailure::FulltextNotArticle => return Some(UiErrorKind::Reader(super::reader::ReaderError::FulltextNotArticle)),
+        WebFailure::FulltextWaf => {
+            return Some(UiErrorKind::Reader(super::reader::ReaderError::FulltextWaf));
+        }
+        WebFailure::FulltextNetwork => {
+            return Some(UiErrorKind::Reader(
+                super::reader::ReaderError::FulltextNetwork,
+            ));
+        }
+        WebFailure::FulltextEmpty => {
+            return Some(UiErrorKind::Reader(
+                super::reader::ReaderError::FulltextEmpty,
+            ));
+        }
+        WebFailure::FulltextNotArticle => {
+            return Some(UiErrorKind::Reader(
+                super::reader::ReaderError::FulltextNotArticle,
+            ));
+        }
         WebFailure::FulltextProxyAuth => WebError::FulltextProxyAuth,
         WebFailure::FulltextTooLarge => WebError::FulltextTooLarge,
-        WebFailure::ContentBusy => return Some(UiErrorKind::Reader(super::reader::ReaderError::ContentBusy)),
-        WebFailure::DirectTooLarge => return Some(UiErrorKind::Reader(super::reader::ReaderError::DirectTooLarge)),
-        WebFailure::DirectNotSupported => return Some(UiErrorKind::Reader(super::reader::ReaderError::DirectNotDirect)),
-        WebFailure::DirectHttp { status } => return Some(UiErrorKind::Reader(super::reader::ReaderError::DirectHttp { status: *status })),
-        WebFailure::DirectStore => return Some(UiErrorKind::Reader(super::reader::ReaderError::DirectStore)),
+        WebFailure::ContentBusy => {
+            return Some(UiErrorKind::Reader(super::reader::ReaderError::ContentBusy));
+        }
+        WebFailure::DirectTooLarge => {
+            return Some(UiErrorKind::Reader(
+                super::reader::ReaderError::DirectTooLarge,
+            ));
+        }
+        WebFailure::DirectNotSupported => {
+            return Some(UiErrorKind::Reader(
+                super::reader::ReaderError::DirectNotDirect,
+            ));
+        }
+        WebFailure::DirectHttp { status } => {
+            return Some(UiErrorKind::Reader(
+                super::reader::ReaderError::DirectHttp { status: *status },
+            ));
+        }
+        WebFailure::DirectStore => {
+            return Some(UiErrorKind::Reader(super::reader::ReaderError::DirectStore));
+        }
     }))
 }
 
@@ -175,35 +222,9 @@ mod tests {
     }
 }
 
-// The archive parser retains its existing internal string contract. Convert only
-// its fixed vocabulary here; never treat an arbitrary diagnostic as a parameter.
-pub fn snapshot_error(message: String) -> UiError {
-    match message.as_str() {
-        crate::web_snapshot::WEB_SNAPSHOT_TOO_LARGE => WebError::SnapshotTooLarge.into(),
-        crate::web_snapshot::WEB_SNAPSHOT_MIME_LIMIT => WebError::SnapshotMimeLimit.into(),
-        crate::web_snapshot::WEB_SNAPSHOT_HEADERS_INVALID => {
-            WebError::SnapshotHeadersInvalid.into()
-        }
-        crate::web_snapshot::WEB_SNAPSHOT_CONTENT_TYPE_MISSING => {
-            WebError::SnapshotContentTypeMissing.into()
-        }
-        crate::web_snapshot::WEB_SNAPSHOT_BOUNDARY_MISSING => {
-            WebError::SnapshotBoundaryMissing.into()
-        }
-        crate::web_snapshot::WEB_SNAPSHOT_BOUNDARY_INVALID => {
-            WebError::SnapshotBoundaryInvalid.into()
-        }
-        crate::web_snapshot::WEB_SNAPSHOT_INCOMPLETE => WebError::SnapshotIncomplete.into(),
-        crate::web_snapshot::WEB_SNAPSHOT_BASE64_INVALID => WebError::SnapshotBase64Invalid.into(),
-        crate::web_snapshot::WEB_SNAPSHOT_QUOTED_PRINTABLE_INVALID => {
-            WebError::SnapshotQuotedPrintableInvalid.into()
-        }
-        crate::web_snapshot::WEB_SNAPSHOT_ENCODING_UNSUPPORTED => {
-            WebError::SnapshotEncodingUnsupported.into()
-        }
-        crate::web_snapshot::WEB_SNAPSHOT_HTML_MISSING => WebError::SnapshotHtmlMissing.into(),
-        _ => UiError::from(message),
-    }
+// Parser failures already carry the domain variant.
+pub fn snapshot_error(error: WebError) -> UiError {
+    error.into()
 }
 
 #[cfg(test)]

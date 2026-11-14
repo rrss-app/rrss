@@ -202,6 +202,7 @@ async fn ensure_from(
             report(data_dir, |s| {
                 s.state = "failed".into();
                 s.message.clear();
+                s.notice = None;
                 s.error = Some(error);
             });
         }
@@ -210,10 +211,11 @@ async fn ensure_from(
     result
 }
 
-fn report_done(data_dir: &Path, message: String) {
+fn report_done(data_dir: &Path, notice: UiError) {
     report(data_dir, |s| {
         s.state = "done".into();
-        s.message = message;
+        s.message.clear();
+        s.notice = Some(notice);
         s.error = None;
     });
 }
@@ -316,20 +318,24 @@ async fn install_version(
     read_pi_version(&managed_executable(data_dir))
 }
 
-pub fn format_report(report: &EnsureReport) -> String {
-    match report {
-        EnsureReport::UpToDate { version } => {
-            if version.is_empty() {
-                "Pi 已就绪".into()
-            } else {
-                format!("Pi 已是最新（{version}）")
-            }
-        }
-        EnsureReport::Downloaded { version } => format!("已下载 Pi {version}"),
-        EnsureReport::Updated { from, to } => format!("已更新 Pi {from} → {to}"),
-        EnsureReport::SkippedCustomPath => "使用自定义 pi 路径，未自动管理".into(),
-        EnsureReport::MissingDisabled => "未找到 Pi；可在设置中开启自动下载".into(),
-    }
+pub fn format_report(report: &EnsureReport) -> UiError {
+    use crate::ui_error::params;
+    let kind = match report {
+        EnsureReport::UpToDate { version } if version.is_empty() => PiUiError::Ready,
+        EnsureReport::UpToDate { version } => PiUiError::UpToDate {
+            version: params::name(version),
+        },
+        EnsureReport::Downloaded { version } => PiUiError::Downloaded {
+            version: params::name(version),
+        },
+        EnsureReport::Updated { from, to } => PiUiError::Updated {
+            from: params::name(from),
+            to: params::name(to),
+        },
+        EnsureReport::SkippedCustomPath => PiUiError::CustomUnmanaged,
+        EnsureReport::MissingDisabled => PiUiError::MissingDisabled,
+    };
+    kind.failure("pi installation completed")
 }
 
 /// 兼容线内最新的正式版本（只在自动更新打开时查询 GitHub API）。
@@ -553,9 +559,7 @@ async fn verify_sha256(
     hasher.update(bytes);
     let got = format!("{:x}", hasher.finalize());
     if got != expected {
-        bail!(UiError::from(format!(
-            "SHA256 校验失败：期望 {expected}，得到 {got}"
-        )));
+        bail!(PiUiError::checksum(&expected, &got));
     }
     Ok(())
 }
@@ -850,7 +854,7 @@ mod tests {
             proxy.verify().await;
         }
         assert!(origin.received_requests().await.unwrap().is_empty());
-        report_done(dir.path(), String::new());
+        report_done(dir.path(), PiUiError::Ready.failure("ready"));
     }
 
     #[tokio::test]
@@ -894,7 +898,7 @@ mod tests {
                 "connect"
             );
         }
-        report_done(dir.path(), String::new());
+        report_done(dir.path(), PiUiError::Ready.failure("ready"));
     }
 
     #[tokio::test]
@@ -957,7 +961,7 @@ mod tests {
             server.await.unwrap();
         }
         assert!(origin.received_requests().await.unwrap().is_empty());
-        report_done(dir.path(), String::new());
+        report_done(dir.path(), PiUiError::Ready.failure("ready"));
     }
 
     #[test]
@@ -1008,11 +1012,18 @@ mod tests {
         let status = install_status(dir.path());
         assert_eq!(status.state, "downloading");
         assert_eq!(status.dir, pi_pkg_dir(dir.path()).display().to_string());
-        report_done(dir.path(), "已下载 Pi 0.87.1".into());
+        report_done(
+            dir.path(),
+            format_report(&EnsureReport::Downloaded {
+                version: "0.87.1".into(),
+            }),
+        );
         assert!(!install_running());
-        assert_eq!(install_status(dir.path()).message, "已下载 Pi 0.87.1");
+        let wire = serde_json::to_value(install_status(dir.path()).notice.unwrap()).unwrap();
+        assert_eq!(wire["code"], "pi_downloaded");
+        assert_eq!(wire["params"]["version"], "0.87.1");
         assert!(begin_install(dir.path()));
-        report_done(dir.path(), String::new());
+        report_done(dir.path(), PiUiError::Ready.failure("ready"));
     }
 
     #[test]

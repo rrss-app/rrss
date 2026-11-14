@@ -124,9 +124,12 @@ impl GeneratedFile {
 pub fn write_files(paths: &WorkspacePaths, files: &[GeneratedFile]) -> Result<()> {
     // Login and a conversation may both regenerate agent/mcp.json.
     static WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _write = WRITES
-        .lock()
-        .map_err(|_| anyhow::Error::new(crate::ui_error::pi::PiUiError::ConfigWriteLock.failure("pi config write lock poisoned")))?;
+    let _write = WRITES.lock().map_err(|_| {
+        anyhow::Error::new(
+            crate::ui_error::pi::PiUiError::ConfigWriteLock
+                .failure("pi config write lock poisoned"),
+        )
+    })?;
     for dir in [
         &paths.agent,
         &paths.project,
@@ -134,7 +137,8 @@ pub fn write_files(paths: &WorkspacePaths, files: &[GeneratedFile]) -> Result<()
         &paths.user_skills,
         &paths.sessions,
     ] {
-        std::fs::create_dir_all(dir).with_context(|| format!("创建 {}", dir.display()))?;
+        std::fs::create_dir_all(dir)
+            .with_context(|| crate::ui_error::pi::PiUiError::workspace("create", dir))?;
     }
     let staging = paths.root.join(format!(".staging-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&staging);
@@ -146,23 +150,27 @@ pub fn write_files(paths: &WorkspacePaths, files: &[GeneratedFile]) -> Result<()
                     .components()
                     .any(|c| matches!(c, std::path::Component::ParentDir))
             {
-                anyhow::bail!("生成文件路径越界：{}", file.path.display());
+                anyhow::bail!(crate::ui_error::pi::PiUiError::workspace(
+                    "bounds", &file.path
+                ));
             }
             let staged = staging.join(i.to_string());
-            std::fs::create_dir_all(&staging)?;
+            std::fs::create_dir_all(&staging)
+                .with_context(|| crate::ui_error::pi::PiUiError::workspace("create", &staging))?;
             std::fs::write(&staged, &file.contents)
-                .with_context(|| format!("写入 {}", file.path.display()))?;
+                .with_context(|| crate::ui_error::pi::PiUiError::workspace("write", &file.path))?;
         }
         for (i, file) in files.iter().enumerate() {
             let dest = paths.root.join(&file.path);
             if let Some(parent) = dest.parent() {
-                std::fs::create_dir_all(parent)?;
+                std::fs::create_dir_all(parent)
+                    .with_context(|| crate::ui_error::pi::PiUiError::workspace("create", parent))?;
             }
             if std::fs::read(&dest).ok().as_deref() == Some(file.contents.as_slice()) {
                 continue;
             }
             std::fs::rename(staging.join(i.to_string()), &dest)
-                .with_context(|| format!("替换 {}", dest.display()))?;
+                .with_context(|| crate::ui_error::pi::PiUiError::workspace("replace", &dest))?;
         }
         Ok(())
     })();
@@ -191,16 +199,18 @@ pub fn migrate_legacy_skills(data_dir: &Path) -> Result<()> {
     let entries = match std::fs::read_dir(legacy_skills_root(data_dir)) {
         Ok(entries) => Some(entries),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
-        Err(err) => return Err(err).context("read legacy skill directory; preserve legacy project"),
+        Err(err) => {
+            return Err(err).context("read legacy skill directory; preserve legacy project");
+        }
     };
     if let Some(entries) = entries {
         for entry in entries {
-            let entry = entry.context("read legacy skill directory entry; preserve legacy project")?;
+            let entry =
+                entry.context("read legacy skill directory entry; preserve legacy project")?;
             let from = entry.path();
-            let name = entry
-                .file_name()
-                .into_string()
-                .map_err(|_| anyhow::anyhow!("legacy skill name is not UTF-8; preserve legacy project"))?;
+            let name = entry.file_name().into_string().map_err(|_| {
+                anyhow::anyhow!("legacy skill name is not UTF-8; preserve legacy project")
+            })?;
             if !entry.file_type()?.is_dir() || name.starts_with('_') {
                 continue;
             }
@@ -219,12 +229,16 @@ pub fn migrate_legacy_skills(data_dir: &Path) -> Result<()> {
                 }
                 copy_dir(&from, &staged).with_context(|| format!("migrate skill {name}"))?;
                 if to.try_exists()? {
-                    anyhow::bail!("target skill directory {name} incomplete; preserve legacy project");
+                    anyhow::bail!(
+                        "target skill directory {name} incomplete; preserve legacy project"
+                    );
                 }
                 std::fs::rename(&staged, &to)?;
             }
             if !std::fs::metadata(to.join("SKILL.md"))?.is_file() {
-                anyhow::bail!("skill {name} validation after migration failed; preserve legacy project");
+                anyhow::bail!(
+                    "skill {name} validation after migration failed; preserve legacy project"
+                );
             }
         }
     }
@@ -300,7 +314,7 @@ mod tests {
             ],
         )
         .unwrap_err();
-        assert!(format!("{err:#}").contains("越界"), "{err:#}");
+        assert_eq!(crate::UiError::from(err).code(), "pi_workspace_bounds");
         assert_eq!(
             std::fs::read_to_string(paths.agent_settings()).unwrap(),
             "old"

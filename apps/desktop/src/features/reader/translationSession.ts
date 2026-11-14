@@ -2,6 +2,7 @@ import type { ReaderView, TranslationCommandError, TranslationEvent, Translation
 import { i18n } from "../../i18n";
 import { createTranslationViewport } from "./translationViewport";
 import { api, onTranslationEvent } from "../../lib/api";
+import { formatError } from "../../lib/errors";
 import { formatNotice } from "../../lib/notice";
 import { applyTranslationEvent, restoreTranslation, sameTranslation, translationActive, type TranslationData } from "./translationState";
 
@@ -32,9 +33,9 @@ export function createTranslationSession(reader: ReaderView, changed: (view: Tra
   const clearBuffer = () => { buffer = []; bytes = 0; overflow = false; };
   const fail = (error: unknown, connection: boolean) => {
     disconnected = connection; issue = true;
-    const typed = error && typeof error === "object" && "kind" in error && "message" in error ? error as TranslationCommandError : null;
+    const typed = error && typeof error === "object" && "kind" in error ? error as TranslationCommandError : null;
     failure = typed?.kind ?? null;
-    note = connection ? i18n.t("translation.disconnected", { ns: "reader" }) : formatNotice(i18n.t("translation.failedPrefix", { ns: "reader" }), typed?.error ?? typed?.message ?? error);
+    note = connection ? i18n.t("translation.disconnected", { ns: "reader" }) : formatNotice(i18n.t("translation.failedPrefix", { ns: "reader" }), typed?.error ?? error);
     clearTimeout(timer); clearBuffer(); publish();
   };
   const schedule = () => {
@@ -71,7 +72,7 @@ export function createTranslationSession(reader: ReaderView, changed: (view: Tra
     if (reply.reader.id !== reader.id) throw new Error(i18n.t("translation.articleMismatch", { ns: "reader" }));
     if (reply.reader.source_hash !== reader.source_hash) { sourceChanged(reply.reader); return false; }
     reconcileAfter = Math.max(1000, reply.reconcile_after_ms);
-    note = reply.note; issue = reply.kind === "missing" && !!note; failure = null;
+    note = reply.notice ? formatError(reply.notice) : ""; issue = reply.kind === "missing" && !!note; failure = null;
     if (reply.snapshot) {
       if (data && sameTranslation(data.snapshot.identity, reply.snapshot.identity) && reply.snapshot.seq < data.snapshot.seq) throw new Error(i18n.t("translation.snapshotStale", { ns: "reader" }));
       data = restoreTranslation(reply.reader, reply.snapshot, data);

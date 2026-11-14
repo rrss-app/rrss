@@ -224,7 +224,7 @@ pub(crate) async fn execute_prepared_with_policy<T>(
     drop(usage_send);
     usage_task.await??;
     let out = response.map_err(|err| {
-        let failure = crate::ui_error::jobs::from_ai(&err, "");
+        let failure = crate::ui_error::jobs::from_ai(&err);
         if matches!(err, rrss_ai::Error::BudgetExhausted | rrss_ai::Error::ServiceCooldown | rrss_ai::Error::Capacity | rrss_ai::Error::Admission(_)) {
             tracing::debug!(task = %prepared.resolved.task, code = failure.code(), detail = %failure.log_detail(), "ai complete task paused");
         } else {
@@ -253,7 +253,10 @@ pub(crate) async fn execute_prepared_with_policy<T>(
         })
     })
     .await?;
-    anyhow::ensure!(current, rrss_core::Error::Jobs(rrss_core::error::JobFailure::ConfigChanged));
+    anyhow::ensure!(
+        current,
+        rrss_core::Error::Jobs(rrss_core::error::JobFailure::ConfigChanged)
+    );
     checked.map(|(out, _)| out)
 }
 

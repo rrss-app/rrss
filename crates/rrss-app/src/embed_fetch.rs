@@ -23,8 +23,6 @@ pub struct CoverMeta {
     pub open_url: String,
 }
 
-pub(crate) const CONTENT_BUSY_MESSAGE: &str = "内容网络繁忙，请稍后重试";
-
 #[derive(Debug, Clone)]
 pub enum DirectFail {
     TooLarge,
@@ -210,7 +208,7 @@ pub async fn fetch_official_cover(
         .clone()
         .acquire(crate::scheduler::model_capacity::Priority::Interactive)
         .await
-        .map_err(|_| FetchFail::Network(CONTENT_BUSY_MESSAGE.into()))?;
+        .map_err(|_| FetchFail::Network("content capacity busy".into()))?;
     let body = get_text(client, &request_url, referer).await?;
     drop(permit);
     let meta = if bilibili {
@@ -300,7 +298,7 @@ pub async fn download_direct(
     let dest = media::cache_path(data_dir, &url);
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)
-            .map_err(|err| DirectFail::Network(crate::UiError::from(err.to_string())))?;
+            .map_err(|err| DirectFail::Network(crate::UiError::from(rrss_core::Error::Io(err))))?;
     }
     let tmp = dest.with_extension("part");
     // 网络中断或取消时同样清理半成品，不把失败下载留在缓存目录。
@@ -312,7 +310,7 @@ pub async fn download_direct(
     }
     let _partial = PartialFile(tmp.clone());
     let mut file = std::fs::File::create(&tmp)
-        .map_err(|err| DirectFail::Network(crate::UiError::from(err.to_string())))?;
+        .map_err(|err| DirectFail::Network(crate::UiError::from(rrss_core::Error::Io(err))))?;
     let mut got = 0u64;
     loop {
         let chunk = resp.chunk().await.map_err(|err| {
@@ -328,7 +326,7 @@ pub async fn download_direct(
             return Err(DirectFail::TooLarge);
         }
         std::io::Write::write_all(&mut file, &chunk)
-            .map_err(|err| DirectFail::Network(crate::UiError::from(err.to_string())))?;
+            .map_err(|err| DirectFail::Network(crate::UiError::from(rrss_core::Error::Io(err))))?;
     }
     drop(file);
     drop(permit);

@@ -285,7 +285,7 @@ describe("images", () => {
     vi.spyOn(api, "retryImage").mockImplementation(() => pending.promise);
     const opened = vi.spyOn(window, "open").mockImplementation(() => null);
     function Harness() {
-      const [media, setMedia] = useState([{ src, href: "", width: null as number | null, height: null as number | null, error: "解码失败" }]);
+      const [media, setMedia] = useState([{ src, href: "", width: null as number | null, height: null as number | null, error: "image_decode_failed" }]);
       return (
         <BlockView
           articleId={3}

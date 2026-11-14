@@ -42,7 +42,7 @@ it("retains completed logins during another write, then enables each service in 
   harness.mount(<StrictMode><Screen /></StrictMode>);
   act(() => { startLogin(7); startLogin(8); });
   await harness.flush();
-  first.resolve({ ok: true, message: "" }); second.resolve({ ok: true, message: "" });
+  first.resolve({ ok: true }); second.resolve({ ok: true });
   await harness.flush();
   expect(enabled).toEqual([]);
   act(() => unlock());
@@ -78,7 +78,7 @@ it("keeps a successful login when the write channel becomes busy before the effe
   harness.mount(<StrictMode><Screen /></StrictMode>);
   act(() => startLogin(7));
   await harness.flush();
-  login.resolve({ ok: true, message: "" });
+  login.resolve({ ok: true });
   await harness.flush();
   expect(enabled).toEqual([]);
   expect(probed).toEqual([]);
@@ -90,7 +90,7 @@ it("keeps a successful login when the write channel becomes busy before the effe
 
 it("consumes a real enable failure and allows the next login to proceed", async () => {
   const stub = box.stub = createApiStub();
-  stub.handle("loginMcp", () => ({ ok: true, message: "" }));
+  stub.handle("loginMcp", () => ({ ok: true }));
   const probed: number[] = [];
   stub.handle("probeMcp", (input) => {
     probed.push(input.id);

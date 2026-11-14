@@ -566,16 +566,16 @@ pub fn delete_user_skill(data_dir: &Path, name: &str) -> Result<()> {
 }
 
 fn describe_pi_source(explicit: Option<&str>, path: &Path) -> String {
-    let kind = if is_standalone_binary(path) {
-        "独立二进制"
-    } else {
-        "Node 包装（不推荐，会带上 npm 依赖树）"
-    };
-    if explicit.map(str::trim).filter(|s| !s.is_empty()).is_some() {
-        format!("{kind} · 显式路径：{}", path.display())
-    } else {
-        format!("{kind}：{}", path.display())
+    match (
+        is_standalone_binary(path),
+        explicit.is_some_and(|s| !s.trim().is_empty()),
+    ) {
+        (true, false) => "standalone",
+        (true, true) => "standalone_explicit",
+        (false, false) => "node",
+        (false, true) => "node_explicit",
     }
+    .into()
 }
 
 pub fn probe_pi_version(explicit: Option<&str>) -> (String, String, String) {
@@ -589,7 +589,7 @@ pub fn probe_pi_version(explicit: Option<&str>) -> (String, String, String) {
             .ok()
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "已找到，未能读取版本".into());
+            .unwrap_or_else(|| String::new());
             (source, version, path.display().to_string())
         }
         None => (PI_NOT_FOUND_HINT.into(), String::new(), String::new()),
@@ -604,7 +604,7 @@ pub fn locate_pi(explicit: Option<&str>) -> (String, Option<PathBuf>) {
     }
 }
 
-const PI_NOT_FOUND_HINT: &str = "未找到 pi 独立二进制。从 GitHub Releases 下载 pi-linux-x64.tar.gz / pi-windows-x64.zip，放到 PATH、与 rrss 同目录，或 ~/.local/share/rrss/bin（Windows：%APPDATA%\\rrss\\bin）。";
+const PI_NOT_FOUND_HINT: &str = "missing";
 
 #[cfg(test)]
 mod tests {

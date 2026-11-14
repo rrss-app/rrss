@@ -303,7 +303,7 @@ mod tests {
         assert!(refs[0].error.is_empty());
         assert_eq!(refs[1].src, bad);
         assert!(refs[1].href.is_empty());
-        assert_eq!(refs[1].error, "HTTP 5xx");
+        assert_eq!(refs[1].error, "image_http_5xx");
         {
             let events = events.lock().unwrap();
             assert_eq!(events.len(), 2);
@@ -314,7 +314,7 @@ mod tests {
                 serde_json::to_value(&good_event.media).unwrap(),
                 serde_json::to_value(&refs[0]).unwrap()
             );
-            assert_eq!(bad_event.media.error, "HTTP 5xx");
+            assert_eq!(bad_event.media.error, "image_http_5xx");
             assert!(bad_event.media.href.is_empty());
         }
         assert!(
@@ -358,11 +358,11 @@ mod tests {
         .unwrap();
         assert_eq!(refs.len(), 1);
         assert!(refs[0].href.is_empty());
-        assert_eq!(refs[0].error, "解码失败");
+        assert_eq!(refs[0].error, "image_decode_failed");
         {
             let events = events.lock().unwrap();
             assert_eq!(events.len(), 1);
-            assert_eq!(events[0].media.error, "解码失败");
+            assert_eq!(events[0].media.error, "image_decode_failed");
             assert!(events[0].media.href.is_empty());
         }
         let conn = db::open_at(&db_path).unwrap();

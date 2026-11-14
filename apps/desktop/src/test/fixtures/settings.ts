@@ -131,7 +131,7 @@ export function piPageFixture(overrides: Partial<PiPage> = {}): PiPage {
   return {
     developer_tools: false, fetch_url: false,
     pi_path: "", binary_source: "fixture-binary", session_dir: "/tmp/rrss-fixture/sessions",
-    manage_status: "托管 fixture",
+    manage_notice: { code: "legacy_text" as const, params: {}, detail: "托管 fixture" },
     system_prompt: "<!-- rrss-system v1 -->\n你是 RRSS 阅读助手。", thinking_levels: [],
     tools: [], skills: [], mcp_servers: [],
     ...overrides,

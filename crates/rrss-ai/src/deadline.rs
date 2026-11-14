@@ -8,8 +8,7 @@ pub const ITEM_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 pub fn timeout_error() -> Error {
     Error::Request {
-        timeout: true,
-        message: "模型请求超时",
+        kind: crate::complete::RequestKind::Timeout,
     }
 }
 

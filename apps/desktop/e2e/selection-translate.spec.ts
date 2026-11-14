@@ -165,7 +165,7 @@ test("changing translation configuration invalidates the in-memory result", asyn
 });
 
 test("service errors use the existing message without retrying automatically", async ({ page }) => {
-  const { block, card } = await openReader(page, { selectionTranslation: { kind: "rate_limited", message: "翻译服务限流，请稍后重试" } });
+  const { block, card } = await openReader(page, { selectionTranslation: { kind: "rate_limited", error: { code: "translate_rate_limited", detail: "fixture rate limit" } } });
   await translate(page, block);
   await expect(card.getByRole("alert")).toHaveText("翻译服务限流，请稍后重试");
   expect(await requests(page)).toBe(1);

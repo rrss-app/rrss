@@ -2,8 +2,8 @@
 //! so final text and the diagnostic tail cannot arrive after turn settlement.
 use super::{ChatError, ChatErrorKind, log_stderr};
 use anyhow::Result;
-use rrss_core::{Error, error::PiFailure};
 use rrss_ai::pi::{self, JsonlDecoder, PiEvent, RpcCorrelator, encode_line, rpc::RpcError};
+use rrss_core::{Error, error::PiFailure};
 use std::{
     collections::VecDeque,
     sync::{
@@ -340,7 +340,7 @@ mod tests {
         let (send, mut receive) = mpsc::unbounded_channel();
         read_stdout(raw.as_bytes(), rpc.clone(), send, vec![secret.into()]).await;
         let error = rpc.wait(reply, Duration::from_secs(1)).await.unwrap_err();
-        let RpcError::Rejected(message) = error else {
+        let RpcError::Rejected(Some(message)) = error else {
             panic!("wrong RPC error")
         };
         assert!(message.starts_with("HTTP 401") && message.contains("\nretry later"));

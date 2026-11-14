@@ -48,7 +48,7 @@ describe("progressive reader session", () => {
   }
   it("keeps typed proxy failures visible when starting translation", async () => {
     await setup();
-    box.api!.handle("translate", () => { throw { kind: "configuration", message: "", error: { code: "proxy_url_invalid", detail: "diagnostic canary" } }; });
+    box.api!.handle("translate", () => { throw { kind: "configuration", error: { code: "proxy_url_invalid", detail: "diagnostic canary" } }; });
     await controller!.start(); await flush();
     expect(state!.failure).toBe("configuration");
     expect(state!.issue).toBe(true);

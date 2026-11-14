@@ -2,16 +2,43 @@
 use crate::views::{UiError, UiErrorKind};
 use rrss_core::{Error, logsafe};
 
+// Only declared free text is scrubbed; enum identifiers and numbers are data.
+macro_rules! scrub_error_param {
+    ($field:expr, String, $secrets:expr) => {
+        *$field = crate::ui_error::params::remote_reason(&rrss_core::logsafe::scrub_secrets_with(
+            $field,
+            $secrets.iter().copied(),
+        ));
+    };
+    ($field:expr, Option<String>, $secrets:expr) => {
+        if let Some(text) = $field {
+            scrub_error_param!(text, String, $secrets);
+        }
+    };
+    ($field:expr, $ty:ident $(<$inner:ident>)?, $secrets:expr) => {
+        let _ = ($field, $secrets);
+    };
+}
+
 // The same declaration supplies serde, TS, code lookup and the exported code list.
 // Add variants in the owning domain, rather than maintaining another registry.
 macro_rules! error_codes {
-    ($name:ident { $($variant:ident $({ $($(#[$attr:meta])* $field:ident: $ty:ident $(<$inner:ty>)?),* $(,)? })? => $code:literal),* $(,)? }) => {
+    ($name:ident { $($variant:ident $({ $($(#[$attr:meta])* $field:ident: $ty:ident $(<$inner:ident>)?),* $(,)? })? => $code:literal),* $(,)? }) => {
         #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ts_rs::TS)]
         #[serde(tag = "code", content = "params", rename_all = "snake_case")]
         pub enum $name {
             $(#[serde(rename = $code)] $variant $({ $($(#[$attr])* $field: $ty $(<$inner>)?),* })?),*
         }
         impl $name {
+            #[allow(dead_code)]
+            pub(crate) fn scrub_parameters(&mut self, secrets: &[&str]) {
+                let _ = secrets;
+                match self {
+                    $(Self::$variant $({ $($field,)* })? => {
+                        $($(scrub_error_param!($field, $ty $(<$inner>)?, secrets);)*)?
+                    }),*
+                }
+            }
             pub const CODES: &'static [&'static str] = &[$($code),*];
             pub fn code(&self) -> &'static str {
                 match self { $(Self::$variant $({ $($field: _,)* })? => $code),* }
@@ -109,6 +136,7 @@ impl UiError {
                 error.to_string(),
             ),
         };
+        ui.cause = mcp::cause(error);
         ui.diagnostic = Some(diagnostic);
         ui
     }
@@ -130,6 +158,12 @@ impl UiError {
         {
             return ui.clone();
         }
+        if let Some(rpc) = error
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<rrss_ai::pi::rpc::RpcError>())
+        {
+            return chat::from_rpc(rpc);
+        }
         let core = error.downcast_ref::<Error>().or_else(|| {
             error
                 .chain()
@@ -147,7 +181,7 @@ impl UiError {
                     .find_map(|cause| cause.downcast_ref::<rrss_ai::Error>())
             })
         {
-            return jobs::from_ai(ai, &detail);
+            return jobs::from_ai(ai);
         }
         let mut ui = match core {
             // A context can be the user's actionable message. Code only when

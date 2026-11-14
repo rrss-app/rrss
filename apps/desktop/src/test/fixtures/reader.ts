@@ -88,7 +88,7 @@ export function readerView(id: number, extra: Partial<ReaderView> = {}): ReaderV
 
 
 export function translationReply(reader: ReaderView, snapshot: import("../../bindings").TranslationSnapshot | null = null): import("../../bindings").TranslationReply {
-  return { kind: snapshot ? "resumed" : "missing", reader, snapshot, note: "", reconcile_after_ms: 45_000 };
+  return { kind: snapshot ? "resumed" : "missing", reader, snapshot, reconcile_after_ms: 45_000 };
 }
 
 export function libraryReaderFixture() {

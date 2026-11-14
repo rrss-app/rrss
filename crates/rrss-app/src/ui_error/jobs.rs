@@ -2,6 +2,7 @@ use super::UiErrorKind;
 use rrss_core::{Error, error::JobFailure};
 
 error_codes!(JobsUiError {
+    AdmissionReason { reason: String } => "job_admission_reason",
     RuntimeStopped => "job_runtime_stopped",
     ModelBusy => "job_model_busy",
     ModelStopped => "job_model_stopped",
@@ -128,12 +129,11 @@ impl JobsUiError {
     }
 }
 
-// The protocol still represents admission and non-timeout request causes as opaque
-// static messages. Preserve those actionable texts until their owning producer is typed.
-pub(crate) fn from_ai(error: &rrss_ai::Error, legacy: &str) -> super::UiError {
+// Project typed transport causes and safe opaque admission reasons.
+pub(crate) fn from_ai(error: &rrss_ai::Error) -> super::UiError {
     use rrss_ai::Error as Ai;
     let kind = match error {
-        Ai::Content { source, .. } => return from_ai(source, legacy),
+        Ai::Content { source, .. } => return from_ai(source),
         Ai::Http { status: 407, .. } => JobsUiError::ModelProxyAuth { status: 407 },
         Ai::Http { status, .. } => JobsUiError::ModelHttp { status: *status },
         Ai::BudgetExhausted => JobsUiError::ModelBudget,
@@ -141,18 +141,15 @@ pub(crate) fn from_ai(error: &rrss_ai::Error, legacy: &str) -> super::UiError {
         Ai::Capacity => JobsUiError::EndpointBusy,
         Ai::Configuration(_) => JobsUiError::EndpointInvalid,
         Ai::InvalidJson(_) => JobsUiError::ModelInvalidJson,
-        Ai::Request { timeout: true, .. } => JobsUiError::RequestTimeout,
-        Ai::Request { .. } | Ai::Admission(_) => {
-            let mut ui = super::UiError::from(legacy.to_string());
-            ui.diagnostic = Some(
-                match error {
-                    Ai::Admission(_) => "model admission failed",
-                    _ => "model network request failed",
-                }
-                .into(),
-            );
-            return ui;
-        }
+        Ai::Request { kind } => match kind {
+            rrss_ai::complete::RequestKind::Timeout => JobsUiError::RequestTimeout,
+            rrss_ai::complete::RequestKind::Connect => JobsUiError::RequestConnect,
+            rrss_ai::complete::RequestKind::Decode => JobsUiError::RequestDecode,
+            rrss_ai::complete::RequestKind::Other => JobsUiError::RequestFailed,
+        },
+        Ai::Admission(reason) => JobsUiError::AdmissionReason {
+            reason: super::params::remote_reason(reason),
+        },
         Ai::NoProvider => return super::UiError::from(Error::ProviderNotFound),
         Ai::EmptyContent | Ai::EmptyEmbedding => {
             return super::UiError::new(
@@ -172,7 +169,7 @@ pub(crate) fn display_anyhow(error: &anyhow::Error) -> String {
     } else if let Some(core) = error.downcast_ref::<Error>() {
         super::UiError::from_core(core)
     } else if let Some(ai) = error.downcast_ref::<rrss_ai::Error>() {
-        from_ai(ai, &error.to_string())
+        from_ai(ai)
     } else {
         super::UiError::from(error.to_string())
     };
@@ -290,8 +287,7 @@ mod tests {
             ),
             (
                 rrss_ai::Error::Request {
-                    timeout: true,
-                    message: "private request canary",
+                    kind: rrss_ai::complete::RequestKind::Timeout,
                 },
                 "job_request_timeout",
             ),
@@ -306,6 +302,18 @@ mod tests {
             message: "canary".into(),
         }));
         assert_eq!(serde_json::to_value(ui).unwrap()["params"]["status"], 503);
+        for (kind, code) in [
+            (
+                rrss_ai::complete::RequestKind::Connect,
+                "job_request_connect",
+            ),
+            (rrss_ai::complete::RequestKind::Decode, "job_request_decode"),
+            (rrss_ai::complete::RequestKind::Other, "job_request_failed"),
+        ] {
+            let error = rrss_ai::Error::Request { kind };
+            let ui = super::super::UiError::from(anyhow::Error::new(error));
+            assert_eq!(ui.code(), code);
+        }
         let wrapped = rrss_ai::Error::Content {
             source: Box::new(rrss_ai::Error::Http {
                 status: 502,
@@ -319,19 +327,15 @@ mod tests {
         assert!(!ui.log_detail().contains("canary"));
     }
     #[test]
-    fn opaque_admission_and_request_reasons_retain_their_original_display() {
-        for error in [
-            rrss_ai::Error::Admission("fixture admission"),
-            rrss_ai::Error::Request {
-                timeout: false,
-                message: "fixture request",
-            },
-        ] {
-            let detail = error.to_string();
-            let ui = super::super::UiError::from(anyhow::Error::new(error));
-            assert_eq!(ui.code(), "legacy_text");
-            assert_eq!(ui.detail, detail);
-            assert!(!ui.log_detail().contains("fixture"));
-        }
+    fn opaque_admission_reasons_retain_their_original_display() {
+        let error = rrss_ai::Error::Admission("fixture admission");
+        let reason = error.to_string();
+        let ui = super::super::UiError::from(anyhow::Error::new(error));
+        assert_eq!(ui.code(), "job_admission_reason");
+        assert_eq!(
+            serde_json::to_value(&ui).unwrap()["params"]["reason"],
+            reason
+        );
+        assert!(!ui.log_detail().contains("fixture"));
     }
 }

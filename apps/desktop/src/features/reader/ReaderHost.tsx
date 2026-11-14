@@ -200,7 +200,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   const [readOrder] = useState(createArticleWriteOrder);
   const [session, setSession] = useState<Session | null>(null);
   const returns = useRef<Session[]>([]);
-  const [failure, setFailure] = useState<(WebPage & { error: FulltextError }) | null>(null);
+  const [failure, setFailure] = useState<(WebPage & { error: Pick<FulltextError, "kind"> }) | null>(null);
   const [opening, setOpening] = useState<{ ticket: ReaderTicket; id: number; late: boolean } | null>(null);
   /** 已为哪次打开推入叠层显示骨架；这次打开失败时要把空壳关掉。 */
   const lateTicket = useRef<ReaderTicket | null>(null);
@@ -509,7 +509,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
 
   const failWeb = (url: string, err: unknown) => {
     const kind = err && typeof err === "object" && "kind" in err ? err.kind : null;
-    const error: FulltextError = { kind: kind === "Waf" || kind === "Empty" || kind === "NotArticle" ? kind : "Network", message: "" };
+    const error: Pick<FulltextError, "kind"> = { kind: kind === "Waf" || kind === "Empty" || kind === "NotArticle" ? kind : "Network" };
     setOpening(null);
     sessionRef.current = null;
     setSession(null);

@@ -10,6 +10,19 @@ pub enum ChatHandshakeStep {
 }
 
 error_codes!(ChatUiError {
+    RpcRejectedMissing => "pi_rpc_rejected_missing",
+    RemoteReason { reason: String } => "chat_remote_reason",
+    ModelSwitchRejectedMissing { expected: String } => "chat_model_switch_rejected_missing",
+    ModelSwitchRejected { expected: String, reason: String } => "chat_model_switch_rejected",
+    HandshakeRejectedMissing { step: ChatHandshakeStep } => "chat_handshake_rejected_missing",
+    HandshakeRejected { step: ChatHandshakeStep, reason: String } => "chat_handshake_rejected",
+    VersionUnverified { version: String, line: String } => "chat_version_unverified",
+    SessionRestarted => "chat_session_restarted",
+    CompactionFailed { reason: String } => "chat_compaction_failed",
+    Compacting => "chat_compacting",
+    Retrying { attempt: i64, max_attempts: i64 } => "chat_retrying",
+    RetryFailed => "chat_retry_failed",
+
     OwnModelUnset => "pi_own_model_unset",
     SessionCancelled => "pi_session_cancelled",
     SessionPathMissing => "pi_session_path_missing",
@@ -81,6 +94,59 @@ pub(super) fn classify(error: &Error) -> Option<UiErrorKind> {
 }
 
 impl ChatUiError {
+    pub(crate) fn rpc_rejected(reason: Option<&str>) -> super::UiError {
+        match reason {
+            Some(reason) => Self::remote_reason(reason),
+            None => Self::RpcRejectedMissing.failure("engine command rejected without a reason"),
+        }
+    }
+    pub(crate) fn remote_reason(reason: &str) -> super::UiError {
+        Self::RemoteReason {
+            reason: params::remote_reason(reason),
+        }
+        .failure("engine or model request rejected")
+    }
+    pub(crate) fn model_switch_rejected(expected: &str, reason: Option<&str>) -> super::UiError {
+        let Some(reason) = reason else {
+            return Self::ModelSwitchRejectedMissing {
+                expected: params::name(expected),
+            }
+            .failure("engine model switch rejected without a reason");
+        };
+        Self::ModelSwitchRejected {
+            expected: params::name(expected),
+            reason: params::remote_reason(reason),
+        }
+        .failure("engine model switch rejected")
+    }
+    pub(crate) fn handshake_rejected(
+        step: ChatHandshakeStep,
+        reason: Option<&str>,
+    ) -> super::UiError {
+        let Some(reason) = reason else {
+            return Self::HandshakeRejectedMissing { step }
+                .failure("engine handshake rejected without a reason");
+        };
+        Self::HandshakeRejected {
+            step,
+            reason: params::remote_reason(reason),
+        }
+        .failure("engine handshake rejected")
+    }
+    pub(crate) fn compaction_failed(reason: &str) -> super::UiError {
+        Self::CompactionFailed {
+            reason: params::remote_reason(reason),
+        }
+        .failure("engine compaction failed")
+    }
+    pub(crate) fn version_notice(version: &str, line: &str) -> super::UiError {
+        Self::VersionUnverified {
+            version: params::name(version),
+            line: params::name(line),
+        }
+        .failure("engine version is unverified")
+    }
+
     pub fn failure(self, detail: impl AsRef<str>) -> super::UiError {
         let config_write = matches!(self, Self::ConfigWriteFailed);
         let mut error = super::UiError::new(UiErrorKind::Chat(self), detail);
@@ -159,4 +225,38 @@ fn persistence_failures_retain_the_typed_cause() {
     assert_eq!(wire["code"], "chat_session_save_failed");
     assert_eq!(wire["cause"]["code"], "schema_too_old");
     assert_eq!(wire["cause"]["params"]["found"], 1);
+}
+
+pub(super) fn from_rpc(error: &rrss_ai::pi::rpc::RpcError) -> super::UiError {
+    match error {
+        rrss_ai::pi::rpc::RpcError::Timeout => {
+            ChatUiError::Timeout.failure("Pi command response timed out")
+        }
+        rrss_ai::pi::rpc::RpcError::Closed => ChatUiError::ProcessExit.failure("Pi process exited"),
+        rrss_ai::pi::rpc::RpcError::Rejected(reason) => {
+            ChatUiError::rpc_rejected(reason.as_deref())
+        }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn rpc_rejections_keep_absence_separate_from_remote_text() {
+    let absent = from_rpc(&rrss_ai::pi::rpc::RpcError::Rejected(None));
+    assert_eq!(absent.code(), "pi_rpc_rejected_missing");
+    let marker = "pi_rpc_rejected_missing";
+    let remote = from_rpc(&rrss_ai::pi::rpc::RpcError::Rejected(Some(marker.into())));
+    assert_eq!(remote.code(), "chat_remote_reason");
+    assert_eq!(
+        serde_json::to_value(remote).unwrap()["params"]["reason"],
+        marker
+    );
+    assert_eq!(
+        ChatUiError::model_switch_rejected("fixture", None).code(),
+        "chat_model_switch_rejected_missing"
+    );
+    assert_eq!(
+        ChatUiError::handshake_rejected(ChatHandshakeStep::State, None).code(),
+        "chat_handshake_rejected_missing"
+    );
 }

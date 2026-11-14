@@ -119,7 +119,7 @@ async fn html_limit_accepts_exact_size_and_rejects_oversize_and_gzip() {
             .await
             .unwrap_err();
         assert_eq!(error.kind, FulltextErrorKind::Network);
-        assert!(error.message.contains("页面过大"));
+        assert_eq!(error.ui_error().code(), "fulltext_too_large");
     }
 }
 
@@ -157,7 +157,7 @@ async fn oversized_chunked_page_stops_before_eof() {
     server.await.unwrap();
     let error = result.expect("must stop before EOF").unwrap_err();
     assert_eq!(error.kind, FulltextErrorKind::Network);
-    assert!(error.message.contains("页面过大"));
+    assert_eq!(error.ui_error().code(), "fulltext_too_large");
 }
 
 #[tokio::test]
@@ -190,5 +190,37 @@ async fn waf_pages_are_rejected_before_storage() {
         let article = articles::get_article(&conn, 1).unwrap();
         assert!(article.fulltext_md.is_none());
         assert!(article.blocks_json.is_none());
+    }
+}
+
+#[test]
+fn fulltext_errors_have_one_typed_ui_projection() {
+    use crate::ui_error::web::WebError;
+    for (error, code) in [
+        (WebError::FulltextProxyAuth.into(), "fulltext_proxy_auth"),
+        (WebError::FulltextTooLarge.into(), "fulltext_too_large"),
+    ] {
+        let fulltext = FulltextError::coded(FulltextErrorKind::Network, Some(error));
+        assert_eq!(crate::UiError::from(fulltext.clone()).code(), code);
+        assert_eq!(fulltext.clone().ui_error().code(), code);
+        let wire = serde_json::to_value(fulltext).unwrap();
+        assert_eq!(wire["error"]["code"], code);
+        assert!(wire.get("message").is_none());
+    }
+    for (fulltext, code, detail) in [
+        (
+            FulltextError::new(FulltextErrorKind::Waf, "http 403"),
+            "reader_fulltext_waf",
+            "http 403",
+        ),
+        (
+            FulltextError::network("fixture diagnostic"),
+            "reader_fulltext_network",
+            "fixture diagnostic",
+        ),
+    ] {
+        let error = crate::UiError::from(fulltext);
+        assert_eq!(error.code(), code);
+        assert_eq!(error.detail, detail);
     }
 }

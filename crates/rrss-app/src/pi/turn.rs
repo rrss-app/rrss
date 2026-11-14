@@ -18,7 +18,7 @@ use crate::views::{
     ChatConfirmEvent, ChatContextEvent, ChatErrorEvent, ChatStatusEvent, ChatStepView,
     ChatStreamEvent, ContextUsageView, SendMessageArgs,
 };
-use rrss_core::logsafe::scrub_secrets;
+
 use rrss_core::{Error, error::PiFailure};
 
 /// 流式快照最小间隔。
@@ -97,7 +97,7 @@ impl TurnState {
             Some("error") => {
                 self.model_error = Some(
                     error
-                        .map(|reason| UiError::from(scrub_secrets(reason)))
+                        .map(|reason| ChatUiError::remote_reason(reason))
                         .unwrap_or_else(|| Error::Pi(PiFailure::ModelErrorMissing).into()),
                 );
             }
@@ -120,8 +120,12 @@ impl TurnState {
 
     /// 自动重试最终失败。
     pub fn retry_failed(&mut self, reason: &str) {
+        self.retry_error(ChatUiError::remote_reason(reason));
+    }
+
+    fn retry_error(&mut self, error: UiError) {
         if self.active() {
-            self.model_error = Some(UiError::from(scrub_secrets(reason)));
+            self.model_error = Some(error);
         }
     }
 
@@ -401,10 +405,10 @@ impl ChatRuntime {
         {
             self.sink.emit(ChatEvent::Status(ChatStatusEvent {
                 thread_id,
-                text: format!(
-                    "对话引擎 {version} 不在已验证的 {} 版本线内，可能有兼容问题",
-                    super::compat::compat().line_label()
-                ),
+                notice: Some(ChatUiError::version_notice(
+                    &version,
+                    &super::compat::compat().line_label(),
+                )),
                 notice_version: version.clone(),
                 step: None,
             }));
@@ -412,7 +416,7 @@ impl ChatRuntime {
         if session.restarted {
             self.sink.emit(ChatEvent::Status(ChatStatusEvent {
                 thread_id,
-                text: "之前的对话上下文无法恢复，已从新会话开始".into(),
+                notice: Some(ChatUiError::SessionRestarted.failure("engine session restarted")),
                 notice_version: String::new(),
                 step: None,
             }));
@@ -447,7 +451,12 @@ impl ChatRuntime {
             let seen: Vec<String> = raw
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or_default();
-            Ok(!seen.contains(&version))
+            let already_seen = seen.contains(&version)
+                || (version == "unknown"
+                    && seen.iter().any(|entry| {
+                        !entry.is_empty() && super::adapter::PiVersion::parse(entry).is_none()
+                    }));
+            Ok(!already_seen)
         })
         .await
         .unwrap_or(false)
@@ -559,12 +568,12 @@ impl ChatRuntime {
         }));
     }
 
-    fn status(&self, text: String) {
+    fn status(&self, notice: Option<UiError>) {
         let thread_id = self.thread_id();
         if thread_id > 0 {
             self.sink.emit(ChatEvent::Status(ChatStatusEvent {
                 thread_id,
-                text,
+                notice,
                 notice_version: String::new(),
                 step: None,
             }));
@@ -575,7 +584,7 @@ impl ChatRuntime {
     fn step(&self, thread_id: i64, step: ChatStepView) {
         self.sink.emit(ChatEvent::Status(ChatStatusEvent {
             thread_id,
-            text: String::new(),
+            notice: None,
             notice_version: String::new(),
             step: Some(step),
         }));
@@ -734,7 +743,7 @@ impl ChatRuntime {
                         && let Some(reason) = error_message
                         && let Ok(mut t) = self.turn.lock()
                     {
-                        t.retry_failed(&format!("对话压缩失败：{reason}"));
+                        t.retry_error(ChatUiError::compaction_failed(&reason));
                     }
                     if !aborted && !failed {
                         let active =
@@ -751,22 +760,22 @@ impl ChatRuntime {
                             }
                         }
                     }
-                    self.status(String::new());
+                    self.status(None);
                 }
-                PiEvent::CompactionStart { .. } => self.status("正在压缩较早的对话…".into()),
+                PiEvent::CompactionStart { .. } => self.status(Some(ChatUiError::Compacting.failure("engine compacting"))),
                 PiEvent::AutoRetryStart {
                     attempt,
                     max_attempts,
                     ..
-                } => self.status(format!("模型出错，正在重试（{attempt}/{max_attempts}）…")),
+                } => self.status(Some(ChatUiError::Retrying { attempt: attempt.into(), max_attempts: max_attempts.into() }.failure("model request retrying"))),
                 PiEvent::AutoRetryEnd {
                     success,
                     final_error,
                 } => {
                     if !success && let Ok(mut t) = self.turn.lock() {
-                        t.retry_failed(final_error.as_deref().unwrap_or("自动重试失败"));
+                        t.retry_error(final_error.as_deref().map(ChatUiError::remote_reason).unwrap_or_else(|| ChatUiError::RetryFailed.failure("automatic retry failed")));
                     }
-                    self.status(String::new());
+                    self.status(None);
                 }
                 PiEvent::ExtensionUiRequest {
                     id,
@@ -854,7 +863,7 @@ impl ChatRuntime {
                 self.sink.emit(ChatEvent::Confirm(ChatConfirmEvent {
                     thread_id: self.thread_id(),
                     id,
-                    title: format!("使用 {server} 的 {tool}"),
+                    title: String::new(),
                     message: args.clone(),
                     timeout_ms: Some(300_000),
                     server,
@@ -954,7 +963,7 @@ impl ChatRuntime {
         self.sink.emit(ChatEvent::Delta(done.snapshot));
         self.sink.emit(ChatEvent::Status(ChatStatusEvent {
             thread_id,
-            text: String::new(),
+            notice: None,
             notice_version: String::new(),
             step: None,
         }));
@@ -1052,7 +1061,10 @@ mod tests {
             Some("401 bad key sk-secret123\nauthorization: bearer lower-canary"),
         );
         let done = turn.finish().unwrap();
-        let error = done.model_error.unwrap().detail;
+        let ui = done.model_error.unwrap();
+        assert_eq!(ui.code(), "chat_remote_reason");
+        let wire = serde_json::to_value(ui).unwrap();
+        let error = wire["params"]["reason"].as_str().unwrap();
         assert!(error.starts_with("401 bad key") && error.contains('\n'));
         assert!(!error.contains("secret123") && !error.contains("lower-canary"));
         assert!(done.snapshot.text.is_empty());
@@ -1071,14 +1083,9 @@ mod tests {
 
         turn.begin(3);
         turn.retry_failed("529 overloaded");
-        assert_eq!(
-            turn.finish()
-                .unwrap()
-                .model_error
-                .as_ref()
-                .map(|error| error.detail.as_str()),
-            Some("529 overloaded")
-        );
+        let wire = serde_json::to_value(turn.finish().unwrap().model_error.unwrap()).unwrap();
+        assert_eq!(wire["code"], "chat_remote_reason");
+        assert_eq!(wire["params"]["reason"], "529 overloaded");
     }
 
     #[test]
