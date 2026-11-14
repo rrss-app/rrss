@@ -34,8 +34,17 @@ fn all_capabilities_exclude_remote_and_web_windows() {
     }
     assert!(count > 0);
     let host = include_str!("../../rrss-desktop/src/commands/web_window.rs");
-    assert!(host.contains("invoke.message.webview_ref().label() != \"main\""));
-    assert!(host.contains("invoke.resolver.reject("));
+    // rustfmt 会把 reject 链折行，比对时去掉空白。
+    let gate = host
+        .split("pub fn main_only(")
+        .nth(1)
+        .expect("main_only")
+        .split("command_handler!")
+        .next()
+        .unwrap();
+    let flat = gate.split_whitespace().collect::<String>();
+    assert!(flat.contains("invoke.message.webview_ref().label()!=\"main\""));
+    assert!(flat.contains("invoke.resolver.reject("));
     // Every command reaches Tauri through the single gated dispatcher built in commands/mod.rs.
     let lib = include_str!("../../rrss-desktop/src/lib.rs");
     assert!(lib.contains(".invoke_handler(main_only(commands::invoke_handler))"));

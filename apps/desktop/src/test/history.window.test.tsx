@@ -146,7 +146,7 @@ describe("message history window", () => {
     await harness.flush();
     expect(host.textContent).toContain("最新");
     expect(host.textContent).toContain("加载失败");
-    expect(host.textContent).toContain("database locked");
+    expect(host.textContent).toContain("数据库正忙，请稍后重试");
     expect(host.querySelector(".chat-load-older button")?.hasAttribute("disabled")).toBe(false);
   });
 

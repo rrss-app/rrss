@@ -70,10 +70,11 @@ impl<'ast> Visit<'ast> for Check {
                 })
             })
             .collect();
+        // UI 错误的原因是 `code`（加 `detail`）；其余警告仍用 `error` 或 `error_kind`。
         if level == "warn"
             && !fields
                 .iter()
-                .any(|name| name == "error" || name == "error_kind")
+                .any(|name| name == "error" || name == "error_kind" || name == "code")
         {
             self.failures
                 .push(format!("warning without reason: {label}"));
