@@ -96,6 +96,13 @@ pub enum Error {
     Opml(String),
     #[error("HTTP {status}: {message}")]
     Http { status: u16, message: String },
+    // Retain the transport category before reqwest's unsafe source is discarded.
+    #[error("HTTP {status}: {message}")]
+    Network {
+        kind: crate::network::ErrorKind,
+        status: u16,
+        message: crate::network::RequestErrorMessage,
+    },
     #[error("{message}")]
     FetchDeferred { until: Option<i64>, message: String },
     /// Dispatch paused locally; retain the admitted claim for a later retry.

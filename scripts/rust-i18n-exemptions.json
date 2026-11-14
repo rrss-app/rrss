@@ -1,0 +1,11 @@
+{
+  "rrss-core/src/ai_store.rs": "Built-in model prompt templates; this mixed file also has labels scheduled for a later UI migration.",
+  "rrss-core/src/pi_store.rs": "RRSS tool descriptions addressed to Pi; mixed UI tool labels remain for a later label migration.",
+  "rrss-core/src/cite.rs": "Citation context and instruction fragments sent to the model, not UI notices.",
+  "rrss-core/src/rag.rs": "Retrieval context and instruction suffix sent to Pi.",
+  "rrss-core/src/cluster_summary.rs": "Numbered reporting input and instructions for model summaries.",
+  "rrss-core/src/digest.rs": "Digest model-input prompts and Chinese model-output parsing patterns; mixed validation remains for a later error migration.",
+  "rrss-core/src/summary_extract.rs": "Model-input link-stub instructions and content-extraction markers.",
+  "rrss-app/src/chat.rs": "Digest conversation prompt fragments; mixed title and validation text remains for later UI migrations.",
+  "rrss-app/src/pi/workspace.rs": "Managed system-prompt suffix addressed to Pi; mixed filesystem errors remain for a later error migration."
+}

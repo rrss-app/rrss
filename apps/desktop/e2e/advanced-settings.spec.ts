@@ -80,13 +80,15 @@ test("proxy drafts save, keep failed drafts, warn on SOCKS for Pi, and guard lea
     const original = host.invoke;
     (window as any).__originalInvoke = original;
     host.invoke = async (command: string, args: Record<string, unknown> = {}) => {
-      if (command === "save_network_proxy") throw new Error("模拟代理保存失败");
+      if (command === "save_network_proxy") throw { code: "database_busy", detail: "database is locked" };
       return original(command, args);
     };
   });
   await group.getByRole("textbox", { name: "全局代理地址" }).fill("http://proxy2.example:8080");
   await group.getByRole("button", { name: "保存", exact: true }).click();
   await expect(group.getByRole("alert")).toContainText("保存网络代理失败");
+  await expect(group.getByRole("alert")).not.toContainText("[object Object]");
+  await expect(group.getByRole("alert")).not.toContainText("database is locked");
   await expect(group.getByRole("textbox", { name: "全局代理地址" })).toHaveValue("http://proxy2.example:8080");
   await page.evaluate(() => {
     (window as any).__TAURI_INTERNALS__.invoke = (window as any).__originalInvoke;

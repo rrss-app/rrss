@@ -84,17 +84,17 @@ db_task!(save_translate_settings(args: rrss_app::actions::SaveTranslateArgs) -> 
     |conn| rrss_app::actions::save_translate_settings(conn, &args));
 
 #[tauri::command]
-pub async fn test_translate(state: State<'_, AppState>) -> Result<String, String> {
+pub async fn test_translate(state: State<'_, AppState>) -> Result<String, UiError> {
     rrss_app::translate::test_translate(
         &state.db_path,
         &state
             .network
             .client(NetworkScope::Api)
             .await
-            .map_err(|e| e.to_string())?,
+            .map_err(UiError::from)?,
     )
     .await
-    .map_err(|error| error.to_string())
+    .map_err(UiError::from)
 }
 
 command_handler![

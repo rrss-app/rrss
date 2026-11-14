@@ -11,7 +11,7 @@ pub async fn focus_stream(
     exclude_cluster_ids: Option<Vec<i64>>,
     more: Option<bool>,
     scope: Option<String>,
-) -> Result<FocusPage, String> {
+) -> Result<FocusPage, UiError> {
     let path = state.db_path.clone();
     let exclude_ids = exclude_ids.unwrap_or_default();
     let exclude_cluster_ids = exclude_cluster_ids.unwrap_or_default();
@@ -22,7 +22,7 @@ pub async fn focus_stream(
             conn,
             rrss_core::feed_scope::FeedScope::parse_str(&scope),
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(UiError::from)?;
         queries::focus_page(
             conn,
             expanded_cluster,
@@ -31,7 +31,7 @@ pub async fn focus_stream(
             more,
             scope,
         )
-        .map_err(|e| e.to_string())
+        .map_err(UiError::from)
     })
     .await
 }
@@ -70,19 +70,20 @@ pub async fn generate_cluster_summary(
     state: tauri::State<'_, AppState>,
     cluster_id: i64,
     scope: Option<String>,
-) -> Result<ClusterSummaryView, String> {
+) -> Result<ClusterSummaryView, UiError> {
     tracing::info!(cluster_id, "manual cluster summary requested");
     state
         .scheduler
         .summarize_cluster(cluster_id, scope.as_deref().unwrap_or("all"))
         .await
         .map_err(|e| {
-            tracing::warn!(cluster_id, error = %rrss_app::log::error(e.as_ref()), "manual cluster summary failed");
-            e.to_string()
+            let e = UiError::from(e);
+            tracing::warn!(cluster_id, code = e.code(), detail = %e.log_detail(), "manual cluster summary failed");
+            e
         })?;
     let path = state.db_path.clone();
     with_db("generate_cluster_summary", path, move |conn| {
-        queries::cluster_summary(conn, cluster_id, scope.as_deref()).map_err(|e| e.to_string())
+        queries::cluster_summary(conn, cluster_id, scope.as_deref()).map_err(UiError::from)
     })
     .await
 }

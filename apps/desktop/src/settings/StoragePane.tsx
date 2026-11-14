@@ -8,6 +8,7 @@ import type { Ask } from "./SettingsPanel";
 import { useStorageSettings } from "./useStorageSettings";
 import { useDelayed } from "../components/Pending";
 import { locale, useTranslation } from "../i18n";
+import { formatError } from "../lib/errors";
 
 function scannedAt(ms: number) {
   if (!ms) return "";
@@ -149,7 +150,7 @@ export function StoragePane({ onAsk, onEditStateChange, onChanged }: {
   const { query, busy, pending, status, clean, refresh } = useStorageSettings(onAsk, report.storage, onChanged);
   const data = query.data;
   const refreshing = query.isFetching;
-  const error = status?.tone === "err" ? status.text : query.isError ? t("storage.loadFailed", { message: String(query.error) }) : "";
+  const error = status?.tone === "err" ? status.text : query.isError ? t("storage.loadFailed", { message: formatError(query.error) }) : "";
   const items = data?.groups.flatMap((g) => g.items) ?? [];
   const composition = PARTS.map((part) => ({ ...part, label: t(`storage.parts.${part.id}`), bytes: items.filter((i) => partId(i.key) === part.id).reduce((sum, i) => sum + Math.max(0, i.bytes), 0) }));
   // 首次统计：先整页留白等一小会儿，统计快就一次出全；慢了才画同形状的骨架，

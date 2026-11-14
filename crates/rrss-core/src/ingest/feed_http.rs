@@ -8,6 +8,8 @@ pub const TOTAL_TIMEOUT: Duration = Duration::from_secs(30);
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
 const MAX_REDIRECTS: usize = 10;
+// Shared by the two fixed 407 producers and the IPC classifier during migration.
+pub const PROXY_AUTH_MESSAGE: &str = "代理认证失败，请检查网络代理设置";
 
 #[derive(Clone, Copy)]
 pub struct FeedPolicy {
@@ -51,20 +53,21 @@ pub struct FetchFailure {
 
 impl From<Error> for FetchFailure {
     fn from(error: Error) -> Self {
-        let http_response = matches!(&error, Error::Http {status,..} if *status > 0);
-        let kind = match &error {
-            Error::Http { status, .. } if *status > 0 => crate::network::ErrorKind::http(*status),
-            _ => crate::network::ErrorKind::Other,
-        };
         let response_status = match &error {
-            Error::Http { status, .. } if *status > 0 => Some(*status),
+            Error::Http { status, .. } | Error::Network { status, .. } if *status > 0 => {
+                Some(*status)
+            }
             _ => None,
         };
+        let kind = response_status.map_or(
+            crate::network::ErrorKind::Other,
+            crate::network::ErrorKind::http,
+        );
         Self {
             error,
             class: FailureClass::Fast,
             network: false,
-            http_response,
+            http_response: response_status.is_some(),
             timeout: false,
             kind,
             response_status,
@@ -215,7 +218,7 @@ where
             if status == 407 {
                 return Err(Error::Http {
                     status,
-                    message: "代理认证失败，请检查网络代理设置".into(),
+                    message: PROXY_AUTH_MESSAGE.into(),
                 }
                 .into());
             }
@@ -432,6 +435,41 @@ mod tests {
             }
         });
         (url, task)
+    }
+
+    #[tokio::test]
+    async fn body_read_failure_preserves_received_status_when_converted() {
+        let (url, task) = server(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nx", false).await;
+        let error = super::super::fetch_http(
+            &client_builder().no_proxy().build().unwrap(),
+            FetchRequest {
+                url,
+                etag: None,
+                last_modified: None,
+            },
+        )
+        .await
+        .unwrap_err();
+        task.await.unwrap();
+        assert!(matches!(error, Error::Network { status: 200, .. }));
+        let original = Error::Http {
+            status: 200,
+            message: match &error {
+                Error::Network { message, .. } => message.to_string(),
+                _ => unreachable!(),
+            },
+        };
+        assert_eq!(error.to_string(), original.to_string());
+        assert_eq!(
+            crate::logsafe::error(&error),
+            crate::logsafe::error(&original)
+        );
+        let failure = FetchFailure::from(error);
+        assert!(failure.http_response);
+        assert_eq!(failure.kind, crate::network::ErrorKind::http(200));
+        assert_eq!(failure.status(), Some(200));
+        assert_eq!(failure.class, FailureClass::Fast);
+        assert!(!failure.network && !failure.timeout);
     }
     // Only stall cases expect the deadline. Every other case gets a generous
     // one, so a loaded CI runner cannot turn its expected error into a timeout.

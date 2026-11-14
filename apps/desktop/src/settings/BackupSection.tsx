@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Icon } from "../components/Icon";
 import { useTranslation } from "../i18n";
+import { formatError } from "../lib/errors";
 import { ChipBar, SettingRow, Toggle } from "./chips";
 import type { SettingsEditState } from "./editState";
 import type { Ask } from "./SettingsPanel";
@@ -24,7 +25,7 @@ export function BackupSection({ onAsk, onEditStateChange, onChanged, blocked }: 
   const [includeSecrets, setIncludeSecrets] = useState(false);
   const [parts, setParts] = useState<PrefsParts>({ rules: true, interests: true, memories: true });
   const fileRef = useRef<HTMLInputElement>(null);
-  const loadError = s.query.isError ? t("backup.loadFailed", { message: String(s.query.error) }) : "";
+  const loadError = s.query.isError ? t("backup.loadFailed", { message: formatError(s.query.error) }) : "";
   const notice = data?.restore_notice;
   return (
     <section className="settings-card backup-card settings-section" aria-labelledby="backup-title">

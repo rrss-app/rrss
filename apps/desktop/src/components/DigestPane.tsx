@@ -1,3 +1,4 @@
+import { formatError } from "../lib/errors";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, openExternal, type DigestSummary, type DigestView } from "../lib/api";
 import { PREVIEW_DIGESTS, isTauri } from "../lib/preview";
@@ -31,10 +32,6 @@ function sameDigest(a: DigestView | null, b: DigestView) {
 
 function fallbackDigests(period: Period): DigestView[] {
   return PREVIEW_DIGESTS.filter((d) => d.period === period);
-}
-
-function errorText(err: unknown): string {
-  return String(err).replace(/^Error:\s*/, "");
 }
 
 function uniqueSources(sources: DigestView["source_index"]): DigestView["source_index"] {
@@ -112,8 +109,8 @@ export function DigestPane({
     api.digests(period).then(apply).catch((err) => {
       if (cancelled || gen !== listGen.current) return;
       if (!isTauri()) apply(fallbackDigests(period));
-      else if (cached) setRefreshError(i18n.t("pane.refreshFailed", { ns: "digest", message: errorText(err) }));
-      else setLoadError(i18n.t("pane.loadFailed", { ns: "digest", message: errorText(err) }));
+      else if (cached) setRefreshError(i18n.t("pane.refreshFailed", { ns: "digest", message: formatError(err) }));
+      else setLoadError(i18n.t("pane.loadFailed", { ns: "digest", message: formatError(err) }));
     }).finally(() => { if (!cancelled && gen === listGen.current) setFetching(false); });
     return () => { cancelled = true; };
   }, [period, reloadKey]);
@@ -134,7 +131,7 @@ export function DigestPane({
       setIndex(next >= 0 ? next : 0);
       if (list.length === 0) setCurrent(null);
     }).catch((err) => {
-      if (gen === listGen.current) setRefreshError(i18n.t("pane.refreshFailed", { ns: "digest", message: errorText(err) }));
+      if (gen === listGen.current) setRefreshError(i18n.t("pane.refreshFailed", { ns: "digest", message: formatError(err) }));
     });
   }, []);
 
@@ -168,7 +165,7 @@ export function DigestPane({
       docs.current.set(view.id, view);
       setCurrent((cur) => sameDigest(cur, view) ? cur : view);
     }).catch((err) => {
-      if (!cancelled && !cached) setLoadError(i18n.t("pane.loadFailed", { ns: "digest", message: errorText(err) }));
+      if (!cancelled && !cached) setLoadError(i18n.t("pane.loadFailed", { ns: "digest", message: formatError(err) }));
     });
     return () => { cancelled = true; };
   }, [selectedId, period, documentKey, reloadKey]);
@@ -210,7 +207,7 @@ export function DigestPane({
         setError(i18n.t("pane.noneGenerated", { ns: "digest" }));
       }
     } catch (err) {
-      setError(i18n.t("pane.generateFailed", { ns: "digest", message: errorText(err) }));
+      setError(i18n.t("pane.generateFailed", { ns: "digest", message: formatError(err) }));
     } finally {
       setLoading(false);
     }

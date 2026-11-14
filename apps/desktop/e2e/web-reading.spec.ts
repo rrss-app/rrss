@@ -264,7 +264,7 @@ test("代理拒绝可选阅读视图、浏览器或代理设置；拦截下载�
   await installMockHost(page, {
     focus: TWO_ARTICLE_PAGE, settingValues: { web_open_mode: "web", web_original_tip: "0" },
     linkSafety: { [url]: { actual_host: "web.example.test", warnings: [{ kind: "NonHttps" }] } },
-    webWindowError: "当前代理包含认证，原网页无法表达；请改用阅读视图或系统浏览器。",
+    webWindowError: { code: "legacy_text", params: { source: "network_proxy" }, detail: "当前代理包含认证，原网页无法表达；请改用阅读视图或系统浏览器。" },
     readers: { 1: readerView(1, { document: { v: 1, blocks: [{ t: "p", inlines: [{ t: "a", href: url, children: [{ t: "t", text: "测试网页" }] }] }] } }) },
   });
   await page.goto("/");
@@ -276,6 +276,7 @@ test("代理拒绝可选阅读视图、浏览器或代理设置；拦截下载�
   await safety.getByRole("button", { name: "继续打开", exact: true }).click();
   const scene = page.getByRole("dialog", { name: "原网页", exact: true });
   await expect(scene.getByRole("alert")).toContainText("当前代理包含认证");
+  await expect(scene.getByRole("alert")).toHaveAttribute("data-error-code", "legacy_text");
   await expect(scene.getByRole("button", { name: "改用阅读视图", exact: true })).toBeEnabled();
   await expect(scene.getByRole("button", { name: "在系统浏览器打开", exact: true }).last()).toBeEnabled();
   await scene.getByRole("button", { name: "查看代理设置", exact: true }).focus();

@@ -1,0 +1,58 @@
+{
+  "legacy_text": "{{detail}}",
+  "internal": "操作失败，请重试",
+  "database_busy": "数据库正忙，请稍后重试",
+  "database": "数据库操作失败，请重试",
+  "io": "文件操作失败，请检查文件权限后重试",
+  "data_dir_unavailable": "数据目录不可用",
+  "schema_unsupported": "不支持数据库版本 {{found}}（支持的版本：{{supported}}）",
+  "unknown": "操作失败，请重试",
+  "unknown_detail": "操作失败，请重试：{{detail}}",
+
+  "feed_not_found": "找不到订阅源",
+  "feed_already_subscribed": "已订阅 {{host}}",
+
+  "folder_not_found": "找不到文件夹",
+  "folder_name_invalid": "文件夹名称无效",
+
+  "rule_not_found": "找不到规则",
+  "rule_preset_not_found": "找不到预设规则包：{{name}}",
+
+  "provider_not_found": "找不到模型连接",
+  "ai_budget_exhausted": "今日 AI 额度已用完",
+  "prompt_template_not_found": "找不到提示词模板：{{name}}",
+
+  "thread_not_found": "找不到会话",
+  "memory_not_found": "找不到记忆",
+  "interest_not_found": "找不到兴趣",
+  "mcp_server_not_found": "找不到 MCP 服务",
+  "pi_tool_not_found": "找不到 Pi 工具：{{name}}",
+
+  "article_not_found": "找不到文章",
+  "digest_not_found": "找不到简报",
+  "image_unsupported": "不支持此图片内容",
+
+  "network_timeout": "HTTP {{status}}: {{message}}",
+  "network_dns": "HTTP {{status}}: {{message}}",
+  "network_refused": "HTTP {{status}}: {{message}}",
+  "network_reset": "HTTP {{status}}: {{message}}",
+  "network_tls_cert": "HTTP {{status}}: {{message}}",
+  "network_tls": "HTTP {{status}}: {{message}}",
+  "network_proxy_connect": "HTTP {{status}}: {{message}}",
+  "network_proxy_auth": "HTTP {{status}}: {{message}}",
+  "network_redirect": "HTTP {{status}}: {{message}}",
+  "network_body": "HTTP {{status}}: {{message}}",
+  "network_decode": "HTTP {{status}}: {{message}}",
+  "network_http": "HTTP {{status}}: {{message}}",
+  "network_parse": "HTTP {{status}}: {{message}}",
+  "network_other": "HTTP {{status}}: {{message}}",
+  "network_message": {
+    "timeout": "网络请求超时",
+    "connect": "网络连接失败，请检查目标服务和代理设置",
+    "redirect": "网络重定向失败",
+    "decode": "网络响应解码失败",
+    "other": "网络请求失败",
+    "http": "网络请求失败",
+    "proxy_auth": "代理认证失败，请检查网络代理设置"
+  }
+}

@@ -36,7 +36,7 @@ pub fn close_requested(app: &AppHandle) {
             .map(|state| state.db_path.clone());
         let decision = match db_path {
             Some(db_path) => state::with_db("window_close_requested", db_path, move |conn| {
-                rrss_app::window_close::decide(conn, tray).map_err(|error| error.to_string())
+                rrss_app::window_close::decide(conn, tray).map_err(rrss_app::UiError::from)
             })
             .await
             // 读不到设置时退回询问，宁可多问一次也不替用户退出或藏起窗口。
@@ -54,11 +54,11 @@ pub async fn close_choice(
     db_path: std::path::PathBuf,
     choice: CloseChoice,
     remember: bool,
-) -> Result<(), String> {
+) -> Result<(), rrss_app::UiError> {
     let tray = has_tray(app);
     let decision = state::with_db("window_close_choice", db_path, move |conn| {
         rrss_app::window_close::choose(conn, choice, remember, tray)
-            .map_err(|error| error.to_string())
+            .map_err(rrss_app::UiError::from)
     })
     .await?;
     apply(app, decision);

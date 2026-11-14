@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createApiStub, UnexpectedApiCallError, type ApiStub } from "./api";
 import { deferred } from "./deferred";
 import { FIXTURE_AI_PAGE, FIXTURE_PI_PAGE } from "./fixtures/pi";
+import type { UiError } from "../bindings";
 
 function expectMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -15,8 +16,8 @@ describe("createApiStub", () => {
 
     const hanging = stub.deferNext("piProbe");
     const pending = stub.api.piProbe();
-    hanging.reject(new Error("spawn failed"));
-    await expect(pending).rejects.toThrow("spawn failed");
+    hanging.reject({ code: "internal", detail: "spawn failed" } satisfies UiError);
+    await expect(pending).rejects.toMatchObject({ code: "internal" });
   });
 
   it("lets two calls of the same method finish out of order", async () => {

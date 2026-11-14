@@ -7,6 +7,7 @@ import {
 import type { Locator, Page } from "@playwright/test";
 import { createSettingsSchema } from "../src/settings/registry";
 import type {
+  UiError,
   ClusterSummaryView,
   WebVerifyStateEvent,
   SiteRulesPage,
@@ -582,8 +583,8 @@ export type MockHostOptions = {
   siteRules?: SiteRulesPage;
   siteRuleReport?: SiteRuleTestView;
   webExtractions?: Record<string, WebVerifyStateEvent>;
-  webWindowError?: string;
-  clearWebDataError?: string;
+  webWindowError?: UiError | string;
+  clearWebDataError?: UiError | string;
   webLinks?: Record<string, OpenWebLinkView | FulltextError>;
   linkSafety?: Record<string, LinkSafety>;
   digests?: DigestView[];

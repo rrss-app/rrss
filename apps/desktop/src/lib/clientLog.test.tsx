@@ -62,8 +62,12 @@ it("does not serialize rejection objects or recurse when its own IPC fails", asy
   const event = new Event("unhandledrejection");
   Object.defineProperty(event, "reason", { value: { body: "canary-content", token: "canary-key" } });
   window.dispatchEvent(event);
+  reportClientError("host", {
+    code: "legacy_text",
+    get detail() { throw new Error("canary-content must not be read"); },
+  });
   await Promise.resolve();
   await Promise.resolve();
-  expect(reports).toEqual(["non-error rejection"]);
+  expect(reports).toEqual(["non-error rejection", "UI error legacy_text"]);
   box.stub!.assertNoUnexpectedCalls();
 });

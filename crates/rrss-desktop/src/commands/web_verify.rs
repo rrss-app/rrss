@@ -1,7 +1,7 @@
 //! Host scheduling only; MIME, extraction, persistence and state policy are app code.
 use std::sync::{Arc, Mutex};
 
-use rrss_app::{WebVerifyState, WebVerifyStateEvent, web_verify};
+use rrss_app::{UiError, WebVerifyState, WebVerifyStateEvent, web_verify};
 use tauri::{Manager, Webview};
 use tokio::sync::watch;
 
@@ -135,13 +135,18 @@ async fn run(
 pub async fn extract_web_view(
     app: tauri::AppHandle,
     label: String,
-) -> Result<WebVerifyStateEvent, String> {
+) -> Result<WebVerifyStateEvent, UiError> {
     let window = super::web_window::web_view(&app, &label)?;
-    let session = session(&window)?;
+    let session = session(&window).map_err(UiError::from)?;
     session.cancel(); // Manual requests replace a pending automatic delay/extraction.
     let revision = session.revision.subscribe();
-    let url = window.url().map_err(|_| "无法读取原网页地址")?.to_string();
-    run(window, session, revision, url, false).await
+    let url = window
+        .url()
+        .map_err(|_| UiError::from("无法读取原网页地址".to_string()))?
+        .to_string();
+    run(window, session, revision, url, false)
+        .await
+        .map_err(UiError::from)
 }
 
 command_handler![extract_web_view,];

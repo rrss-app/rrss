@@ -1198,6 +1198,13 @@ async fn timeout_and_connection_errors_are_safe() {
         .unwrap_err();
     let safe = request_error(&error);
     assert_eq!(error_kind(&error), ErrorKind::Refused);
+    assert!(matches!(
+        &safe,
+        Error::Network {
+            kind: ErrorKind::Refused,
+            ..
+        }
+    ));
     assert!(!format!("{safe} {safe:?}").contains("private-"));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let client = ProxyConfig::default()
@@ -1214,5 +1221,11 @@ async fn timeout_and_connection_errors_are_safe() {
         .unwrap_err();
     assert!(error.is_timeout());
     assert_eq!(error_kind(&error), ErrorKind::Timeout);
-    assert!(request_error(&error).to_string().contains("超时"));
+    assert!(matches!(
+        request_error(&error),
+        Error::Network {
+            kind: ErrorKind::Timeout,
+            ..
+        }
+    ));
 }

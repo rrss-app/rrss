@@ -3,6 +3,7 @@ import { applyFeedTreeOrder } from "../src/test/treeOrder";
 import { digestThreadFixture } from "../src/test/fixtures/chat";
 import type { Page } from "@playwright/test";
 import type {
+  UiError,
   AiPage,
   ArticleView,
   ChatMessageView,
@@ -304,7 +305,7 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
 
   function readerFor(id: number, markRead: boolean): ReaderView {
     const row = articleById(id);
-    if (!row) throw new Error(`unknown article ${id}`);
+    if (!row) throw { code: "article_not_found", detail: "article not found" } satisfies UiError;
     if (markRead) row.read = true;
     if (id === payload.longArticleId) {
       const view = clone(payload.longReader);
@@ -545,7 +546,7 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
       case "digest": {
         const id = asNumber(rawArgs.id);
         const row = payload.digests.find((item) => item.id === id);
-        if (!row) throw new Error("digest not found");
+        if (!row) throw { code: "digest_not_found", detail: "digest not found" } satisfies UiError;
         return clone(row);
       }
       case "digest_thread": {

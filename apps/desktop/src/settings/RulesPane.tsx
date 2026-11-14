@@ -15,6 +15,7 @@ import { formatPublished, useMinuteClock } from "../lib/time";
 import { settingsSchemaOptions } from "./settingsQuery";
 import { readGate } from "./editState";
 import { useTranslation } from "../i18n";
+import { formatError } from "../lib/errors";
 
 const POLARITY = ["like", "dislike"] as const;
 const DIMENSIONS = ["title_kw", "title_re", "author", "tag", "url_phrase", "url_re", "body_phrase", "body_re"] as const;
@@ -52,7 +53,7 @@ export function RulesPane({ onChanged, onEditStateChange, onAsk, onOpenArticle }
   };
   return <div className="rules-pane">
     {query.isPending && !data && <Pending>{t("rules.loading")}</Pending>}
-    {query.isError && <div className="notice error" role="alert">{t("rules.readFailed", { error: String(query.error) })} <button type="button" className="btn sm" disabled={busy} onClick={() => void refresh()}>{t("rules.retryRead")}</button></div>}
+    {query.isError && <div className="notice error" role="alert">{t("rules.readFailed", { error: formatError(query.error) })} <button type="button" className="btn sm" disabled={busy} onClick={() => void refresh()}>{t("rules.retryRead")}</button></div>}
     {status && <p className={`form-status${status.tone === "err" ? " error" : ""}`} role={status.tone === "err" ? "alert" : "status"}>{status.text}</p>}
     <fieldset className="settings-fields" disabled={busy} aria-busy={busy}>
       <section className="settings-card settings-section">

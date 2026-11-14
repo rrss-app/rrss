@@ -1,4 +1,5 @@
 import { i18n } from "../i18n";
+import { asUiError } from "../lib/errors";
 
 /** AI 设置失败信息：中文归类、折叠详情、去敏 Key / URL 凭证。 */
 
@@ -19,7 +20,7 @@ export type AiErrorView = {
 };
 
 export function rawErrorText(err: unknown): string {
-  return String(err ?? "").replace(/^Error:\s*/, "").trim();
+  return asUiError(err ?? "").detail.replace(/^Error:\s*/, "").trim();
 }
 
 export function secretsFromUrl(url: string): string[] {

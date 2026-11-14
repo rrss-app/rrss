@@ -2,7 +2,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use rrss_app::{WebClosed, WebNavigated, WebViewBounds, web_window};
+use rrss_app::{UiError, WebClosed, WebNavigated, WebViewBounds, web_window};
 use rrss_core::{
     network::{ProxyEnvironment, WebviewRoute},
     platform,
@@ -59,16 +59,16 @@ impl WebWindows {
     }
 }
 
-fn host_error() -> String {
-    "原网页操作失败，请重试。".into()
+fn host_error() -> UiError {
+    UiError::from("原网页操作失败，请重试。".to_string())
 }
 
-fn finite_bounds(bounds: WebViewBounds) -> Result<WebViewBounds, String> {
+fn finite_bounds(bounds: WebViewBounds) -> Result<WebViewBounds, UiError> {
     if ![bounds.x, bounds.y, bounds.width, bounds.height]
         .into_iter()
         .all(f64::is_finite)
     {
-        return Err("原网页位置无效。".into());
+        return Err(UiError::from("原网页位置无效。".to_string()));
     }
     Ok(WebViewBounds {
         x: bounds.x,
@@ -100,7 +100,7 @@ async fn destroy_webview(
     app: &tauri::AppHandle,
     windows: &WebWindows,
     webview: &tauri::Webview,
-) -> Result<(), String> {
+) -> Result<(), UiError> {
     let label = webview.label().to_string();
     let (sender, receiver) = oneshot::channel();
     webview.close().map_err(|_| host_error())?;
@@ -117,7 +117,7 @@ async fn close_current(
     app: &tauri::AppHandle,
     windows: &WebWindows,
     inner: &mut WebWindowsInner,
-) -> Result<(), String> {
+) -> Result<(), UiError> {
     if let Some(label) = inner.current.clone()
         && let Some(webview) = app.get_webview(&label)
     {
@@ -134,31 +134,34 @@ pub async fn open_web_view(
     windows: tauri::State<'_, WebWindows>,
     url: String,
     bounds: WebViewBounds,
-) -> Result<String, String> {
+) -> Result<String, UiError> {
     let bounds = finite_bounds(bounds)?;
     let mut inner = windows.inner.lock().await;
-    inner.session.as_ref().map_err(|error| error.to_string())?;
+    inner
+        .session
+        .as_ref()
+        .map_err(|error| UiError::from(error.to_string()))?;
     let plan = crate::state::with_db("open_web_view", state.db_path.clone(), move |conn| {
         let native = platform::system_proxy();
         let env = ProxyEnvironment::from_lookup(|key| std::env::var(key).ok());
         web_window::prepare(conn, &url, &env, &native, platform::Os::current())
-            .map_err(|e| e.to_string())
+            .map_err(UiError::from)
     })
     .await?;
     // One original page at a time: fully close the previous child before creating another.
     close_current(&app, &windows, &mut inner).await?;
     // No absent proxy setting may silently turn a direct route into system proxying.
     let direct_args = if plan.route == WebviewRoute::Direct {
-        Some(platform::webview_direct_args(platform::Os::current()).map_err(|e| e.to_string())?)
+        Some(platform::webview_direct_args(platform::Os::current()).map_err(UiError::from)?)
     } else {
         None
     };
     let label = inner
         .session
         .as_mut()
-        .map_err(|error| error.to_string())?
+        .map_err(|error| UiError::from(error.to_string()))?
         .next_label(&plan.route)
-        .map_err(|e| e.to_string())?;
+        .map_err(UiError::from)?;
     let navigation_app = app.clone();
     let navigation_label = label.clone();
     let initial_url = plan.url.clone();
@@ -173,7 +176,7 @@ pub async fn open_web_view(
         inner
             .session
             .as_ref()
-            .map_err(|error| error.to_string())?
+            .map_err(|error| UiError::from(error.to_string()))?
             .directory
             .clone(),
     )
@@ -220,7 +223,7 @@ pub async fn open_web_view(
     inner
         .session
         .as_mut()
-        .map_err(|error| error.to_string())?
+        .map_err(|error| UiError::from(error.to_string()))?
         .opened(plan.route.clone());
     windows
         .verify
@@ -249,7 +252,7 @@ pub async fn open_web_view(
     if let Err(error) = crate::webview_native::configure(&webview, plan.route, bounds).await {
         destroy_webview(&app, &windows, &webview).await?;
         inner.current = None;
-        return Err(error);
+        return Err(UiError::from(error));
     }
     if webview.navigate(initial_url.clone()).is_err() {
         destroy_webview(&app, &windows, &webview).await?;
@@ -266,7 +269,7 @@ fn valid_web_label(label: &str) -> bool {
         .is_some_and(|suffix| !suffix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit()))
 }
 
-pub(super) fn web_view(app: &tauri::AppHandle, label: &str) -> Result<tauri::Webview, String> {
+pub(super) fn web_view(app: &tauri::AppHandle, label: &str) -> Result<tauri::Webview, UiError> {
     if !valid_web_label(label) {
         return Err(host_error());
     }
@@ -278,7 +281,7 @@ pub async fn close_web_view(
     app: tauri::AppHandle,
     windows: tauri::State<'_, WebWindows>,
     label: String,
-) -> Result<(), String> {
+) -> Result<(), UiError> {
     let mut inner = windows.inner.lock().await;
     if !valid_web_label(&label) {
         return Err(host_error());
@@ -301,10 +304,10 @@ pub fn set_web_view_bounds(
     app: tauri::AppHandle,
     label: String,
     bounds: WebViewBounds,
-) -> Result<(), String> {
+) -> Result<(), UiError> {
     let bounds = finite_bounds(bounds)?;
     let webview = web_view(&app, &label)?;
-    crate::webview_native::place(&webview, bounds)
+    crate::webview_native::place(&webview, bounds).map_err(UiError::from)
 }
 
 #[tauri::command]
@@ -312,7 +315,7 @@ pub fn set_web_view_visible(
     app: tauri::AppHandle,
     label: String,
     visible: bool,
-) -> Result<(), String> {
+) -> Result<(), UiError> {
     let webview = web_view(&app, &label)?;
     if visible {
         webview.show().map_err(|_| host_error())?;
@@ -332,7 +335,7 @@ pub async fn web_view_action(
     app: tauri::AppHandle,
     label: String,
     action: String,
-) -> Result<(), String> {
+) -> Result<(), UiError> {
     if action == "close" {
         return close_web_view(app.clone(), app.state(), label).await;
     }
@@ -344,7 +347,7 @@ pub async fn web_view_action(
 pub async fn clear_web_data(
     app: tauri::AppHandle,
     windows: tauri::State<'_, WebWindows>,
-) -> Result<(), String> {
+) -> Result<(), UiError> {
     let mut inner = windows.inner.clone().lock_owned().await;
     close_current(&app, &windows, &mut inner).await?;
     // The owned guard keeps new windows out until cleanup finishes, even if IPC is dropped.
@@ -352,9 +355,9 @@ pub async fn clear_web_data(
         inner
             .session
             .as_mut()
-            .map_err(|error| error.to_string())?
+            .map_err(|error| UiError::from(error.to_string()))?
             .clear(&uuid::Uuid::new_v4().to_string())
-            .map_err(|_| "原网页数据未能完全删除，请重启 RRSS 后重试。".into())
+            .map_err(|_| UiError::from("原网页数据未能完全删除，请重启 RRSS 后重试。".to_string()))
     })
     .await
     .map_err(|_| host_error())?
@@ -367,7 +370,9 @@ pub fn main_only(
 ) -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
     move |invoke| {
         if invoke.message.webview_ref().label() != "main" {
-            invoke.resolver.reject("此窗口无权调用应用命令");
+            invoke
+                .resolver
+                .reject(UiError::from("此窗口无权调用应用命令".to_string()));
             return true;
         }
         handler(invoke)

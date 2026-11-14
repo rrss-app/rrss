@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { DESKTOP_ROOT, isDirectRun, parseArgs, readJson, toPosix, writeJson } from "./cli.mjs";
+import { diffCounts } from "../../../scripts/i18n-ratchet.mjs";
+export { diffCounts } from "../../../scripts/i18n-ratchet.mjs";
 
 // 界面多语言的棘轮：统计源码里还没抽进语言包的中文字面量（字符串、模板串、JSX 文本，不算注释），
 // 每个文件的个数不许超过基线。减少了只提示：多个改动并行迁移时不用都改基线文件，一批合并完再用 `--update` 收紧。
@@ -43,19 +45,6 @@ export function scan(root = SRC) {
     if (count > 0) counts[rel] = count;
   }
   return counts;
-}
-
-/** `added`：比基线多了，检查失败；`stale`：比基线少了，只提示收紧基线。 */
-export function diffCounts(actual, baseline) {
-  const added = [];
-  const stale = [];
-  for (const file of new Set([...Object.keys(actual), ...Object.keys(baseline)])) {
-    const now = actual[file] ?? 0;
-    const allowed = baseline[file] ?? 0;
-    if (now > allowed) added.push({ file, now, allowed });
-    else if (now < allowed) stale.push({ file, now, allowed });
-  }
-  return { added, stale };
 }
 
 const total = (counts) => Object.values(counts).reduce((sum, n) => sum + n, 0);

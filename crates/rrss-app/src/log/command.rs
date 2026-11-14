@@ -1,7 +1,5 @@
-use std::{
-    fmt::Display,
-    time::{Duration, Instant},
-};
+use crate::views::UiError;
+use std::time::{Duration, Instant};
 
 /// Record the command name and result only; never its input arguments.
 pub struct CommandLog {
@@ -23,12 +21,12 @@ impl CommandLog {
     pub fn span(&self) -> &tracing::Span {
         &self.span
     }
-    pub fn finish<T, E: Display>(self, result: &Result<T, E>) {
+    pub fn finish<T>(self, result: &Result<T, UiError>) {
         let command = self.name;
         let elapsed = self.started.elapsed();
         let elapsed_ms = elapsed.as_millis() as u64;
         if let Err(error) = result {
-            tracing::info!(command, elapsed_ms, error = %rrss_core::logsafe::text(&error.to_string(), 500), "command failed");
+            tracing::info!(command, elapsed_ms, code = error.code(), detail = %error.log_detail(), "command failed");
         }
         if elapsed > Duration::from_secs(1) {
             tracing::info!(command, elapsed_ms, "slow command");
@@ -60,7 +58,7 @@ mod tests {
                     "inner with name"
                 );
             });
-            log.finish(&Err::<(), _>("failed"));
+            log.finish(&Err::<(), _>(UiError::from("failed".to_string())));
         });
         handle.end();
         let log = std::fs::read_to_string(dir.path().join("rrss.log")).unwrap();
@@ -85,14 +83,15 @@ mod tests {
                 started: Instant::now() - Duration::from_secs(2),
                 span: tracing::Span::none(),
             }
-            .finish(&Err::<(), _>(
-                "failed https://user:pass@example.test/a?token=canary-token sk-canary-key",
-            ));
+            .finish(&Err::<(), _>(UiError::from(anyhow::anyhow!(
+                "failed https://user:pass@example.test/a?token=canary-token sk-canary-key"
+            ))));
         });
         handle.end();
         let log = std::fs::read_to_string(dir.path().join("rrss.log")).unwrap();
         assert!(log.contains("command failed") && log.contains("slow command"));
         assert!(!log.contains("canary-") && !log.contains("user:pass"));
+        assert!(log.contains("code=legacy_text") && log.contains("detail="));
         assert!(!log.contains("WARN") && !log.contains("ERROR"));
     }
 }

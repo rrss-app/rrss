@@ -783,7 +783,7 @@ pub async fn fetch_http(client: &reqwest::Client, req: FetchRequest) -> Result<F
     if status == 407 {
         return Err(Error::Http {
             status,
-            message: "代理认证失败，请检查网络代理设置".into(),
+            message: feed_http::PROXY_AUTH_MESSAGE.into(),
         });
     }
     let etag = resp
@@ -803,7 +803,7 @@ pub async fn fetch_http(client: &reqwest::Client, req: FetchRequest) -> Result<F
         .map(str::to_string);
     let body = resp.bytes().await.map_err(|err| {
         let mut safe = crate::network::request_error(&err);
-        if let Error::Http { status: code, .. } = &mut safe {
+        if let Error::Network { status: code, .. } = &mut safe {
             *code = status;
         }
         tracing::warn!(host = %crate::logsafe::host_str(&req.url), status, error = %safe, "reading response body failed");

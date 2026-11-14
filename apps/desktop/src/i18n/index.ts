@@ -3,6 +3,7 @@ import { initReactI18next } from "react-i18next";
 import chat from "../locales/zh-CN/chat.json" with { type: "json" };
 import common from "../locales/zh-CN/common.json" with { type: "json" };
 import digest from "../locales/zh-CN/digest.json" with { type: "json" };
+import errors from "../locales/zh-CN/errors.json" with { type: "json" };
 import feeds from "../locales/zh-CN/feeds.json" with { type: "json" };
 import focus from "../locales/zh-CN/focus.json" with { type: "json" };
 import reader from "../locales/zh-CN/reader.json" with { type: "json" };
@@ -20,7 +21,7 @@ export const SOURCE_LANGUAGE = "zh-CN";
 /** 语言包按功能分命名空间，与 `features/` 对应（设置页按分区再分，壳层与 `lib/` 用 `shell`）；新增命名空间在这里登记。 */
 export const resources = {
   "zh-CN": {
-    chat, common, digest, feeds, focus, reader, search,
+    chat, common, digest, errors, feeds, focus, reader, search,
     settingsAssistant, settingsContent, settingsJobs, settingsModels, settingsSystem, shell,
   },
 } as const;

@@ -824,21 +824,44 @@ impl<T> Redacted<T> for std::result::Result<T, reqwest::Error> {
 }
 
 /// 网络接入方可共用的安全错误投影：保留类别，不传播可能含认证的 URL / source。
+#[derive(Debug, Clone, Copy)]
+pub enum RequestErrorMessage {
+    Timeout,
+    Connect,
+    Redirect,
+    Decode,
+    Other,
+}
+
+// Preserve the existing display projection while giving IPC a typed value.
+impl std::fmt::Display for RequestErrorMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Timeout => "网络请求超时",
+            Self::Connect => "网络连接失败，请检查目标服务和代理设置",
+            Self::Redirect => "网络重定向失败",
+            Self::Decode => "网络响应解码失败",
+            Self::Other => "网络请求失败",
+        })
+    }
+}
+
 pub fn request_error(error: &reqwest::Error) -> Error {
     let message = if error.is_timeout() {
-        "网络请求超时"
+        RequestErrorMessage::Timeout
     } else if error.is_connect() {
-        "网络连接失败，请检查目标服务和代理设置"
+        RequestErrorMessage::Connect
     } else if error.is_redirect() {
-        "网络重定向失败"
+        RequestErrorMessage::Redirect
     } else if error.is_decode() {
-        "网络响应解码失败"
+        RequestErrorMessage::Decode
     } else {
-        "网络请求失败"
+        RequestErrorMessage::Other
     };
-    Error::Http {
+    Error::Network {
+        kind: error_kind(error),
         status: error.status().map_or(0, |s| s.as_u16()),
-        message: message.into(),
+        message,
     }
 }
 

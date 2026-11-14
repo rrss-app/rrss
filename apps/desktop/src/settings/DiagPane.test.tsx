@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApiStub, type ApiStub } from "../test/api";
 import { createReactHarness } from "../test/react";
 import type { TestClock } from "../test/clock";
+import type { UiError } from "../bindings";
 import { DiagPane } from "./DiagPane";
 import { diagnosticsKeys, diagnosticsQueryOptions, prefetchDiagnostics } from "./diagnosticsQuery";
 import { memoryKeys } from "./memoryQuery";
@@ -44,6 +45,16 @@ describe("diagnostics queries and maintenance", () => {
     expect(box.stub!.callCount("diagnostics")).toBe(1);
     pending.resolve(page); await preload; await flush();
     expect(client.getQueryData(diagnosticsKeys.page)).toEqual(page);
+  });
+
+  it("shows a structured IPC loading failure as text", async () => {
+    const error = { code: "legacy_text", params: {}, detail: "fixture diagnostics read failure" } satisfies UiError;
+    box.stub!.handle("diagnostics", () => { throw error; });
+    const { host } = mount(); await flush();
+    expect(client.getQueryState(diagnosticsKeys.page)?.error).toMatchObject({ code: "legacy_text" });
+    const alert = host.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain(error.detail);
+    expect(alert?.textContent).not.toContain("[object Object]");
   });
 
   it("isolates write-time reads and guards writes across unmount without losing invalidation", async () => {

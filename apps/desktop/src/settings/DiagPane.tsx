@@ -1,6 +1,7 @@
 import { api } from "../lib/api";
 import { Icon } from "../components/Icon";
 import { useTranslation } from "../i18n";
+import { formatError } from "../lib/errors";
 import { SettingRow } from "./chips";
 import { DiagLogSection } from "./DiagLogSection";
 import type { Ask } from "./SettingsPanel";
@@ -19,7 +20,7 @@ export function DiagPane({ onAsk, onEditStateChange, onChanged }: {
   const { query, busy, pending, status, maintain, refresh } = useDiagnosticsSettings(onEditStateChange, onChanged);
   const data = query.data;
   const refreshing = query.isFetching;
-  const error = status?.tone === "err" ? status.text : query.isError ? t("diag.loadFailed", { message: String(query.error) }) : "";
+  const error = status?.tone === "err" ? status.text : query.isError ? t("diag.loadFailed", { message: formatError(query.error) }) : "";
   return (
     <div className="diag-pane">
       {error && <p className="notice error" role="alert"><Icon name="info" size={14} />{error}</p>}

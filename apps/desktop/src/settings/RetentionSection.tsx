@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { formatNotice } from "../lib/notice";
+import { formatError } from "../lib/errors";
 import { Stepper } from "./Stepper";
 import { Icon } from "../components/Icon";
 import { readGate, settingsChanged, useEditReport, useSettingsWrite, type SettingsEditState } from "./editState";
@@ -84,7 +85,7 @@ export function RetentionSection({ onAsk, onEditStateChange, onChanged, blocked 
       </div>
       <div className="settings-section-body">
         {(status?.tone === "err" || query.isError) && (
-          <p className="notice error" role="alert"><Icon name="info" size={14} />{status?.tone === "err" ? status.text : t("retention.readFailed", { error: String(query.error) })}</p>
+          <p className="notice error" role="alert"><Icon name="info" size={14} />{status?.tone === "err" ? status.text : t("retention.readFailed", { error: formatError(query.error) })}</p>
         )}
         <details className="advanced-fold backup-fold" data-retention-fold open={on || undefined}>
           <summary>{t("retention.fold")}<span className="backup-fold-sum">{on ? t("retention.foldOn", { count: saved }) : t("retention.foldOff")}</span></summary>

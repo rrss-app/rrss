@@ -6,17 +6,17 @@ macro_rules! db_task {
     ($(#[$meta:meta])* $name:ident($($arg:ident: $ty:ty),* $(,)?) -> $ret:ty => $body:expr) => {
         $(#[$meta])*
         #[tauri::command]
-        pub async fn $name(state: tauri::State<'_, crate::state::AppState>, $($arg: $ty),*) -> Result<$ret, String> {
+        pub async fn $name(state: tauri::State<'_, crate::state::AppState>, $($arg: $ty),*) -> Result<$ret, rrss_app::UiError> {
             let path = state.db_path.clone();
-            crate::state::with_db(stringify!($name), path, move |conn| ($body)(conn).map_err(|e| e.to_string())).await
+            crate::state::with_db(stringify!($name), path, move |conn| ($body)(conn).map_err(rrss_app::UiError::from)).await
         }
     };
 }
 
-pub(crate) async fn logged<T, E: std::fmt::Display>(
+pub(crate) async fn logged<T>(
     name: &'static str,
-    future: impl std::future::Future<Output = Result<T, E>>,
-) -> Result<T, E> {
+    future: impl std::future::Future<Output = Result<T, rrss_app::UiError>>,
+) -> Result<T, rrss_app::UiError> {
     use tracing::Instrument as _;
     let log = rrss_app::log::CommandLog::start(name);
     let result = future.instrument(log.span().clone()).await;

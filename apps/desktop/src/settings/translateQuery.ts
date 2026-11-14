@@ -3,6 +3,7 @@ import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react
 import type { TranslatePage } from "../bindings";
 import { api } from "../lib/api";
 import { formatNotice } from "../lib/notice";
+import { formatError } from "../lib/errors";
 import { i18n } from "../i18n";
 import { redactAiText, secretsFromUrl } from "./aiError";
 import { settingsChanged } from "./editState";
@@ -50,7 +51,7 @@ export function sameTranslateDraft(a: TranslateDraft, b: TranslateDraft) {
 export function translateError(prefix: string, error: unknown, draft?: TranslateDraft) {
   const secrets = draft ? [draft.deepl_key ?? "", draft.deeplx_token ?? "", draft.http_key ?? "",
     ...[draft.deepl_url, draft.deeplx_url, draft.http_url].flatMap(secretsFromUrl)] : [];
-  return formatNotice(prefix, redactAiText(String(error), secrets));
+  return formatNotice(prefix, redactAiText(formatError(error), secrets));
 }
 
 export type TranslateAction = "save" | "test";

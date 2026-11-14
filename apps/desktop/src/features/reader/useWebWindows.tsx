@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, onWebClosed, onWebDownloadBlocked, onWebEscape, onWebNavigated, onWebVerifyState } from "../../lib/api";
 import { formatNotice } from "../../lib/notice";
+import { asUiError, isProxyError, type UiErrorEnvelope } from "../../lib/errors";
 import { i18n, Trans, useTranslation } from "../../i18n";
 import { useSettingsWrite } from "../../settings/editState";
 import { settingsMutationOptions, settingsSchemaOptions } from "../../settings/settingsQuery";
@@ -13,7 +14,7 @@ import { WebVerifyStrip } from "./WebVerifyStrip";
 import type { WebVerifyStateEvent, WebViewBounds } from "../../bindings";
 import type { WebLinkNotice, WebOpenMode } from "../../lib/webLinks";
 
-type Panel = { url: string; phase: "tip" | "opening" | "opened" | "error"; error?: string };
+type Panel = { url: string; phase: "tip" | "opening" | "opened" | "error"; error?: string; failure?: UiErrorEnvelope };
 type Live = { label: string; openedUrl: string; url: string };
 /** 宿主 `web_view_action` 的白名单动作。 */
 export type WebViewAction = "back" | "forward" | "reload" | "copy" | "open" | "disable-js" | "clear" | "close";
@@ -174,7 +175,7 @@ export function useWebWindows({ show, close, notify, openLink, openExtracted }: 
       try { label = await api.openWebView(url, bounds); }
       catch (error) {
         replacing.current = null;
-        if (ticket === generation.current) showPanel({ url, phase: "error", error: formatNotice("", error) });
+        if (ticket === generation.current) showPanel({ url, phase: "error", error: formatNotice("", error), failure: asUiError(error) });
         return;
       }
       const stale = ticket !== generation.current || !sceneOn.current || panelRef.current?.url !== url;
@@ -211,7 +212,7 @@ export function useWebWindows({ show, close, notify, openLink, openExtracted }: 
       if (schema.values.find(v => v.id === "web_original_tip")?.value === "1") showPanel({ url, phase: "tip" });
       else await launch(url);
     } catch (error) {
-      if (ticket === generation.current) showPanel({ url, phase: "error", error: formatNotice("", error) });
+      if (ticket === generation.current) showPanel({ url, phase: "error", error: formatNotice("", error), failure: asUiError(error) });
     }
   };
   const extract = async () => {
@@ -361,8 +362,8 @@ export function WebWindowScene({ controller, covered, onBack, onOpenLink, onProx
         <div className="web-tip-text"><Trans t={t} i18nKey="webWindow.tip.text" values={{ host: new URL(url).hostname }} components={{ strong: <strong /> }} /></div>
         <div className="web-tip-actions"><label><input type="checkbox" checked={never} disabled={writing} onChange={event => setNever(event.target.checked)} />{t("web.firstTip.never")}</label><button type="button" className="btn sm primary" disabled={writing} aria-busy={writing} onClick={() => void confirm()}>{t("web.openOriginal")}</button><button type="button" className="btn sm ghost" disabled={writing} onClick={onBack}>{t("webWindow.tip.cancel")}</button></div>
         {error && <small role="alert">{error}</small>}
-      </div> : <div className="web-tip web-original-tip web-warning" data-tone="warn" role="alert">
-        <div className="web-tip-text"><strong>{panel.error?.includes("代理") ? t("webWindow.error.proxy") : t("webWindow.error.open")}</strong><p>{panel.error}</p></div>
+      </div> : <div className="web-tip web-original-tip web-warning" data-tone="warn" role="alert" data-error-code={panel.failure?.code}>
+        <div className="web-tip-text"><strong>{isProxyError(panel.failure) ? t("webWindow.error.proxy") : t("webWindow.error.open")}</strong><p>{panel.error}</p></div>
         <div className="web-tip-actions"><button type="button" className="btn primary" onClick={() => open("reader")}>{t("webWindow.error.useReader")}</button><button type="button" className="btn" onClick={() => open("browser")}>{t("web.openInBrowser")}</button><button type="button" className="btn ghost" onClick={() => { onBack(); onProxySettings(); }}>{t("webWindow.error.proxySettings")}</button></div>
         <small>{t("webWindow.error.retryHint")}</small>
       </div>}

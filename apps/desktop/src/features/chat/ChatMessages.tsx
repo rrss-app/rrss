@@ -1,3 +1,4 @@
+import { formatError } from "../../lib/errors";
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { ChatMessageView, ChatStreamEvent } from "../../lib/api";
 import { BlockView } from "../../components/BlockView";
@@ -144,7 +145,7 @@ function useLoadOlder({ onLoadOlder, scrollContainer }: LoadOlderProps, messages
       if (!(await onLoadOlder())) anchor.current = null;
     } catch (err) {
       anchor.current = null;
-      setError(String(err).replace(/^Error:\s*/, ""));
+      setError(formatError(err));
     } finally {
       setLoading(false);
     }

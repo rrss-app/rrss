@@ -28,6 +28,7 @@ pub mod settings_schema;
 pub mod site_rules;
 pub mod tool;
 pub mod translate;
+pub mod ui_error;
 pub mod views;
 pub mod web;
 pub mod web_snapshot;
@@ -46,9 +47,20 @@ mod export_ts {
     use std::path::Path;
     use ts_rs::TS;
 
-    #[test]
-    fn write_bindings() {
+    fn bindings_source() -> String {
         let decls = [
+            UiError::decl(),
+            UiErrorKind::decl(),
+            ui_error::common::CommonError::decl(),
+            ui_error::common::LegacyErrorSource::decl(),
+            ui_error::feeds::FeedError::decl(),
+            ui_error::folders::FolderError::decl(),
+            ui_error::rules::RuleError::decl(),
+            ui_error::models::ModelError::decl(),
+            ui_error::chat::ChatUiError::decl(),
+            ui_error::reader::ReaderError::decl(),
+            ui_error::network::NetworkError::decl(),
+            ui_error::network::NetworkMessage::decl(),
             crate::fulltext::FulltextErrorKind::decl(),
             crate::fulltext::FulltextError::decl(),
             WebNavigated::decl(),
@@ -277,9 +289,29 @@ mod export_ts {
             "export const SELECTION_TRANSLATE_MAX_CHARS = {};\n",
             translate::selection::MAX_CHARS
         ));
-        let out = out.replace("bigint", "number");
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/desktop/src/bindings.ts");
+        out.replace("bigint", "number")
+    }
+
+    fn bindings_path() -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/desktop/src/bindings.ts")
+    }
+
+    #[test]
+    #[ignore = "explicit export: cargo test -p rrss-app export_ts -- --ignored"]
+    fn write_bindings() {
+        let path = bindings_path();
         std::fs::create_dir_all(path.parent().unwrap()).expect("bindings dir");
-        std::fs::write(&path, out).expect("write bindings.ts");
+        std::fs::write(&path, bindings_source()).expect("write bindings.ts");
+    }
+
+    #[test]
+    fn bindings_are_current() {
+        assert_eq!(
+            std::fs::read_to_string(bindings_path())
+                .unwrap()
+                .replace("\r\n", "\n"),
+            bindings_source(),
+            "run cargo test -p rrss-app export_ts -- --ignored"
+        );
     }
 }

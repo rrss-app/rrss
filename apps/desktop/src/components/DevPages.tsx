@@ -1,3 +1,4 @@
+import { formatError } from "../lib/errors";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { BlockView, LIBRARY_FIXTURE } from "./BlockView";
@@ -6,7 +7,7 @@ export function ProbePage() {
   const [info, setInfo] = useState<string>("");
   const [ime, setIme] = useState("");
   useEffect(() => {
-    api.probe().then((v) => setInfo(JSON.stringify(v, null, 2))).catch((e) => setInfo(String(e)));
+    api.probe().then((v) => setInfo(JSON.stringify(v, null, 2))).catch((e) => setInfo(formatError(e)));
   }, []);
   return (
     <div className="scroll reader" style={{ padding: 24 }}>

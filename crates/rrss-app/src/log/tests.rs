@@ -143,12 +143,14 @@ async fn failure_paths_do_not_write_credentials_queries_or_content() {
         .await
         .unwrap_err();
         let failure = anyhow::Error::from(failure).context("CANARY_MODEL_BODY");
-        tracing::warn!(error = %error(failure.as_ref()), "complete command failed");
+        let failure = crate::views::UiError::from(failure);
+        tracing::warn!(code = failure.code(), detail = %failure.log_detail(), "complete command failed");
         let shared = crate::scheduler::digest_jobs::Failure {
             reason: "model_error",
             message: "CANARY_MODEL_BODY".into(),
         };
-        tracing::warn!(error = %error(&shared), "digest command failed");
+        let failure = crate::views::UiError::from(anyhow::Error::new(shared));
+        tracing::warn!(code = failure.code(), detail = %failure.log_detail(), "digest command failed");
     }
     .with_subscriber(subscriber)
     .await;

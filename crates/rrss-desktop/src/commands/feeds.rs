@@ -27,12 +27,8 @@ db_task!(mark_scope_read(scope: String) -> Vec<i64> =>
     |conn| rrss_app::actions::mark_scope_read(conn, &scope));
 
 #[tauri::command]
-pub async fn add_feed(state: State<'_, AppState>, url: String) -> Result<AddFeedResult, String> {
-    state
-        .scheduler
-        .add_feed(&url)
-        .await
-        .map_err(|e| e.to_string())
+pub async fn add_feed(state: State<'_, AppState>, url: String) -> Result<AddFeedResult, UiError> {
+    state.scheduler.add_feed(&url).await.map_err(UiError::from)
 }
 
 db_task!(save_feed(args: SaveFeedArgs) -> FeedTree =>
@@ -64,10 +60,10 @@ db_task!(rename_folder(id: i64, name: String) -> () =>
 db_task!(delete_folder(id: i64) -> () => |conn| rrss_app::actions::delete_folder(conn, id));
 
 #[tauri::command]
-pub async fn import_opml(state: State<'_, AppState>, xml: String) -> Result<String, String> {
+pub async fn import_opml(state: State<'_, AppState>, xml: String) -> Result<String, UiError> {
     let path = state.db_path.clone();
     with_db("import_opml", path, move |conn| {
-        let report = rrss_app::actions::import_opml(conn, &xml).map_err(|e| e.to_string())?;
+        let report = rrss_app::actions::import_opml(conn, &xml).map_err(UiError::from)?;
         Ok(format!(
             "新增 {} 个订阅，跳过 {} 个重复，新建 {} 个文件夹",
             report.imported, report.skipped_same_url, report.folders

@@ -21,9 +21,10 @@ pub async fn log_client(
 
 /// 切换本次运行的文件日志级别，返回新的日志状态。
 #[tauri::command]
-pub async fn log_set_level(detailed: bool) -> Result<LogStatusView, String> {
+pub async fn log_set_level(detailed: bool) -> Result<LogStatusView, UiError> {
     rrss_app::execution::blocking(move || {
-        let handle = rrss_app::log::current().ok_or("日志没有初始化")?;
+        let handle =
+            rrss_app::log::current().ok_or_else(|| UiError::from("日志没有初始化".to_string()))?;
         let level = if detailed {
             rrss_app::log::Level::Detailed
         } else {
@@ -31,14 +32,14 @@ pub async fn log_set_level(detailed: bool) -> Result<LogStatusView, String> {
         };
         handle
             .set_level(level)
-            .map_err(|_| "日志文件不可用，无法切换记录级别".to_string())?;
+            .map_err(|_| UiError::from("日志文件不可用，无法切换记录级别".to_string()))?;
         tracing::info!(detailed, "file log level changed");
         handle
             .status_view()
-            .ok_or_else(|| "日志文件不可用".to_string())
+            .ok_or_else(|| UiError::from("日志文件不可用".to_string()))
     })
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(UiError::from)?
 }
 
 /// 先选保存位置，再在阻塞线程打包；返回保存的路径，取消时为空。
@@ -46,7 +47,7 @@ pub async fn log_set_level(detailed: bool) -> Result<LogStatusView, String> {
 pub async fn log_export(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, UiError> {
     let documents = app.path().document_dir().ok();
     let Some(dest) = super::backup::pick(move || {
         let mut dialog = app
@@ -69,10 +70,10 @@ pub async fn log_export(
         tokio::task::spawn_blocking(move || {
             rrss_app::log::export_diagnostics(&db_path, &dest)
                 .map(|()| dest.display().to_string())
-                .map_err(|error| format!("导出诊断包失败：{error}"))
+                .map_err(|error| UiError::from(format!("导出诊断包失败：{error}")))
         })
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(|error| UiError::from(anyhow::Error::from(error)))?
     })
     .await
     .map(Some)
@@ -80,7 +81,7 @@ pub async fn log_export(
 
 /// 统计会扫描向量与 FTS 表，大库上耗时明显，不能占用主线程。
 #[tauri::command]
-pub async fn diagnostics(state: State<'_, AppState>) -> Result<DiagnosticsPage, String> {
+pub async fn diagnostics(state: State<'_, AppState>) -> Result<DiagnosticsPage, UiError> {
     let path = state.db_path.clone();
     with_db("diagnostics", path.clone(), move |conn| {
         Ok(queries::diagnostics(conn, &path))
@@ -90,23 +91,24 @@ pub async fn diagnostics(state: State<'_, AppState>) -> Result<DiagnosticsPage, 
 
 /// 存储占用要扫一遍库与数据目录，放到阻塞线程。
 #[tauri::command]
-pub async fn storage_page(state: State<'_, AppState>) -> Result<StoragePage, String> {
+pub async fn storage_page(state: State<'_, AppState>) -> Result<StoragePage, UiError> {
     let path = state.db_path.clone();
     with_db("storage_page", path.clone(), move |conn| {
-        queries::storage_page(conn, &path).map_err(|e| e.to_string())
+        queries::storage_page(conn, &path).map_err(UiError::from)
     })
     .await
 }
 
 /// 清理与压缩可能耗时（`VACUUM` 需要重写整个库），同样不占主线程。
 #[tauri::command]
-pub async fn storage_clean(state: State<'_, AppState>, action: String) -> Result<String, String> {
+pub async fn storage_clean(state: State<'_, AppState>, action: String) -> Result<String, UiError> {
     let path = state.db_path.clone();
     tracing::info!(%action, "storage cleanup requested");
     with_db("storage_clean", path.clone(), move |conn| {
         rrss_app::actions::storage_clean(conn, &path, &action).map_err(|e| {
-            tracing::error!(%action, error = %rrss_app::log::error(&e), "storage cleanup failed");
-            e.to_string()
+            let e = UiError::from(e);
+            tracing::error!(%action, code = e.code(), detail = %e.log_detail(), "storage cleanup failed");
+            e
         })
     })
     .await
@@ -122,7 +124,7 @@ db_task!(set_setting(id: String, value: String) -> SettingValue =>
 db_task!(digest(id: i64) -> DigestView => |conn| queries::digest(conn, id));
 
 #[tauri::command]
-pub async fn generate_digest(state: State<'_, AppState>, period: String) -> Result<(), String> {
+pub async fn generate_digest(state: State<'_, AppState>, period: String) -> Result<(), UiError> {
     let period_str = if period == "weekly" {
         "weekly"
     } else {
@@ -134,19 +136,21 @@ pub async fn generate_digest(state: State<'_, AppState>, period: String) -> Resu
         .generate_digest(period_str)
         .await
         .map_err(|e| {
-            tracing::error!(period = %period_str, error = %rrss_app::log::error(e.as_ref()), "manual generate_digest failed");
-            e.to_string()
+            let e = UiError::from(e);
+            tracing::error!(period = %period_str, code = e.code(), detail = %e.log_detail(), "manual generate_digest failed");
+            e
         })?;
     tracing::info!(period = %period_str, "manual generate_digest completed successfully");
     Ok(())
 }
 
 #[tauri::command]
-pub async fn summarize_article(state: State<'_, AppState>, id: i64) -> Result<String, String> {
+pub async fn summarize_article(state: State<'_, AppState>, id: i64) -> Result<String, UiError> {
     tracing::info!(article_id = id, "manual summarize_article requested");
     let res = state.scheduler.summarize_article(id).await.map_err(|e| {
-        tracing::error!(article_id = id, error = %rrss_app::log::error(e.as_ref()), "manual summarize_article failed");
-        e.to_string()
+        let e = UiError::from(e);
+        tracing::error!(article_id = id, code = e.code(), detail = %e.log_detail(), "manual summarize_article failed");
+        e
     })?;
     tracing::info!(
         article_id = id,
@@ -157,12 +161,8 @@ pub async fn summarize_article(state: State<'_, AppState>, id: i64) -> Result<St
 }
 
 #[tauri::command]
-pub async fn refresh(state: State<'_, AppState>) -> Result<RefreshStarted, String> {
-    state
-        .scheduler
-        .start_refresh()
-        .await
-        .map_err(|error| error.to_string())
+pub async fn refresh(state: State<'_, AppState>) -> Result<RefreshStarted, UiError> {
+    state.scheduler.start_refresh().await.map_err(UiError::from)
 }
 
 #[tauri::command]
@@ -171,7 +171,7 @@ pub fn scheduler_status(state: State<'_, AppState>) -> SchedulerSnapshot {
 }
 
 #[tauri::command]
-pub async fn probe_env() -> Result<serde_json::Value, String> {
+pub async fn probe_env() -> Result<serde_json::Value, UiError> {
     rrss_app::execution::blocking(|| {
         let fonts: Vec<&'static str> = rrss_core::platform::installed_cjk_fonts().unwrap_or_default();
         serde_json::json!({
@@ -184,7 +184,7 @@ pub async fn probe_env() -> Result<serde_json::Value, String> {
         })
     })
     .await
-    .map_err(|error| error.to_string())
+    .map_err(UiError::from)
 }
 
 /// 自绘标题栏：窗口三键按平台的样子画。

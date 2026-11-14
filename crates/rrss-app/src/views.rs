@@ -3,6 +3,32 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+// Each domain owns its codes and conversions in ui_error; this union only changes
+// when a domain is introduced. Flattening retains the code discriminant in TS.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct UiError {
+    #[serde(flatten)]
+    pub kind: UiErrorKind,
+    pub detail: String,
+    // Preserve the typed error's safe log projection separately from legacy UI text.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub(crate) diagnostic: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(untagged)]
+pub enum UiErrorKind {
+    Common(crate::ui_error::common::CommonError),
+    Feeds(crate::ui_error::feeds::FeedError),
+    Folders(crate::ui_error::folders::FolderError),
+    Rules(crate::ui_error::rules::RuleError),
+    Models(crate::ui_error::models::ModelError),
+    Chat(crate::ui_error::chat::ChatUiError),
+    Reader(crate::ui_error::reader::ReaderError),
+    Network(crate::ui_error::network::NetworkError),
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 pub enum ClientLogLevel {

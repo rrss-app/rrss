@@ -1,3 +1,4 @@
+import { formatError } from "../lib/errors";
 import { useEffect, useRef, useState } from "react";
 import { api, type InterestHitView, type RankingSettings } from "../lib/api";
 import type { RankingToggle } from "../components/FocusPane";
@@ -51,7 +52,7 @@ export function MemoryPane({ ranking, onRanking, onAsk, onOpenArticle, onChanged
       const result = await api.interestHits(id);
       if (gen === hitsGen.current) setHits(result);
     } catch (err) {
-      if (gen === hitsGen.current) { setHitsFor(0); setError(t("memory.hitsFailed") + String(err)); }
+      if (gen === hitsGen.current) { setHitsFor(0); setError(t("memory.hitsFailed") + formatError(err)); }
     } finally {
       if (gen === hitsGen.current) setLoadingHitsFor(0);
     }
@@ -64,11 +65,11 @@ export function MemoryPane({ ranking, onRanking, onAsk, onOpenArticle, onChanged
     <div className="memory-pane">
       {sub === "memory" && query.isPending && !busy && <Pending className="form-status">{t("memory.loading")}</Pending>}
       {sub === "memory" && query.isError && <div className="notice error" role="alert">
-        {status?.tone === "err" ? status.text : t("memory.loadFailed") + String(query.error)}
+        {status?.tone === "err" ? status.text : t("memory.loadFailed") + formatError(query.error)}
         <button type="button" className="btn sm" disabled={busy || query.isFetching} onClick={() => void refresh()}>{t("memory.retry")}</button>
       </div>}
       {sub === "interest" && interestQuery.isError && <div className="notice error" role="alert">
-        {t("memory.interestLoadFailed") + String(interestQuery.error)}
+        {t("memory.interestLoadFailed") + formatError(interestQuery.error)}
         <button type="button" className="btn sm" disabled={busy || interestQuery.isFetching} onClick={() => void refresh()}>{t("memory.retry")}</button>
       </div>}
       {error && <p className="notice error" role="alert">{error}</p>}

@@ -14,13 +14,13 @@ db_task!(star_article(id: i64, starred: bool) -> () =>
 db_task!(unmark_read(ids: Vec<i64>) -> () => |conn| rrss_app::actions::unmark_read(conn, &ids));
 
 #[tauri::command]
-pub async fn fetch_fulltext(state: State<'_, AppState>, id: i64) -> Result<ReaderView, String> {
+pub async fn fetch_fulltext(state: State<'_, AppState>, id: i64) -> Result<ReaderView, UiError> {
     let path = state.db_path.clone();
     rrss_app::fulltext::fetch_and_store(&state.network, &path, id)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| UiError::from(error.to_string()))?;
     with_db("fetch_fulltext", path, move |conn| {
-        queries::reader_view(conn, id).map_err(|e| e.to_string())
+        queries::reader_view(conn, id).map_err(UiError::from)
     })
     .await
 }
@@ -48,13 +48,13 @@ pub async fn cite_digest_selection(
     digest_id: i64,
     revision: String,
     selections: Vec<DigestSelection>,
-) -> Result<Vec<CitationView>, String> {
+) -> Result<Vec<CitationView>, UiError> {
     with_db(
         "cite_digest_selection",
         state.db_path.clone(),
         move |conn| {
             rrss_app::digest::cite_selection(conn, digest_id, &revision, &selections)
-                .map_err(|e| format!("{e:#}"))
+                .map_err(UiError::from_anyhow_pretty)
         },
     )
     .await
@@ -65,7 +65,7 @@ pub async fn prefetch_images(
     app: AppHandle,
     state: State<'_, AppState>,
     article_id: i64,
-) -> Result<Vec<MediaRef>, String> {
+) -> Result<Vec<MediaRef>, UiError> {
     rrss_app::jobs::media::prefetch_images(
         &state.db_path,
         &state.data_dir,
@@ -76,7 +76,7 @@ pub async fn prefetch_images(
         },
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(UiError::from)
 }
 
 #[tauri::command]
@@ -84,7 +84,7 @@ pub async fn retry_image(
     state: State<'_, AppState>,
     article_id: i64,
     url: String,
-) -> Result<MediaRef, String> {
+) -> Result<MediaRef, UiError> {
     rrss_app::jobs::media::retry_image(
         &state.db_path,
         &state.data_dir,
@@ -93,7 +93,7 @@ pub async fn retry_image(
         &url,
     )
     .await
-    .map_err(|err| err.to_string())
+    .map_err(UiError::from)
 }
 
 #[tauri::command]
@@ -101,7 +101,7 @@ pub async fn prefetch_embed_covers(
     app: AppHandle,
     state: State<'_, AppState>,
     article_id: i64,
-) -> Result<(), String> {
+) -> Result<(), UiError> {
     rrss_app::jobs::media::prefetch_embed_covers(
         &state.db_path,
         &state.data_dir,
@@ -112,7 +112,7 @@ pub async fn prefetch_embed_covers(
         },
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(UiError::from)
 }
 
 #[tauri::command]
@@ -120,7 +120,7 @@ pub async fn download_direct_media(
     state: State<'_, AppState>,
     article_id: i64,
     url: String,
-) -> Result<MediaRef, String> {
+) -> Result<MediaRef, UiError> {
     let referer = with_db(
         "download_direct_media",
         state.db_path.clone(),
@@ -140,7 +140,7 @@ pub async fn download_direct_media(
         &referer,
     )
     .await
-    .map_err(|err| err.to_string())
+    .map_err(|error| UiError::from(error.to_string()))
 }
 
 #[tauri::command]

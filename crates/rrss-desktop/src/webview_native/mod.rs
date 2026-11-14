@@ -147,13 +147,16 @@ pub(super) fn link_action(webview: &tauri::Webview, url: &str, copy: bool) {
     }
 }
 
-pub async fn dispatch(webview: &tauri::Webview, action: &str) -> Result<(), String> {
+pub async fn dispatch(webview: &tauri::Webview, action: &str) -> Result<(), rrss_app::UiError> {
     if !known_action(action) {
-        return Err("未知的原网页操作。".into());
+        return Err(rrss_app::UiError::from("未知的原网页操作。".to_string()));
     }
     match action {
-        "back" | "forward" => native::history(webview, action == "back").map_err(|_| failure()),
-        "reload" => webview.reload().map_err(|_| failure()),
+        "back" | "forward" => native::history(webview, action == "back")
+            .map_err(|_| rrss_app::UiError::from(failure())),
+        "reload" => webview
+            .reload()
+            .map_err(|_| rrss_app::UiError::from(failure())),
         "close" => {
             crate::commands::web_window::close_web_view(
                 webview.app_handle().clone(),
@@ -165,9 +168,10 @@ pub async fn dispatch(webview: &tauri::Webview, action: &str) -> Result<(), Stri
         "copy" | "open" => {
             let url = webview.url().map_err(|_| failure())?;
             if !is_http_url(&url) {
-                return Err(failure());
+                return Err(rrss_app::UiError::from(failure()));
             }
             link_result(webview.app_handle(), &url, action == "copy")
+                .map_err(rrss_app::UiError::from)
         }
         "disable-js" | "clear" => {
             if action == "clear" {
@@ -183,11 +187,12 @@ pub async fn dispatch(webview: &tauri::Webview, action: &str) -> Result<(), Stri
                 .map(|u| u.to_string())
                 .map_err(|_| failure())?;
             crate::state::with_db("disable_site_javascript", path, move |conn| {
-                rrss_app::site_rules::disable_site_javascript(conn, &url).map_err(|e| e.to_string())
+                rrss_app::site_rules::disable_site_javascript(conn, &url)
+                    .map_err(rrss_app::UiError::from)
             })
             .await
         }
-        _ => Err("未知的原网页操作。".into()),
+        _ => Err(rrss_app::UiError::from("未知的原网页操作。".to_string())),
     }
 }
 

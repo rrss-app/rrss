@@ -219,10 +219,30 @@ pub fn path(value: &Path) -> String {
 
 pub fn error(value: &crate::Error) -> String {
     match value {
-        crate::Error::Http { status, .. } => format!("http status {status}"),
+        crate::Error::Http { status, .. } | crate::Error::Network { status, .. } => {
+            format!("http status {status}")
+        }
         crate::Error::Parse(_) => "feed parse failed".into(),
         crate::Error::InvalidMemory(_) => "invalid memory".into(),
         crate::Error::InvalidRule(_) => "invalid rule".into(),
+        // Sentence-style validation failures are still legacy UI text. Logging
+        // their type avoids copying display Chinese or arbitrary input/output.
+        crate::Error::InvalidProvider(_) => "invalid AI provider".into(),
+        crate::Error::InvalidSetting(_) => "invalid setting".into(),
+        crate::Error::InvalidNetworkProxy(_) => "invalid network proxy".into(),
+        crate::Error::InvalidPiOverride(_) => "invalid Pi override".into(),
+        crate::Error::InvalidModelChoice(_) => "invalid model choice".into(),
+        crate::Error::InvalidTreeOrder(_) => "invalid tree order".into(),
+        crate::Error::InvalidCompat(_) => "invalid Pi compat object".into(),
+        crate::Error::Backup(_) => "backup operation failed".into(),
+        crate::Error::SchemaTooOld { found, min } => {
+            format!("schema version {found} is too old (minimum: {min})")
+        }
+        crate::Error::VectorSpaceRebuildRequired { .. } => "vector space rebuild required".into(),
+        crate::Error::VectorSpaceRebuildInProgress => "vector space rebuild in progress".into(),
+        crate::Error::TaskModelUnset(_) => "task model is unset".into(),
+        crate::Error::FetchDeferred { .. } => "fetch deferred".into(),
+        crate::Error::FetchPaused(_) => "fetch paused".into(),
         _ => text(&value.to_string(), 500),
     }
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatNotice } from "./notice";
+import type { UiError } from "../bindings";
 
 describe("formatNotice", () => {
   it("hides invalid JSON model dump", () => {
@@ -14,6 +15,11 @@ describe("formatNotice", () => {
     expect(out.startsWith("刷新失败：")).toBe(true);
     expect(out.length).toBeLessThan(160);
     expect(out.endsWith("…")).toBe(true);
+  });
+
+  it("keeps the prefix and compacts details from a legacy error object", () => {
+    const error = { code: "legacy_text", params: {}, detail: "fixture\n  failure" } satisfies UiError;
+    expect(formatNotice("operation: ", error)).toBe("operation: fixture failure");
   });
 
   it("humanizes database lock", () => {

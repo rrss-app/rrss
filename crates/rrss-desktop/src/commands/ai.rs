@@ -20,19 +20,19 @@ pub async fn probe_pool_model(
     state: State<'_, AppState>,
     provider_id: i64,
     model: String,
-) -> Result<ModelPoolView, String> {
+) -> Result<ModelPoolView, UiError> {
     rrss_app::capabilities::probe_pool_model(
         &state.db_path,
         &state
             .network
             .client(NetworkScope::Api)
             .await
-            .map_err(|e| e.to_string())?,
+            .map_err(UiError::from)?,
         provider_id,
         &model,
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(UiError::from)
 }
 
 #[tauri::command]
@@ -66,18 +66,18 @@ db_task!(update_pool_model(args: UpdatePoolModelArgs) -> ModelPoolView =>
 pub async fn fetch_model_catalog(
     state: State<'_, AppState>,
     provider_id: i64,
-) -> Result<ModelPoolView, String> {
+) -> Result<ModelPoolView, UiError> {
     rrss_app::model_pool::fetch_model_catalog(
         &state.db_path,
         &state
             .network
             .client(NetworkScope::Api)
             .await
-            .map_err(|e| e.to_string())?,
+            .map_err(UiError::from)?,
         provider_id,
     )
     .await
-    .map_err(|e| format!("{e:#}"))
+    .map_err(UiError::from_anyhow_pretty)
 }
 
 db_task!(delete_provider(id: i64) -> () => |conn| rrss_app::actions::delete_provider(conn, id));
@@ -92,49 +92,50 @@ pub async fn fetch_models(
     provider_id: i64,
     base_url: String,
     api_key: Option<String>,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<String>, UiError> {
     rrss_app::capabilities::list_models(
         &state.db_path,
         &state
             .network
             .client(NetworkScope::Api)
             .await
-            .map_err(|e| e.to_string())?,
+            .map_err(UiError::from)?,
         provider_id,
         &base_url,
         api_key.as_deref(),
     )
     .await
-    .map_err(|e| format!("{e:#}"))
+    .map_err(UiError::from_anyhow_pretty)
 }
 
 #[tauri::command]
 pub async fn test_connection(
     state: State<'_, AppState>,
     args: ConnectionTestArgs,
-) -> Result<ConnectionTestView, String> {
+) -> Result<ConnectionTestView, UiError> {
     rrss_app::capabilities::test_connection(
         &state.db_path,
         &state
             .network
             .client(NetworkScope::Api)
             .await
-            .map_err(|e| e.to_string())?,
+            .map_err(UiError::from)?,
         args,
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(UiError::from)
 }
 
 db_task!(reset_failed_embeds() -> () =>
     |conn| rrss_app::actions::reset_failed_embeds(conn).map(|_| ()));
 
 #[tauri::command]
-pub async fn embed_now(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn embed_now(state: State<'_, AppState>) -> Result<(), UiError> {
     tracing::info!("manual embed_now triggered");
     state.scheduler.embed_now().await.map_err(|e| {
-        tracing::error!(error = %rrss_app::log::error(e.as_ref()), "manual embed_now failed");
-        e.to_string()
+        let e = UiError::from(e);
+        tracing::error!(code = e.code(), detail = %e.log_detail(), "manual embed_now failed");
+        e
     })?;
     tracing::info!("manual embed_now completed successfully");
     Ok(())
@@ -145,18 +146,18 @@ db_task!(set_vector_dims(value: String) -> VectorSpaceStatusView => |conn| rrss_
 #[tauri::command]
 pub async fn check_vector_space(
     state: State<'_, AppState>,
-) -> Result<VectorSpaceStatusView, String> {
+) -> Result<VectorSpaceStatusView, UiError> {
     rrss_app::jobs::vector_space::check_now(&state.db_path, &state.network)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(UiError::from)
 }
 #[tauri::command]
 pub async fn restore_vector_space(
     state: State<'_, AppState>,
-) -> Result<VectorSpaceStatusView, String> {
+) -> Result<VectorSpaceStatusView, UiError> {
     rrss_app::jobs::vector_space::restore(&state.db_path, &state.network)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(UiError::from)
 }
 
 command_handler![

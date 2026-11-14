@@ -22,16 +22,16 @@ db_task!(reorder_thread_folders(ids: Vec<i64>) -> () => |conn| actions::reorder_
 db_task!(set_thread_folder_collapsed(folder_id: i64, collapsed: bool) -> () => |conn| actions::set_thread_folder_collapsed(conn, folder_id, collapsed));
 
 #[tauri::command]
-pub async fn delete_thread(state: State<'_, AppState>, thread_id: i64) -> Result<(), String> {
+pub async fn delete_thread(state: State<'_, AppState>, thread_id: i64) -> Result<(), UiError> {
     let guard = state
         .chat
         .lock_thread_deletion(thread_id)
         .await
-        .map_err(|e| e.message)?;
+        .map_err(|e| UiError::from(e.message))?;
     let data_dir = state.data_dir.clone();
     crate::state::with_db("delete_thread", state.db_path.clone(), move |conn| {
         let _guard = guard;
-        actions::delete_thread(conn, thread_id, &data_dir).map_err(|e| e.to_string())
+        actions::delete_thread(conn, thread_id, &data_dir).map_err(UiError::from)
     })
     .await
 }
@@ -51,32 +51,44 @@ db_task!(article_previews(ids: Vec<i64>) -> Vec<ArticlePreviewView> =>
 pub async fn send_message(
     state: State<'_, AppState>,
     args: SendMessageArgs,
-) -> Result<i64, String> {
+) -> Result<i64, UiError> {
     super::logged("send_message", async {
-        state.chat.send(args).await.map_err(|e| e.message)
+        state
+            .chat
+            .send(args)
+            .await
+            .map_err(|e| UiError::from(e.message))
     })
     .await
 }
 
 #[tauri::command]
-pub async fn abort_generation(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn abort_generation(state: State<'_, AppState>) -> Result<(), UiError> {
     super::logged("abort_generation", async {
-        state.chat.abort().await.map_err(|e| e.message)
+        state
+            .chat
+            .abort()
+            .await
+            .map_err(|e| UiError::from(e.message))
     })
     .await
 }
 
 /// 设置页「重启引擎」：有序关闭后按当前配置重新启动（含托管下载与握手）。
 #[tauri::command]
-pub async fn restart_pi(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn restart_pi(state: State<'_, AppState>) -> Result<(), UiError> {
     super::logged("restart_pi", async {
-        state.chat.restart_engine().await.map_err(|e| e.message)
+        state
+            .chat
+            .restart_engine()
+            .await
+            .map_err(|e| UiError::from(e.message))
     })
     .await
 }
 
 #[tauri::command]
-pub async fn stop_pi(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn stop_pi(state: State<'_, AppState>) -> Result<(), UiError> {
     state.chat.stop_engine().await;
     Ok(())
 }
@@ -87,12 +99,12 @@ pub async fn confirm_fetch(
     id: String,
     ok: bool,
     remember: bool,
-) -> Result<(), String> {
+) -> Result<(), UiError> {
     state
         .chat
         .confirm(&id, ok, remember)
         .await
-        .map_err(|e| e.message)
+        .map_err(|e| UiError::from(e.message))
 }
 
 command_handler![

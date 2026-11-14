@@ -15,6 +15,12 @@ function details(error: unknown): { message: string; stack?: string } {
   try {
     const bounded = (text: string, limit: number) => text.length > limit ? "<oversized field omitted>" : text;
     if (error instanceof Error) return { message: bounded(error.message, 4096), stack: error.stack ? bounded(error.stack, 8192) : undefined };
+    if (error && typeof error === "object" && "code" in error && typeof error.code === "string"
+      && /^[a-z][a-z0-9_]{0,127}$/.test(error.code)) {
+      // Legacy detail is display text and can contain model output. The host
+      // keeps its diagnostic projection; this bridge reports only the code.
+      return { message: `UI error ${error.code}` };
+    }
     return { message: typeof error === "string" ? bounded(error, 4096) : "non-error rejection" };
   } catch { return { message: "unreadable error" }; }
 }

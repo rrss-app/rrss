@@ -14,11 +14,11 @@ db_task!(save_network_proxy(args: SaveNetworkProxyArgs) -> NetworkProxyView =>
 pub async fn test_network_proxy(
     state: State<'_, AppState>,
     args: NetworkProxyTestArgs,
-) -> Result<NetworkProxyTestView, String> {
+) -> Result<NetworkProxyTestView, UiError> {
     let db_path = state.db_path.clone();
     rrss_app::network_proxy::test_network_proxy(&db_path, args)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(UiError::from)
 }
 
 db_task!(pi_config() -> PiConfigView => queries::pi_config);
@@ -29,33 +29,38 @@ db_task!(save_pi_config(args: SavePiConfigArgs) -> PiConfigView =>
 #[tauri::command]
 pub async fn pi_generated_config(
     state: State<'_, AppState>,
-) -> Result<rrss_app::pi::launch::GeneratedConfig, String> {
+) -> Result<rrss_app::pi::launch::GeneratedConfig, UiError> {
     let data_dir = state.data_dir.clone();
     with_db("pi_generated_config", state.db_path.clone(), move |conn| {
-        rrss_app::pi::launch::generated_config(conn, &data_dir).map_err(|e| e.message)
+        rrss_app::pi::launch::generated_config(conn, &data_dir)
+            .map_err(|e| UiError::from(e.message))
     })
     .await
 }
 
 #[tauri::command]
-pub async fn pi_available_models(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    state.chat.available_models().await.map_err(|e| e.message)
+pub async fn pi_available_models(state: State<'_, AppState>) -> Result<Vec<String>, UiError> {
+    state
+        .chat
+        .available_models()
+        .await
+        .map_err(|e| UiError::from(e.message))
 }
 
 #[tauri::command]
 pub async fn acknowledge_pi_version_notice(
     state: State<'_, AppState>,
     version: String,
-) -> Result<(), String> {
+) -> Result<(), UiError> {
     state
         .chat
         .acknowledge_version_notice(&version)
         .await
-        .map_err(|e| e.message)
+        .map_err(|e| UiError::from(e.message))
 }
 
 #[tauri::command]
-pub async fn pi_page(state: State<'_, AppState>) -> Result<PiPage, String> {
+pub async fn pi_page(state: State<'_, AppState>) -> Result<PiPage, UiError> {
     let path = state.db_path.clone();
     let data_dir = state.data_dir.clone();
     with_db("pi_page", path, move |conn| {
@@ -66,7 +71,7 @@ pub async fn pi_page(state: State<'_, AppState>) -> Result<PiPage, String> {
 
 /// 子进程探测单独走阻塞线程池，切到 Pi 页不再等 `pi --version`。
 #[tauri::command]
-pub async fn pi_probe(state: State<'_, AppState>) -> Result<PiProbe, String> {
+pub async fn pi_probe(state: State<'_, AppState>) -> Result<PiProbe, UiError> {
     let path = state.db_path.clone();
     let data_dir = state.data_dir.clone();
     with_db("pi_probe", path, move |conn| {
@@ -79,11 +84,11 @@ pub async fn pi_probe(state: State<'_, AppState>) -> Result<PiProbe, String> {
 pub async fn save_pi_settings(
     state: State<'_, AppState>,
     args: SavePiSettingsArgs,
-) -> Result<PiPage, String> {
+) -> Result<PiPage, UiError> {
     let path = state.db_path.clone();
     let data_dir = state.data_dir.clone();
     with_db("save_pi_settings", path, move |conn| {
-        rrss_app::actions::save_pi_settings(conn, &data_dir, &args).map_err(|e| e.to_string())
+        rrss_app::actions::save_pi_settings(conn, &data_dir, &args).map_err(UiError::from)
     })
     .await
 }
@@ -101,10 +106,10 @@ db_task!(import_mcp(json: String) -> Vec<rrss_app::McpImportEntry> =>
     |conn| rrss_app::mcp::import(conn, &json));
 
 #[tauri::command]
-pub async fn delete_mcp_server(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+pub async fn delete_mcp_server(state: State<'_, AppState>, id: i64) -> Result<(), UiError> {
     rrss_app::mcp::delete(&state.db_path, &state.data_dir, id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(UiError::from)
 }
 
 #[tauri::command]
@@ -112,10 +117,10 @@ pub async fn toggle_mcp_server(
     state: State<'_, AppState>,
     id: i64,
     enabled: bool,
-) -> Result<(), String> {
+) -> Result<(), UiError> {
     let data_dir = state.data_dir.clone();
     with_db("toggle_mcp_server", state.db_path.clone(), move |conn| {
-        rrss_app::mcp::toggle(conn, &data_dir, id, enabled).map_err(|e| e.to_string())
+        rrss_app::mcp::toggle(conn, &data_dir, id, enabled).map_err(UiError::from)
     })
     .await
 }
@@ -127,28 +132,28 @@ db_task!(set_pi_tool_description(name: String, description: String) -> () =>
     |conn| rrss_app::actions::set_pi_tool_description(conn, &name, &description));
 
 #[tauri::command]
-pub async fn pi_skill(state: State<'_, AppState>, name: String) -> Result<SkillDraft, String> {
+pub async fn pi_skill(state: State<'_, AppState>, name: String) -> Result<SkillDraft, UiError> {
     let data_dir = state.data_dir.clone();
     rrss_app::execution::blocking(move || queries::pi_skill(&data_dir, &name))
         .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())
+        .map_err(UiError::from)?
+        .map_err(UiError::from)
 }
 
 #[tauri::command]
-pub async fn save_skill(state: State<'_, AppState>, draft: SkillDraft) -> Result<(), String> {
+pub async fn save_skill(state: State<'_, AppState>, draft: SkillDraft) -> Result<(), UiError> {
     let data_dir = state.data_dir.clone();
     with_db("save_skill", state.db_path.clone(), move |conn| {
-        rrss_app::actions::save_skill(conn, &data_dir, &draft).map_err(|e| format!("{e:#}"))
+        rrss_app::actions::save_skill(conn, &data_dir, &draft).map_err(UiError::from_anyhow_pretty)
     })
     .await
 }
 
 #[tauri::command]
-pub async fn delete_skill(state: State<'_, AppState>, name: String) -> Result<(), String> {
+pub async fn delete_skill(state: State<'_, AppState>, name: String) -> Result<(), UiError> {
     let data_dir = state.data_dir.clone();
     with_db("delete_skill", state.db_path.clone(), move |conn| {
-        rrss_app::actions::delete_skill(conn, &data_dir, &name).map_err(|e| format!("{e:#}"))
+        rrss_app::actions::delete_skill(conn, &data_dir, &name).map_err(UiError::from_anyhow_pretty)
     })
     .await
 }
@@ -179,7 +184,7 @@ pub fn pi_install_status(state: State<AppState>) -> PiInstallView {
 pub async fn probe_mcp(
     state: State<'_, AppState>,
     input: rrss_app::McpInput,
-) -> Result<rrss_app::McpProbeView, String> {
+) -> Result<rrss_app::McpProbeView, UiError> {
     let db_path = state.db_path.clone();
     let data_dir = state.data_dir.clone();
     Ok(rrss_app::mcp::probe(&db_path, &data_dir, input).await)
@@ -189,7 +194,7 @@ pub async fn probe_mcp(
 pub async fn login_mcp(
     state: State<'_, AppState>,
     id: i64,
-) -> Result<rrss_app::McpLoginResult, String> {
+) -> Result<rrss_app::McpLoginResult, UiError> {
     let db_path = state.db_path.clone();
     let data_dir = state.data_dir.clone();
     Ok(rrss_app::mcp::login(&db_path, &data_dir, id).await)

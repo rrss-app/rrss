@@ -69,10 +69,12 @@ jobs:
               - '.github/workflows/ci.yml'
               - '.github/apt/**'
               - '.github/ci/**'
+              - 'scripts/*i18n*'
             frontend:
               - 'apps/desktop/**'
               - 'testdata/**'
               - '.github/workflows/ci.yml'
+              - 'scripts/i18n-ratchet.mjs'
               - '.github/ci/**'
 
   checks:
@@ -219,7 +221,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Self-hosted cache
-        run: bash .github/ci/prepare-runner.sh rust${{ needs.changes.outputs.full == 'true' && ' node' || '' }}
+        run: bash .github/ci/prepare-runner.sh rust node
+
+      - uses: actions/setup-node@v5
+        if: runner.environment != 'self-hosted' && needs.changes.outputs.full != 'true'
+        with:
+          node-version: 22
+
+      - name: Backend UI text ratchet
+        run: |
+          node scripts/check-rust-i18n.mjs
+          node --test scripts/check-rust-i18n.test.mjs
 
       - uses: dtolnay/rust-toolchain@stable
         if: runner.environment != 'self-hosted'
