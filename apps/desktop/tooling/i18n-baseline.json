@@ -2,6 +2,6 @@
   "files": {
     "components/BlockView.tsx": 14,
     "components/DevPages.tsx": 8,
-    "lib/preview.ts": 41
+    "lib/preview.ts": 35
   }
 }

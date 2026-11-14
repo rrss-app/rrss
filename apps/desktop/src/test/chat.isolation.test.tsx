@@ -137,13 +137,11 @@ describe("conversation update isolation", () => {
     const issue = {
       id: 5,
       period: "daily",
-      period_label: "日报",
       period_start: 0,
       date_label: "9月20日",
       body: "",
       revision: "isolation-digest-revision-5",
       source_state: "unavailable",
-      source_note: "",
       source_index: [],
       unlocated_sources: [],
       items: [],

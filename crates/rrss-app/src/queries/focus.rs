@@ -5,9 +5,7 @@ use rrss_core::articles;
 use rrss_core::db;
 use rrss_core::feed_scope::FeedScope;
 use rrss_core::interests;
-use rrss_core::rag;
 
-use super::ai::digest_banner_label;
 use crate::views::*;
 
 pub fn focus_page(
@@ -41,7 +39,7 @@ pub fn focus_page(
         articles,
         digest_banner: digest
             .as_ref()
-            .map(|d| digest_banner_label(&d.period, d.period_start))
+            .map(|d| d.period.clone())
             .unwrap_or_default(),
         digest_lede: digest
             .as_ref()
@@ -49,11 +47,6 @@ pub fn focus_page(
             .unwrap_or_default(),
         filter: articles::focus_filter(conn)?.as_str().to_string(),
         list_scope: articles::list_scope(conn)?.as_str().to_string(),
-        status: if more {
-            String::new()
-        } else {
-            focus_status(conn)
-        },
         ranking: ranking_settings(conn)?,
         has_more,
     })
@@ -309,19 +302,6 @@ pub fn ranking_settings(conn: &Connection) -> rrss_core::Result<RankingSettings>
     })
 }
 
-pub fn focus_status(conn: &Connection) -> String {
-    let day = ai_store::local_day();
-    let used = ai_store::usage_on(conn, &day).unwrap_or_default().tokens;
-    let budget = ai_store::daily_budget_tokens(conn).unwrap_or(0);
-    let pending_emb = rag::pending_embed_article_count(conn).unwrap_or(0);
-    let budget_label = if budget <= 0 {
-        used.to_string()
-    } else {
-        format!("{used}/{budget}")
-    };
-    format!("今日 token {budget_label} · 待嵌入 {pending_emb}")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,7 +419,7 @@ mod tests {
         assert!(page().digest_lede.is_empty());
         ai_store::insert_digest(&conn, "weekly", 100, "周报首句。下一句。", "[]").unwrap();
         assert_eq!(page().digest_lede, "周报首句。");
-        assert!(page().digest_banner.starts_with("本周简报"));
+        assert_eq!(page().digest_banner, "weekly");
         let long = "字".repeat(120);
         for (body, expected) in [
             (
@@ -465,7 +445,7 @@ mod tests {
         ] {
             ai_store::insert_digest(&conn, "daily", 1, body, "[]").unwrap();
             assert_eq!(page().digest_lede, expected, "{body}");
-            assert!(page().digest_banner.starts_with("今日简报"));
+            assert_eq!(page().digest_banner, "daily");
         }
         ai_store::insert_digest(&conn, "daily", 2, "最新日报。后句。", "[]").unwrap();
         assert_eq!(page().digest_lede, "最新日报。");

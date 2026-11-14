@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use chrono::{Datelike, Local, TimeZone};
+use chrono::Local;
 use rusqlite::Connection;
 
 use rrss_core::backup::{self, BackupKind};
@@ -18,25 +18,6 @@ pub fn backup_schedule(conn: &Connection) -> rrss_core::Result<String> {
         "daily" | "weekly" => value,
         _ => "off".into(),
     })
-}
-
-/// 「今天 09:12」「9 月 20 日 22:40」「2025 年 9 月 20 日」。
-pub fn fmt_when(ms: i64) -> String {
-    let Some(t) = Local.timestamp_millis_opt(ms).single() else {
-        return String::new();
-    };
-    let today = Local::now().date_naive();
-    let day = t.date_naive();
-    let clock = t.format("%H:%M");
-    if day == today {
-        format!("今天 {clock}")
-    } else if today.pred_opt() == Some(day) {
-        format!("昨天 {clock}")
-    } else if day.year() == today.year() {
-        format!("{} 月 {} 日 {clock}", day.month(), day.day())
-    } else {
-        format!("{} 年 {} 月 {} 日", day.year(), day.month(), day.day())
-    }
 }
 
 pub fn backup_page(conn: &Connection, data_dir: &Path) -> rrss_core::Result<BackupPage> {
@@ -77,14 +58,39 @@ pub fn backup_page(conn: &Connection, data_dir: &Path) -> rrss_core::Result<Back
         last_manual_at,
         schedule,
         entries,
-        restore_notice: backup::restore_result(data_dir).map(|r| RestoreNoticeView {
-            ok: r.ok,
-            message: r.message,
-        }),
+        restore_notice: backup::restore_result(data_dir).map(restore_notice),
         rules: counts.rules,
         interests: counts.interests,
         memories: counts.memories,
     })
+}
+
+fn restore_notice(result: backup::RestoreResult) -> RestoreNoticeView {
+    use backup::RestoreOutcome as O;
+    let message = match result.outcome {
+        Some(O::Restored { name }) => BackupMessage::RestoreDone { name },
+        Some(O::ExitTimeout { name, seconds }) => {
+            BackupMessage::RestoreExitTimeout { name, seconds }
+        }
+        Some(O::StagingIncomplete { name }) => BackupMessage::RestoreStagingIncomplete { name },
+        Some(O::RolledBack { name }) => BackupMessage::RestoreRolledBack { name },
+        Some(O::Partial {
+            name,
+            old_dir,
+            kept_dir,
+        }) => BackupMessage::RestorePartial {
+            name,
+            old_dir,
+            kept_dir,
+        },
+        None => BackupMessage::RestoreLegacy {
+            text: result.message,
+        },
+    };
+    RestoreNoticeView {
+        ok: result.ok,
+        message,
+    }
 }
 
 /// 手动备份的默认文件名。
@@ -97,13 +103,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn formats_times_relative_to_today() {
-        let now = Local::now();
-        assert!(fmt_when(now.timestamp_millis()).starts_with("今天 "));
-        let yesterday = now - chrono::Duration::days(1);
-        assert!(fmt_when(yesterday.timestamp_millis()).starts_with("昨天 "));
-        let old = Local.with_ymd_and_hms(2001, 9, 20, 22, 40, 0).unwrap();
-        assert_eq!(fmt_when(old.timestamp_millis()), "2001 年 9 月 20 日");
+    fn restore_notices_keep_old_sentences_and_code_new_outcomes() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("restore-result.json");
+        std::fs::write(&file, r#"{"ok":true,"message":"old sentence","at":1}"#).unwrap();
+        let old = restore_notice(backup::restore_result(dir.path()).unwrap());
+        assert!(
+            matches!(old.message, BackupMessage::RestoreLegacy { text } if text == "old sentence")
+        );
+        std::fs::write(
+            &file,
+            r#"{"ok":false,"outcome":{"code":"exit_timeout","name":"a.zip","seconds":10},"at":1}"#,
+        )
+        .unwrap();
+        let new = restore_notice(backup::restore_result(dir.path()).unwrap());
+        let wire = serde_json::to_value(&new.message).unwrap();
+        assert_eq!(wire["code"], "restore_exit_timeout");
+        assert_eq!(wire["params"]["seconds"], 10);
     }
 
     #[test]

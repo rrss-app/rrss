@@ -1,8 +1,13 @@
 {
   "goModels": "去选模型",
   "estimateSuffix": "{{text}}（估算）",
-  "toggle": { "on": "已开启", "off": "已关闭" },
-  "notice": { "saveFailed": "没有保存：" },
+  "toggle": {
+    "on": "已开启",
+    "off": "已关闭"
+  },
+  "notice": {
+    "saveFailed": "没有保存："
+  },
   "tenThousands": "{{n}} 万",
   "fit": {
     "onlyDigest": "只够自动简报（约 {{total}} / 天），自动摘要基本不会运行",
@@ -46,7 +51,10 @@
       "hint": "只读。只计嵌入请求。",
       "paused": "今天的嵌入预算已用完，新文章暂时只靠全文检索找到，明天恢复。摘要和简报不受影响。"
     },
-    "chat": { "label": "对话用量", "hint": "只读。对话不计入任何预算。" }
+    "chat": {
+      "label": "对话用量",
+      "hint": "只读。对话不计入任何预算。"
+    }
   },
   "auto": {
     "label": "自动摘要",
@@ -70,7 +78,10 @@
       "noModel": "「摘要」还没选模型：可以先开启，选好模型后才开始。"
     }
   },
-  "neutral": { "label": "中性未读额外摘要", "needAuto": "需先开启自动摘要。" },
+  "neutral": {
+    "label": "中性未读额外摘要",
+    "needAuto": "需先开启自动摘要。"
+  },
   "cluster": {
     "label": "自动汇总相近报道",
     "disabled": "已关闭自动汇总。点「汇总」照常可以生成。",
@@ -88,7 +99,9 @@
       "intro": "关闭时只在你点「汇总」时生成综述。开启后在后台为多来源的相近报道写综述，每天最多 {{limit}} 组，约 {{tokens}} token / 天（估算），计入生成日预算。"
     }
   },
-  "digest": { "label": "简报自动生成" },
+  "digest": {
+    "label": "简报自动生成"
+  },
   "dialog": {
     "title": "开启自动摘要？",
     "intro": "开启后，RRSS 会在后台为新文章调用生成模型写摘要。<strong>这是持续费用</strong>：只要应用开着，每天都会产生用量。",
@@ -155,7 +168,8 @@
     "bound": {
       "tag": "已绑定本库向量",
       "summary": "{{model}}（{{provider}}）· {{dims}} 维 · {{chunks}} 段",
-      "summaryNative": "{{model}}（{{provider}}）· {{dims}} 维（原始 {{sourceDims}} 维） · {{chunks}} 段"
+      "summaryNative": "{{model}}（{{provider}}）· {{dims}} 维（原始 {{sourceDims}} 维） · {{chunks}} 段",
+      "providerDeleted": "连接已删除"
     },
     "unbound": "还没有嵌入模型。没有它时，对话检索只用全文检索，排序不用向量。",
     "building": {
@@ -178,7 +192,8 @@
       "title": "已暂停生成新向量",
       "restore": "恢复原配置",
       "defaultReason": "服务返回的向量和建库时不同，可能是模型版本或量化变了。",
-      "existingUsable": "已有向量照常用于检索。"
+      "existingUsable": "已有向量照常用于检索。",
+      "probeMismatch": "向量与建库时不一致，可能是连接、模型版本、量化或维度变了。"
     },
     "check": {
       "title": "核对生成方式",
@@ -191,8 +206,17 @@
     "editLabel": "翻译设置",
     "loading": "正在读取已保存的翻译设置…",
     "retry": "重试读取",
-    "backend": { "complete": "大模型", "deepl": "DeepL 官方", "deeplx": "DeepLX", "http": "HTTP 服务" },
-    "lang": { "zh": "中文", "en": "英语", "ja": "日语" },
+    "backend": {
+      "complete": "大模型",
+      "deepl": "DeepL 官方",
+      "deeplx": "DeepLX",
+      "http": "HTTP 服务"
+    },
+    "lang": {
+      "zh": "中文",
+      "en": "英语",
+      "ja": "日语"
+    },
     "notice": {
       "readFailedRetry": "读取翻译设置失败，请重试：",
       "readFailedKept": "读取翻译设置失败，当前输入已保留：",

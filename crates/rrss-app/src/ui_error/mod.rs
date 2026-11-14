@@ -80,6 +80,15 @@ impl UiError {
         }
     }
 
+    /// Text written by an older version (stored feed errors). New
+    /// failures always carry a code; this is the only remaining legacy source.
+    pub(crate) fn stored_legacy(text: &str) -> Self {
+        Self::new(
+            UiErrorKind::Common(common::CommonError::LegacyText {}),
+            text,
+        )
+    }
+
     pub fn code(&self) -> &'static str {
         match &self.kind {
             UiErrorKind::Common(kind) => kind.code(),
@@ -100,13 +109,13 @@ impl UiError {
         }
     }
 
-    // Typed failures retain their safe projection. Arbitrary legacy strings may
-    // contain a model dump, so they still get only a fixed diagnostic.
+    // Typed failures retain their safe projection. Stored legacy text may
+    // contain a model dump, so it gets only a fixed diagnostic.
     pub fn log_detail(&self) -> String {
         if let Some(diagnostic) = &self.diagnostic {
             diagnostic.clone()
         } else if self.code() == "legacy_text" {
-            "legacy command error".into()
+            "legacy stored error".into()
         } else {
             logsafe::text(&self.detail, 500)
         }
@@ -132,8 +141,8 @@ impl UiError {
         let mut ui = match kind {
             Some(kind) => Self::new(kind, &diagnostic),
             None => Self::new(
-                UiErrorKind::Common(common::CommonError::LegacyText {}),
-                error.to_string(),
+                UiErrorKind::Common(common::CommonError::Internal),
+                &diagnostic,
             ),
         };
         ui.cause = mcp::cause(error);
@@ -183,11 +192,10 @@ impl UiError {
         {
             return jobs::from_ai(ai);
         }
+        // Contexts are English diagnostics; the wrapped core failure owns the code.
         let mut ui = match core {
-            // A context can be the user's actionable message. Code only when
-            // unwrapping the core failure preserves the old display projection.
-            Some(core) if detail == core.to_string() => Self::from_core(core),
-            _ => Self::from(detail),
+            Some(core) => Self::from_core(core),
+            None => Self::new(UiErrorKind::Common(common::CommonError::Internal), detail),
         };
         ui.diagnostic = Some(crate::log::error(error.as_ref()));
         ui
@@ -209,15 +217,6 @@ impl From<anyhow::Error> for UiError {
 impl From<rusqlite::Error> for UiError {
     fn from(error: rusqlite::Error) -> Self {
         Self::from(Error::Sqlite(error))
-    }
-}
-
-impl From<String> for UiError {
-    fn from(detail: String) -> Self {
-        Self::new(
-            UiErrorKind::Common(common::CommonError::LegacyText {}),
-            detail,
-        )
     }
 }
 

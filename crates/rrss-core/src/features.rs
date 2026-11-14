@@ -8,7 +8,6 @@ use crate::rules::Dimension;
 pub struct FeatureChip {
     pub dimension: Dimension,
     pub pattern: String,
-    pub label: String,
 }
 
 /// 抽出可点选芯片。划词摘录来自阅读器选区；无选区时不加正文短语。
@@ -36,7 +35,6 @@ pub fn extract_features_with_bigrams(
         out.push(FeatureChip {
             dimension: Dimension::Author,
             pattern: author.to_string(),
-            label: format!("作者：{author}"),
         });
     }
     for tag in tags {
@@ -47,21 +45,18 @@ pub fn extract_features_with_bigrams(
         out.push(FeatureChip {
             dimension: Dimension::Tag,
             pattern: tag.to_string(),
-            label: format!("标签：{tag}"),
         });
     }
     if let Some(host) = canonical_url.and_then(domain) {
         out.push(FeatureChip {
             dimension: Dimension::UrlPhrase,
             pattern: host.clone(),
-            label: format!("域名：{host}"),
         });
     }
     for token in title_tokens(title, chinese_bigrams) {
         out.push(FeatureChip {
             dimension: Dimension::TitleKw,
             pattern: token.clone(),
-            label: format!("标题：{token}"),
         });
     }
     if let Some(excerpt) = excerpt.map(str::trim).filter(|s| !s.is_empty()) {
@@ -73,7 +68,6 @@ pub fn extract_features_with_bigrams(
         out.push(FeatureChip {
             dimension: Dimension::BodyPhrase,
             pattern: pattern.clone(),
-            label: format!("摘录：{pattern}"),
         });
     }
     out

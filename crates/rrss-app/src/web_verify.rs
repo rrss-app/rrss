@@ -33,12 +33,8 @@ pub fn event(
         article_id: page.map(|p| p.article_id),
         text_chars: page.map(|p| p.text_chars),
         image_count: page.map(|p| p.image_count),
-        error: last
-            .and_then(|result| result.as_ref().err())
-            .filter(|error| error.code() != "legacy_text")
-            .cloned(),
+        error: last.and_then(|result| result.as_ref().err()).cloned(),
         reason: last.and_then(|result| match result {
-            Err(reason) if reason.code() == "legacy_text" => Some(reason.detail.clone()),
             Ok(page) if !page.suspicious.is_empty() => Some(page.suspicious.join(", ")),
             _ => None,
         }),

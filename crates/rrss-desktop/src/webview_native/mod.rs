@@ -26,7 +26,7 @@ mod native {
         _: &tauri::Webview,
         _: &rrss_core::network::WebviewRoute,
         _: rrss_app::WebViewBounds,
-        _: String,
+        _: rrss_app::views::NativeWebLabels,
     ) -> Result<(), UiError> {
         Ok(())
     }
@@ -91,19 +91,13 @@ pub async fn configure(
     webview: &tauri::Webview,
     route: WebviewRoute,
     bounds: rrss_app::WebViewBounds,
-    native_failure_message: String,
+    labels: rrss_app::views::NativeWebLabels,
 ) -> Result<(), UiError> {
     let target = webview.clone();
     let (send, receive) = tokio::sync::oneshot::channel();
     webview
         .with_webview(move |handle| {
-            let _ = send.send(native::configure(
-                handle,
-                &target,
-                &route,
-                bounds,
-                native_failure_message,
-            ));
+            let _ = send.send(native::configure(handle, &target, &route, bounds, labels));
         })
         .map_err(|_| failure())?;
     // with_webview queues work on the UI thread. Do not navigate until it finishes.
@@ -124,10 +118,10 @@ pub(super) fn failure() -> UiError {
     WebError::NativeFailed.into()
 }
 
-fn message(app: &tauri::AppHandle, text: impl Into<String>) {
+fn message(app: &tauri::AppHandle, labels: &rrss_app::views::NativeWebLabels) {
     app.dialog()
-        .message(text)
-        .title("原网页 — RRSS")
+        .message(labels.failure.clone())
+        .title(labels.dialog_title.clone())
         .show(|_| {});
 }
 
@@ -143,7 +137,12 @@ fn link_result(app: &tauri::AppHandle, url: &tauri::Url, copy: bool) -> Result<(
     }
 }
 
-pub(super) fn link_action(webview: &tauri::Webview, url: &str, copy: bool, failure_message: &str) {
+pub(super) fn link_action(
+    webview: &tauri::Webview,
+    url: &str,
+    copy: bool,
+    labels: &rrss_app::views::NativeWebLabels,
+) {
     // Native hit-test results are untrusted too. Never forward javascript/file URLs.
     let Ok(url) = tauri::Url::parse(url) else {
         return;
@@ -153,7 +152,7 @@ pub(super) fn link_action(webview: &tauri::Webview, url: &str, copy: bool, failu
     }
     let app = webview.app_handle();
     if link_result(app, &url, copy).is_err() {
-        message(app, failure_message);
+        message(app, labels);
     }
 }
 

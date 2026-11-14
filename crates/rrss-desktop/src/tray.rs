@@ -67,6 +67,11 @@ pub async fn close_choice(
 }
 
 /// 建托盘（已建时只换菜单文字）。文字来自前端；托盘不可用时不建，返回 false。
+// Menu and icon failures are internal; the diagnostic keeps Tauri's wording.
+fn tray_error(error: tauri::Error) -> UiError {
+    UiError::from(anyhow::Error::from(error))
+}
+
 pub fn install(app: &AppHandle, labels: TrayLabels) -> Result<bool, UiError> {
     let tray = app.state::<Tray>();
     let mut items = tray
@@ -79,8 +84,7 @@ pub fn install(app: &AppHandle, labels: TrayLabels) -> Result<bool, UiError> {
             (refresh, &labels.refresh),
             (quit, &labels.quit),
         ] {
-            item.set_text(text)
-                .map_err(|error| UiError::from(error.to_string()))?;
+            item.set_text(text).map_err(tray_error)?;
         }
         return Ok(true);
     }
@@ -88,15 +92,14 @@ pub fn install(app: &AppHandle, labels: TrayLabels) -> Result<bool, UiError> {
         tracing::info!("system tray unavailable; closing to tray falls back to minimize");
         return Ok(false);
     }
-    let open = MenuItem::with_id(app, "open", &labels.open, true, None::<&str>)
-        .map_err(|e| UiError::from(e.to_string()))?;
+    let open =
+        MenuItem::with_id(app, "open", &labels.open, true, None::<&str>).map_err(tray_error)?;
     let refresh = MenuItem::with_id(app, "refresh", &labels.refresh, true, None::<&str>)
-        .map_err(|e| UiError::from(e.to_string()))?;
-    let quit = MenuItem::with_id(app, "quit", &labels.quit, true, None::<&str>)
-        .map_err(|e| UiError::from(e.to_string()))?;
-    let separator = PredefinedMenuItem::separator(app).map_err(|e| UiError::from(e.to_string()))?;
-    let menu = Menu::with_items(app, &[&open, &refresh, &separator, &quit])
-        .map_err(|e| UiError::from(e.to_string()))?;
+        .map_err(tray_error)?;
+    let quit =
+        MenuItem::with_id(app, "quit", &labels.quit, true, None::<&str>).map_err(tray_error)?;
+    let separator = PredefinedMenuItem::separator(app).map_err(tray_error)?;
+    let menu = Menu::with_items(app, &[&open, &refresh, &separator, &quit]).map_err(tray_error)?;
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip("RRSS")
         .menu(&menu)
@@ -120,9 +123,7 @@ pub fn install(app: &AppHandle, labels: TrayLabels) -> Result<bool, UiError> {
     if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());
     }
-    builder
-        .build(app)
-        .map_err(|error| UiError::from(error.to_string()))?;
+    builder.build(app).map_err(tray_error)?;
     *items = Some([open, refresh, quit]);
     Ok(true)
 }

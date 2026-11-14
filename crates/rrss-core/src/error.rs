@@ -117,6 +117,8 @@ pub enum Error {
         until: Option<i64>,
         reason: crate::ingest::FetchDeferredReason,
     },
+    #[error("fetch failure: {0}")]
+    Fetch(crate::ingest::FetchFailure),
     /// Dispatch paused locally; retain the admitted claim for a later retry.
     #[error("network unavailable; check proxy settings if configured")]
     FetchPaused,
@@ -235,6 +237,7 @@ pub enum McpFailure {
     CursorStalled,
     PageLimit,
     SseUnsupported,
+    SseEnableUnsupported,
     OwnConfigProbe,
     ProbeTimeout,
     PiMissing,
@@ -270,6 +273,8 @@ pub enum JobFailure {
     DigestBusy,
     EndpointInvalid,
     LimitRecordingInterrupted,
+    CooldownReadFailed,
+    CooldownSaveFailed,
     ModelRuntimeStopped,
     BudgetCheckFailed,
     SpaceCheckFailed,

@@ -102,16 +102,10 @@ async fn test_network_proxy_at(
     let latency_ms = started.elapsed().as_millis() as u64;
     let status = response.status().as_u16();
     let ok = response.status().is_success();
-    let message = if ok {
-        format!("GitHub 可访问 · HTTP {status} · {latency_ms} ms")
-    } else {
-        format!("已连接到 GitHub，但返回 HTTP {status}")
-    };
     Ok(NetworkProxyTestView {
         ok,
         latency_ms,
         status,
-        message,
     })
 }
 
@@ -269,7 +263,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(view.ok, "{}", view.message);
+        assert!(view.ok, "HTTP {}", view.status);
         assert_eq!(view.status, 200);
         let head = proxy.await.unwrap();
         assert!(

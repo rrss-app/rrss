@@ -217,7 +217,7 @@ function SystemProxyDetails({ system }: { system: SystemProxyView }) {
     <div className="proxy-detail proxy-system" role="group" aria-label={t("proxy.system.title")}>
       <div className="proxy-system-head">
         <span>{t("proxy.system.title")}</span>
-        <span className="proxy-system-source">{t("proxy.system.source", { source: system.source })}</span>
+        <span className="proxy-system-source">{t("proxy.system.source", { source: i18n.exists(`proxy.system.sources.${system.source}`, { ns: "settingsSystem" }) ? t(`proxy.system.sources.${system.source}` as "proxy.system.sources.environment") : system.source })}</span>
       </div>
       {rows.length > 0 ? (
         <dl className="proxy-kv">
@@ -270,7 +270,7 @@ function CheckResult({ check }: { check: Check | undefined }) {
   if (check.state === "failed") return <span className="proxy-check-result" role="alert" title={check.text}><span className="proxy-check-dot" aria-hidden="true" />{check.text}</span>;
   const { view } = check;
   return (
-    <span className="proxy-check-result" role="status" title={view.message}>
+    <span className="proxy-check-result" role="status" title={view.ok ? t("proxy.check.okTitle", { status: view.status, ms: view.latency_ms }) : t("proxy.check.httpTitle", { status: view.status })}>
       <span className="proxy-check-dot" aria-hidden="true" />{view.ok ? t("proxy.check.ok", { ms: view.latency_ms }) : `HTTP ${view.status}`}
     </span>
   );

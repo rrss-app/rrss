@@ -82,7 +82,7 @@ describe("AdvancedPane", () => {
     const tested: unknown[] = [];
     fixture.stub.handle("testNetworkProxy", (args) => {
       tested.push(args);
-      return { ok: true, latency_ms: 42, status: 200, message: "ok" };
+      return { ok: true, latency_ms: 42, status: 200 };
     });
     const mounted = harness.mount(<QueryClientProvider client={client}><AdvancedPane onAsk={vi.fn()} /></QueryClientProvider>);
     await harness.flush();

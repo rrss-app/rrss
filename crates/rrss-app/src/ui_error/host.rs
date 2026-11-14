@@ -8,12 +8,22 @@ error_codes!(HostError {
     LogUnavailable => "host_log_unavailable",
     TrayStateUnavailable => "host_tray_state_unavailable",
     LogExportNotInitialized => "host_log_export_not_initialized",
+    LogExportFailed => "host_log_export_failed",
 });
 
 impl From<HostError> for UiError {
     fn from(error: HostError) -> Self {
         let detail = error.code();
         Self::new(UiErrorKind::Host(error), detail)
+    }
+}
+
+impl HostError {
+    /// Platform IO wording stays in the log diagnostic, never in a parameter.
+    pub fn log_export_failed(error: &dyn std::fmt::Display) -> UiError {
+        let mut ui = UiError::from(Self::LogExportFailed);
+        ui.diagnostic = Some(rrss_core::logsafe::text(&error.to_string(), 500));
+        ui
     }
 }
 

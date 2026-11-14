@@ -7,6 +7,50 @@ mod log_tests;
 mod schedule;
 pub use schedule::{FailureClass, FetchSchedule, retry_after_deadline, slow_retry_interval};
 
+/// Scheduler-side fetch failures; wording belongs to the UI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum FetchFailure {
+    #[error("feed URL changed during fetch; response discarded")]
+    StaleUrl,
+    #[error("fetch runtime stopped")]
+    RuntimeStopped,
+    #[error("too many waiters for this feed")]
+    WaitersExceeded,
+    #[error("fetch queue is full")]
+    QueueFull,
+    #[error("feed row could not be read")]
+    ReadFailed,
+    #[error("feed deferral could not be recorded")]
+    DeferralFailed,
+    #[error("fetch task ended unexpectedly")]
+    TaskAborted,
+    #[error("too many refresh operations")]
+    RefreshBusy,
+    #[error("background runtime stopped before every feed finished")]
+    RefreshInterrupted,
+}
+
+impl FetchFailure {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::StaleUrl => "feed_stale_url",
+            Self::RuntimeStopped => "feed_fetch_runtime_stopped",
+            Self::WaitersExceeded => "feed_waiters_exceeded",
+            Self::QueueFull => "feed_queue_full",
+            Self::ReadFailed => "feed_read_failed",
+            Self::DeferralFailed => "feed_deferral_failed",
+            Self::TaskAborted => "feed_task_aborted",
+            Self::RefreshBusy => "feed_refresh_busy",
+            Self::RefreshInterrupted => "feed_refresh_interrupted",
+        }
+    }
+
+    /// The stored-record form used by [`RefreshStatus`] messages.
+    pub fn record(self) -> String {
+        crate::feeds::refresh_error_json(&crate::Error::Fetch(self))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum FetchDeferredReason {
     #[error("saving feed cooldown state")]
@@ -52,6 +96,8 @@ pub trait HttpFetcher {
     fn get(&self, req: FetchRequest) -> Result<FetchResponse>;
 }
 
+/// `message` is always a stored error record (see
+/// [`crate::feeds::refresh_error_json`]); the UI decodes and words it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RefreshStatus {
     Deleted,
@@ -108,8 +154,6 @@ pub fn due_feed_page(
         .collect::<rusqlite::Result<_>>()?)
 }
 
-/// 抓取期间订阅被改址时，旧响应的处理结果。
-const STALE_URL_MESSAGE: &str = "订阅地址已改变，已丢弃旧响应";
 
 /// 核对抓取时的源快照：源已删除或地址已改变时返回该结果，调用方不得再写这个源。
 /// 必须在写事务内调用，核对与写入之间才不会插进改址或删除。
@@ -117,7 +161,7 @@ fn stale_snapshot(conn: &Connection, feed: &FeedRow) -> Result<Option<RefreshSta
     match crate::feeds::get_feed(conn, feed.id) {
         Ok(current) if current.url == feed.url => Ok(None),
         Ok(_) => Ok(Some(RefreshStatus::Failed {
-            message: STALE_URL_MESSAGE.into(),
+            message: FetchFailure::StaleUrl.record(),
         })),
         Err(Error::FeedNotFound) => Ok(Some(RefreshStatus::Deleted)),
         Err(error) => Err(error),
@@ -255,16 +299,16 @@ pub fn apply_fetch_scheduled(
         );
     }
     if !(200..300).contains(&resp.status) {
-        let message = format!("HTTP {}", resp.status);
+        let message = crate::feeds::refresh_error_json(&Error::Http {
+            status: resp.status,
+            message: String::new(),
+        });
         return record_checked(
             conn,
             feed,
             now,
             (None, None),
-            Some(&crate::feeds::refresh_error_json(&Error::Http {
-                status: resp.status,
-                message: String::new(),
-            })),
+            Some(&message),
             RefreshStatus::Failed {
                 message: message.clone(),
             },
@@ -278,13 +322,13 @@ pub fn apply_fetch_scheduled(
     let parsed = match parsed {
         Ok(p) => p,
         Err(err) => {
-            let message = err.to_string();
+            let message = crate::feeds::refresh_error_json(&err);
             return record_checked(
                 conn,
                 feed,
                 now,
                 (None, None),
-                Some(&crate::feeds::refresh_error_json(&err)),
+                Some(&message),
                 RefreshStatus::Failed {
                     message: message.clone(),
                 },
@@ -1050,7 +1094,7 @@ mod tests {
             }
         ));
         assert!(
-            matches!(&results[1].status, RefreshStatus::Failed { message } if message == STALE_URL_MESSAGE)
+            matches!(&results[1].status, RefreshStatus::Failed { message } if message == &FetchFailure::StaleUrl.record())
         );
         assert!(matches!(results[2].status, RefreshStatus::Deleted));
         let current = crate::feeds::get_feed(&conn, 1).unwrap();
@@ -1316,7 +1360,7 @@ mod tests {
             assert_eq!(
                 result.status,
                 RefreshStatus::Failed {
-                    message: STALE_URL_MESSAGE.into()
+                    message: FetchFailure::StaleUrl.record()
                 }
             );
         }

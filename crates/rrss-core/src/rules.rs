@@ -88,19 +88,6 @@ impl Dimension {
     pub fn is_regex(self) -> bool {
         matches!(self, Self::TitleRe | Self::UrlRe | Self::BodyRe)
     }
-
-    pub fn label_zh(self) -> &'static str {
-        match self {
-            Self::Author => "作者",
-            Self::Tag => "标签",
-            Self::TitleKw => "标题",
-            Self::TitleRe => "标题正则",
-            Self::UrlPhrase => "URL",
-            Self::UrlRe => "URL 正则",
-            Self::BodyPhrase => "正文",
-            Self::BodyRe => "正文正则",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

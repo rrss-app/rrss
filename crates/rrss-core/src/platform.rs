@@ -121,6 +121,7 @@ pub struct SystemProxySnapshot {
     pub https: Option<String>,
     pub all: Option<String>,
     pub no_proxy: Option<String>,
+    /// `environment` or `windows_internet`; the UI words it.
     pub source: &'static str,
     pub pac: Option<String>,
     /// Keep unsupported WinINet policy visible to stricter consumers (webviews).
@@ -136,7 +137,7 @@ impl Default for SystemProxySnapshot {
             https: None,
             all: None,
             no_proxy: None,
-            source: "环境变量",
+            source: "environment",
             pac: None,
             bypass_configured: false,
             auto_detect: false,
@@ -205,7 +206,7 @@ fn native_system_proxy() -> SystemProxySnapshot {
         .is_some_and(|v| !v.trim().is_empty());
     if !enabled || proxy.as_deref().is_none_or(|v| v.trim().is_empty()) {
         return SystemProxySnapshot {
-            source: "Windows Internet 设置",
+            source: "windows_internet",
             pac,
             auto_detect,
             bypass_configured,
@@ -215,7 +216,7 @@ fn native_system_proxy() -> SystemProxySnapshot {
     }
     let mut snapshot = parse_windows_proxy_server(proxy.as_deref().unwrap());
     snapshot.no_proxy = override_list.and_then(|v| normalize_windows_override(&v));
-    snapshot.source = "Windows Internet 设置";
+    snapshot.source = "windows_internet";
     snapshot.pac = pac;
     snapshot.unavailable |= unavailable;
     snapshot.auto_detect = auto_detect;
@@ -227,7 +228,7 @@ fn native_system_proxy() -> SystemProxySnapshot {
 /// `http=...;https=...;socks=...` 的按协议格式。该函数保持跨平台可测试。
 pub fn parse_windows_proxy_server(raw: &str) -> SystemProxySnapshot {
     let mut snapshot = SystemProxySnapshot {
-        source: "Windows Internet 设置",
+        source: "windows_internet",
         ..SystemProxySnapshot::default()
     };
     let entries: Vec<(&str, &str)> = raw
@@ -886,7 +887,7 @@ impl ChildTree {
             Ok(Self {
                 pid: child
                     .id()
-                    .ok_or_else(|| std::io::Error::other("子进程已经退出"))?,
+                    .ok_or_else(|| std::io::Error::other("child process already exited"))?,
             })
         }
         #[cfg(windows)]
@@ -921,7 +922,9 @@ impl ChildTree {
         #[cfg(not(any(unix, windows)))]
         {
             let _ = child.start_kill();
-            Err(std::io::Error::other("此平台不支持安全结束 MCP 子进程"))
+            Err(std::io::Error::other(
+                "safe MCP child termination is unsupported on this platform",
+            ))
         }
     }
 }

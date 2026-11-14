@@ -473,8 +473,40 @@ pub fn cancel_restore(data_dir: &Path) -> Result<()> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RestoreResult {
     pub ok: bool,
+    /// Written by current versions; the UI words it from the code.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<RestoreOutcome>,
+    /// Sentence written by older versions; shown as-is when `outcome` is absent.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub message: String,
     pub at: i64,
+}
+
+/// What happened to the last restore. Names are file or folder names only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "code", rename_all = "snake_case")]
+pub enum RestoreOutcome {
+    Restored {
+        name: Option<String>,
+    },
+    /// The previous process kept running, so no file was replaced.
+    ExitTimeout {
+        name: Option<String>,
+        seconds: u64,
+    },
+    StagingIncomplete {
+        name: Option<String>,
+    },
+    /// Replacing failed and every file was moved back.
+    RolledBack {
+        name: Option<String>,
+    },
+    /// Some files could not be moved back; originals remain in `old_dir`.
+    Partial {
+        name: Option<String>,
+        old_dir: String,
+        kept_dir: Option<String>,
+    },
 }
 
 pub fn restore_result(data_dir: &Path) -> Option<RestoreResult> {
@@ -519,62 +551,54 @@ fn apply_pending_with(
     let name = pending
         .as_ref()
         .and_then(|p| p.source.file_name())
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "备份".into());
+        .map(|n| n.to_string_lossy().into_owned());
     let exited = pending
         .as_ref()
         .is_none_or(|p| wait_for_exit(p.pid, exit_wait));
-    let outcome =
-        if !exited {
-            // 旧进程还开着库就换文件，它可能继续写到新库旁边，所以宁可不换。
-            Err(SwapError::RolledBack(Error::Backup(format!(
-            "上次运行的 RRSS 在 {} 秒内没有退出，没有替换文件。请关掉所有 RRSS 窗口后重新恢复",
-            exit_wait.as_secs()
-        ).into())))
-        } else if !staging.join(DB_ENTRY).is_file() {
-            Err(SwapError::RolledBack(Error::Backup(
-                "暂存的备份不完整".into(),
-            )))
-        } else {
-            swap(data_dir, db_path, &staging, rollback)
-        };
-    let result = match outcome {
-        Ok(()) => {
-            let _ = remove_path(&staging);
-            RestoreResult {
-                ok: true,
-                message: format!("已从 {name} 恢复。"),
-                at: crate::feeds::now_ms(),
+    let outcome = if !exited {
+        // 旧进程还开着库就换文件，它可能继续写到新库旁边，所以宁可不换。
+        Err(RestoreOutcome::ExitTimeout {
+            name: name.clone(),
+            seconds: exit_wait.as_secs(),
+        })
+    } else if !staging.join(DB_ENTRY).is_file() {
+        Err(RestoreOutcome::StagingIncomplete { name: name.clone() })
+    } else {
+        match swap(data_dir, db_path, &staging, rollback) {
+            Ok(()) => Ok(()),
+            Err(SwapError::RolledBack(err)) => {
+                tracing::error!(error = %crate::logsafe::error(&err), "restore failed; original data kept");
+                Err(RestoreOutcome::RolledBack { name: name.clone() })
+            }
+            Err(SwapError::Partial(err)) => {
+                tracing::error!(error = %crate::logsafe::error(&err), "restore failed and rollback incomplete");
+                // 暂存里可能还有移回来的备份文件，改名留着，免得下次启动当成没确认的暂存删掉。
+                let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+                let kept = format!("{STAGING}-{stamp}");
+                let kept_dir = fs::rename(&staging, data_dir.join(&kept))
+                    .ok()
+                    .map(|()| kept);
+                Err(RestoreOutcome::Partial {
+                    name: name.clone(),
+                    old_dir: OLD.into(),
+                    kept_dir,
+                })
             }
         }
-        Err(SwapError::RolledBack(err)) => {
-            tracing::error!(error = %crate::logsafe::error(&err), "restore failed; original data kept");
-            let _ = remove_path(&staging);
-            RestoreResult {
-                ok: false,
-                message: format!("从 {name} 恢复失败，当前数据未改动：{err}"),
-                at: crate::feeds::now_ms(),
-            }
-        }
-        Err(SwapError::Partial(err)) => {
-            tracing::error!(error = %crate::logsafe::error(&err), "restore failed and rollback incomplete");
-            // 暂存里可能还有移回来的备份文件，改名留着，免得下次启动当成没确认的暂存删掉。
-            let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
-            let kept = data_dir.join(format!("{STAGING}-{stamp}"));
-            let kept_note = match fs::rename(&staging, &kept) {
-                Ok(()) => format!("，备份里的文件留在 {}", kept.display()),
-                Err(_) => String::new(),
-            };
-            RestoreResult {
-                ok: false,
-                message: format!(
-                    "从 {name} 恢复失败，而且有文件没能移回原处：{err}。原来的数据留在 {}{kept_note}。请先退出 RRSS，把其中的文件移回 {} 再打开，不要删除这些文件夹。",
-                    data_dir.join(OLD).display(),
-                    data_dir.display()
-                ),
-                at: crate::feeds::now_ms(),
-            }
-        }
+    };
+    let (ok, outcome) = match outcome {
+        Ok(()) => (true, RestoreOutcome::Restored { name }),
+        Err(outcome) => (false, outcome),
+    };
+    // A partial rollback keeps the renamed staging; every other outcome drops it.
+    if !matches!(outcome, RestoreOutcome::Partial { .. }) {
+        let _ = remove_path(&staging);
+    }
+    let result = RestoreResult {
+        ok,
+        outcome: Some(outcome),
+        message: String::new(),
+        at: crate::feeds::now_ms(),
     };
     write_json(&data_dir.join(RESULT), &result)?;
     Ok(Some(result))
@@ -1154,7 +1178,7 @@ mod tests {
         let result = apply_pending(dst.path(), &dst_db)
             .unwrap()
             .expect("applied");
-        assert!(result.ok, "{}", result.message);
+        assert!(result.ok, "{result:?}");
         assert_eq!(restore_result(dst.path()), Some(result));
 
         let conn = Connection::open(&dst_db).unwrap();
@@ -1247,8 +1271,19 @@ mod tests {
             .unwrap()
             .expect("attempted");
         assert!(!result.ok);
-        assert!(!result.message.contains("未改动"), "{}", result.message);
-        assert!(result.message.contains("没能移回"), "{}", result.message);
+        let Some(RestoreOutcome::Partial {
+            old_dir, kept_dir, ..
+        }) = &result.outcome
+        else {
+            panic!("{result:?}");
+        };
+        assert_eq!(old_dir, OLD);
+        assert!(
+            kept_dir
+                .as_deref()
+                .unwrap()
+                .starts_with(&format!("{STAGING}-"))
+        );
         assert_eq!(fs::read(&old_db).unwrap(), b"original");
         // 其他步骤照常移回。
         assert!(dst.path().join(SESSIONS).join("keep.jsonl").is_file());
@@ -1295,7 +1330,10 @@ mod tests {
         let _ = child.kill();
         let _ = child.wait();
         assert!(!result.ok);
-        assert!(result.message.contains("没有退出"), "{}", result.message);
+        assert!(
+            matches!(result.outcome, Some(RestoreOutcome::ExitTimeout { .. })),
+            "{result:?}"
+        );
         assert_eq!(fs::read(&dst_db).unwrap(), b"original");
         assert!(dst.path().join(SESSIONS).join("keep.jsonl").is_file());
         assert!(!dst.path().join(OLD).exists());
@@ -1477,7 +1515,7 @@ mod tests {
         let result = apply_pending(dst.path(), &dst_db)
             .unwrap()
             .expect("applied");
-        assert!(result.ok, "{}", result.message);
+        assert!(result.ok, "{result:?}");
         assert_eq!(
             fs::read_to_string(dst.path().join(SKILLS).join("legacy/SKILL.md")).unwrap(),
             "legacy"

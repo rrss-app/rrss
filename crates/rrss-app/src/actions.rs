@@ -31,7 +31,8 @@ use rusqlite::Connection;
 use std::path::Path;
 
 use crate::views::{
-    BackupDoneView, CitationView, NewRuleSpec, PrefsImportView, RestoreCheckView,
+    BackupDoneView, CitationView, NewRuleSpec, PrefsImportView, PrefsScopeView, PrefsSkipView,
+    RestoreCheckView, UiError,
     SaveAiSettingsArgs, SaveFeedArgs, SavePiSettingsArgs,
 };
 
@@ -718,7 +719,10 @@ pub fn export_opml(conn: &Connection) -> rrss_core::Result<String> {
 
 fn ordinary_thread(conn: &Connection, thread_id: i64) -> anyhow::Result<threads::Thread> {
     let thread = threads::get_thread(conn, thread_id)?;
-    anyhow::ensure!(thread.anchor_kind.is_none(), "简报等锚定会话不支持此操作");
+    anyhow::ensure!(
+        thread.anchor_kind.is_none(),
+        crate::ui_error::chat::ChatUiError::ThreadAnchored.failure("anchored thread")
+    );
     Ok(thread)
 }
 
@@ -735,9 +739,15 @@ fn update_thread(
     Ok(())
 }
 
+const THREAD_TITLE_MAX: usize = 80;
+const THREAD_FOLDER_NAME_MAX: usize = 40;
+
 pub fn rename_thread(conn: &Connection, thread_id: i64, title: &str) -> anyhow::Result<()> {
     let title = title.trim();
-    anyhow::ensure!(title.chars().count() <= 80, "会话标题最长 80 字");
+    anyhow::ensure!(
+        title.chars().count() <= THREAD_TITLE_MAX,
+        crate::ui_error::chat::ChatUiError::ThreadTitleTooLong { max: THREAD_TITLE_MAX }.failure("thread title too long")
+    );
     update_thread(
         conn,
         thread_id,
@@ -829,10 +839,10 @@ pub fn delete_thread(conn: &Connection, thread_id: i64, data_dir: &Path) -> anyh
             Ok(())
         };
         remove().map_err(|err| {
-            anyhow::anyhow!(
-                "删除会话文件失败：{}",
+            crate::ui_error::chat::ChatUiError::SessionFileDeleteFailed.failure(format!(
+                "session file delete failed: {}",
                 rrss_core::logsafe::text(&err.to_string(), 200)
-            )
+            ))
         })?;
     }
     tx.commit()?;
@@ -842,8 +852,8 @@ pub fn delete_thread(conn: &Connection, thread_id: i64, data_dir: &Path) -> anyh
 fn thread_folder_name(name: &str) -> anyhow::Result<&str> {
     let name = name.trim();
     anyhow::ensure!(
-        !name.is_empty() && name.chars().count() <= 40,
-        "文件夹名称须为 1–40 字"
+        !name.is_empty() && name.chars().count() <= THREAD_FOLDER_NAME_MAX,
+        crate::ui_error::chat::ChatUiError::FolderNameInvalid { max: THREAD_FOLDER_NAME_MAX }.failure("thread folder name invalid")
     );
     Ok(name)
 }
@@ -880,7 +890,7 @@ pub fn rename_thread_folder(conn: &Connection, folder_id: i64, name: &str) -> an
         "UPDATE thread_folders SET name=?1 WHERE id=?2",
         rusqlite::params![name, folder_id],
     )?;
-    anyhow::ensure!(n > 0, "会话文件夹不存在");
+    anyhow::ensure!(n > 0, crate::ui_error::chat::ChatUiError::FolderNotFound.failure("thread folder not found"));
     Ok(())
 }
 
@@ -892,7 +902,7 @@ pub fn delete_thread_folder(conn: &Connection, folder_id: i64) -> anyhow::Result
         [folder_id],
     )?;
     let n = tx.execute("DELETE FROM thread_folders WHERE id=?1", [folder_id])?;
-    anyhow::ensure!(n > 0, "会话文件夹不存在");
+    anyhow::ensure!(n > 0, crate::ui_error::chat::ChatUiError::FolderNotFound.failure("thread folder not found"));
     tx.commit()?;
     Ok(())
 }
@@ -906,7 +916,7 @@ pub fn reorder_thread_folders(conn: &Connection, ids: &[i64]) -> anyhow::Result<
     let requested: std::collections::HashSet<_> = ids.iter().copied().collect();
     anyhow::ensure!(
         ids.len() == existing.len() && requested == existing,
-        "排序必须包含全部会话文件夹且不能重复"
+        crate::ui_error::chat::ChatUiError::FolderOrderInvalid.failure("thread folder order invalid")
     );
     for (position, id) in ids.iter().enumerate() {
         tx.execute(
@@ -927,7 +937,7 @@ pub fn set_thread_folder_collapsed(
         "UPDATE thread_folders SET collapsed=?1 WHERE id=?2",
         rusqlite::params![collapsed, folder_id],
     )?;
-    anyhow::ensure!(n > 0, "会话文件夹不存在");
+    anyhow::ensure!(n > 0, crate::ui_error::chat::ChatUiError::FolderNotFound.failure("thread folder not found"));
     Ok(())
 }
 
@@ -1305,8 +1315,49 @@ pub fn prefs_import(conn: &Connection, text: &str) -> rrss_core::Result<PrefsImp
     }
     Ok(PrefsImportView {
         summary: parts,
-        skipped: r.skipped,
+        skipped: r.skipped.into_iter().map(prefs_skip).collect(),
     })
+}
+
+fn prefs_skip(skip: rrss_core::prefs::ImportSkip) -> PrefsSkipView {
+    use rrss_core::prefs::{ImportSkip as S, Scope};
+    let scope = |scope: Scope| match scope {
+        Scope::Global => PrefsScopeView::Global,
+        Scope::Feed { url } => PrefsScopeView::Feed { url },
+        Scope::Folder { path } => PrefsScopeView::Folder { path },
+    };
+    match skip {
+        S::RuleScopeMissing {
+            polarity,
+            dimension,
+            pattern,
+            scope: within,
+        } => PrefsSkipView::RuleScopeMissing {
+            polarity: polarity.as_str().into(),
+            dimension: dimension.as_str().into(),
+            pattern,
+            scope: scope(within),
+        },
+        S::RuleInvalid {
+            polarity,
+            dimension,
+            pattern,
+            reason,
+        } => PrefsSkipView::RuleInvalid {
+            polarity: polarity.as_str().into(),
+            dimension: dimension.as_str().into(),
+            pattern,
+            error: UiError::from(rrss_core::Error::InvalidRule(reason)),
+        },
+        S::PackMissing { pack } => PrefsSkipView::PackMissing { pack },
+        S::MemoryScopeMissing {
+            content,
+            scope: within,
+        } => PrefsSkipView::MemoryScopeMissing {
+            content,
+            scope: scope(within),
+        },
+    }
 }
 
 pub fn set_vector_dims(

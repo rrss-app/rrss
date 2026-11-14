@@ -229,7 +229,10 @@ async fn dns_outage_preserves_health_pauses_dispatch_and_automatic_head_probe_re
         ))
         .await
         .unwrap();
-    assert!(added.message.contains("网络不可用"));
+    assert!(matches!(
+        added.notice,
+        crate::views::AddFeedNotice::Offline {}
+    ));
     let start = tokio::time::timeout(Duration::from_secs(5), scheduler.start_refresh())
         .await
         .unwrap()
@@ -242,7 +245,7 @@ async fn dns_outage_preserves_health_pauses_dispatch_and_automatic_head_probe_re
         .unwrap();
     assert!(view.done);
     assert_eq!((view.skipped, view.failed), (4, 0));
-    assert!(view.error.unwrap().contains("网络不可用"));
+    assert!(view.error.unwrap().code() == "feed_network_unavailable");
     assert_eq!(health(&conn), original);
     assert!(
         calls
@@ -315,7 +318,7 @@ async fn refused_content_proxy_preserves_health_and_manual_probe_reports_then_re
         .into_iter()
         .find(|op| op.id == start.operation_id)
         .unwrap();
-    assert!(view.done && view.error.unwrap().contains("网络不可用"));
+    assert!(view.done && view.error.unwrap().code() == "feed_network_unavailable");
     assert_eq!((view.skipped, view.failed), (3, 0));
     assert!(scheduler.snapshot().background_requested > background);
     assert_eq!(health(&conn), original);

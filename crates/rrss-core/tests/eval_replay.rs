@@ -253,7 +253,7 @@ fn fewer_than_fifty_labels_has_no_metrics() {
             let report = Replay::load(&conn, NOW, NOW + 2)
                 .unwrap()
                 .report(&[configs()[0]]);
-            assert!(report.ends_with("样本不足\n"));
+            assert!(report.ends_with("insufficient samples\n"));
             assert!(!report.contains("AUC="));
         }
     }

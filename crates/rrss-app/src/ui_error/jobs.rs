@@ -2,7 +2,6 @@ use super::UiErrorKind;
 use rrss_core::{Error, error::JobFailure};
 
 error_codes!(JobsUiError {
-    AdmissionReason { reason: String } => "job_admission_reason",
     RuntimeStopped => "job_runtime_stopped",
     ModelBusy => "job_model_busy",
     ModelStopped => "job_model_stopped",
@@ -15,6 +14,8 @@ error_codes!(JobsUiError {
     DigestBusy => "job_digest_busy",
     EndpointInvalid => "job_endpoint_invalid",
     LimitRecordingInterrupted => "job_limit_recording_interrupted",
+    CooldownReadFailed => "job_model_cooldown_read_failed",
+    CooldownSaveFailed => "job_model_cooldown_save_failed",
     ModelRuntimeStopped => "job_model_runtime_stopped",
     BudgetCheckFailed => "job_budget_check_failed",
     SpaceCheckFailed => "job_space_check_failed",
@@ -78,6 +79,8 @@ pub(super) fn classify(error: &Error) -> Option<UiErrorKind> {
         JobFailure::DigestBusy => JobsUiError::DigestBusy,
         JobFailure::EndpointInvalid => JobsUiError::EndpointInvalid,
         JobFailure::LimitRecordingInterrupted => JobsUiError::LimitRecordingInterrupted,
+        JobFailure::CooldownReadFailed => JobsUiError::CooldownReadFailed,
+        JobFailure::CooldownSaveFailed => JobsUiError::CooldownSaveFailed,
         JobFailure::ModelRuntimeStopped => JobsUiError::ModelRuntimeStopped,
         JobFailure::BudgetCheckFailed => JobsUiError::BudgetCheckFailed,
         JobFailure::SpaceCheckFailed => JobsUiError::SpaceCheckFailed,
@@ -147,9 +150,7 @@ pub(crate) fn from_ai(error: &rrss_ai::Error) -> super::UiError {
             rrss_ai::complete::RequestKind::Decode => JobsUiError::RequestDecode,
             rrss_ai::complete::RequestKind::Other => JobsUiError::RequestFailed,
         },
-        Ai::Admission(reason) => JobsUiError::AdmissionReason {
-            reason: super::params::remote_reason(reason),
-        },
+        Ai::Admission(reason) => return super::UiError::from(Error::Jobs(reason.clone())),
         Ai::NoProvider => return super::UiError::from(Error::ProviderNotFound),
         Ai::EmptyContent | Ai::EmptyEmbedding => {
             return super::UiError::new(
@@ -171,7 +172,7 @@ pub(crate) fn display_anyhow(error: &anyhow::Error) -> String {
     } else if let Some(ai) = error.downcast_ref::<rrss_ai::Error>() {
         from_ai(ai)
     } else {
-        super::UiError::from(error.to_string())
+        super::UiError::from_anyhow_ref(error)
     };
     super::test_display::display(&ui)
 }
@@ -327,15 +328,9 @@ mod tests {
         assert!(!ui.log_detail().contains("canary"));
     }
     #[test]
-    fn opaque_admission_reasons_retain_their_original_display() {
-        let error = rrss_ai::Error::Admission("fixture admission");
-        let reason = error.to_string();
+    fn admission_reasons_use_job_codes() {
+        let error = rrss_ai::Error::Admission(JobFailure::CooldownSaveFailed);
         let ui = super::super::UiError::from(anyhow::Error::new(error));
-        assert_eq!(ui.code(), "job_admission_reason");
-        assert_eq!(
-            serde_json::to_value(&ui).unwrap()["params"]["reason"],
-            reason
-        );
-        assert!(!ui.log_detail().contains("fixture"));
+        assert_eq!(ui.code(), "job_model_cooldown_save_failed");
     }
 }

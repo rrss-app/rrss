@@ -80,7 +80,7 @@ describe("backup section", () => {
     const imported: string[] = [];
     box.stub!.handle("prefsImport", (text: string) => {
       imported.push(text);
-      return { summary: [{ code: "prefs_rules" as const, params: { count: 1, duplicates: 0 } }], skipped: ["规则 不喜欢标题「广告」：限定的 https://a/rss 在本机不存在"] };
+      return { summary: [{ code: "prefs_rules" as const, params: { count: 1, duplicates: 0 } }], skipped: [{ code: "rule_scope_missing" as const, params: { polarity: "dislike", dimension: "title_kw", pattern: "广告", scope: { kind: "feed" as const, url: "https://a/rss" } } }] };
     });
     const changed = vi.fn();
     const { host } = mount({ onChanged: changed }); await flush();

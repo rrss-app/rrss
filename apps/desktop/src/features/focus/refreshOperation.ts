@@ -1,5 +1,6 @@
 import { i18n } from "../../i18n";
 import { api, onSchedulerUpdated, type FeedView, type RefreshOperation, type RefreshStarted } from "../../lib/api";
+import { formatError } from "../../lib/errors";
 
 /** 需要提醒时返回提示文字：点名前几个失败源，没有的项不写；全部成功返回 null。 */
 export function refreshProblem(result: RefreshOperation, feeds: readonly FeedView[]): string | null {
@@ -12,7 +13,7 @@ export function refreshProblem(result: RefreshOperation, feeds: readonly FeedVie
     : count > names.length ? i18n.t("refresh.failedNamedMore", { ns: "focus", count, names: joined })
     : i18n.t("refresh.failedNamed", { ns: "focus", count, names: joined });
   const comma = i18n.t("list.commaSeparator", { ns: "focus" });
-  if (result.error) return [result.error, failed].filter(Boolean).join(comma);
+  if (result.error) return [formatError(result.error), failed].filter(Boolean).join(comma);
   const skipped = result.skipped > 0 ? i18n.t("refresh.skipped", { ns: "focus", count: result.skipped }) : "";
   return i18n.t("refresh.doneWithProblems", { ns: "focus", parts: [failed, skipped].filter(Boolean).join(comma) });
 }

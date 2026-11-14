@@ -3,6 +3,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { api, onFeedUpdated, onSchedulerUpdated, type SchedulerSnapshot } from "../lib/api";
 import { isTauri } from "../lib/preview";
 import { i18n } from "../i18n";
+import { formatError } from "../lib/errors";
 import { feedKeys, feedQueryOptions } from "../lib/feedQuery";
 import type { FocusSession, FocusNotice } from "../features/focus";
 import type { FeedsSession } from "../features/feeds";
@@ -33,8 +34,10 @@ export function useFeedUpdates(queries: QueryClient, focus: FocusSession, column
       if (snapshot.version < statusVersion) return;
       statusRun = snapshot.run_id;
       statusVersion = snapshot.version;
-      if (snapshot.feed_pause && snapshot.feed_pause !== pause) latest.current.notify({ message: snapshot.feed_pause });
-      pause = snapshot.feed_pause;
+      // Codes identify the pause; the same reason is announced once.
+      const reason = snapshot.feed_pause ? snapshot.feed_pause.code : null;
+      if (snapshot.feed_pause && reason !== pause) latest.current.notify({ message: formatError(snapshot.feed_pause) });
+      pause = reason;
     };
     const readStatus = async (restarted = false) => {
       if (statusRead || disposed) return;

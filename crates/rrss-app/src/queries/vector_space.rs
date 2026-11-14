@@ -4,7 +4,7 @@ use rrss_core::{Result, db, vector_space as spaces};
 use rusqlite::{Connection, OptionalExtension};
 fn view(conn: &Connection, id: i64) -> Result<VectorSpaceView> {
     conn.query_row(
-        "SELECT v.id,v.model,COALESCE(p.name,'连接已删除'),v.dims,v.state,
+        "SELECT v.id,v.model,p.name,v.dims,v.state,
          (SELECT COUNT(*) FROM chunks WHERE space_id=v.id AND embedding IS NOT NULL),
          v.stale_reason,v.checked_at,v.source_dims FROM vector_spaces v
          LEFT JOIN ai_providers p ON p.id=v.provider_id WHERE v.id=?1",

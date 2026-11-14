@@ -19,9 +19,6 @@ const CHECKPOINT: Duration = Duration::from_secs(30);
 const RECOVERY_LIMIT: Duration = Duration::from_secs(4 * 60 * 60);
 pub(super) const GLOBAL: &str = "*";
 pub(super) const RECOVERY: &str = "recovery";
-const DAMAGED: &str = "订阅限流记录损坏或版本不兼容，已保守限速";
-const SAVE_FAILED: &str = "无法保存订阅限流记录，已暂停抓取";
-const LOAD_FAILED: &str = "无法读取订阅限流记录，已暂停抓取";
 
 /// Shared across stopping/restarting runtimes for this database, so startup
 /// cannot read an older snapshot while a received limit is still being saved.
@@ -184,49 +181,40 @@ pub(super) struct Cooldowns {
 pub(super) struct Deferred {
     pub key: String,
     pub until: Option<i64>,
-    pub message: String,
     pub reason: rrss_core::ingest::FetchDeferredReason,
 }
 impl Deferred {
-    pub fn from_reason(
-        until: Option<i64>,
-        reason: rrss_core::ingest::FetchDeferredReason,
-        local_message: &str,
-    ) -> Self {
+    pub fn from_reason(until: Option<i64>, reason: rrss_core::ingest::FetchDeferredReason) -> Self {
         use rrss_core::ingest::FetchDeferredReason;
         if reason == FetchDeferredReason::HostLimited
             && let Some(until) = until
         {
             return Self::block(GLOBAL.into(), until);
         }
-        // Progress views keep their text contract; this never enters feeds.error.
-        let message = match reason {
-            FetchDeferredReason::CooldownSaveFailed => SAVE_FAILED,
-            FetchDeferredReason::CooldownLoadFailed => LOAD_FAILED,
-            FetchDeferredReason::Recovery => DAMAGED,
-            _ => local_message,
-        };
+        // Progress views keep this record; it never enters feeds.error.
         Self {
             key: GLOBAL.into(),
             until,
             reason,
-            message: message.into(),
         }
     }
     fn block(host: String, until: i64) -> Self {
-        let date = chrono::DateTime::from_timestamp_millis(until)
-            .map(|date| date.to_rfc3339())
-            .unwrap_or_else(|| "远期".into());
         Self {
             key: host,
             until: Some(until),
-            message: format!("订阅主机限流，已延期至 {date}"),
             reason: rrss_core::ingest::FetchDeferredReason::HostLimited,
         }
     }
+    /// Stored-record form for refresh results.
+    pub fn record(&self) -> String {
+        rrss_core::feeds::refresh_error_json(&self.error())
+    }
+    pub fn ui(&self) -> crate::views::UiError {
+        crate::views::UiError::from(self.error())
+    }
     pub fn status(&self) -> RefreshStatus {
         RefreshStatus::Skipped {
-            message: self.message.clone(),
+            message: self.record(),
             retry_at: self.until,
         }
     }
@@ -461,14 +449,18 @@ impl Cooldowns {
         }
     }
 
-    pub fn reason(&self) -> Option<String> {
-        if self.load_error {
-            Some(LOAD_FAILED.into())
+    pub fn reason(&self) -> Option<crate::views::UiError> {
+        use rrss_core::ingest::FetchDeferredReason as R;
+        let reason = if self.load_error {
+            R::CooldownLoadFailed
         } else if self.persist_error {
-            Some(SAVE_FAILED.into())
+            R::CooldownSaveFailed
+        } else if self.recovery {
+            R::Recovery
         } else {
-            self.recovery.then(|| DAMAGED.into())
-        }
+            return None;
+        };
+        Some(Deferred::from_reason(None, reason).ui())
     }
 
     pub(super) fn diagnostics(&self, now: Time) -> views::CooldownDiagnostics {
@@ -493,7 +485,6 @@ impl Cooldowns {
             return Some(Deferred {
                 key: GLOBAL.into(),
                 until: None,
-                message: self.reason().unwrap(),
                 reason: if self.load_error {
                     rrss_core::ingest::FetchDeferredReason::CooldownLoadFailed
                 } else {
@@ -541,7 +532,6 @@ impl Cooldowns {
         Some(Deferred {
             key: RECOVERY.into(),
             until: Some(now.utc.saturating_add(delay.as_millis() as i64)),
-            message: DAMAGED.into(),
             reason: rrss_core::ingest::FetchDeferredReason::Recovery,
         })
     }
@@ -1018,7 +1008,7 @@ impl super::runtime::Shared {
         let mut ready = self.cooldown_ready.subscribe();
         let mut stop = self.stop.subscribe();
         tokio::select! {
-            _=stop.wait_for(|stopped|*stopped)=>anyhow::bail!("抓取运行时已停止"),
+            _=stop.wait_for(|stopped|*stopped)=>Err(rrss_core::Error::Fetch(rrss_core::ingest::FetchFailure::RuntimeStopped).into()),
             result=ready.wait_for(|ready|*ready)=>{result?;Ok(())},
         }
     }

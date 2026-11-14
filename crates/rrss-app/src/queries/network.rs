@@ -33,7 +33,7 @@ pub fn network_proxy(conn: &Connection) -> rrss_core::Result<NetworkProxyView> {
             all: env.display_value("ALL_PROXY", "all_proxy"),
             no_proxy: env.display_no_proxy(),
             source: native.source.into(),
-            pac: native.pac.map(|_| "已配置（未解析）".into()),
+            pac: native.pac.is_some(),
         },
     })
 }

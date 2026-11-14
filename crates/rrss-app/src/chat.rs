@@ -1,6 +1,6 @@
 //! 主对话与简报追问：会话锚点与每轮上下文组装。进程与一轮对话的结算在 `crate::pi`。
 
-use anyhow::{Context, Result, bail};
+use anyhow::Result;
 use rrss_core::cite::{CitationSnap, expand_user_prompt, passage_around};
 use rrss_core::{ai_store, threads};
 use rrss_render::{Block, inlines_to_plain};
@@ -35,10 +35,14 @@ pub struct PreparedSend {
 pub fn prepare_send(conn: &Connection, args: &SendMessageArgs) -> Result<PreparedSend> {
     validate_thinking(args.thinking.as_deref())?;
     if args.text.trim().is_empty() && args.citations.is_empty() {
-        bail!("请输入问题或添加引用");
+        return Err(crate::ui_error::chat::ChatUiError::InputEmpty
+            .failure("empty chat input")
+            .into());
     }
     if args.thread_id < 0 {
-        bail!("无效的会话 ID");
+        return Err(crate::ui_error::chat::ChatUiError::ThreadIdInvalid
+            .failure("negative thread id")
+            .into());
     }
     let mut context = match args.digest_id {
         Some(id) => digest::get_digest(conn, Some(id), "daily")?,
@@ -48,12 +52,17 @@ pub fn prepare_send(conn: &Connection, args: &SendMessageArgs) -> Result<Prepare
         let thread = threads::get_thread(conn, args.thread_id)?;
         if let Some(d) = context.as_ref() {
             if thread.anchor_kind.as_deref() != Some("digest") || thread.anchor_id != Some(d.id) {
-                bail!("会话不属于当前简报，请重新加载后发送");
+                return Err(crate::ui_error::chat::ChatUiError::ThreadDigestMismatch
+                    .failure("thread is not anchored to this digest")
+                    .into());
             }
         } else if thread.anchor_kind.as_deref() == Some("digest") {
             context = digest::get_digest(
                 conn,
-                Some(thread.anchor_id.context("简报会话缺少锚点")?),
+                Some(thread.anchor_id.ok_or_else(|| {
+                    crate::ui_error::chat::ChatUiError::ThreadAnchorMissing
+                        .failure("digest thread has no anchor")
+                })?),
                 "daily",
             )?;
         }
@@ -143,10 +152,12 @@ pub fn validate_thinking(thinking: Option<&str>) -> Result<()> {
         && !level.is_empty()
         && !rrss_core::model_pool::THINKING_LEVELS.contains(&level)
     {
-        bail!(
-            "无效的思考强度 {level}，可选 {}",
-            rrss_core::model_pool::THINKING_LEVELS.join(" / ")
-        );
+        return Err(rrss_core::Error::InvalidModelChoice(
+            rrss_core::error::models::ModelChoiceProblem::ThinkingUnknown {
+                level: level.into(),
+            },
+        )
+        .into());
     }
     Ok(())
 }

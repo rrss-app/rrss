@@ -131,7 +131,8 @@ fn has_enabled_rules(conn: &Connection) -> Result<bool> {
     Ok(n > 0)
 }
 
-/// 兴趣加分 / 关注重排实际没在工作时给界面的说明。就绪则空串。
+/// 兴趣加分 / 关注重排实际没在工作时给界面的说明码（`interest_boost_inactive` /
+/// `interest_not_ready`），文字由前端生成。就绪则空串。
 pub fn ranking_note(conn: &Connection) -> Result<String> {
     let boost = boost_enabled(conn)?;
     let rerank = rerank_enabled(conn)?;
@@ -146,9 +147,9 @@ pub fn ranking_note(conn: &Connection) -> Result<String> {
         return Ok(String::new());
     }
     if boost && rules {
-        return Ok("兴趣加分未生效：还没有兴趣向量，排序只用规则分".into());
+        return Ok("interest_boost_inactive".into());
     }
-    Ok("兴趣未就绪：还没有可用的兴趣向量，当前按时间混合".into())
+    Ok("interest_not_ready".into())
 }
 
 pub fn list_interests(conn: &Connection) -> Result<Vec<Interest>> {
@@ -773,7 +774,7 @@ mod tests {
         set_rerank_enabled(&conn, true).unwrap();
         assert!(!interest_ready(&conn).unwrap());
         let note = ranking_note(&conn).unwrap();
-        assert!(note.contains("兴趣未就绪"), "{note}");
+        assert_eq!(note, "interest_not_ready");
         set_boost_enabled(&conn, false).unwrap();
         set_rerank_enabled(&conn, false).unwrap();
         assert!(ranking_note(&conn).unwrap().is_empty());

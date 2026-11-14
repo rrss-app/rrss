@@ -206,7 +206,8 @@ fn thread_list_title(conn: &Connection, id: i64, stored: Option<&str>) -> String
             out
         })
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "对话".into())
+        // Untitled and empty: the UI supplies its own placeholder.
+        .unwrap_or_default()
 }
 
 pub fn digest_thread(conn: &Connection, digest_id: i64) -> anyhow::Result<DigestThreadView> {

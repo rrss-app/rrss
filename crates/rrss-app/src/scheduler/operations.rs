@@ -43,7 +43,7 @@ mod log_tests {
             assert!(ops.finish(&result, 1));
             assert!(!ops.finish(&result, 1));
             ops.items.insert(2, make(2));
-            ops.skip_pending("canary-input");
+            ops.skip_pending(crate::views::UiError::from(anyhow::anyhow!("canary-input")));
             ops.stop();
             let mut empty = make(3);
             empty.view.target = 0;
@@ -141,7 +141,10 @@ impl Operations {
                 RefreshStatus::Deleted => operation.view.deleted += 1,
                 RefreshStatus::Skipped { message, .. } => {
                     operation.view.skipped += 1;
-                    operation.view.error.get_or_insert_with(|| message.clone());
+                    operation
+                        .view
+                        .error
+                        .get_or_insert_with(|| crate::ui_error::feeds::stored_error(message));
                 }
             }
             if operation.remaining.is_empty() {
@@ -170,16 +173,18 @@ impl Operations {
     }
 
     pub fn stop(&mut self) {
-        self.skip_pending("后台运行时已停止，部分订阅未完成");
+        self.skip_pending(crate::views::UiError::from(rrss_core::Error::Fetch(
+            rrss_core::ingest::FetchFailure::RefreshInterrupted,
+        )));
     }
 
-    pub fn skip_pending(&mut self, message: &str) -> bool {
+    pub fn skip_pending(&mut self, error: crate::views::UiError) -> bool {
         let mut completed = false;
         for operation in self.items.values_mut().filter(|op| !op.view.done) {
             completed = true;
             operation.view.skipped += operation.remaining.len();
             operation.view.completed = operation.view.target;
-            operation.view.error = Some(message.into());
+            operation.view.error = Some(error.clone());
             operation.remaining.clear();
             operation.complete();
         }
@@ -238,7 +243,11 @@ impl Queue {
 impl Scheduler {
     pub async fn start_refresh(&self) -> Result<views::RefreshStarted> {
         let started = tokio::time::Instant::now();
-        anyhow::ensure!(!*self.shared.stop.borrow(), "后台运行时已停止");
+        if *self.shared.stop.borrow() {
+            return Err(
+                rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped).into(),
+            );
+        }
         let online = self.shared.check_network(true).await;
         self.shared.await_cooldown_ready().await?;
         let admission = self
@@ -246,7 +255,7 @@ impl Scheduler {
             .refresh_admission
             .clone()
             .try_acquire_owned()
-            .map_err(|_| anyhow::anyhow!("刷新操作过多，请等待已有刷新完成"))?;
+            .map_err(|_| rrss_core::Error::Fetch(rrss_core::ingest::FetchFailure::RefreshBusy))?;
         // One consistent SQLite read snapshot, paged within the blocking worker.
         // Only IDs survive the query; no response bodies or per-feed Tokio tasks.
         let state = self.shared.clone();
@@ -271,11 +280,11 @@ impl Scheduler {
                 cursor = page.last().unwrap().0;
                 for (id, url) in page {
                     let reason = if !online {
-                        Some(super::offline::UNAVAILABLE.to_string())
+                        Some(super::offline::unavailable_error())
                     } else {
                         cooling.blocked_source(id, &url, now)
                             .or_else(|| cooling.recovery(now))
-                            .map(|deferred| deferred.message)
+                            .map(|deferred| deferred.ui())
                     };
                     if let Some(reason) = reason {
                         skipped += 1;
@@ -291,10 +300,11 @@ impl Scheduler {
         .await?;
         let (id, background) = {
             let mut queue = self.shared.queue.lock().unwrap();
-            anyhow::ensure!(
-                !queue.stopped && !*self.shared.stop.borrow(),
-                "后台运行时已停止"
-            );
+            if queue.stopped || *self.shared.stop.borrow() {
+                return Err(
+                    rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped).into(),
+                );
+            }
             queue.operations.next += 1;
             let id = queue.operations.next;
             let done = targets.is_empty();
@@ -335,7 +345,9 @@ impl Scheduler {
                 self.shared.metrics.admitted.set(queue.entries.len());
                 done
             } else {
-                queue.operations.skip_pending(super::offline::UNAVAILABLE);
+                queue
+                    .operations
+                    .skip_pending(super::offline::unavailable_error());
                 true
             };
             (id, background)

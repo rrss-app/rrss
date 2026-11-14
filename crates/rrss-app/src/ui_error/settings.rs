@@ -23,6 +23,7 @@ error_codes!(SettingError {
     PiOverrideNoteTooLong { max: usize } => "pi_override_note_too_long",
     PiOverrideKeyUnknown { key: String } => "pi_override_key_unknown",
     PiOverrideObjectRequired => "pi_override_object_required",
+    PiOverrideJsonInvalid { line: usize, column: usize } => "pi_override_json_invalid",
     PiOverrideModelInvalid { model: String } => "pi_override_model_invalid",
 });
 
@@ -60,7 +61,6 @@ pub(super) fn classify(error: &Error) -> Option<UiErrorKind> {
             }
             SettingProblem::RankTransactionRequired => SettingError::SettingRankTransactionRequired,
             SettingProblem::RankSwitchUnknown => SettingError::SettingRankSwitchUnknown,
-            SettingProblem::LegacyText(_) => return None,
         },
         Error::InvalidPiOverride(problem) => match problem {
             PiOverrideProblem::NoteTooLong { max } => {
@@ -70,10 +70,15 @@ pub(super) fn classify(error: &Error) -> Option<UiErrorKind> {
                 key: params::name(key),
             },
             PiOverrideProblem::ObjectRequired => SettingError::PiOverrideObjectRequired,
+            PiOverrideProblem::JsonInvalid { line, column } => {
+                SettingError::PiOverrideJsonInvalid {
+                    line: *line,
+                    column: *column,
+                }
+            }
             PiOverrideProblem::ModelInvalid { model } => SettingError::PiOverrideModelInvalid {
                 model: params::name(model),
             },
-            PiOverrideProblem::LegacyText(_) => return None,
         },
         _ => return None,
     }))
@@ -206,7 +211,7 @@ mod tests {
     }
 
     #[test]
-    fn json_override_parser_failure_preserves_legacy_display() {
+    fn json_override_parser_failure_reports_the_position() {
         let dir = tempfile::tempdir().unwrap();
         let conn = rrss_core::db::open_at(&dir.path().join("fixture.db")).unwrap();
         let error = rrss_core::pi_store::set_pi_override(
@@ -215,10 +220,13 @@ mod tests {
             "{",
         )
         .unwrap_err();
-        let original = error.to_string();
         let ui = crate::UiError::from(error);
-        assert_eq!(ui.code(), "legacy_text");
-        assert_eq!(ui.detail, original);
+        assert_eq!(ui.code(), "pi_override_json_invalid");
+        let wire = serde_json::to_value(&ui).unwrap();
+        assert_eq!(
+            wire["params"],
+            serde_json::json!({ "line": 1, "column": 1 })
+        );
         assert_eq!(ui.log_detail(), "invalid Pi override");
     }
 }

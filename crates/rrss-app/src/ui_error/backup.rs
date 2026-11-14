@@ -65,7 +65,6 @@ pub(super) fn classify(error: &Error) -> Option<UiErrorKind> {
                 return Some(UiErrorKind::Common(super::common::CommonError::Internal));
             }
             BackupProblem::SelectionPathInvalid => BackupError::BackupSelectionPathInvalid,
-            BackupProblem::LegacyText(_) => return None,
         },
         Error::SchemaTooOld { found, min } => BackupError::SchemaTooOld {
             found: *found,

@@ -276,7 +276,7 @@ impl Replay {
         text.push_str("AUC uses final order, including published_at/id tie breaks; deltas are absolute differences on each config's visible candidates\n");
         let value = |n: Option<f64>| {
             n.map(|v| format!("{v:.6}"))
-                .unwrap_or_else(|| "未定义".into())
+                .unwrap_or_else(|| "undefined".into())
         };
         for &config in configs {
             let outcome = self.evaluate(config);
@@ -345,7 +345,7 @@ impl Replay {
                         );
                     }
                 }
-                _ => text.push_str("样本不足\n"),
+                _ => text.push_str("insufficient samples\n"),
             }
         }
         text

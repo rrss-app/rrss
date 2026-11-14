@@ -126,7 +126,7 @@ mod tests {
         );
         let weights = Profile::learn(&corpus, &feedback, HALF_LIFE_MS).weighted(&chips);
         assert_eq!(weights.len(), 2);
-        assert_eq!(weights[0].0.label, "作者：Ada");
+        assert_eq!(weights[0].0.pattern, "Ada");
         assert!((weights[0].1 - 6_f64.ln()).abs() < 1e-10);
         let saturated: Vec<_> = (0..100)
             .map(|_| Feedback {

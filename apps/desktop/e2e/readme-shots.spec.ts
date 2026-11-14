@@ -174,8 +174,8 @@ const source = (row: ArticleView, number: number): DigestSourceView => ({
 });
 const SOURCES = [source(LOCAL_FIRST, 1), source(FOCUS_ARTICLES[4], 2), source(WAYLAND_REP, 3), source(WAYLAND_NEW, 4), source(FOCUS_ARTICLES[7], 5)];
 const DIGEST: DigestView = {
-  id: 101, period: "daily", period_label: "日报", period_start: new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime(),
-  date_label: todayLabel, revision: "readme-digest", source_state: "verified", source_note: "", source_index: SOURCES, unlocated_sources: [],
+  id: 101, period: "daily", period_start: new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime(),
+  date_label: todayLabel, revision: "readme-digest", source_state: "verified", source_index: SOURCES, unlocated_sources: [],
   body: "",
   items: [
     { block_id: 1, sources: [SOURCES[0], SOURCES[1]] },

@@ -464,14 +464,10 @@ async fn coordinate<F, Fut>(
     publish(&pending, finished_work);
 }
 
-#[derive(Debug)]
-pub(crate) struct SpacePaused;
-impl std::fmt::Display for SpacePaused {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("向量空间暂不可读")
-    }
+/// Embedding waits until the vector space can be written again.
+pub(crate) fn space_paused() -> anyhow::Error {
+    rrss_core::Error::Jobs(rrss_core::error::JobFailure::SpaceUnreadable).into()
 }
-impl std::error::Error for SpacePaused {}
 
 fn log_budget_changes(
     previous: &[views::BackgroundJobView],
@@ -502,7 +498,10 @@ pub(crate) fn pause_reason(error: &anyhow::Error) -> &'static str {
     if let Some(shared) = error.downcast_ref::<super::digest_jobs::Failure>() {
         return shared.reason;
     }
-    if error.is::<SpacePaused>() {
+    if matches!(
+        error.downcast_ref::<Error>(),
+        Some(Error::Jobs(rrss_core::error::JobFailure::SpaceUnreadable))
+    ) {
         return "vector_space";
     }
     for error in error
@@ -706,7 +705,7 @@ async fn execute(shared: Arc<Shared>, job: Job) -> Result<bool> {
         })
         .await?;
         if !available {
-            return Err(SpacePaused.into());
+            return Err(space_paused());
         }
     }
     let result = match job {

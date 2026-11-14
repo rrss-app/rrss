@@ -39,6 +39,18 @@ function uniqueSources(sources: DigestView["source_index"]): DigestView["source_
   return sources.filter((source) => !seen.has(source.article_id) && !!seen.add(source.article_id));
 }
 
+
+export const digestPeriodLabel = (period: string): string =>
+  i18n.t(period === "weekly" ? "period.weekly" : "period.daily", { ns: "digest" });
+
+/** 来源状态的说明；verified 与未知状态没有说明。 */
+export function digestSourceNote(view: Pick<DigestView, "source_state" | "unlocated_sources">): string {
+  const key = view.source_state === "legacy" ? "legacy"
+    : view.source_state === "mismatch" ? "mismatch"
+    : view.source_state !== "unavailable" ? null
+    : view.unlocated_sources.length ? "unlocated" : "unavailable";
+  return key ? i18n.t(`sourceNote.${key}`, { ns: "digest" }) : "";
+}
 export function DigestPane({
   onChange,
   onOpenArticle,
@@ -303,7 +315,7 @@ export function DigestPane({
             <article className="digest-doc reader" data-digest-id={showing.id}>
               <div className="reader-column">
                 <div className="digest-doc-head">
-                  <span className="digest-kicker">{showing.period_label}</span>
+                  <span className="digest-kicker">{digestPeriodLabel(showing.period)}</span>
                   <span className="digest-doc-date">{showing.date_label}</span>
                   {/* period_start 与后端 digest_date_label 一样是毫秒；不指定时区，跟随本机日历。 */}
                   {showing.period === "daily" ? <span className="digest-doc-weekday">{new Date(showing.period_start).toLocaleDateString(locale(), { weekday: "long" })}</span> : null}
@@ -332,7 +344,7 @@ export function DigestPane({
                     />
                   </ErrorBoundary>
                 ) : null}
-                {showing.source_note ? <p className="digest-notice muted" role="status">{showing.source_note}</p> : null}
+                {digestSourceNote(showing) ? <p className="digest-notice muted" role="status">{digestSourceNote(showing)}</p> : null}
                 <DigestSourceIndex
                   sources={positionSafe ? showing.source_index : []}
                   unlocated={positionSafe ? showing.unlocated_sources : uniqueSources([...showing.source_index, ...showing.unlocated_sources])}

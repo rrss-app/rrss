@@ -135,7 +135,7 @@ pub async fn open_web_view(
     windows: tauri::State<'_, WebWindows>,
     url: String,
     bounds: WebViewBounds,
-    native_failure_message: String,
+    labels: rrss_app::views::NativeWebLabels,
 ) -> Result<String, UiError> {
     let bounds = finite_bounds(bounds)?;
     let mut inner = windows.inner.lock().await;
@@ -251,8 +251,7 @@ pub async fn open_web_view(
     };
     // Remember it before native setup so a failed close still blocks a second child.
     inner.current = Some(label.clone());
-    if let Err(error) =
-        crate::webview_native::configure(&webview, plan.route, bounds, native_failure_message).await
+    if let Err(error) = crate::webview_native::configure(&webview, plan.route, bounds, labels).await
     {
         destroy_webview(&app, &windows, &webview).await?;
         inner.current = None;

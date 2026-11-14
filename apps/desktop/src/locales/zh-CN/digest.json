@@ -59,5 +59,15 @@
     "legacy_other": "旧稿来源（未定位）（{{count}}）",
     "unlocated_other": "未定位来源（{{count}}）",
     "hint": "这些来源没能对应到具体条目，不参与划词引用。"
+  },
+  "period": {
+    "daily": "日报",
+    "weekly": "周报"
+  },
+  "sourceNote": {
+    "legacy": "旧稿来源仅保留原有位置，无法验证历史映射。",
+    "mismatch": "来源索引与正文不一致，已关闭条目来源。",
+    "unlocated": "旧稿来源未定位，已关闭条目来源。",
+    "unavailable": "本期没有可用来源。"
   }
 }

@@ -17,8 +17,8 @@ use types::*;
 pub enum Error {
     #[error("no AI provider configured")]
     NoProvider,
-    #[error("{0}")]
-    Admission(&'static str),
+    #[error("model admission failed: {0:?}")]
+    Admission(rrss_core::error::JobFailure),
     #[error("{0}")]
     Configuration(&'static str),
     #[error("automatic model budget exhausted")]

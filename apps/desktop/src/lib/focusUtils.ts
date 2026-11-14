@@ -1,4 +1,12 @@
 import type { ArticleView, FeedTree, FeedView, FocusPage } from "./api";
+import { i18n } from "../i18n";
+
+/** 排序说明码（interest_boost_inactive / interest_not_ready）的文字；没有说明时为空。 */
+export function rankingNoteText(code: string): string {
+  if (!code) return "";
+  const key = `rankingNote.${code}` as "rankingNote.interest_not_ready";
+  return i18n.exists(key, { ns: "focus" }) ? String(i18n.t(key, { ns: "focus" })) : "";
+}
 
 export function flattenFeeds(tree: FeedTree): FeedView[] {
   return [...tree.uncategorized, ...tree.folders.flatMap((f) => f.feeds)];

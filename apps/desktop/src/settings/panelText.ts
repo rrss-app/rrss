@@ -1,4 +1,5 @@
-import type { BackupEntryView, BackupMessage, RetentionMessage, StorageItemView, StorageMessage } from "../bindings";
+import type { BackupEntryView, BackupMessage, PrefsScopeView, PrefsSkipView, RetentionMessage, StorageItemView, StorageMessage } from "../bindings";
+import { formatError } from "../lib/errors";
 import { i18n, locale } from "../i18n";
 
 export const formatPanelCount = (value: number, useGrouping = true) => new Intl.NumberFormat(locale(), { useGrouping, maximumFractionDigits: 0 }).format(value);
@@ -82,6 +83,11 @@ export function formatBackupEntry(entry: BackupEntryView): string {
 export function formatBackupMessage(message: BackupMessage): string {
   const raw = message.params;
   const values: Record<string, unknown> = { ...raw };
+  if ("name" in raw) values.name = raw.name ?? system("backup.format.restoreDefaultName");
+  if (message.code === "restore_partial") {
+    values.old = message.params.old_dir;
+    values.kept = message.params.kept_dir ? system("backup.format.restoreKept", { dir: message.params.kept_dir }) : "";
+  }
   if (message.code === "backup_created" || message.code === "backup_restore_summary") {
     const counts = Object.fromEntries(Object.entries(raw).map(([key, value]) => [key, typeof value === "number" ? formatPanelCount(value) : value]));
     const secrets = message.params.secrets_included ? "backup.format.secrets" : message.code === "backup_created" ? "backup.format.createdNoSecrets" : "backup.format.restoreNoSecrets";
@@ -93,6 +99,28 @@ export function formatBackupMessage(message: BackupMessage): string {
     values.duplicates = raw.duplicates ? render("settingsSystem", `backup.duplicates.${kind}`, { count: raw.duplicates }, { count: formatPanelCount(raw.duplicates, false) }) : "";
   }
   return render("settingsSystem", `backup.messages.${message.code}`, raw, values);
+}
+
+function formatPrefsScope(scope: PrefsScopeView): string {
+  if (scope.kind === "feed") return system("backup.skip.scope.feed", { url: scope.url });
+  if (scope.kind === "folder") return system("backup.skip.scope.folder", { path: scope.path.join(system("backup.skip.pathSeparator")) });
+  return system("backup.skip.scope.global");
+}
+
+/** 偏好导入里没导入的一条。 */
+export function formatPrefsSkip(skip: PrefsSkipView): string {
+  const p = skip.params;
+  const rule = "polarity" in p ? system("backup.skip.rule", {
+    polarity: system(`backup.skip.polarity.${p.polarity}`),
+    dimension: system(`backup.skip.dimension.${p.dimension}`),
+    pattern: p.pattern,
+  }) : "";
+  switch (skip.code) {
+    case "rule_scope_missing": return system("backup.skip.rule_scope_missing", { rule, scope: formatPrefsScope(skip.params.scope) });
+    case "rule_invalid": return system("backup.skip.rule_invalid", { rule, error: formatError(skip.params.error) });
+    case "pack_missing": return system("backup.skip.pack_missing", { pack: skip.params.pack });
+    case "memory_scope_missing": return system("backup.skip.memory_scope_missing", { content: skip.params.content, scope: formatPrefsScope(skip.params.scope) });
+  }
 }
 
 export function formatPiSource(source: string, code?: string): string {

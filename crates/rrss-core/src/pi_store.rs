@@ -431,9 +431,7 @@ pub fn delete_mcp_server(conn: &Connection, id: i64) -> Result<()> {
 
 pub fn set_mcp_server_enabled(conn: &Connection, id: i64, enabled: bool) -> Result<()> {
     if enabled && get_mcp_server(conn, id)?.transport == "sse" {
-        return Err(Error::InvalidSetting(
-            "旧式 SSE 不能开启，请改填 Streamable HTTP 地址".into(),
-        ));
+        return Err(Error::Mcp(crate::error::McpFailure::SseEnableUnsupported));
     }
     let n = conn.execute(
         "UPDATE mcp_servers SET enabled = ?1 WHERE id = ?2",
@@ -489,7 +487,7 @@ pub fn mcp_config_for(
         ] {
             if let Some(raw) = raw {
                 let values: std::collections::BTreeMap<String, String> = serde_json::from_str(raw)
-                    .map_err(|_| crate::Error::InvalidSetting("外部工具配置格式无效".into()))?;
+                    .map_err(|_| crate::Error::Mcp(crate::error::McpFailure::ConfigurationInvalid))?;
                 let mut refs = serde_json::Map::new();
                 for (name, value) in values {
                     let var = format!("RRSS_MCP_{}_{}", s.id, index);
@@ -502,7 +500,7 @@ pub fn mcp_config_for(
         }
         if let Some(raw) = s.include_tools_json.as_deref() {
             let tools: Vec<String> = serde_json::from_str(raw)
-                .map_err(|_| crate::Error::InvalidSetting("外部工具配置格式无效".into()))?;
+                .map_err(|_| crate::Error::Mcp(crate::error::McpFailure::ConfigurationInvalid))?;
             if !tools.is_empty() {
                 obj.insert("exposure".into(), serde_json::json!("hidden"));
                 let exposure: serde_json::Map<String, serde_json::Value> = tools
@@ -667,7 +665,12 @@ pub fn set_pi_override(conn: &Connection, key: &str, raw: &str) -> Result<()> {
         return db::set_setting(conn, key, "{}");
     }
     let value: serde_json::Value = serde_json::from_str(raw)
-        .map_err(|err| Error::InvalidPiOverride(format!("不是合法的 JSON：{err}").into()))?;
+        .map_err(|err| {
+        Error::InvalidPiOverride(PiOverrideProblem::JsonInvalid {
+            line: err.line(),
+            column: err.column(),
+        })
+    })?;
     if !value.is_object() {
         return Err(Error::InvalidPiOverride(PiOverrideProblem::ObjectRequired));
     }

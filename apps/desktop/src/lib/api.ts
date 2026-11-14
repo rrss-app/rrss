@@ -29,6 +29,9 @@ import type {
   McpLoginResult,
   McpImportEntry,
   AddFeedResult,
+  AddFeedNotice,
+  OpmlImportView,
+  PrefsSkipView,
   FeedUpdated,
   AiPage,
   GeneratedConfig,
@@ -161,6 +164,9 @@ export type {
   ClusterNoteView,
   ClusterArticleView,
   AddFeedResult,
+  AddFeedNotice,
+  OpmlImportView,
+  PrefsSkipView,
   FeedUpdated,
   AiPage,
   GeneratedConfig,
@@ -278,6 +284,22 @@ export type {
   TranslatePage,
 };
 
+/** 没有标题也没有首条消息的会话由界面补上占位名。 */
+const titled = <T extends { title: string }>(thread: T): T =>
+  thread.title ? thread : { ...thread, title: i18n.t("thread.untitled", { ns: "chat" }) };
+
+/** Native host surfaces cannot read the language pack; pass their words in. */
+const dialogLabels = (title: string, filter: string) => ({
+  title: i18n.t(title as never, { ns: "settingsSystem" }),
+  filter: i18n.t(filter as never, { ns: "settingsSystem" }),
+});
+const nativeWebLabels = () => ({
+  failure: i18n.t("web_native_failed", { ns: "errors" }),
+  open_in_browser: i18n.t("webWindow.native.openInBrowser", { ns: "reader" }),
+  copy_link: i18n.t("webWindow.native.copyLink", { ns: "reader" }),
+  dialog_title: i18n.t("webWindow.native.dialogTitle", { ns: "reader" }),
+});
+
 export const api = {
   siteRulesPage: () => invoke<SiteRulesPage>("site_rules_page"),
   saveSiteRule: (rule: SiteRuleView, enabled: boolean) => invoke<void>("save_site_rule", { rule, enabled }),
@@ -285,7 +307,7 @@ export const api = {
   setSiteRuleEnabled: (domain: string, enabled: boolean) => invoke<void>("set_site_rule_enabled", { domain, enabled }),
   testSiteRule: (url: string, rule: SiteRuleView) => invoke<SiteRuleTestView>("test_site_rule", { url, rule }),
   extractWebView: (label: string) => invoke<WebVerifyStateEvent>("extract_web_view", { label }),
-  openWebView: (url: string, bounds: WebViewBounds) => invoke<string>("open_web_view", { url, bounds, nativeFailureMessage: i18n.t("web_native_failed", { ns: "errors" }) }),
+  openWebView: (url: string, bounds: WebViewBounds) => invoke<string>("open_web_view", { url, bounds, labels: nativeWebLabels() }),
   closeWebView: (label: string) => invoke<void>("close_web_view", { label }),
   setWebViewBounds: (label: string, bounds: WebViewBounds) => invoke<void>("set_web_view_bounds", { label, bounds }),
   setWebViewVisible: (label: string, visible: boolean) => invoke<void>("set_web_view_visible", { label, visible }),
@@ -325,9 +347,9 @@ export const api = {
   reader: (id: number) => invoke<ReaderView>("article_reader", { id }),
   relatedArticles: (articleId: number, limit: number) => invoke<RelatedArticleView[]>("related_articles", { articleId, limit }),
   openArticle: (id: number) => invoke<ReaderView>("open_article", { id }),
-  searchThreads: (query: string, limit = 20) => invoke<ThreadSearchHitView[]>("search_threads", { query, limit }),
-  threadList: () => invoke<ThreadListView>("thread_list"),
-  archivedThreads: () => invoke<ThreadView[]>("archived_threads"),
+  searchThreads: async (query: string, limit = 20) => (await invoke<ThreadSearchHitView[]>("search_threads", { query, limit })).map(titled),
+  threadList: async () => { const list = await invoke<ThreadListView>("thread_list"); return { ...list, threads: list.threads.map(titled) }; },
+  archivedThreads: async () => (await invoke<ThreadView[]>("archived_threads")).map(titled),
   renameThread: (threadId: number, title: string) => invoke<void>("rename_thread", { threadId, title }),
   setThreadFolder: (threadId: number, folderId: number | null) => invoke<void>("set_thread_folder", { threadId, folderId }),
   setThreadPinned: (threadId: number, pinned: boolean) => invoke<void>("set_thread_pinned", { threadId, pinned }),
@@ -373,7 +395,7 @@ export const api = {
   /** 本次运行的文件日志级别；返回新的日志状态。 */
   logSetLevel: (detailed: boolean) => invoke<LogStatusView>("log_set_level", { detailed }),
   /** 弹出保存对话框后打包；返回保存位置，取消时为 null。 */
-  logExport: () => invoke<string | null>("log_export"),
+  logExport: () => invoke<string | null>("log_export", { labels: dialogLabels("diag.dialog.title", "diag.dialog.filter") }),
   /** 自绘标题栏：窗口三键按宿主给的平台样子画；没有宿主（浏览器预览）时为 null，不画三键。 */
   windowChrome: (): Promise<WindowChromeView | null> => isTauri() ? invoke<WindowChromeView>("window_chrome") : Promise.resolve(null),
   /** 关闭询问的结果：隐藏到托盘或退出程序；`remember` 时写进设置「关闭窗口时」。 */
@@ -391,9 +413,9 @@ export const api = {
   retentionCleanNow: () => invoke<RetentionMessage>("retention_clean_now"),
   backupPage: () => invoke<BackupPage>("backup_page"),
   /** 宿主弹保存对话框；取消返回 null。 */
-  backupCreate: (includeSecrets = false) => invoke<BackupDoneView | null>("backup_create", { includeSecrets }),
+  backupCreate: (includeSecrets = false) => invoke<BackupDoneView | null>("backup_create", { includeSecrets, labels: dialogLabels("backup.dialog.saveTitle", "backup.dialog.filter") }),
   /** 不给路径时宿主弹打开对话框；取消返回 null。 */
-  backupInspect: (path?: string) => invoke<RestoreCheckView | null>("backup_inspect", { path: path ?? null }),
+  backupInspect: (path?: string) => invoke<RestoreCheckView | null>("backup_inspect", { path: path ?? null, labels: dialogLabels("backup.dialog.pickTitle", "backup.dialog.filter") }),
   /** 成功时宿主会重启，不会返回。 */
   backupRestore: (path: string) => invoke<void>("backup_restore", { path }),
   backupCancelRestore: () => invoke<void>("backup_cancel_restore"),
@@ -489,7 +511,7 @@ export const api = {
   translateDetach: (generation: number, ticket: number) => invoke<void>("translate_detach", { generation, ticket }),
   translateHint: (hint: TranslationHint) => invoke<void>("translate_hint", { hint }),
   translateRetrySave: (id: number, generation: number) => invoke<TranslationReply>("translate_retry_save", { id, generation }),
-  importOpml: (xml: string) => invoke<string>("import_opml", { xml }),
+  importOpml: (xml: string) => invoke<OpmlImportView>("import_opml", { xml }),
   exportOpml: () => invoke<string>("export_opml"),
   unsubscribe: (id: number) => invoke("unsubscribe", { id }),
   unsubscribeFeeds: (ids: number[]) => invoke<FeedTree>("unsubscribe_feeds", { ids }),

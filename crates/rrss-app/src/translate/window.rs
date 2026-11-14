@@ -131,7 +131,14 @@ fn classify_ui(error: &crate::UiError) -> Failure {
         crate::UiErrorKind::Jobs(JobsUiError::EndpointBusy) => Failure::Capacity,
         crate::UiErrorKind::Jobs(JobsUiError::ModelCooldown) => Failure::RateLimited,
         crate::UiErrorKind::Jobs(
-            JobsUiError::AdmissionReason { .. } | JobsUiError::EndpointInvalid,
+            JobsUiError::LimitRecordingInterrupted
+            | JobsUiError::CooldownReadFailed
+            | JobsUiError::CooldownSaveFailed
+            | JobsUiError::ModelRuntimeStopped
+            | JobsUiError::BudgetCheckFailed
+            | JobsUiError::SpaceCheckFailed
+            | JobsUiError::SpaceChanged
+            | JobsUiError::EndpointInvalid,
         ) => Failure::Configuration,
         crate::UiErrorKind::Network(_) => Failure::Configuration,
         _ => Failure::InvalidOutput,

@@ -55,7 +55,10 @@ async fn add_returns_before_fetch_and_duplicate_never_requests_and_failure_keeps
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(added.message, "已添加，正在后台抓取");
+        assert!(matches!(
+            added.notice,
+            crate::views::AddFeedNotice::Fetching {}
+        ));
         assert!(
             scheduler
                 .add_feed(&url)
@@ -122,7 +125,7 @@ async fn timeout_releases_slot_single_add_has_reserved_admission_and_stop_is_exp
     let a = scheduler.add_feed(&slow.uri()).await.unwrap();
     let ticket = scheduler.submit(a.id).unwrap();
     let b = scheduler.add_feed(&fast).await.unwrap();
-    assert_eq!(b.message, "已添加，正在后台抓取");
+    assert!(matches!(b.notice, crate::views::AddFeedNotice::Fetching {}));
     let b_ticket = scheduler.submit(b.id).unwrap();
     tokio::time::timeout(Duration::from_secs(10), arrived.recv())
         .await
@@ -139,7 +142,11 @@ async fn timeout_releases_slot_single_add_has_reserved_admission_and_stop_is_exp
     ));
     scheduler.stop();
     let c = scheduler.add_feed(&format!("{fast}/next")).await.unwrap();
-    assert!(c.message.contains("运行时已停止"));
+    assert!(
+        matches!(&c.notice, crate::views::AddFeedNotice::NotScheduled { error } if error.code() == "feed_fetch_runtime_stopped"),
+        "{:?}",
+        c.notice
+    );
     assert!(rrss_core::feeds::get_feed(&db::open_at(&path).unwrap(), c.id).is_ok());
     server.abort();
 }

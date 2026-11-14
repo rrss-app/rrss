@@ -7,11 +7,10 @@ const firstSource: DigestSourceView = { article_id: 1, title: "本地检索更�
 const secondSource: DigestSourceView = { article_id: 2, title: "阅读器性能改善", feed_title: "测试源", number: 2, summary: null, published_at: null, status: "available" };
 
 const fixtures: DigestView[] = [
-  { id: 101, period: "daily", period_label: "日报", date_label: "9月16日", period_start: 3,
+  { id: 101, period: "daily", date_label: "9月16日", period_start: 3,
     body: "### 今日简报\n\n- 本地检索更新：全文检索支持按订阅源筛选，结果仍保留可解释的排序原因。\n- 阅读器性能改善：长文按需加载图片，保留原文与翻译之间的段落位置。",
     revision: "e2e-digest-revision-101",
     source_state: "verified",
-    source_note: "",
     source_index: [firstSource, secondSource],
     unlocated_sources: [],
     items: [
@@ -23,11 +22,10 @@ const fixtures: DigestView[] = [
       { t: "li", marker: "•", indent: 0, inlines: [{ t: "t", text: "本地检索更新：全文检索支持按订阅源筛选，结果仍保留可解释的排序原因。" }] },
       { t: "li", marker: "•", indent: 0, inlines: [{ t: "t", text: "阅读器性能改善：长文按需加载图片，保留原文与翻译之间的段落位置。" }] },
     ] } },
-  { id: 100, period: "daily", period_label: "日报", date_label: "9月15日", period_start: 2,
+  { id: 100, period: "daily", date_label: "9月15日", period_start: 2,
     body: "### 昨日简报",
     revision: "e2e-digest-revision-100",
     source_state: "unavailable",
-    source_note: "",
     source_index: [],
     unlocated_sources: [],
     items: [],
@@ -78,7 +76,7 @@ test.beforeEach(async ({ page }) => {
             case "focus_stream": return focus;
             case "feed_tree": return feeds;
             case "threads": return [];
-            case "digest_list": return digests.filter((d) => d.period === args.period).map((d) => ({ id: d.id, period: d.period, period_label: d.period_label, period_start: d.period_start, date_label: d.date_label }));
+            case "digest_list": return digests.filter((d) => d.period === args.period).map((d) => ({ id: d.id, period: d.period, period_start: d.period_start, date_label: d.date_label }));
             case "digest": {
               const row = digests.find((d) => d.id === args.id);
               if (!row) throw new Error("digest not found");

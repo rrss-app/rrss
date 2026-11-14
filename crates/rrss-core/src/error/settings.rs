@@ -1,4 +1,4 @@
-//! Settings validation reasons and legacy display compatibility.
+//! Settings validation reasons; user-facing wording belongs to the UI.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum SettingProblem {
     #[error("setting is unknown")]
@@ -31,19 +31,6 @@ pub enum SettingProblem {
     RankTransactionRequired,
     #[error("ranking switch is unknown")]
     RankSwitchUnknown,
-    // Translation and MCP failures can still carry their original display text.
-    #[error("{0}")]
-    LegacyText(String),
-}
-impl From<&str> for SettingProblem {
-    fn from(value: &str) -> Self {
-        Self::LegacyText(value.into())
-    }
-}
-impl From<String> for SettingProblem {
-    fn from(value: String) -> Self {
-        Self::LegacyText(value)
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -54,15 +41,8 @@ pub enum PiOverrideProblem {
     KeyUnknown { key: String },
     #[error("Pi override requires a JSON object")]
     ObjectRequired,
+    #[error("Pi override is not valid JSON")]
+    JsonInvalid { line: usize, column: usize },
     #[error("Pi model must use provider/id syntax")]
     ModelInvalid { model: String },
-    // JSON parser diagnostics may echo input; preserve the old UI until a safe
-    // parser-reason contract can reproduce the full diagnostic exactly.
-    #[error("{0}")]
-    LegacyText(String),
-}
-impl From<String> for PiOverrideProblem {
-    fn from(value: String) -> Self {
-        Self::LegacyText(value)
-    }
 }

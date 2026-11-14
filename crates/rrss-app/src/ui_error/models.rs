@@ -57,7 +57,6 @@ pub(super) fn classify(error: &Error) -> Option<UiErrorKind> {
             ProviderProblem::PresetUnknown => ModelError::ProviderPresetUnknown,
             ProviderProblem::ModelIdMissing => ModelError::ModelIdMissing,
             ProviderProblem::ChatUsesOwnConfig => ModelError::ChatModelUsesOwnConfig,
-            ProviderProblem::LegacyText(_) => return None,
         },
         Error::InvalidModelChoice(problem) => match problem {
             ModelChoiceProblem::NotAdded { model } => ModelError::ModelNotAdded {

@@ -39,17 +39,4 @@ pub enum BackupProblem {
     Serialization,
     #[error("selected file does not resolve to a local path")]
     SelectionPathInvalid,
-    // Persisted restore notices still embed the original error text.
-    #[error("{0}")]
-    LegacyText(String),
-}
-impl From<&str> for BackupProblem {
-    fn from(value: &str) -> Self {
-        Self::LegacyText(value.into())
-    }
-}
-impl From<String> for BackupProblem {
-    fn from(value: String) -> Self {
-        Self::LegacyText(value)
-    }
 }

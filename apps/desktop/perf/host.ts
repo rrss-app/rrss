@@ -265,7 +265,6 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
     digest_banner: string;
     digest_lede: string;
     filter: string;
-    status: string;
     ranking: RankingSettings;
     has_more: boolean;
     list_scope: string;
@@ -296,7 +295,6 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
       digest_banner: columnIds ? "" : payload.digestBanner,
       digest_lede: "",
       filter: state.filter,
-      status: "",
       ranking: clone(state.ranking),
       has_more,
       list_scope: state.listScope,
@@ -540,7 +538,7 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
       case "digest_list": {
         const period = asString(rawArgs.period, "daily");
         return clone(payload.digests.filter((row) => row.period === period).map((row) => ({
-          id: row.id, period: row.period, period_label: row.period_label, period_start: row.period_start, date_label: row.date_label,
+          id: row.id, period: row.period, period_start: row.period_start, date_label: row.date_label,
         })));
       }
       case "digest": {

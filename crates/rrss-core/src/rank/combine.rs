@@ -240,7 +240,6 @@ mod tests {
                 FeatureChip {
                     dimension: Dimension::TitleKw,
                     pattern: word.into(),
-                    label: word.into(),
                 },
                 weight,
             )
@@ -331,7 +330,6 @@ mod tests {
                     FeatureChip {
                         dimension,
                         pattern: "Example".into(),
-                        label: String::new(),
                     },
                     weight,
                 )];
@@ -377,7 +375,6 @@ mod tests {
                     FeatureChip {
                         dimension,
                         pattern: pattern.into(),
-                        label: String::new(),
                     },
                     weight,
                 )];

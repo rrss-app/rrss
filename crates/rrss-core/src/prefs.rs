@@ -267,15 +267,31 @@ fn resolve_scope(conn: &Connection, scope: &Scope) -> Result<Option<(&'static st
     })
 }
 
-fn scope_text(scope: &Scope) -> String {
-    match scope {
-        Scope::Global => "全局".into(),
-        Scope::Feed { url } => url.clone(),
-        Scope::Folder { path } => format!("文件夹「{}」", path.join(" / ")),
-    }
+/// An entry that was not imported; the UI words it from these fields.
+#[derive(Debug)]
+pub enum ImportSkip {
+    RuleScopeMissing {
+        polarity: Polarity,
+        dimension: Dimension,
+        pattern: String,
+        scope: Scope,
+    },
+    RuleInvalid {
+        polarity: Polarity,
+        dimension: Dimension,
+        pattern: String,
+        reason: crate::error::rules::RuleProblem,
+    },
+    PackMissing {
+        pack: String,
+    },
+    MemoryScopeMissing {
+        content: String,
+        scope: Scope,
+    },
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Default)]
 pub struct ImportReport {
     pub rules_added: u32,
     pub rules_duplicate: u32,
@@ -284,8 +300,8 @@ pub struct ImportReport {
     pub interests_duplicate: u32,
     pub memories_added: u32,
     pub memories_duplicate: u32,
-    /// 没有导入的条目，每条一句说明。
-    pub skipped: Vec<String>,
+    /// 没有导入的条目。
+    pub skipped: Vec<ImportSkip>,
 }
 
 pub fn parse(text: &str) -> Result<Export> {
@@ -304,21 +320,13 @@ pub fn parse(text: &str) -> Result<Export> {
 pub fn import(conn: &Connection, export: &Export) -> Result<ImportReport> {
     let mut report = ImportReport::default();
     for rule in export.rules.iter().flatten() {
-        let what = format!(
-            "{}{}「{}」",
-            if rule.polarity == Polarity::Like {
-                "喜欢"
-            } else {
-                "不喜欢"
-            },
-            rule.dimension.label_zh(),
-            rule.pattern
-        );
         let Some((kind, scope_id)) = resolve_scope(conn, &rule.scope)? else {
-            report.skipped.push(format!(
-                "规则 {what}：限定的 {} 在本机不存在",
-                scope_text(&rule.scope)
-            ));
+            report.skipped.push(ImportSkip::RuleScopeMissing {
+                polarity: rule.polarity,
+                dimension: rule.dimension,
+                pattern: rule.pattern.clone(),
+                scope: rule.scope.clone(),
+            });
             continue;
         };
         let exists: i64 = conn.query_row(
@@ -350,7 +358,12 @@ pub fn import(conn: &Connection, export: &Export) -> Result<ImportReport> {
         };
         match crate::rules::insert_rule(conn, spec) {
             Ok(_) => report.rules_added += 1,
-            Err(Error::InvalidRule(msg)) => report.skipped.push(format!("规则 {what}：{msg}")),
+            Err(Error::InvalidRule(reason)) => report.skipped.push(ImportSkip::RuleInvalid {
+                polarity: rule.polarity,
+                dimension: rule.dimension,
+                pattern: rule.pattern.clone(),
+                reason,
+            }),
             Err(err) => return Err(err),
         }
     }
@@ -363,7 +376,7 @@ pub fn import(conn: &Connection, export: &Export) -> Result<ImportReport> {
             Ok(_) => report.packs_added += 1,
             Err(Error::PresetNotFound(_)) => report
                 .skipped
-                .push(format!("预设包 {pack}：本机版本没有这个包")),
+                .push(ImportSkip::PackMissing { pack: pack.clone() }),
             Err(err) => return Err(err),
         }
     }
@@ -407,10 +420,10 @@ pub fn import(conn: &Connection, export: &Export) -> Result<ImportReport> {
             continue;
         }
         let Some((kind, scope_id)) = resolve_scope(conn, &memory.scope)? else {
-            report.skipped.push(format!(
-                "记忆「{content}」：限定的 {} 在本机不存在",
-                scope_text(&memory.scope)
-            ));
+            report.skipped.push(ImportSkip::MemoryScopeMissing {
+                content: content.to_string(),
+                scope: memory.scope.clone(),
+            });
             continue;
         };
         conn.execute(
@@ -506,8 +519,14 @@ mod tests {
         assert_eq!(report.interests_added, 1);
         assert_eq!(report.memories_added, 1);
         assert_eq!(report.skipped.len(), 3, "{:?}", report.skipped);
-        assert!(report.skipped[0].contains("news.example.com/rss"));
-        assert!(report.skipped[1].contains("文件夹「技术 / 博客」"));
+        assert!(matches!(
+            &report.skipped[0],
+            ImportSkip::RuleScopeMissing { scope: Scope::Feed { url }, .. } if url.contains("news.example.com/rss")
+        ));
+        assert!(matches!(
+            &report.skipped[1],
+            ImportSkip::RuleScopeMissing { scope: Scope::Folder { path }, .. } if path == &["技术", "博客"]
+        ));
 
         // 本机建好同名文件夹和同 URL 的源后再导入：补上跳过的，不重复已有的。
         dst.execute_batch(
@@ -569,10 +588,10 @@ mod tests {
             .push("no-such-pack".into());
         let report = import(&dst, &with_unknown).unwrap();
         assert_eq!(report.packs_added, 1);
-        assert_eq!(
-            report.skipped,
-            vec!["预设包 no-such-pack：本机版本没有这个包".to_string()]
-        );
+        assert!(matches!(
+            &report.skipped[..],
+            [ImportSkip::PackMissing { pack }] if pack == "no-such-pack"
+        ));
         assert_eq!(crate::presets::installed_packs(&dst).unwrap(), vec![pack]);
     }
 

@@ -12,12 +12,29 @@
     "deny": "拒绝"
   },
   "failure": {
-    "notInstalled": { "title": "未找到对话引擎", "detail": "可以在设置里下载。" },
-    "version": { "title": "对话引擎版本过低", "detail": "请在设置里升级。" },
-    "config": { "title": "对话模型不可用", "detail": "还没有可用的对话模型。" },
-    "model": { "title": "模型服务出错", "detail": "没有返回原因。" },
-    "processExit": { "title": "对话引擎意外退出", "detail": "下次发送会自动重启。" },
-    "default": { "title": "对话出错" },
+    "notInstalled": {
+      "title": "未找到对话引擎",
+      "detail": "可以在设置里下载。"
+    },
+    "version": {
+      "title": "对话引擎版本过低",
+      "detail": "请在设置里升级。"
+    },
+    "config": {
+      "title": "对话模型不可用",
+      "detail": "还没有可用的对话模型。"
+    },
+    "model": {
+      "title": "模型服务出错",
+      "detail": "没有返回原因。"
+    },
+    "processExit": {
+      "title": "对话引擎意外退出",
+      "detail": "下次发送会自动重启。"
+    },
+    "default": {
+      "title": "对话出错"
+    },
     "withDetail": "{{title}}：{{detail}}",
     "fix": "去设置"
   },
@@ -192,7 +209,8 @@
       "backTitle": "回到会话（Esc）",
       "none": "没有归档的会话。",
       "note": "归档的会话不在侧栏、不进搜索。打开后发新消息会自动取消归档。"
-    }
+    },
+    "untitled": "对话"
   },
   "steps": {
     "engine": "启动对话引擎",

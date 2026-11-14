@@ -18,11 +18,11 @@ export function digestSignatureFixtures(): DigestView[] {
     ...base, id: 101, revision: "signature-daily", date_label: "10月3日",
     // UTC 仍是星期五；Asia/Shanghai 已是星期六，验证本地时区而非 UTC。
     period_start: Date.parse("2026-10-02T16:00:00Z"), body: "本期要点", document,
-    source_state: "verified", source_note: "",
+    source_state: "verified",
     items: [{ block_id: 2, sources: base.source_index }],
   };
   const weekly: DigestView = {
-    ...daily, id: 201, revision: "signature-weekly", period: "weekly", period_label: "周报",
+    ...daily, id: 201, revision: "signature-weekly", period: "weekly",
     period_start: Date.parse("2026-09-27T16:00:00Z"), date_label: "9月28日 – 10月4日",
   };
   const withoutSources = { items: [], source_index: [], unlocated_sources: [] };

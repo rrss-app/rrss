@@ -79,7 +79,8 @@ export function createEventStub(): EventStub {
     const set = listeners.get(name);
     if (!set) return;
     for (const sub of [...set]) {
-      if (sub.alive) (sub.cb as (payload: EventMap[K]) => void)(payload);
+      // The payload union is too wide to re-check here; emit's signature already did.
+      if (sub.alive) (sub.cb as (payload: unknown) => void)(payload);
     }
   }
 

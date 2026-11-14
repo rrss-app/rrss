@@ -83,15 +83,19 @@ impl Scheduler {
         })
         .await?;
         let deferred = self.shared.deferred(id, &intended_url);
-        let message = match self.submit_added(id) {
+        let notice = match self.submit_added(id) {
             Ok(_) if self.shared.connectivity.lock().unwrap().unavailable() => {
-                "已添加，网络不可用，联网后继续抓取".into()
+                views::AddFeedNotice::Offline {}
             }
-            Ok(_) if deferred.is_some() => format!("已添加，{}", deferred.unwrap().message),
-            Ok(_) => "已添加，正在后台抓取".into(),
-            Err(error) => format!("已添加，但未安排抓取：{error}"),
+            Ok(_) if let Some(deferred) = deferred => views::AddFeedNotice::Deferred {
+                error: deferred.ui(),
+            },
+            Ok(_) => views::AddFeedNotice::Fetching {},
+            Err(error) => views::AddFeedNotice::NotScheduled {
+                error: views::UiError::from(error),
+            },
         };
-        Ok(views::AddFeedResult { id, message })
+        Ok(views::AddFeedResult { id, notice })
     }
 
     /// Page due IDs into bounded admission. The producer retains no per-source

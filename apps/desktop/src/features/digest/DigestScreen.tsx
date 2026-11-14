@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DigestPane } from "../../components/DigestPane";
+import { DigestPane, digestPeriodLabel } from "../../components/DigestPane";
 import { Icon } from "../../components/Icon";
 import { MainViewFrame } from "../../components/MainViewFrame";
 import { api, openExternal, type CitationView, type DigestView } from "../../lib/api";
@@ -164,9 +164,9 @@ export function DigestScreen({ active, topmost = true, chat, drafts, onContext, 
     </DigestPane>
     <Composer drafts={drafts} context={`digest:${digestId}`} ariaLabel={t("composer.aria")} placeholder={t("composer.placeholder")}
       contextLabel={!digest ? t("composer.noDigest") : discussion.error && discussion.digestId === digestId
-        ? t("composer.contextNotLoaded", { date: digest.date_label, period: digest.period_label })
-        : !ready ? t("composer.contextLoading", { date: digest.date_label, period: digest.period_label })
-        : t("composer.context", { date: digest.date_label, period: digest.period_label })}
+        ? t("composer.contextNotLoaded", { date: digest.date_label, period: digestPeriodLabel(digest.period) })
+        : !ready ? t("composer.contextLoading", { date: digest.date_label, period: digestPeriodLabel(digest.period) })
+        : t("composer.context", { date: digest.date_label, period: digestPeriodLabel(digest.period) })}
       otherThreadBusy={chat.busyThreadId !== null && chat.busyThreadId !== threadId} generating={chat.busyThreadId !== null}
       sending={chat.sending} disabled={!digest} ready={!citing && ready} collapsible atBottom={atBottom}
       dockLabel={<><Icon name="chat" size={14} />{t("composer.dock")}{asked ? <span className="composer-dock-count"> · {t("composer.dockCount", { count: asked })}</span> : null}</>}

@@ -1,6 +1,7 @@
 import { feedHealthKind, feedHealthLabel, feedHealthDetail, formatFeedError } from "../features/feeds";
 import { useRef, useState } from "react";
-import { api, type FeedTree, type FeedView, type FolderView } from "../lib/api";
+import { api, type AddFeedNotice, type FeedTree, type FeedView, type FolderView } from "../lib/api";
+import { formatError } from "../lib/errors";
 import { formatNotice } from "../lib/notice";
 import { Icon } from "../components/Icon";
 import { SourceAvatar } from "../components/ArticleCard";
@@ -11,7 +12,7 @@ import { useSubscribeSettings, type SubscribeSettings } from "./useSubscribeSett
 import { Pending } from "../components/Pending";
 import { MenuSelect } from "../components/MenuSelect";
 import { SettingsRows } from "./SettingsRows";
-import { useTranslation } from "../i18n";
+import { i18n, useTranslation } from "../i18n";
 
 /** 保留设置的下拉值：跟随全局、永久保留或自定义天数。 */
 type RetentionMode = "follow" | "keep" | "custom";
@@ -21,6 +22,12 @@ function retentionMode(days: number | null): RetentionMode {
 }
 function retentionArg(days: number | null) {
   return days === null ? "follow" : days === 0 ? "keep" : String(days);
+}
+
+/** 添加订阅后的抓取安排；延期或未安排时带上原因。 */
+function addFeedNotice(notice: AddFeedNotice): string {
+  const reason = notice.code === "deferred" || notice.code === "not_scheduled" ? formatError(notice.params.error) : "";
+  return i18n.t(`subscribe.add.notice.${notice.code}`, { ns: "settingsContent", reason });
 }
 export function SubscribePane({ onAsk, onChanged, onEditStateChange }: {
   onAsk: Ask;
@@ -63,7 +70,7 @@ export function SubscribePane({ onAsk, onChanged, onEditStateChange }: {
             </div>
             <button type="button" className="btn primary" disabled={!s.url.trim()} onClick={() => {
               if (!s.url.trim()) return;
-              void s.run(t("subscribe.action.add"), async () => ({ message: t("subscribe.add.success", { message: (await api.addFeed(s.url.trim())).message }) }), () => s.setUrl(""));
+              void s.run(t("subscribe.action.add"), async () => ({ message: t("subscribe.add.success", { message: addFeedNotice((await api.addFeed(s.url.trim())).notice) }) }), () => s.setUrl(""));
             }}>{t("subscribe.add.button")}</button>
           </div>
           <p className="hint">{t("subscribe.add.formats")}</p>
@@ -110,7 +117,10 @@ export function SubscribePane({ onAsk, onChanged, onEditStateChange }: {
             <input ref={opmlRef} type="file" accept=".opml,.xml,text/xml" hidden onChange={(e) => {
               const file = e.target.files?.[0];
               e.target.value = "";
-              if (file) void s.run(t("subscribe.action.import"), async () => ({ message: await api.importOpml(await file.text()) }));
+              if (file) void s.run(t("subscribe.action.import"), async () => {
+                const report = await api.importOpml(await file.text());
+                return { message: t("subscribe.opml.imported", { imported: report.imported, skipped: report.skipped_same_url, folders: report.folders }) };
+              });
             }} />
             <button type="button" className="btn" onClick={() => opmlRef.current?.click()}><Icon name="upload" size={14} />{t("subscribe.opml.import")}</button>
             <button type="button" className="btn" onClick={() => void s.run(t("subscribe.action.export"), async () => { downloadText("rrss.opml", await api.exportOpml(), "text/xml"); return {}; }, undefined, true)}><Icon name="download" size={14} />{t("subscribe.opml.export")}</button>

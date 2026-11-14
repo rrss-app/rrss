@@ -902,7 +902,9 @@ fn setting_revisions_cover_provider_pool_and_binding_changes_and_roll_back_atomi
     let before = translations::target_lang(&conn).unwrap();
     let result: rrss_core::Result<()> = configuration::write(&conn, |tx| {
         translations::set_target_lang(tx, "fr")?;
-        Err(rrss_core::Error::InvalidSetting("rollback".into()))
+        Err(rrss_core::Error::InvalidSetting(
+            rrss_core::error::settings::SettingProblem::RankSwitchUnknown,
+        ))
     });
     assert!(result.is_err());
     assert_eq!(configuration::translation_revision(&conn).unwrap(), 6);

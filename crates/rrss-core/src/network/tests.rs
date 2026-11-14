@@ -674,10 +674,7 @@ fn child_env_display_and_secrets_hide_authentication() {
         )
         .unwrap();
     let shown = format!("{:?}", child.redacted());
-    assert!(
-        shown.contains("http://proxy.test:8080/（认证已隐藏）"),
-        "{shown}"
-    );
+    assert!(shown.contains("http://***@proxy.test:8080/"), "{shown}");
     for secret in [
         "proxy-user",
         "pa%3Ass",

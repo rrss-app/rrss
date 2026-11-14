@@ -29,19 +29,6 @@ pub enum RuleProblem {
     RetentionOutOfRange { days: i64 },
     #[error("retention value is not a positive integer")]
     RetentionInvalid { value: String },
-    // Site-rule tests and digest generation still use their own error envelope.
-    #[error("{0}")]
-    LegacyText(String),
-}
-impl From<&str> for RuleProblem {
-    fn from(value: &str) -> Self {
-        Self::LegacyText(value.into())
-    }
-}
-impl From<String> for RuleProblem {
-    fn from(value: String) -> Self {
-        Self::LegacyText(value)
-    }
 }
 
 #[derive(Debug, thiserror::Error)]

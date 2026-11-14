@@ -111,6 +111,10 @@ pub(super) fn classify(error: &Error) -> Option<UiErrorKind> {
                 RequestErrorMessage::Other => NetworkMessage::Other,
             },
         ),
+        // The message is response or serializer text; only the status is safe.
+        Error::Http { status, .. } if *status > 0 => {
+            (ErrorKind::Http, *status, NetworkMessage::Http)
+        }
         Error::FeedRequest(rrss_core::ingest::feed_http::FeedRequestError::ProxyAuth) => {
             (ErrorKind::ProxyAuth, 407, NetworkMessage::ProxyAuth)
         }

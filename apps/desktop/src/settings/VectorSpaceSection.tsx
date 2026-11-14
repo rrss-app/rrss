@@ -97,8 +97,8 @@ export function VectorSpaceSection({ onAsk }: { onAsk: Ask }) {
         {s && (space ? (
           <p className="vector-space-bound"><span className="meta-tag accent">{t("vector.bound.tag")}</span>
             {space.source_dims > space.dims
-              ? t("vector.bound.summaryNative", { model: space.model, provider: space.provider_name, dims: space.dims, sourceDims: space.source_dims, chunks: count(space.chunks) })
-              : t("vector.bound.summary", { model: space.model, provider: space.provider_name, dims: space.dims, chunks: count(space.chunks) })}</p>
+              ? t("vector.bound.summaryNative", { model: space.model, provider: space.provider_name ?? t("vector.bound.providerDeleted"), dims: space.dims, sourceDims: space.source_dims, chunks: count(space.chunks) })
+              : t("vector.bound.summary", { model: space.model, provider: space.provider_name ?? t("vector.bound.providerDeleted"), dims: space.dims, chunks: count(space.chunks) })}</p>
         ) : <p className="hint">{t("vector.unbound")}</p>)}
         {s?.building && (
           <div className="vector-rebuild" role="status">
@@ -118,7 +118,7 @@ export function VectorSpaceSection({ onAsk }: { onAsk: Ask }) {
             <strong>{t("vector.stale.title")}</strong>
             <button type="button" className="btn sm" disabled={busy}
               onClick={() => void act(api.restoreVectorSpace, t("vector.notice.restored"))}>{t("vector.stale.restore")}</button>
-            <p className="hint">{space?.stale_reason || t("vector.stale.defaultReason")}{t("vector.stale.existingUsable")}</p>
+            <p className="hint">{space?.stale_reason === "probe_mismatch" ? t("vector.stale.probeMismatch") : space?.stale_reason || t("vector.stale.defaultReason")}{t("vector.stale.existingUsable")}</p>
           </div>
         )}
         {s && <SettingRow label={t("vector.dims.label")} hint={dimsHint}>

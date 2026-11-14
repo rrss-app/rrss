@@ -14,7 +14,7 @@ pub(super) fn configure(
     window: &Webview,
     route: &WebviewRoute,
     bounds: rrss_app::WebViewBounds,
-    native_failure_message: String,
+    labels: rrss_app::views::NativeWebLabels,
 ) -> Result<(), UiError> {
     let view = handle.inner();
     let context = view
@@ -42,16 +42,15 @@ pub(super) fn configure(
         menu.remove_all();
         if let Some(url) = hit.link_uri() {
             for (id, text, copy) in [
-                ("open", "在系统浏览器打开", false),
-                ("copy", "复制链接", true),
+                ("open", labels.open_in_browser.as_str(), false),
+                ("copy", labels.copy_link.as_str(), true),
             ] {
                 let action = gio::SimpleAction::new(id, None);
                 let target = target.clone();
                 let url = url.to_string();
-                let failure_message = native_failure_message.clone();
-                action.connect_activate(move |_, _| {
-                    super::link_action(&target, &url, copy, &failure_message)
-                });
+                let labels = labels.clone();
+                action
+                    .connect_activate(move |_, _| super::link_action(&target, &url, copy, &labels));
                 menu.append(&webkit2gtk::ContextMenuItem::from_gaction(
                     &action, text, None,
                 ));

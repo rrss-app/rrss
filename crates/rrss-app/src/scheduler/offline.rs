@@ -4,7 +4,10 @@ use super::*;
 use std::collections::{HashMap, VecDeque};
 use tokio::time::Instant;
 
-pub(super) const UNAVAILABLE: &str = "网络不可用；如使用代理，请检查代理设置";
+/// Subscriptions are paused until connectivity returns.
+pub(super) fn unavailable_error() -> crate::views::UiError {
+    crate::views::UiError::from(rrss_core::Error::FetchPaused)
+}
 
 #[derive(Clone, Copy)]
 pub(super) struct Policy {
@@ -78,8 +81,8 @@ impl Connectivity {
         self.phase == Phase::Offline
     }
 
-    pub fn reason(&self) -> Option<String> {
-        self.unavailable().then(|| UNAVAILABLE.into())
+    pub fn reason(&self) -> Option<crate::views::UiError> {
+        self.unavailable().then(unavailable_error)
     }
 
     pub fn has_success(&self, now: Instant) -> bool {

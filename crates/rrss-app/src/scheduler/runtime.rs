@@ -80,10 +80,9 @@ impl FetchTicket {
             if let Some(result) = self.0.borrow_and_update().clone() {
                 return Ok(result);
             }
-            self.0
-                .changed()
-                .await
-                .map_err(|_| anyhow::anyhow!("抓取运行时已停止"))?;
+            self.0.changed().await.map_err(|_| {
+                rrss_core::Error::Fetch(rrss_core::ingest::FetchFailure::RuntimeStopped)
+            })?;
         }
     }
 }
@@ -365,11 +364,16 @@ impl Scheduler {
     fn submit_inner(&self, id: i64, added: bool, keep_due: bool) -> Result<FetchTicket> {
         let mut queue = self.shared.queue.lock().unwrap();
         if queue.stopped || *self.shared.stop.borrow() {
-            anyhow::bail!("抓取运行时已停止");
+            return Err(
+                rrss_core::Error::Fetch(rrss_core::ingest::FetchFailure::RuntimeStopped).into(),
+            );
         }
         if let Some(entry) = queue.entries.get_mut(&id) {
             if entry.slot.receiver_count() >= WAITERS_PER_FEED {
-                anyhow::bail!("该订阅的等待请求过多，请稍后重试");
+                return Err(rrss_core::Error::Fetch(
+                    rrss_core::ingest::FetchFailure::WaitersExceeded,
+                )
+                .into());
             }
             entry.keep_due |= keep_due;
             let ticket = FetchTicket(entry.slot.subscribe());
@@ -389,7 +393,7 @@ impl Scheduler {
                 .pending
                 .saturating_add(usize::from(added))
         {
-            anyhow::bail!("抓取队列已满，稍后会自动重试");
+            return Err(rrss_core::Error::Fetch(rrss_core::ingest::FetchFailure::QueueFull).into());
         }
         let (slot, receiver) = watch::channel(None);
         queue.generation += 1;
@@ -450,7 +454,7 @@ impl Scheduler {
                 }
             }
             tokio::select! {
-                _ = stop.wait_for(|stopped| *stopped) => anyhow::bail!("抓取运行时已停止"),
+                _ = stop.wait_for(|stopped| *stopped) => return Err(rrss_core::Error::Fetch(rrss_core::ingest::FetchFailure::RuntimeStopped).into()),
                 _ = &mut space => {},
             }
         }
@@ -617,15 +621,14 @@ impl Shared {
         let entries = Arc::new(entries);
         let snapshot = entries.clone();
         let marked = super::write_db(self.path.clone(), move |conn| {
+            let records = snapshot
+                .iter()
+                .map(|entry| entry.deferred.record())
+                .collect::<Vec<_>>();
             let requests = snapshot
                 .iter()
-                .map(|entry| {
-                    (
-                        &entry.feed,
-                        entry.deferred.until,
-                        entry.deferred.message.as_str(),
-                    )
-                })
+                .zip(&records)
+                .map(|(entry, record)| (&entry.feed, entry.deferred.until, record.as_str()))
                 .collect::<Vec<_>>();
             rrss_core::ingest::record_fetch_deferred_batch(conn, &requests)
         })
@@ -642,7 +645,7 @@ impl Shared {
                         RefreshResult {
                             feed_id: entry.feed.id,
                             status: RefreshStatus::Failed {
-                                message: "无法记录订阅延期".into(),
+                                message: rrss_core::ingest::FetchFailure::DeferralFailed.record(),
                             },
                         },
                         entry.generation,
@@ -751,7 +754,9 @@ impl Shared {
 
     pub(super) fn pause_network_waiters(&self) {
         let mut queue = self.queue.lock().unwrap();
-        let background = queue.operations.skip_pending(super::offline::UNAVAILABLE);
+        let background = queue
+            .operations
+            .skip_pending(super::offline::unavailable_error());
         // Finish existing observers with an explicit skip, but retain admitted
         // work. New observers attach to the eventual retry after connectivity
         // returns; no source deadline/health is modified while offline.
@@ -759,7 +764,7 @@ impl Shared {
             entry.slot.send_replace(Some(RefreshResult {
                 feed_id: id,
                 status: RefreshStatus::Skipped {
-                    message: super::offline::UNAVAILABLE.into(),
+                    message: rrss_core::feeds::refresh_error_json(&rrss_core::Error::FetchPaused),
                     retry_at: None,
                 },
             }));
@@ -1180,6 +1185,7 @@ impl Shared {
             RefreshStatus::Deleted => (0, None),
             RefreshStatus::Skipped { message, .. } => (0, Some(message)),
         };
+        let error = error.map(|record| crate::ui_error::feeds::stored_error(&record));
         if error.is_none() {
             self.icons.send_modify(|version| *version += 1);
         }
@@ -1270,7 +1276,9 @@ async fn prepare_downloads(state: Arc<Shared>, claims: Vec<Claim>) -> PreparedDo
                 (
                     id,
                     generation,
-                    Err(rrss_core::Error::InvalidSetting("无法读取订阅".into())),
+                    Err(rrss_core::Error::Fetch(
+                        rrss_core::ingest::FetchFailure::ReadFailed,
+                    )),
                 )
             })
             .collect()
@@ -1325,7 +1333,11 @@ async fn prepare_downloads(state: Arc<Shared>, claims: Vec<Claim>) -> PreparedDo
                     RefreshResult {
                         feed_id: id,
                         status: RefreshStatus::Failed {
-                            message: "无效的订阅地址".into(),
+                            message: rrss_core::feeds::refresh_error_json(
+                                &rrss_core::Error::FeedRequest(
+                                    rrss_core::ingest::feed_http::FeedRequestError::InvalidAddress,
+                                ),
+                            ),
                         },
                     },
                     generation,
@@ -1338,7 +1350,7 @@ async fn prepare_downloads(state: Arc<Shared>, claims: Vec<Claim>) -> PreparedDo
                         RefreshStatus::Deleted
                     } else {
                         RefreshStatus::Failed {
-                            message: "无法读取订阅".into(),
+                            message: rrss_core::ingest::FetchFailure::ReadFailed.record(),
                         }
                     },
                 },
@@ -1359,7 +1371,7 @@ fn worker_failed(
             RefreshResult {
                 feed_id: id,
                 status: RefreshStatus::Failed {
-                    message: "抓取任务异常结束，请重试".into(),
+                    message: rrss_core::ingest::FetchFailure::TaskAborted.record(),
                 },
             },
             generation,
@@ -1566,7 +1578,7 @@ async fn drive(shared: Arc<Shared>) {
                     Err(error) => {
                         tracing::error!(%error, "feed metadata worker failed");
                         for (id, generation) in metadata_ids.drain(..) {
-                            shared.finish(RefreshResult { feed_id: id, status: RefreshStatus::Failed { message: "订阅读取任务异常结束，请重试".into() } }, generation);
+                            shared.finish(RefreshResult { feed_id: id, status: RefreshStatus::Failed { message: rrss_core::ingest::FetchFailure::TaskAborted.record() } }, generation);
                         }
                     }
                 }
@@ -1614,7 +1626,7 @@ async fn drive(shared: Arc<Shared>) {
                     tracing::error!(%error, "feed deferral worker failed");
                     for &(id, generation) in &deferral_ids {
                         shared.finish(RefreshResult { feed_id: id, status: RefreshStatus::Failed {
-                            message: "订阅延期任务异常结束，请重试".into(),
+                            message: rrss_core::ingest::FetchFailure::TaskAborted.record(),
                         } }, generation);
                     }
                 }
@@ -1824,7 +1836,7 @@ async fn process_response(state: Arc<Shared>, downloaded: Downloaded) {
                     .map(|(mut result, ids)| {
                         inserted_ids = ids;
                         if let Some(deferred) = deferred
-                            && matches!(&result.status, RefreshStatus::Failed { message } if message == &format!("HTTP {status}"))
+                            && matches!(&result.status, RefreshStatus::Failed { message } if message == &rrss_core::feeds::refresh_error_json(&rrss_core::Error::Http { status, message: String::new() }))
                         {
                             result.status = deferred.status();
                         }
@@ -1845,13 +1857,8 @@ async fn process_response(state: Arc<Shared>, downloaded: Downloaded) {
                 error: rrss_core::Error::FetchDeferred { until, reason },
                 ..
             }) => {
-                let local_message = match reason {
-                    rrss_core::ingest::FetchDeferredReason::CooldownSaving => "正在保存订阅限流记录，稍后继续抓取",
-                    rrss_core::ingest::FetchDeferredReason::QueueBusy => "本地抓取队列繁忙，等待下载名额超时，请稍后重试",
-                    _ => "",
-                };
                 let deferred = state.deferred(feed.id, &feed.url)
-                    .unwrap_or_else(|| super::cooldown::Deferred::from_reason(until, reason, local_message));
+                    .unwrap_or_else(|| super::cooldown::Deferred::from_reason(until, reason));
                 state.deferred_result(&feed, generation, deferred).await;
                 return None;
             }
@@ -1889,7 +1896,9 @@ async fn process_response(state: Arc<Shared>, downloaded: Downloaded) {
             RefreshResult {
                 feed_id: id,
                 status: RefreshStatus::Failed {
-                    message: "抓取失败".into(),
+                    message: rrss_core::feeds::refresh_error_json(&rrss_core::Error::Fetch(
+                        rrss_core::ingest::FetchFailure::TaskAborted,
+                    )),
                 },
             }
         }))
@@ -2321,7 +2330,9 @@ mod diagnostic_tests {
                 status: "failed".into(),
                 inserted: 0,
                 derived_degraded: false,
-                error: Some("synthetic-private-error".into()),
+                error: Some(crate::views::UiError::from(anyhow::anyhow!(
+                    "synthetic-private-error"
+                ))),
             });
         }
         assert_eq!(scheduler.shared.event_pending.lock().unwrap().len(), 1);

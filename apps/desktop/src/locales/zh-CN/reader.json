@@ -408,6 +408,11 @@
       "disable-js": "禁用本站 JavaScript",
       "clear": "清空原网页数据",
       "close": "关闭原网页"
+    },
+    "native": {
+      "openInBrowser": "在系统浏览器打开",
+      "copyLink": "复制链接",
+      "dialogTitle": "原网页 — RRSS"
     }
   }
 }

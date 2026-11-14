@@ -1,5 +1,6 @@
 //! Per-database endpoint capacity. Weak registries discover shared ownership;
 //! requests and the network runtime own the actual state, never a global worker.
+use rrss_core::error::JobFailure;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::{Path, PathBuf},
@@ -152,9 +153,11 @@ impl Capacity {
 
     fn endpoint(&self, base: &str) -> rrss_ai::Result<Arc<Endpoint>> {
         let url = reqwest::Url::parse(base.trim())
-            .map_err(|_| rrss_ai::Error::Configuration("模型端点地址无效"))?;
+            .map_err(|_| rrss_ai::Error::Configuration("model endpoint URL is invalid"))?;
         if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
-            return Err(rrss_ai::Error::Configuration("模型端点地址无效"));
+            return Err(rrss_ai::Error::Configuration(
+                "model endpoint URL is invalid",
+            ));
         }
         // The service origin unifies /v1, completions and embedding paths and
         // excludes credentials, query strings, model names and API keys.
@@ -285,7 +288,7 @@ impl RequestAdmission {
             path: path.to_owned(),
             service: rrss_core::ai_store::hash_input(
                 &reqwest::Url::parse(base.trim())
-                    .map_err(|_| rrss_ai::Error::Configuration("模型端点地址无效"))?
+                    .map_err(|_| rrss_ai::Error::Configuration("model endpoint URL is invalid"))?
                     .origin()
                     .ascii_serialization(),
             ),
@@ -336,7 +339,7 @@ impl rrss_ai::admission::Admission for RequestAdmission {
         });
         Box::pin(async move {
             task.await
-                .map_err(|_| rrss_ai::Error::Admission("模型限流记录写入中断"))?
+                .map_err(|_| rrss_ai::Error::Admission(JobFailure::LimitRecordingInterrupted))?
         })
     }
 
@@ -360,7 +363,7 @@ impl rrss_ai::admission::Admission for RequestAdmission {
                         .clone()
                         .acquire_owned()
                         .await
-                        .map_err(|_| rrss_ai::Error::Admission("模型运行时已停止"))?,
+                        .map_err(|_| rrss_ai::Error::Admission(JobFailure::ModelRuntimeStopped))?,
                 )
             } else {
                 None
@@ -387,7 +390,7 @@ impl rrss_ai::admission::Admission for RequestAdmission {
                             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         rrss_ai::Error::BudgetExhausted
                     } else {
-                        rrss_ai::Error::Admission("无法核对自动模型预算")
+                        rrss_ai::Error::Admission(JobFailure::BudgetCheckFailed)
                     }
                 })?;
             }
@@ -410,11 +413,9 @@ impl rrss_ai::admission::Admission for RequestAdmission {
                         })
                 })
                 .await
-                .map_err(|_| rrss_ai::Error::Admission("无法核对向量空间"))?;
+                .map_err(|_| rrss_ai::Error::Admission(JobFailure::SpaceCheckFailed))?;
                 if !current {
-                    return Err(rrss_ai::Error::Admission(
-                        "向量空间或模型已改变，已停止旧批次",
-                    ));
+                    return Err(rrss_ai::Error::Admission(JobFailure::SpaceChanged));
                 }
             }
             self._capacity

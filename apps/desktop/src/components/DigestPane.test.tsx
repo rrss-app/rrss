@@ -62,7 +62,7 @@ it("walks daily periods with previous and next", async () => {
 describe("kept alive while hidden", () => {
   const win = window as Window & { __TAURI_INTERNALS__?: unknown };
   const daily = PREVIEW_DIGESTS.filter((digest) => digest.period === "daily");
-  const summary = ({ id, period, period_label, period_start, date_label }: (typeof daily)[number]) => ({ id, period, period_label, period_start, date_label });
+  const summary = ({ id, period, period_start, date_label }: (typeof daily)[number]) => ({ id, period, period_start, date_label });
   let toggle: () => void = () => {};
   function Host({ onCite }: { onCite?: () => void }) {
     const [visible, setVisible] = useState(true);
@@ -96,7 +96,8 @@ describe("kept alive while hidden", () => {
     expect(api.digest).toHaveBeenCalledTimes(bodyReads);
     expect(host.querySelector("h3")?.textContent).toBe("昨日主线");
     expect(host.querySelector(".digest-date")?.textContent).toBe(daily[1].date_label);
-    expect(host.querySelector("[role='status']")).toBeNull();
+    // No loading or failure status; the issue's own source note may remain.
+    expect(host.querySelector("[role='status']:not(.digest-notice)")).toBeNull();
     click(host.querySelector("button[aria-label='下期']"));
     click(host.querySelector("button[aria-label='下期']"));
     await harness.flush();

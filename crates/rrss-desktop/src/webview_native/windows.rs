@@ -14,18 +14,18 @@ pub(super) fn configure(
     window: &Webview,
     _: &WebviewRoute,
     _: rrss_app::WebViewBounds,
-    native_failure_message: String,
+    labels: rrss_app::views::NativeWebLabels,
 ) -> Result<(), UiError> {
     // COM calls run on Tauri's UI thread. The initial document is about:blank;
     // any unsupported interface or failed registration aborts before navigation.
-    unsafe { install(handle, window, native_failure_message) }
+    unsafe { install(handle, window, labels) }
         .map_err(|_| UiError::from(WebError::Webview2Unavailable))
 }
 
 unsafe fn install(
     handle: tauri::webview::PlatformWebview,
     window: &Webview,
-    native_failure_message: String,
+    labels: rrss_app::views::NativeWebLabels,
 ) -> windows::core::Result<()> {
     unsafe {
         let view = handle.controller().CoreWebView2()?;
@@ -94,9 +94,12 @@ unsafe fn install(
                 let mut uri = PWSTR::null();
                 target.LinkUri(&mut uri)?;
                 let url = take_pwstr(uri);
-                for (index, (text, copy)) in [("在系统浏览器打开", false), ("复制链接", true)]
-                    .into_iter()
-                    .enumerate()
+                for (index, (text, copy)) in [
+                    (labels.open_in_browser.as_str(), false),
+                    (labels.copy_link.as_str(), true),
+                ]
+                .into_iter()
+                .enumerate()
                 {
                     let item = environment.CreateContextMenuItem(
                         &HSTRING::from(text),
@@ -105,10 +108,10 @@ unsafe fn install(
                     )?;
                     let window = target_window.clone();
                     let url = url.clone();
-                    let failure_message = native_failure_message.clone();
+                    let item_labels = labels.clone();
                     item.add_CustomItemSelected(
                         &CustomItemSelectedEventHandler::create(Box::new(move |_, _| {
-                            super::link_action(&window, &url, copy, &failure_message);
+                            super::link_action(&window, &url, copy, &item_labels);
                             Ok(())
                         })),
                         &mut 0,

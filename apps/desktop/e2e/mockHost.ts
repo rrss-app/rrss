@@ -100,7 +100,6 @@ const article = (
 export const MOCK_FOCUS: FocusPage = {
   filter: "hide_faded",
   list_scope: "all",
-  status: "",
   digest_banner: "今日简报 · 9月19日",
   digest_lede: "单库向量检索：sqlite-vec 与 FTS5 共存的取舍，十万篇以内不需要外部向量库。",
   has_more: false,
@@ -253,13 +252,11 @@ export const MOCK_DIGESTS: DigestView[] = [
   {
     id: 101,
     period: "daily",
-    period_label: "日报",
     period_start: Date.parse("2025-09-19T00:00:00+08:00"),
     date_label: "9月19日",
     body: "### 今日三条主线\n\n- **单库向量检索**：sqlite-vec 与 FTS5 共存的取舍，十万篇以内不需要外部向量库。\n- **桌面 IPC 线程模型**：Tauri 同步命令阻塞主线程，WebKitGTK 新版本改善了滚动合成。\n- **React 编译器**：自动记忆化对虚拟列表帮助有限，重点仍是数据层。\n\n今天的共同主题是「把慢的事情移出热路径」。",
     revision: "mock-daily-revision-101",
     source_state: "verified",
-    source_note: "",
     source_index: mockDigestSources,
     unlocated_sources: [],
     items: [
@@ -281,13 +278,11 @@ export const MOCK_DIGESTS: DigestView[] = [
   {
     id: 100,
     period: "daily",
-    period_label: "日报",
     period_start: Date.parse("2025-09-18T00:00:00+08:00"),
     date_label: "9月18日",
     body: "### 昨日主线\n\n昨天只有一条值得看的更新。",
     revision: "mock-daily-revision-100",
     source_state: "unavailable",
-    source_note: "",
     source_index: [],
     unlocated_sources: [],
     items: [],
@@ -296,13 +291,11 @@ export const MOCK_DIGESTS: DigestView[] = [
   {
     id: 200,
     period: "weekly",
-    period_label: "周报",
     period_start: Date.parse("2025-09-15T00:00:00+08:00"),
     date_label: "9月15日 – 9月21日",
     body: "### 本周三条主线",
     revision: "mock-weekly-revision-200",
     source_state: "unavailable",
-    source_note: "",
     source_index: [],
     unlocated_sources: [],
     items: [],
@@ -330,8 +323,8 @@ export const MOCK_PRESETS: ProviderPreset[] = [
   { id: "openai", name: "OpenAI", base_url: "https://api.openai.com/v1", protocol: "chat", compat_json: "{}" },
   { id: "deepseek", name: "DeepSeek", base_url: "https://api.deepseek.com/v1", protocol: "chat", compat_json: "{}" },
   { id: "openrouter", name: "OpenRouter", base_url: "https://openrouter.ai/api/v1", protocol: "chat", compat_json: "{}" },
-  { id: "ollama", name: "Ollama（本机）", base_url: "http://127.0.0.1:11434/v1", protocol: "chat", compat_json: "{}" },
-  { id: "openai_compat", name: "自定义 OpenAI 兼容", base_url: "", protocol: "chat", compat_json: "{}" },
+  { id: "ollama", name: "Ollama", base_url: "http://127.0.0.1:11434/v1", protocol: "chat", compat_json: "{}" },
+  { id: "openai_compat", name: "OpenAI compatible", base_url: "", protocol: "chat", compat_json: "{}" },
 ];
 
 // 加进来的模型与各连接记住的目录（阶段 19-6 / 19-7）。
@@ -1075,7 +1068,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               }
               case "digest_list":
                 if (harness.holdDigest) await new Promise<void>(resolve => pendingDigests.push(resolve));
-                return digests.filter((d) => d.period === args.period).map((d) => ({ id: d.id, period: d.period, period_label: d.period_label, period_start: d.period_start, date_label: d.date_label }));
+                return digests.filter((d) => d.period === args.period).map((d) => ({ id: d.id, period: d.period, period_start: d.period_start, date_label: d.date_label }));
               case "settings_schema":
                 return structuredClone(state.settings);
               case "set_setting": {
@@ -1525,13 +1518,15 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 state.networkProxy = next;
                 return structuredClone(state.networkProxy);
               }
+              case "import_opml":
+                return { imported: 0, skipped_same_url: 0, folders: 0 };
               case "test_network_proxy": {
                 // 不联网：按草稿里该用途的实际线路给结果，地址含 unreachable 的自定义代理视为连不上。
                 const { scope, draft } = args.args as { scope: "content" | "api" | "pi"; draft: SaveNetworkProxyArgs };
                 const rule = draft[scope].mode === "inherit" ? draft.global : draft[scope];
                 if (rule.mode === "custom" && rule.url.includes("unreachable")) throw new Error("无法连接到代理");
                 const latency = { content: 38, api: 41, pi: 44 }[scope];
-                return { ok: true, latency_ms: latency, status: 200, message: `GitHub 可访问 · HTTP 200 · ${latency} ms` };
+                return { ok: true, latency_ms: latency, status: 200 };
               }
               case "pi_generated_config":
                 return structuredClone(generated);
@@ -1638,7 +1633,10 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               case "prefs_import":
                 return {
                   summary: [{ code: "prefs_rules", params: { count: 58, duplicates: 4 } }, { code: "prefs_interests", params: { count: 12, duplicates: 0 } }, { code: "prefs_memories", params: { count: 35, duplicates: 2 } }],
-                  skipped: ["规则 不喜欢标题「广告」：限定的 https://news.example.com/rss 在本机不存在", "规则 喜欢作者「Alice」：限定的 文件夹「技术 / 博客」 在本机不存在"],
+                  skipped: [
+                    { code: "rule_scope_missing", params: { polarity: "dislike", dimension: "title_kw", pattern: "广告", scope: { kind: "feed", url: "https://news.example.com/rss" } } },
+                    { code: "rule_scope_missing", params: { polarity: "like", dimension: "author", pattern: "Alice", scope: { kind: "folder", path: ["技术", "博客"] } } },
+                  ],
                 };
               case "save_translate_settings": {
                 const { deepl_key, deeplx_token, http_key, ...values } = args.args;
@@ -1787,7 +1785,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 const id = Math.max(0, ...listed.map(feed => feed.id)) + 1;
                 state.feeds.uncategorized.push({ id, url: args.url, title: args.url, folder_id: 0, position: id,
                   retention_days: null, icon_href: "", error: null, noisy: false, health: null, empty: true });
-                return { id, message: "已添加，正在后台抓取" };
+                return { id, notice: { code: "fetching", params: {} } };
               }
               case "export_opml":
                 return "<opml/>";
@@ -1797,7 +1795,6 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               case "set_interest_enabled":
               case "memory_as_interest":
               case "confirm_feature":
-              case "import_opml":
               case "import_mcp":
               case "delete_interest":
               case "release_article":

@@ -480,10 +480,7 @@ fn mix_by_feed(cards: Vec<ArticleCard>, limit: usize, cap: usize) -> Vec<Article
 
 pub(crate) fn map_card(row: &rusqlite::Row<'_>) -> rusqlite::Result<ArticleCard> {
     let reasons = parse_interest_reasons(row.get::<_, Option<String>>(12)?.as_deref());
-    let interest_label = reasons
-        .first()
-        .map(|r| format!("接近你标记的兴趣：{}", r.label))
-        .unwrap_or_default();
+    let interest_label = reasons.first().map(|r| r.label.clone()).unwrap_or_default();
     Ok(ArticleCard {
         id: row.get(0)?,
         title: row.get(1)?,
@@ -732,7 +729,8 @@ fn cluster_header(meta: &crate::cluster::ClusterMeta, members: &[ArticleCard]) -
     ArticleCard {
         id: meta.id,
         title: meta.label.clone(),
-        feed_title: format!("{size} 篇"),
+        // The header has no single source; the UI words the size itself.
+        feed_title: String::new(),
         published_at: meta.first_published_at,
         canonical_url: None,
         read: true,

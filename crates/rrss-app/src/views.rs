@@ -191,10 +191,43 @@ pub struct SaveFeedArgs {
     pub retention: Option<String>,
 }
 
+// OPML 导入结果的计数，提示文字由前端生成。
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct OpmlImportView {
+    pub imported: i64,
+    pub skipped_same_url: i64,
+    pub folders: i64,
+}
+
+// 宿主原生界面（文件对话框、原网页右键菜单与提示框）上的文字，由前端按当前语言传入。
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct NativeDialogLabels {
+    pub title: String,
+    pub filter: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct NativeWebLabels {
+    pub failure: String,
+    pub open_in_browser: String,
+    pub copy_link: String,
+    pub dialog_title: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct AddFeedResult {
     pub id: i64,
-    pub message: String,
+    pub notice: AddFeedNotice,
+}
+
+// 添加订阅后的抓取安排；error 是延期或未能安排的原因。
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "code", content = "params", rename_all = "snake_case")]
+pub enum AddFeedNotice {
+    Fetching {},
+    Offline {},
+    Deferred { error: UiError },
+    NotScheduled { error: UiError },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -206,7 +239,7 @@ pub struct FeedUpdated {
     // None invalidates shared source / derived data (icons or background jobs).
     pub feed_id: Option<i64>,
     pub inserted: i64,
-    pub error: Option<String>,
+    pub error: Option<UiError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -231,6 +264,7 @@ pub struct TreeLayout {
 pub struct FeedTree {
     pub folders: Vec<FolderView>,
     pub uncategorized: Vec<FeedView>,
+    // 文件夹的缩进标签，按订阅树顺序；「未分类」由前端补。
     pub folder_combo: Vec<String>,
 }
 
@@ -929,7 +963,6 @@ pub struct DigestLineView {
 pub struct DigestSummary {
     pub id: i64,
     pub period: String,
-    pub period_label: String,
     pub period_start: i64,
     pub date_label: String,
 }
@@ -938,14 +971,12 @@ pub struct DigestSummary {
 pub struct DigestView {
     pub id: i64,
     pub period: String,
-    pub period_label: String,
     pub period_start: i64,
     pub date_label: String,
     pub body: String,
     pub revision: String,
-    // verified / legacy / mismatch / unavailable
+    // verified / legacy / mismatch / unavailable；说明文字由前端按状态生成。
     pub source_state: String,
-    pub source_note: String,
     pub source_index: Vec<DigestSourceView>,
     pub unlocated_sources: Vec<DigestSourceView>,
     pub items: Vec<DigestLineView>,
@@ -1079,6 +1110,7 @@ pub struct RankingSettings {
     pub hide_noisy: bool,
     #[serde(default)]
     pub interest_ready: bool,
+    // 排序说明码：interest_boost_inactive / interest_not_ready；空表示没有说明。
     #[serde(default)]
     pub ranking_note: String,
     pub hide_threshold: i64,
@@ -1094,10 +1126,10 @@ pub struct RankingSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct FocusPage {
     pub articles: Vec<ArticleView>,
+    // 横幅里的简报周期（daily / weekly），没有简报时为空；文字由前端生成。
     pub digest_banner: String,
     pub digest_lede: String,
     pub filter: String,
-    pub status: String,
     pub ranking: RankingSettings,
     pub has_more: bool,
     #[serde(default = "default_list_scope")]
@@ -1214,7 +1246,7 @@ pub struct RefreshOperation {
     pub deleted: usize,
     pub skipped: usize,
     pub done: bool,
-    pub error: Option<String>,
+    pub error: Option<UiError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -1233,7 +1265,7 @@ pub struct SchedulerSnapshot {
     pub stopped: bool,
     pub background: Vec<BackgroundJobView>,
     // 订阅网络暂停或启动诊断；只在现有提示位置展示。
-    pub feed_pause: Option<String>,
+    pub feed_pause: Option<UiError>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1735,6 +1767,7 @@ pub struct SelectionTranslation {
 pub struct MemoryPage {
     pub memories: Vec<MemoryView>,
     pub interests: Vec<InterestView>,
+    // 原样注入 Pi 的记忆前缀（模型输入）；没有可注入的记忆时为空。
     pub inject_preview: String,
 }
 
@@ -2086,6 +2119,31 @@ pub enum BackupMessage {
         duplicates: u32,
     },
     PrefsEmpty {},
+    // 上次启动时的恢复结果；name 是备份文件名，读不出时为空。
+    RestoreDone {
+        name: Option<String>,
+    },
+    RestoreExitTimeout {
+        name: Option<String>,
+        #[ts(type = "number")]
+        seconds: u64,
+    },
+    RestoreStagingIncomplete {
+        name: Option<String>,
+    },
+    RestoreRolledBack {
+        name: Option<String>,
+    },
+    // old_dir / kept_dir 是数据目录下的文件夹名。
+    RestorePartial {
+        name: Option<String>,
+        old_dir: String,
+        kept_dir: Option<String>,
+    },
+    // 旧版本写下的整句结果，原样显示。
+    RestoreLegacy {
+        text: String,
+    },
 }
 
 // 存储页「备份与恢复」分组。与占用统计分开读取，打开页面不必等扫库。
@@ -2117,7 +2175,7 @@ pub struct BackupEntryView {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct RestoreNoticeView {
     pub ok: bool,
-    pub message: String,
+    pub message: BackupMessage,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -2139,8 +2197,41 @@ pub struct RestoreCheckView {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct PrefsImportView {
     pub summary: Vec<BackupMessage>,
-    // Import rejection details belong to the validation/error migration.
-    pub skipped: Vec<String>,
+    pub skipped: Vec<PrefsSkipView>,
+}
+
+// 没导入的条目；polarity / dimension 是规则的存储值，文字由前端生成。
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "code", content = "params", rename_all = "snake_case")]
+pub enum PrefsSkipView {
+    RuleScopeMissing {
+        polarity: String,
+        dimension: String,
+        pattern: String,
+        scope: PrefsScopeView,
+    },
+    RuleInvalid {
+        polarity: String,
+        dimension: String,
+        pattern: String,
+        error: UiError,
+    },
+    PackMissing {
+        pack: String,
+    },
+    MemoryScopeMissing {
+        content: String,
+        scope: PrefsScopeView,
+    },
+}
+
+// 导出文件里记的限定范围：订阅按地址，文件夹按路径。
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PrefsScopeView {
+    Global,
+    Feed { url: String },
+    Folder { path: Vec<String> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -2182,7 +2273,6 @@ pub struct NetworkProxyTestView {
     pub ok: bool,
     pub latency_ms: u64,
     pub status: u16,
-    pub message: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
@@ -2191,8 +2281,10 @@ pub struct SystemProxyView {
     pub https: Option<String>,
     pub all: Option<String>,
     pub no_proxy: Option<String>,
+    // environment / windows_internet；文字由前端生成。
     pub source: String,
-    pub pac: Option<String>,
+    // 系统配置了 PAC 脚本（不解析）。
+    pub pac: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -2619,11 +2711,13 @@ impl From<ReadSessionInput> for rrss_core::signals::ReadSession {
 pub struct VectorSpaceView {
     pub id: i64,
     pub model: String,
-    pub provider_name: String,
+    // 连接已删除时为空。
+    pub provider_name: Option<String>,
     pub dims: i64,
     pub source_dims: i64,
     pub state: String,
     pub chunks: i64,
+    // probe_mismatch；旧库里可能是整句，前端原样显示。
     pub stale_reason: Option<String>,
     pub checked_at: Option<i64>,
 }

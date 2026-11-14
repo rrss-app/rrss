@@ -32,12 +32,7 @@ pub fn memory_page(conn: &Connection, query: &str) -> rrss_core::Result<MemoryPa
             hit_count: item.hit_count,
         })
         .collect();
-    let (preview, chars) = memories::inject_preview(conn).unwrap_or_else(|_| (String::new(), 0));
-    let inject_preview = if preview.is_empty() {
-        "注入预览：空".into()
-    } else {
-        format!("注入预览（{chars} / 900 字）\n{preview}")
-    };
+    let (inject_preview, _) = memories::inject_preview(conn).unwrap_or_else(|_| (String::new(), 0));
     Ok(MemoryPage {
         memories: rows,
         interests,

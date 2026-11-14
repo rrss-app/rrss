@@ -84,7 +84,7 @@ mod tests {
     fn classify_keeps_tagged_kind() {
         let tagged = anyhow::Error::new(ChatError::new(
             ChatErrorKind::NotInstalled,
-            "fixture missing".to_string(),
+            crate::views::UiError::from(anyhow::anyhow!("fixture missing")),
         ));
         assert_eq!(
             ChatError::classify(&tagged, ChatErrorKind::Internal).kind,

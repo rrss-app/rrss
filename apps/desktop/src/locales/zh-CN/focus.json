@@ -256,5 +256,9 @@
     "url_re": "URL 匹配正则『{{pattern}}』",
     "body_phrase": "正文包含『{{pattern}}』",
     "body_re": "正文匹配正则『{{pattern}}』"
+  },
+  "rankingNote": {
+    "interest_boost_inactive": "兴趣加分未生效：还没有兴趣向量，排序只用规则分",
+    "interest_not_ready": "兴趣未就绪：还没有可用的兴趣向量，当前按时间混合"
   }
 }

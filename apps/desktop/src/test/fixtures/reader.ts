@@ -36,7 +36,6 @@ export const TWO_ARTICLE_PAGE: FocusPage = {
   digest_banner: "",
   digest_lede: "",
   filter: "all",
-  status: "",
   ranking: {
     interest_boost: false,
     rerank: false,

@@ -216,7 +216,7 @@ async fn rate_limit_spreads_to_peers_is_restored_before_dispatch_and_manual_repo
         (view.target, view.completed, view.skipped, view.failed),
         (3, 3, 2, 0)
     );
-    assert!(view.error.unwrap().contains("延期"));
+    assert_eq!(view.error.unwrap().code(), "feed_host_limited");
     assert_eq!(server.received_requests().await.unwrap().len(), 1);
     assert!(!saved.to_string().contains("http://") && !saved.to_string().contains("/rate"));
     assert!(scheduler.shutdown().await);
@@ -717,7 +717,8 @@ async fn damaged_snapshot_is_visible_and_persisted_recovery_admits_only_one_requ
             .snapshot()
             .feed_pause
             .unwrap()
-            .contains("限流记录")
+            .code()
+            .starts_with("feed_cooldown_")
     );
     assert_eq!(operation(&scheduler).await.skipped, 3);
     assert_eq!(snapshot(&conn)["recovery"], true);
@@ -834,8 +835,10 @@ async fn failed_cooldown_snapshot_write_is_visible_and_prevents_peer_dispatch() 
         scheduler
             .snapshot()
             .feed_pause
-            .unwrap()
-            .contains("暂停抓取")
+            .is_some_and(|pause| matches!(
+                pause.code(),
+                "feed_cooldown_save_failed" | "feed_cooldown_load_failed"
+            ))
     );
     assert_eq!(operation(&scheduler).await.skipped, 2);
     assert_eq!(server.received_requests().await.unwrap().len(), 1);

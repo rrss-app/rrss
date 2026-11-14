@@ -217,11 +217,6 @@ pub fn digest_summaries(conn: &Connection, period: &str) -> Vec<DigestSummary> {
         .map(|d| DigestSummary {
             id: d.id,
             period: d.period.clone(),
-            period_label: if d.period == "weekly" {
-                "周报".into()
-            } else {
-                "日报".into()
-            },
             period_start: d.period_start,
             date_label: ai_store::digest_date_label(&d.period, d.period_start),
         })
@@ -254,29 +249,15 @@ pub fn digest(conn: &Connection, id: i64) -> rrss_core::Result<DigestView> {
     let source_index = parsed.source_index;
     let unlocated_sources = parsed.unlocated_sources;
     let d = parsed.context;
-    let source_note = match d.source_state.as_str() {
-        "legacy" => "旧稿来源仅保留原有位置，无法验证历史映射。",
-        "mismatch" => "来源索引与正文不一致，已关闭条目来源。",
-        "unavailable" if !unlocated_sources.is_empty() => "旧稿来源未定位，已关闭条目来源。",
-        "unavailable" => "本期没有可用来源。",
-        _ => "",
-    }
-    .to_string();
     Ok(DigestView {
         id: d.id,
         period: d.period.clone(),
-        period_label: if d.period == "weekly" {
-            "周报".into()
-        } else {
-            "日报".into()
-        },
         period_start: d.period_start,
         date_label: ai_store::digest_date_label(&d.period, d.period_start),
         document,
         body: d.body,
         revision: d.revision,
         source_state: d.source_state,
-        source_note,
         source_index,
         unlocated_sources,
         items,
@@ -286,37 +267,6 @@ pub fn digest(conn: &Connection, id: i64) -> rrss_core::Result<DigestView> {
 pub fn markdown_document_json(body: &str) -> Option<serde_json::Value> {
     let doc = rrss_render::markdown_to_document(body);
     serde_json::from_str(&document_to_json(&doc).unwrap_or_else(|_| "{}".into())).ok()
-}
-
-pub fn digest_banner_label(period: &str, period_start: i64) -> String {
-    let date = ai_store::digest_date_label(period, period_start);
-    let kind = if period == "weekly" {
-        "本周简报"
-    } else {
-        "今日简报"
-    };
-    format!("{kind} · {date}")
-}
-
-pub fn digest_banner_text(body: &str) -> String {
-    if body.trim().is_empty() {
-        return String::new();
-    }
-    let doc = rrss_render::markdown_to_document(body);
-    let plain = rrss_render::document_to_plain(&doc);
-    let collapsed = plain.split_whitespace().collect::<Vec<_>>().join(" ");
-    if collapsed.is_empty() {
-        return "今日 Digest 已生成".into();
-    }
-    const MAX: usize = 96;
-    let mut n = 0;
-    for (i, _) in collapsed.char_indices() {
-        if n >= MAX {
-            return format!("{}…", &collapsed[..i]);
-        }
-        n += 1;
-    }
-    collapsed
 }
 
 #[cfg(test)]

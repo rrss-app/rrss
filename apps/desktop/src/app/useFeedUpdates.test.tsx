@@ -33,7 +33,7 @@ it("reports paused refresh in the existing notice and retries after connectivity
   let snapshot: SchedulerSnapshot = {
     run_id: "network-run", version: 1, stopped: false, operations: [],
     background: [], background_requested: 0, background_completed: 0,
-    feed_pause: "网络不可用",
+    feed_pause: { code: "feed_network_unavailable", detail: "" },
   };
   box.stub.handle("schedulerStatus", () => snapshot);
   box.stub.handle("refresh", () => {

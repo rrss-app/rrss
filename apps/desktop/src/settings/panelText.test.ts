@@ -69,7 +69,13 @@ const BackupMessageSamples = {
   "prefs_packs": {"count": 1234},
   "prefs_interests": {"count": 1234, "duplicates": 1234},
   "prefs_memories": {"count": 1234, "duplicates": 1234},
-  "prefs_empty": {}
+  "prefs_empty": {},
+  "restore_done": {"name": "a.zip"},
+  "restore_exit_timeout": {"name": null, "seconds": 10},
+  "restore_staging_incomplete": {"name": "a.zip"},
+  "restore_rolled_back": {"name": "a.zip"},
+  "restore_partial": {"name": "a.zip", "old_dir": "restore-old", "kept_dir": "restore-staging-1"},
+  "restore_legacy": {"text": "old sentence"}
 } satisfies { [K in BackupMessage["code"]]: Extract<BackupMessage, { code: K }>["params"] };
 
 describe("localized panel contracts", () => {

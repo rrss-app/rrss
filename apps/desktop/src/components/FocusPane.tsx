@@ -3,6 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useRetainedScroll } from "../lib/useRetainedScroll";
 import { reducedMotion, useViewEnter } from "../lib/motion";
 import { useMinuteClock } from "../lib/time";
+import { rankingNoteText } from "../lib/focusUtils";
 import type { ExposureObserver } from "../lib/useExposureTracker";
 import type { ArticleView, FeedView, FocusPage, RankingSettings } from "../lib/api";
 import { i18n, useTranslation } from "../i18n";
@@ -497,10 +498,10 @@ export function FocusPane({
               <span className="focus-lede-cta">{t("pane.digestCta")}<Icon name="chevronRight" size={14} /></span>
             </button>
           ) : null}
-          {ranking.ranking_note || noisyLabel ? (
+          {rankingNoteText(ranking.ranking_note) || noisyLabel ? (
             <div className="focus-banners">
-              {ranking.ranking_note ? (
-                <p className="focus-banner note"><Icon name="info" size={14} />{ranking.ranking_note}</p>
+              {rankingNoteText(ranking.ranking_note) ? (
+                <p className="focus-banner note"><Icon name="info" size={14} />{rankingNoteText(ranking.ranking_note)}</p>
               ) : null}
               {noisyLabel ? (
                 <button

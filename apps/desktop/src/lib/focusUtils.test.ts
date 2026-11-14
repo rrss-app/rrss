@@ -15,10 +15,9 @@ describe("focus page transformations", () => {
     ])).toEqual({ excludeIds: [11, 12], excludeClusterIds: [7] });
   });
   it("appends only unseen rows and keeps the original banner and status", () => {
-    const next = mergeFocusPage(PREVIEW_FOCUS, { ...PREVIEW_FOCUS, digest_banner: "should-not-replace", status: "", has_more: false,
+    const next = mergeFocusPage(PREVIEW_FOCUS, { ...PREVIEW_FOCUS, digest_banner: "should-not-replace", has_more: false,
       articles: [PREVIEW_FOCUS.articles[0], { ...PREVIEW_FOCUS.articles[0], id: 99, title: "下一页" }] });
     expect(next.digest_banner).toBe(PREVIEW_FOCUS.digest_banner);
-    expect(next.status).toBe(PREVIEW_FOCUS.status);
     expect(next.has_more).toBe(false);
     expect(next.articles.map((row) => row.id)).toEqual([...PREVIEW_FOCUS.articles.map((row) => row.id), 99]);
   });

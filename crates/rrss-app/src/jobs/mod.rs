@@ -195,7 +195,7 @@ mod skip_tests {
             assert!(!is_skip(&anyhow::anyhow!(message).context("outer context")));
         }
         assert!(!is_skip(&anyhow::Error::new(CoreError::InvalidProvider(
-            "AI provider not found".into(),
+            rrss_core::error::models::ProviderProblem::NameMissing,
         ))));
     }
 }

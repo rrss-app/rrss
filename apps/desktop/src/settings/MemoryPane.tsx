@@ -7,6 +7,7 @@ import { Segmented } from "../components/Segmented";
 import { useTranslation } from "../i18n";
 import { SettingRow, Toggle } from "./chips";
 import { downloadText } from "./io";
+import { rankingNoteText } from "../lib/focusUtils";
 import type { SettingsEditState } from "./editState";
 import { useMemorySettings } from "./useMemorySettings";
 import { Pending } from "../components/Pending";
@@ -198,7 +199,7 @@ export function MemoryPane({ ranking, onRanking, onAsk, onOpenArticle, onChanged
             <SettingRow label={t("memory.ranking.rerank")} hint={t("memory.ranking.rerankHint")}>
               <Toggle label={t("memory.ranking.rerank")} on={ranking.rerank} onLabel="" offLabel="" onClick={() => setRanking("rerank", !ranking.rerank)} />
             </SettingRow>
-            <p className="hint">{ranking.ranking_note || t("memory.ranking.note")}</p>
+            <p className="hint">{rankingNoteText(ranking.ranking_note) || t("memory.ranking.note")}</p>
           </div>
         </section>
       </fieldset>

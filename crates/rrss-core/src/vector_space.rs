@@ -470,8 +470,8 @@ pub fn record_probes(conn: &Connection, id: i64, vectors: &[Vec<f32>]) -> Result
                 )?;
             }
         }
-        let reason =
-            (!good).then_some("向量与建库时不一致，可能是连接、模型版本、量化或维度变了。");
+        // Stored as a code; older rows may still hold a sentence.
+        let reason = (!good).then_some("probe_mismatch");
         conn.execute(
             "UPDATE vector_spaces SET checked_at=?2,stale_reason=?3,
             state=CASE WHEN ?3 IS NOT NULL THEN 'stale' WHEN rebuild_from IS NULL THEN 'active' ELSE 'building' END,

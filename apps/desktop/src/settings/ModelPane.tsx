@@ -62,7 +62,11 @@ export function ModelPane({ onAsk, onNavigate, onEditStateChange }: {
   const toggle = (key: string) => setOpen((old) => ({ ...old, [key]: !old[key] }));
 
   const providers = page.data?.providers ?? [];
-  const presetList = presets.data ?? [];
+  // 产品名原样用；本机、自定义这类说明性的名字按 id 取语言包。
+  const presetList = (presets.data ?? []).map((preset) => {
+    const key = `connection.presetName.${preset.id}` as "connection.presetName.ollama";
+    return i18n.exists(key, { ns: "settingsModels" }) ? { ...preset, name: String(i18n.t(key, { ns: "settingsModels" })) } : preset;
+  });
   const value = (id: string) => schema.data?.values.find((v) => v.id === id)?.value ?? "";
   const tierSpec = schema.data?.specs.find((s) => s.id === "ai_input_tier");
   const tier = tierSpec?.kind.type === "enum" ? settingOptions("ai_input_tier", tierSpec.kind.options).find((o) => o.id === value("ai_input_tier"))?.label : "";

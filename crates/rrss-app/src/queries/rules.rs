@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use rrss_core::articles;
 use rrss_core::feeds;
 use rrss_core::presets;
-use rrss_core::rules::{self, Dimension, Polarity, RuleFilter, RuleSource, ScopeKind};
+use rrss_core::rules::{self, Polarity, RuleFilter, RuleSource, ScopeKind};
 
 use crate::views::*;
 
@@ -47,19 +47,6 @@ fn rule_to_view_with_context(
         enabled: rule.enabled,
         pending: rule.source == RuleSource::Suggested && !rule.enabled,
         pack_id: rule.pack_id.unwrap_or_default(),
-    }
-}
-
-pub(super) fn rule_condition(dimension: Dimension, pattern: &str) -> String {
-    match dimension {
-        Dimension::Author => format!("作者是『{pattern}』"),
-        Dimension::Tag => format!("带有标签『{pattern}』"),
-        Dimension::TitleKw => format!("标题包含『{pattern}』"),
-        Dimension::TitleRe => format!("标题匹配正则『{pattern}』"),
-        Dimension::UrlPhrase => format!("URL 包含『{pattern}』"),
-        Dimension::UrlRe => format!("URL 匹配正则『{pattern}』"),
-        Dimension::BodyPhrase => format!("正文包含『{pattern}』"),
-        Dimension::BodyRe => format!("正文匹配正则『{pattern}』"),
     }
 }
 
@@ -162,6 +149,7 @@ mod tests {
     use super::*;
     use rrss_core::db::{PooledConnection, open_at};
     use rrss_core::feeds::SubscribeRequest;
+    use rrss_core::rules::Dimension;
     use rrss_core::rules::{NewRule, Rule};
 
     fn effect(view: &RuleView) -> &'static str {

@@ -90,40 +90,33 @@ fn transport_categories_survive_without_unsafe_diagnostics() {
 }
 
 #[test]
-fn specific_http_messages_keep_the_original_display_and_safe_diagnostic() {
-    for status in [0, 200, 407, 503] {
+fn http_messages_never_reach_the_ui() {
+    for (status, code) in [
+        (0, "internal"),
+        (200, "network_http"),
+        (503, "network_http"),
+    ] {
         let error = Error::Http {
             status,
             message: "image too large: response body canary".into(),
         };
-        let original = error.to_string();
         let diagnostic = logsafe::error(&error);
         let ui = UiError::from(error);
-        assert_eq!(ui.code(), "legacy_text");
-        assert_eq!(ui.detail, original);
+        assert_eq!(ui.code(), code);
+        assert!(!ui.detail.contains("canary"));
         assert_eq!(ui.log_detail(), diagnostic);
-        assert!(!ui.log_detail().contains("canary"));
         let wire = serde_json::to_value(&ui).unwrap();
         assert!(wire.get("diagnostic").is_none());
-        let restored: UiError = serde_json::from_value(wire).unwrap();
-        assert_eq!(restored.log_detail(), "legacy command error");
+        assert!(!wire.to_string().contains("canary"));
     }
 }
 
 #[test]
-fn unmigrated_sentence_errors_remain_legacy() {
-    for error in [
-        Error::InvalidProvider("fixture".into()),
-        Error::InvalidSetting("fixture".into()),
-        Error::InvalidRule("fixture".into()),
-        Error::InvalidPiOverride("fixture".to_string().into()),
-        Error::Backup("fixture".into()),
-    ] {
-        let original = error.to_string();
-        let ui = UiError::from(error);
-        assert_eq!(ui.code(), "legacy_text");
-        assert_eq!(ui.detail, original);
-    }
+fn stored_legacy_text_is_the_only_legacy_source() {
+    let legacy = UiError::stored_legacy("old sentence https://user:canary@feed.example/");
+    assert_eq!(legacy.code(), "legacy_text");
+    assert!(!legacy.detail.contains("canary"));
+    assert_eq!(legacy.log_detail(), "legacy stored error");
 }
 
 #[test]
@@ -149,21 +142,17 @@ fn migrated_validation_errors_keep_domain_codes() {
 }
 
 #[test]
-fn string_and_anyhow_errors_are_scrubbed_at_the_boundary() {
+fn anyhow_errors_are_internal_and_scrubbed_at_the_boundary() {
     let original =
         "failed https://user:canary-pass@service.example/path?token=canary-token sk-canary-key";
-    let legacy = UiError::from(original.to_string());
-    assert_eq!(legacy.code(), "legacy_text");
-    assert!(!legacy.detail.contains("canary"));
-    assert_eq!(legacy.log_detail(), "legacy command error");
     let error = UiError::from(anyhow::anyhow!(original));
-    assert_eq!(error.code(), "legacy_text");
-    assert_eq!(error.detail, legacy.detail);
+    assert_eq!(error.code(), "internal");
+    assert!(!error.detail.contains("canary"));
     assert!(!error.log_detail().contains("canary"));
 }
 
 #[test]
-fn anyhow_uses_core_codes_only_when_unwrapping_keeps_the_display() {
+fn anyhow_contexts_keep_the_wrapped_core_code() {
     let coded = UiError::from(anyhow::Error::new(Error::FeedNotFound));
     assert_eq!(coded.code(), "feed_not_found");
 
@@ -175,11 +164,9 @@ fn anyhow_uses_core_codes_only_when_unwrapping_keeps_the_display() {
     assert!(!coded.log_detail().contains("fixture task"));
 
     let error = anyhow::Error::new(Error::FeedNotFound).context("select another feed");
-    let original = error.to_string();
     let diagnostic = crate::log::error(error.as_ref());
     let context = UiError::from(error);
-    assert_eq!(context.code(), "legacy_text");
-    assert_eq!(context.detail, original);
+    assert_eq!(context.code(), "feed_not_found");
     assert_eq!(context.log_detail(), diagnostic);
 }
 
@@ -199,17 +186,15 @@ pub(super) fn assert_code_params(error: Error, code: &str, params: serde_json::V
 }
 
 #[test]
-fn pretty_anyhow_calls_keep_the_full_chain_and_its_safe_log_projection() {
+fn pretty_anyhow_calls_code_the_core_failure_and_keep_a_safe_log_projection() {
     let error = anyhow::Error::new(Error::Http {
         status: 413,
         message: "response body canary".into(),
     })
     .context("read model catalog");
-    let original = format!("{error:#}");
     let diagnostic = crate::log::error(error.as_ref());
     let ui = UiError::from_anyhow_pretty(error);
-    assert_eq!(ui.code(), "legacy_text");
-    assert_eq!(ui.detail, original);
+    assert_eq!(ui.code(), "network_http");
     assert_eq!(ui.log_detail(), diagnostic);
     assert!(!ui.log_detail().contains("canary"));
 }

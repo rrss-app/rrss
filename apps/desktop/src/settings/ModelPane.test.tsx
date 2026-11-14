@@ -16,7 +16,7 @@ vi.mock("../lib/api", async () => {
 
 const PRESETS: ProviderPreset[] = [
   { id: "openai", name: "OpenAI", base_url: "https://api.openai.com/v1", protocol: "chat", compat_json: "{}" },
-  { id: "ollama", name: "Ollama（本机）", base_url: "http://127.0.0.1:11434/v1", protocol: "chat", compat_json: "{}" },
+  { id: "ollama", name: "Ollama", base_url: "http://127.0.0.1:11434/v1", protocol: "chat", compat_json: "{}" },
 ];
 const task = (name: string, title: string, provider_id = 0, model = "") => ({ task: name, title, provider_id, model });
 

@@ -124,7 +124,7 @@ export function translatePageFixture(overrides: Partial<TranslatePage> = {}): Tr
 
 export function networkProxyFixture(overrides: Partial<NetworkProxyView> = {}): NetworkProxyView {
   const rule = (mode: "direct" | "system" | "custom" | "inherit" = "direct") => ({ mode, url: "", no_proxy: "", has_auth: false });
-  return { global: rule(), content: rule("inherit"), api: rule("inherit"), pi: rule("inherit"), system: { http: null, https: null, all: null, no_proxy: null, source: "环境变量", pac: null }, ...overrides };
+  return { global: rule(), content: rule("inherit"), api: rule("inherit"), pi: rule("inherit"), system: { http: null, https: null, all: null, no_proxy: null, source: "environment", pac: false }, ...overrides };
 }
 
 export function piPageFixture(overrides: Partial<PiPage> = {}): PiPage {

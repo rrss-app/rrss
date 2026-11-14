@@ -237,7 +237,7 @@ function GeneratedConfigDialog({ onAsk, onClose, onEditStateChange }: { onAsk: A
           )}
           <div><strong>{t("advanced.generated.args")}</strong><pre>{[data.program, ...data.args].join(" ")}</pre></div>
           {(data.env.length > 0 || data.proxy_error) && <div><strong>{t("advanced.generated.env")}</strong><pre>{[...data.env.map(([key, value]) => `${key}=${value}`), ...(data.proxy_error ? [i18n.t("pi_proxy_env_failed", { ns: "errors", error: formatError(data.proxy_error) })] : [])].join("\n")}</pre></div>}
-          {data.files.map(([path, text]) => <div key={path}><strong>{path}</strong><pre>{text}</pre></div>)}
+          {data.files.map(([path, text]) => <div key={path}><strong>{path}</strong><pre>{text ?? t("advanced.generated.unparsable")}</pre></div>)}
         </div>
       )}
     </Dialog>

@@ -204,7 +204,13 @@
       "urlPlaceholder": "粘贴订阅地址，例如 https://example.com/feed.xml",
       "button": "添加",
       "success": "添加成功：{{message}}",
-      "formats": "支持 RSS、Atom 和 JSON Feed。"
+      "formats": "支持 RSS、Atom 和 JSON Feed。",
+      "notice": {
+        "fetching": "已添加，正在后台抓取",
+        "offline": "已添加，网络不可用，联网后继续抓取",
+        "deferred": "已添加，{{reason}}",
+        "not_scheduled": "已添加，但未安排抓取：{{reason}}"
+      }
     },
     "display": {
       "title": "显示",
@@ -228,7 +234,8 @@
     "opml": {
       "hint": "只包含订阅列表，不含文章正文。",
       "import": "导入",
-      "export": "导出"
+      "export": "导出",
+      "imported": "新增 {{imported}} 个订阅，跳过 {{skipped}} 个重复，新建 {{folders}} 个文件夹"
     },
     "loadFailed": "加载订阅失败，请重新读取后再操作：",
     "list": {

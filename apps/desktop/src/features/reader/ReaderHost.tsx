@@ -23,6 +23,7 @@ import { api, onEmbedCover, onMediaReady, type ArticleView, type CitationView, t
 import { classifyEmbed } from "../../components/embedUrl";
 import { parseDocument } from "../../lib/blockIr";
 import { formatNotice } from "../../lib/notice";
+import { formatError } from "../../lib/errors";
 import { isTauri } from "../../lib/preview";
 import { formatPublishedFull } from "../../lib/time";
 import { isTypingTarget } from "../../lib/shortcuts";
@@ -549,7 +550,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     try {
       const result = await webActions?.extract?.(url);
       if (!requests.owns(cur.ticket) || !result || result.url !== url) return;
-      if (result.state !== "Extracted") { propsRef.current.notify({ message: result.reason ?? i18n.t("host.noArticle", { ns: "reader" }) }); return; }
+      if (result.state !== "Extracted") { propsRef.current.notify({ message: result.error ? formatError(result.error) : result.reason ?? i18n.t("host.noArticle", { ns: "reader" }) }); return; }
       if (result.article_id !== cur.view.id) return;
       const view = await api.reader(cur.view.id);
       if (requests.owns(cur.ticket)) setView(cur.view.id, () => view);

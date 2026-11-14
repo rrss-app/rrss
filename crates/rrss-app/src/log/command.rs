@@ -58,7 +58,7 @@ mod tests {
                     "inner with name"
                 );
             });
-            log.finish(&Err::<(), _>(UiError::from("failed".to_string())));
+            log.finish(&Err::<(), _>(UiError::stored_legacy("failed")));
         });
         handle.end();
         let log = std::fs::read_to_string(dir.path().join("rrss.log")).unwrap();
@@ -91,7 +91,7 @@ mod tests {
         let log = std::fs::read_to_string(dir.path().join("rrss.log")).unwrap();
         assert!(log.contains("command failed") && log.contains("slow command"));
         assert!(!log.contains("canary-") && !log.contains("user:pass"));
-        assert!(log.contains("code=legacy_text") && log.contains("detail="));
+        assert!(log.contains("code=internal") && log.contains("detail="));
         assert!(!log.contains("WARN") && !log.contains("ERROR"));
     }
 }

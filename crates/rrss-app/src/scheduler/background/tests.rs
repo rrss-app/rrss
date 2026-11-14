@@ -421,7 +421,7 @@ fn pause_reasons_are_structured_and_separate() {
         ),
         "network_configuration"
     );
-    assert_eq!(pause_reason(&SpacePaused.into()), "vector_space");
+    assert_eq!(pause_reason(&space_paused()), "vector_space");
     assert_eq!(pause_reason(&anyhow::anyhow!("injected")), "job_failed");
     assert_eq!(
         pause_reason(&rrss_ai::Error::Configuration("invalid endpoint").into()),

@@ -159,7 +159,9 @@ impl Cooldowns {
         }
         let raw = crate::jobs::spawn_db(path.to_owned(), |conn| db::get_setting(conn, SETTING))
             .await
-            .map_err(|_| rrss_ai::Error::Admission("无法读取模型限流记录"))?;
+            .map_err(|_| {
+                rrss_ai::Error::Admission(rrss_core::error::JobFailure::CooldownReadFailed)
+            })?;
         if let Some(raw) = raw {
             let now = now_ms();
             let anchor = Instant::now();
@@ -277,7 +279,7 @@ impl Cooldowns {
             db::set_setting(conn, SETTING, &raw)
         })
         .await
-        .map_err(|_| rrss_ai::Error::Admission("无法保存模型限流记录，已暂停派发"))?;
+        .map_err(|_| rrss_ai::Error::Admission(rrss_core::error::JobFailure::CooldownSaveFailed))?;
         self.dirty = false;
         Ok(())
     }

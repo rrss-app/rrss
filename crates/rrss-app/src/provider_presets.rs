@@ -1,4 +1,5 @@
 //! 连接预设的唯一默认值来源；选择预设只填充草稿，不发请求、不写库。
+//! `name` 是产品名，需要说明的预设（本机、自定义）由前端按 `id` 换成语言包里的名字。
 use crate::views::ProviderPreset;
 
 pub fn provider_presets() -> Vec<ProviderPreset> {
@@ -6,8 +7,8 @@ pub fn provider_presets() -> Vec<ProviderPreset> {
         ("openai", "OpenAI", "https://api.openai.com/v1"),
         ("deepseek", "DeepSeek", "https://api.deepseek.com/v1"),
         ("openrouter", "OpenRouter", "https://openrouter.ai/api/v1"),
-        ("ollama", "Ollama（本机）", "http://127.0.0.1:11434/v1"),
-        ("openai_compat", "自定义 OpenAI 兼容", ""),
+        ("ollama", "Ollama", "http://127.0.0.1:11434/v1"),
+        ("openai_compat", "OpenAI compatible", ""),
     ]
     .into_iter()
     .map(|(id, name, base_url)| ProviderPreset {

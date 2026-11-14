@@ -1,4 +1,4 @@
-import { formatBackupEntry, formatBackupMessage, formatBackupWhen, formatStorageBytes } from "./panelText";
+import { formatBackupEntry, formatBackupMessage, formatBackupWhen, formatPrefsSkip, formatStorageBytes } from "./panelText";
 import { isTauri } from "../lib/preview";
 import { useRef, useState } from "react";
 import { Icon } from "../components/Icon";
@@ -38,7 +38,7 @@ export function BackupSection({ onAsk, onEditStateChange, onChanged, blocked }: 
         {notice && (
           <div className={notice.ok ? "notice ok" : "notice error"} role="status">
             <Icon name={notice.ok ? "check" : "info"} size={14} />
-            <span>{notice.message}</span>
+            <span>{formatBackupMessage(notice.message)}</span>
             <button type="button" className="btn sm ghost" disabled={s.busy} onClick={s.dismissNotice}>{t("backup.dismiss")}</button>
           </div>
         )}
@@ -142,7 +142,7 @@ export function BackupSection({ onAsk, onEditStateChange, onChanged, blocked }: 
                 {t("backup.prefs.imported", { summary: s.imported.summary.map(formatBackupMessage).join(t("backup.format.separator")) })}
                 {s.imported.skipped.length > 0 && <>
                   <br />{t("backup.prefs.skipped", { count: s.imported.skipped.length })}
-                  <ul className="backup-skipped">{s.imported.skipped.map((line) => <li key={line}>{line}</li>)}</ul>
+                  <ul className="backup-skipped">{s.imported.skipped.map(formatPrefsSkip).map((line, index) => <li key={index}>{line}</li>)}</ul>
                 </>}
               </span>
               <span className="backup-result-actions"><button type="button" className="btn sm ghost" onClick={s.closeImported}>{t("backup.done.close")}</button></span>

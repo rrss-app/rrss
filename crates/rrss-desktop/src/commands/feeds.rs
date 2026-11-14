@@ -60,14 +60,18 @@ db_task!(rename_folder(id: i64, name: String) -> () =>
 db_task!(delete_folder(id: i64) -> () => |conn| rrss_app::actions::delete_folder(conn, id));
 
 #[tauri::command]
-pub async fn import_opml(state: State<'_, AppState>, xml: String) -> Result<String, UiError> {
+pub async fn import_opml(
+    state: State<'_, AppState>,
+    xml: String,
+) -> Result<rrss_app::views::OpmlImportView, UiError> {
     let path = state.db_path.clone();
     with_db("import_opml", path, move |conn| {
         let report = rrss_app::actions::import_opml(conn, &xml).map_err(UiError::from)?;
-        Ok(format!(
-            "新增 {} 个订阅，跳过 {} 个重复，新建 {} 个文件夹",
-            report.imported, report.skipped_same_url, report.folders
-        ))
+        Ok(rrss_app::views::OpmlImportView {
+            imported: report.imported as i64,
+            skipped_same_url: report.skipped_same_url as i64,
+            folders: report.folders as i64,
+        })
     })
     .await
 }

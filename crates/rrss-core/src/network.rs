@@ -454,6 +454,20 @@ impl fmt::Debug for ChildProxyEnv {
     }
 }
 
+/// Display copy of a proxy URL: credentials become `***@`, and an unparsable
+/// value is hidden entirely. Language-neutral, so no UI wording is needed.
+fn masked_proxy_url(value: &str) -> String {
+    match Url::parse(value) {
+        Ok(mut url) => {
+            let had_auth = !url.username().is_empty() || url.password().is_some();
+            let _ = url.set_password(None);
+            let _ = url.set_username(if had_auth { "***" } else { "" });
+            url.into()
+        }
+        Err(_) => "***".into(),
+    }
+}
+
 impl ChildProxyEnv {
     /// 写入子进程的变量（含认证）。调用方须先移除全部 [`PROXY_ENV_KEYS`]。
     pub fn vars(&self) -> &[(&'static str, String)] {
@@ -470,19 +484,7 @@ impl ChildProxyEnv {
                 } else if key.eq_ignore_ascii_case("NO_PROXY") {
                     value.clone()
                 } else {
-                    match Url::parse(value) {
-                        Ok(mut url) => {
-                            let had_auth = !url.username().is_empty() || url.password().is_some();
-                            let _ = url.set_username("");
-                            let _ = url.set_password(None);
-                            if had_auth {
-                                format!("{url}（认证已隐藏）")
-                            } else {
-                                url.into()
-                            }
-                        }
-                        Err(_) => "***".into(),
-                    }
+                    masked_proxy_url(value)
                 };
                 ((*key).to_owned(), shown)
             })
@@ -605,19 +607,7 @@ impl ProxyEnvironment {
     /// 给设置页展示当前进程看到的代理地址，认证信息只显示为提示，不回传凭据。
     pub fn display_value(&self, upper: &str, lower: &str) -> Option<String> {
         let value = self.value(upper, lower)?;
-        Some(match Url::parse(value) {
-            Ok(mut url) => {
-                let had_auth = !url.username().is_empty() || url.password().is_some();
-                let _ = url.set_username("");
-                let _ = url.set_password(None);
-                if had_auth {
-                    format!("{url}（认证已隐藏）")
-                } else {
-                    url.into()
-                }
-            }
-            Err(_) => "已设置（地址格式无法解析）".into(),
-        })
+        Some(masked_proxy_url(value))
     }
 
     /// NO_PROXY 不含凭据，展示时保留当前进程的原始绕过列表。

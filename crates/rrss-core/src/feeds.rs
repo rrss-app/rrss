@@ -613,6 +613,7 @@ pub fn refresh_error_json(error: &Error) -> String {
             FetchDeferredReason::Recovery => ("feed_cooldown_recovery".into(), json!({})),
         },
         Error::FetchPaused => ("feed_network_unavailable".into(), json!({})),
+        Error::Fetch(failure) => (failure.code().into(), json!({})),
         Error::Sqlite(rusqlite::Error::SqliteFailure(error, _))
             if matches!(
                 error.code,

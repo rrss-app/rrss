@@ -21,7 +21,7 @@ pub fn feed_tree(conn: &Connection) -> rrss_core::Result<FeedTree> {
             |row| row.get(0),
         )
         .optional()?;
-    let mut combo = vec!["未分类".to_string()];
+    let mut combo = Vec::new();
     let rows: Vec<FeedView> = listed
         .into_iter()
         .map(|feed| FeedView {

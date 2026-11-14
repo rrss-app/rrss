@@ -41,7 +41,7 @@ export function createPiFixture(): PiFixture {
   // 覆盖只收 JSON 对象，空白还原为 `{}`；后端的完整校验不在这里复制。
   stub.handle("piConfig", () => clone(state.config));
   stub.handle("networkProxy", () => clone(state.networkProxy));
-  stub.handle("testNetworkProxy", () => ({ ok: true, latency_ms: 42, status: 200, message: "GitHub 可访问 · HTTP 200 · 42 ms" }));
+  stub.handle("testNetworkProxy", () => ({ ok: true, latency_ms: 42, status: 200 }));
   stub.handle("saveNetworkProxy", (args) => {
     const next = clone(state.networkProxy);
     for (const key of ["global", "content", "api", "pi"] as const) {

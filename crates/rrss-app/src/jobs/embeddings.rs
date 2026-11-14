@@ -230,7 +230,7 @@ async fn run_embed_queue_inner(db_path: &Path, client: &reqwest::Client) -> Resu
     })
     .await?;
     if !writable {
-        return Err(crate::scheduler::background::SpacePaused.into());
+        return Err(crate::scheduler::background::space_paused());
     }
     if spawn_db(path.clone(), rrss_core::vector_space::building)
         .await?
@@ -248,7 +248,7 @@ async fn run_embed_queue_inner(db_path: &Path, client: &reqwest::Client) -> Resu
     })
     .await?
     {
-        return Err(crate::scheduler::background::SpacePaused.into());
+        return Err(crate::scheduler::background::space_paused());
     }
     let capacity = crate::scheduler::model_capacity::Capacity::for_database(db_path);
     let context = ai_store::hash_input(

@@ -15,7 +15,10 @@ fn verification_transition_table_and_retry() {
         actual_url: "https://example.test".into(),
     };
     let good = Ok(page.clone());
-    let bad = Err(crate::UiError::from("没有正文".to_string()));
+    let bad = Err(crate::UiError::new(
+        crate::views::UiErrorKind::Reader(crate::ui_error::reader::ReaderError::FulltextEmpty),
+        "fixture",
+    ));
     let mut suspicious = page;
     suspicious.suspicious.push("TooShort".into());
     assert!(
@@ -109,7 +112,11 @@ fn verification_transition_table_and_retry() {
     assert_eq!(success.image_count, Some(2));
     assert_eq!(success.reason, None);
     let failure = event("web-1", "https://example.test", None, Some(&bad));
-    assert_eq!(failure.reason.as_deref(), Some("没有正文"));
+    assert_eq!(failure.reason, None);
+    assert_eq!(
+        failure.error.as_ref().map(|error| error.code()),
+        Some("reader_fulltext_empty")
+    );
     assert_eq!(failure.article_id, None);
 }
 

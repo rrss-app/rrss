@@ -296,8 +296,8 @@ pub struct GeneratedConfig {
     #[serde(default)]
     #[ts(optional)]
     pub proxy_error: Option<crate::views::UiError>,
-    // `(相对 <data>/pi 的路径, 内容)`；扩展与技能正文不列出。
-    pub files: Vec<(PathBuf, String)>,
+    // `(相对 <data>/pi 的路径, 内容)`；扩展与技能正文不列出。内容无法解析时为空，界面不显示原文。
+    pub files: Vec<(PathBuf, Option<String>)>,
     pub ignored: Vec<String>,
 }
 
@@ -343,7 +343,7 @@ fn log_stderr(line: &str, secrets: &[String]) -> String {
     line
 }
 
-fn redact_config_json(bytes: &[u8]) -> String {
+fn redact_config_json(bytes: &[u8]) -> Option<String> {
     fn mask(value: &mut serde_json::Value) {
         match value {
             serde_json::Value::Object(obj) => {
@@ -381,9 +381,9 @@ fn redact_config_json(bytes: &[u8]) -> String {
     match serde_json::from_slice::<serde_json::Value>(bytes) {
         Ok(mut value) => {
             mask(&mut value);
-            value.to_string()
+            Some(value.to_string())
         }
-        Err(_) => "（配置无法解析，未显示原文）".into(),
+        Err(_) => None,
     }
 }
 
@@ -661,7 +661,7 @@ mod tests {
         let shown = generated_config(&conn, dir.path()).unwrap();
         let rendered = format!("{:?}", shown.env);
         assert!(
-            rendered.contains("http://proxy.test:3128/（认证已隐藏）"),
+            rendered.contains("http://***@proxy.test:3128/"),
             "{rendered}"
         );
         assert!(!rendered.contains("pi-user") && !rendered.contains("pi%2Fpass"));
@@ -681,7 +681,7 @@ mod tests {
     #[test]
     fn displayed_configuration_masks_credentials_without_changing_the_source() {
         let raw = br#"{"providers":{"custom":{"apiKey":"plain-credential","baseUrl":"https://example.test"}},"mcp":{"env":{"CUSTOM_AUTH":"env-secret"},"args":["--secret","arg-secret"]},"nested":[{"password":"password-secret"}]}"#;
-        let display = redact_config_json(raw);
+        let display = redact_config_json(raw).unwrap();
         for secret in [
             "plain-credential",
             "env-secret",

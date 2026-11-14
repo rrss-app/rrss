@@ -1,7 +1,7 @@
 use super::{UiErrorKind, params};
 use rrss_core::{
     Error,
-    ingest::{FetchDeferredReason, feed_http::FeedRequestError},
+    ingest::{FetchDeferredReason, FetchFailure, feed_http::FeedRequestError},
     opml::OpmlError,
     parse::FeedParseError,
     url_norm::InvalidUrlReason,
@@ -33,6 +33,15 @@ error_codes!(FeedError {
     OpmlInvalid => "opml_invalid",
     OpmlSerialize => "opml_serialize",
     FeedNetworkUnavailable => "feed_network_unavailable",
+    FeedStaleUrl => "feed_stale_url",
+    FeedFetchRuntimeStopped => "feed_fetch_runtime_stopped",
+    FeedWaitersExceeded => "feed_waiters_exceeded",
+    FeedQueueFull => "feed_queue_full",
+    FeedReadFailed => "feed_read_failed",
+    FeedDeferralFailed => "feed_deferral_failed",
+    FeedTaskAborted => "feed_task_aborted",
+    FeedRefreshBusy => "feed_refresh_busy",
+    FeedRefreshInterrupted => "feed_refresh_interrupted",
     MediaTooLarge { #[ts(type = "number")] bytes: u64, #[ts(type = "number")] max_bytes: u64 } => "media_too_large",
     FeedRefreshHttp { status: u16 } => "feed_refresh_http",
     FeedRefreshFailed => "feed_refresh_failed",
@@ -81,6 +90,17 @@ pub(super) fn classify(error: &Error) -> Option<UiErrorKind> {
         Error::Opml(OpmlError::InvalidDocument) => FeedError::OpmlInvalid,
         Error::Opml(OpmlError::Serialize) => FeedError::OpmlSerialize,
         Error::FetchPaused => FeedError::FeedNetworkUnavailable,
+        Error::Fetch(failure) => match failure {
+            FetchFailure::StaleUrl => FeedError::FeedStaleUrl,
+            FetchFailure::RuntimeStopped => FeedError::FeedFetchRuntimeStopped,
+            FetchFailure::WaitersExceeded => FeedError::FeedWaitersExceeded,
+            FetchFailure::QueueFull => FeedError::FeedQueueFull,
+            FetchFailure::ReadFailed => FeedError::FeedReadFailed,
+            FetchFailure::DeferralFailed => FeedError::FeedDeferralFailed,
+            FetchFailure::TaskAborted => FeedError::FeedTaskAborted,
+            FetchFailure::RefreshBusy => FeedError::FeedRefreshBusy,
+            FetchFailure::RefreshInterrupted => FeedError::FeedRefreshInterrupted,
+        },
         Error::MediaTooLarge { bytes, max_bytes } => FeedError::MediaTooLarge {
             bytes: *bytes,
             max_bytes: *max_bytes,
@@ -112,7 +132,7 @@ pub(crate) fn stored_error(raw: &str) -> crate::views::UiError {
         return UiError::new(UiErrorKind::Feeds(FeedError::FeedHeld), "feed fetch held");
     }
     if !raw.starts_with('{') {
-        return UiError::from(raw.to_string());
+        return UiError::stored_legacy(raw);
     }
     let kind = serde_json::from_str(raw).or_else(|_| {
         let mut value: serde_json::Value = serde_json::from_str(raw)?;
@@ -302,6 +322,26 @@ mod tests {
     }
 
     #[test]
+    fn fetch_failure_records_decode_to_the_same_code() {
+        use FetchFailure::*;
+        for failure in [
+            StaleUrl,
+            RuntimeStopped,
+            WaitersExceeded,
+            QueueFull,
+            ReadFailed,
+            DeferralFailed,
+            TaskAborted,
+            RefreshBusy,
+            RefreshInterrupted,
+        ] {
+            let direct = UiError::from(Error::Fetch(failure));
+            assert_eq!(direct.code(), failure.code());
+            assert_eq!(stored_error(&failure.record()).code(), failure.code());
+        }
+    }
+
+    #[test]
     fn stored_errors_keep_legacy_text_and_decode_new_json_without_body_data() {
         let legacy = "fixture failure\nsecond line";
         let old = stored_error(legacy);
@@ -326,10 +366,7 @@ mod tests {
         );
         assert_eq!(stored_error("{broken").code(), "feed_refresh_failed");
         assert_eq!(
-            stored_error(&error_record(UiError::from(
-                "old command fixture".to_string()
-            )))
-            .code(),
+            stored_error(&error_record(UiError::stored_legacy("old command fixture"))).code(),
             "feed_refresh_failed"
         );
     }

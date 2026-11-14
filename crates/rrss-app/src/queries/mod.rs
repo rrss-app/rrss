@@ -45,8 +45,8 @@ pub use window::*;
 #[cfg(test)]
 mod tests {
     use super::{
-        digest, digest_banner_text, digest_summaries, focus_page, media_href,
-        media_href_with_fingerprint, media_id_from_path,
+        digest, digest_summaries, focus_page, media_href, media_href_with_fingerprint,
+        media_id_from_path,
     };
     use rrss_core::feed_scope::FeedScope;
     use rrss_render::{Block, Inline};
@@ -111,16 +111,10 @@ mod tests {
         assert!(has_strong, "strong missing: {:?}", doc.blocks);
 
         let page = focus_page(&conn, None, &[], &[], false, FeedScope::All).unwrap();
-        assert!(!page.digest_banner.contains("###"));
-        assert!(!page.digest_banner.contains("**"));
-        assert!(
-            page.digest_banner.starts_with("今日简报"),
-            "{}",
-            page.digest_banner
-        );
+        assert_eq!(page.digest_banner, "daily");
         assert!(!page.ranking.interest_ready);
         assert!(
-            page.ranking.ranking_note.contains("兴趣未就绪"),
+            page.ranking.ranking_note == "interest_not_ready",
             "{}",
             page.ranking.ranking_note
         );
@@ -154,14 +148,5 @@ mod tests {
         let daily = digest_summaries(&conn, "daily");
         assert_eq!(daily.len(), 1);
         assert_eq!(digest(&conn, daily[0].id).unwrap().body, "daily-b");
-    }
-
-    #[test]
-    fn digest_banner_strips_markdown_and_truncates() {
-        let wall = format!("### {}\n\n{}", "标题党", "字".repeat(200));
-        let banner = digest_banner_text(&wall);
-        assert!(!banner.contains("###"));
-        assert!(banner.chars().count() <= 97, "{banner}");
-        assert!(banner.contains('…') || banner.chars().count() <= 96);
     }
 }

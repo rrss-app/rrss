@@ -26,6 +26,7 @@ pub async fn backup_page(state: State<'_, AppState>) -> Result<BackupPage, UiErr
 pub async fn backup_create(
     app: AppHandle,
     include_secrets: bool,
+    labels: rrss_app::views::NativeDialogLabels,
     state: State<'_, AppState>,
 ) -> Result<Option<BackupDoneView>, UiError> {
     let data_dir = state.data_dir.clone();
@@ -35,9 +36,9 @@ pub async fn backup_create(
         let mut dialog = app
             .dialog()
             .file()
-            .set_title("保存备份")
+            .set_title(labels.title)
             .set_file_name(queries::default_backup_name())
-            .add_filter("RRSS 备份", &["zip"]);
+            .add_filter(labels.filter, &["zip"]);
         if let Some(dir) = documents {
             dialog = dialog.set_directory(dir);
         }
@@ -65,6 +66,7 @@ pub async fn backup_inspect(
     app: AppHandle,
     state: State<'_, AppState>,
     path: Option<String>,
+    labels: rrss_app::views::NativeDialogLabels,
 ) -> Result<Option<RestoreCheckView>, UiError> {
     let data_dir = state.data_dir.clone();
     let path = match path {
@@ -73,8 +75,8 @@ pub async fn backup_inspect(
             let picked = pick(move || {
                 app.dialog()
                     .file()
-                    .set_title("选择备份文件")
-                    .add_filter("RRSS 备份", &["zip"])
+                    .set_title(labels.title)
+                    .add_filter(labels.filter, &["zip"])
                     .blocking_pick_file()
             })
             .await?;

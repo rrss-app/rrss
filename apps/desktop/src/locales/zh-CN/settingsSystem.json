@@ -70,7 +70,8 @@
       "own": "正在使用你自己的 Pi 配置：模型、密钥和扩展由 ~/.pi 决定，这里只列出 RRSS 传入的部分。",
       "ignored": "这些覆盖项由 RRSS 管理，已忽略：",
       "args": "启动参数",
-      "env": "环境变量"
+      "env": "环境变量",
+      "unparsable": "（配置无法解析，未显示原文）"
     }
   },
   "backup": {
@@ -177,7 +178,9 @@
       "counts": "文章 {{count}} 篇 · 订阅 {{feeds}} 个 · 规则 {{rules}} 条 · 对话 {{threads}} 个",
       "summary": "{{counts}} · {{secrets}}",
       "taken": "备份于 {{when}} · 版本 v{{version}}",
-      "separator": " · "
+      "separator": " · ",
+      "restoreDefaultName": "备份",
+      "restoreKept": "，备份里的文件留在 {{dir}} 文件夹"
     },
     "kinds": {
       "manual": "手动备份",
@@ -195,12 +198,50 @@
       "prefs_packs_other": "预设包 新增 {{count}} 个",
       "prefs_interests_other": "兴趣 新增 {{count}} 个{{duplicates}}",
       "prefs_memories_other": "记忆 新增 {{count}} 条{{duplicates}}",
-      "prefs_empty": "文件里没有可导入的内容。"
+      "prefs_empty": "文件里没有可导入的内容。",
+      "restore_done": "已从 {{name}} 恢复。",
+      "restore_exit_timeout": "从 {{name}} 恢复失败，当前数据未改动：上次运行的 RRSS 在 {{seconds}} 秒内没有退出，没有替换文件。请关掉所有 RRSS 窗口后重新恢复",
+      "restore_staging_incomplete": "从 {{name}} 恢复失败，当前数据未改动：暂存的备份不完整",
+      "restore_rolled_back": "从 {{name}} 恢复失败，当前数据未改动。",
+      "restore_partial": "从 {{name}} 恢复失败，而且有文件没能移回原处。原来的数据留在数据目录的 {{old}} 文件夹{{kept}}。请先退出 RRSS，把其中的文件移回数据目录再打开，不要删除这些文件夹。",
+      "restore_legacy": "{{text}}"
     },
     "duplicates": {
       "rules_other": "，跳过重复 {{count}} 条",
       "interests_other": "，跳过重复 {{count}} 个",
       "memories_other": "，跳过重复 {{count}} 条"
+    },
+    "skip": {
+      "rule_scope_missing": "规则 {{rule}}：限定的 {{scope}} 在本机不存在",
+      "rule_invalid": "规则 {{rule}}：{{error}}",
+      "pack_missing": "预设包 {{pack}}：本机版本没有这个包",
+      "memory_scope_missing": "记忆「{{content}}」：限定的 {{scope}} 在本机不存在",
+      "rule": "{{polarity}}{{dimension}}「{{pattern}}」",
+      "polarity": {
+        "like": "喜欢",
+        "dislike": "不喜欢"
+      },
+      "dimension": {
+        "author": "作者",
+        "tag": "标签",
+        "title_kw": "标题",
+        "title_re": "标题正则",
+        "url_phrase": "URL",
+        "url_re": "URL 正则",
+        "body_phrase": "正文",
+        "body_re": "正文正则"
+      },
+      "scope": {
+        "global": "全局",
+        "feed": "{{url}}",
+        "folder": "文件夹「{{path}}」"
+      },
+      "pathSeparator": " / "
+    },
+    "dialog": {
+      "saveTitle": "保存备份",
+      "pickTitle": "选择备份文件",
+      "filter": "RRSS 备份"
     }
   },
   "diagLog": {
@@ -299,6 +340,10 @@
       "stats": "仅展示样例，未读取本机数据",
       "db": "未连接本机数据库",
       "ai": "未连接模型"
+    },
+    "dialog": {
+      "title": "导出诊断包",
+      "filter": "诊断包"
     }
   },
   "panel": {
@@ -448,7 +493,11 @@
       "title": "检测到的系统代理",
       "source": "来源：{{source}}",
       "none": "没有读到代理设置，这个模式下实际为直连。",
-      "pac": "系统还设置了自动配置脚本（PAC），RRSS 不使用它，只按上面的地址连接。"
+      "pac": "系统还设置了自动配置脚本（PAC），RRSS 不使用它，只按上面的地址连接。",
+      "sources": {
+        "environment": "环境变量",
+        "windows_internet": "Windows Internet 设置"
+      }
     },
     "check": {
       "title": "连接检查",
@@ -457,7 +506,9 @@
       "inheritRoute": "全局 · {{route}}",
       "socksNote": "对话能否走 SOCKS 代理取决于对话引擎和模型服务；文章和图片的下载都支持。",
       "testing": "测试中",
-      "ok": "可访问 · {{ms}} ms"
+      "ok": "可访问 · {{ms}} ms",
+      "okTitle": "GitHub 可访问 · HTTP {{status}} · {{ms}} ms",
+      "httpTitle": "已连接到 GitHub，但返回 HTTP {{status}}"
     }
   },
   "registry": {

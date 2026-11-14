@@ -48,15 +48,16 @@ pub async fn log_set_level(detailed: bool) -> Result<LogStatusView, UiError> {
 pub async fn log_export(
     app: AppHandle,
     state: State<'_, AppState>,
+    labels: rrss_app::views::NativeDialogLabels,
 ) -> Result<Option<String>, UiError> {
     let documents = app.path().document_dir().ok();
     let Some(dest) = super::backup::pick(move || {
         let mut dialog = app
             .dialog()
             .file()
-            .set_title("导出诊断包")
+            .set_title(labels.title)
             .set_file_name(rrss_app::log::default_export_name())
-            .add_filter("诊断包", &["zip"]);
+            .add_filter(labels.filter, &["zip"]);
         if let Some(dir) = documents {
             dialog = dialog.set_directory(dir);
         }
@@ -75,9 +76,7 @@ pub async fn log_export(
                     if error.to_string() == "logging is not initialized" {
                         HostError::LogExportNotInitialized.into()
                     } else {
-                        // Preserve platform-specific IO wording until it has a
-                        // typed display contract; do not expose it as a parameter.
-                        UiError::from(format!("导出诊断包失败：{error}"))
+                        HostError::log_export_failed(&error)
                     }
                 })
         })

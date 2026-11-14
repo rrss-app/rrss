@@ -69,16 +69,8 @@ fn build(
         .collect();
     for rule in rules::list_rules(conn, &rules::RuleFilter::default())? {
         if let Some(count) = counts.get_mut(&rule.id) {
-            count.message = if crate::ui_error::params::reason_text(&rule.pattern) == rule.pattern {
-                crate::reasons::ReasonMessage::rule_condition(rule.dimension, &rule.pattern)
-            } else {
-                crate::reasons::ReasonMessage::LegacyText {
-                    text: crate::ui_error::params::reason_legacy_text(
-                        &super::rules::rule_condition(rule.dimension, &rule.pattern),
-                    ),
-                    prefix: None,
-                }
-            };
+            count.message =
+                crate::reasons::ReasonMessage::rule_pattern(rule.dimension, rule.pattern.clone());
         }
     }
     Ok(HiddenPage {
@@ -183,11 +175,7 @@ mod tests {
         rrss_core::score::write_score(&conn, 1, &result).unwrap();
         let page = hidden_page(&conn, None, None).unwrap();
         let wire = serde_json::to_value(&page.rule_counts[0]).unwrap();
-        assert_eq!(wire["code"], "legacy_text");
-        let original = super::super::rules::rule_condition(Dimension::UrlPhrase, pattern);
-        assert_eq!(
-            wire["params"],
-            serde_json::json!({"text":original,"prefix":null})
-        );
+        assert_eq!(wire["code"], "rule_condition_url_phrase");
+        assert_eq!(wire["params"], serde_json::json!({ "pattern": pattern }));
     }
 }

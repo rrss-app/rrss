@@ -30,8 +30,8 @@ impl From<rrss_core::rank::reasons::ReasonMessage> for ReasonMessage {
 }
 
 impl ReasonMessage {
-    pub(crate) fn rule_condition(dimension: Dimension, pattern: &str) -> Self {
-        let pattern = params::reason_text(pattern);
+    /// The user's own rule on their own page: the pattern is shown exactly.
+    pub(crate) fn rule_pattern(dimension: Dimension, pattern: String) -> Self {
         match dimension {
             Dimension::Author => Self::RuleConditionAuthor { pattern },
             Dimension::Tag => Self::RuleConditionTag { pattern },

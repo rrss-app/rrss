@@ -15,14 +15,6 @@ pub enum ProviderProblem {
     ModelIdMissing,
     #[error("chat model is controlled by the user's Pi configuration")]
     ChatUsesOwnConfig,
-    // Compatibility for callers that still supply sentence-style validation.
-    #[error("{0}")]
-    LegacyText(String),
-}
-impl From<&str> for ProviderProblem {
-    fn from(value: &str) -> Self {
-        Self::LegacyText(value.into())
-    }
 }
 
 #[derive(Debug, thiserror::Error)]

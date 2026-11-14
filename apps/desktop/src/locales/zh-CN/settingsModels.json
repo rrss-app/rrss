@@ -148,7 +148,11 @@
     "compatLabel": "{{name}}的兼容设置",
     "fallbackName": "连接",
     "restorePreset": "恢复预设值",
-    "details": "技术详情"
+    "details": "技术详情",
+    "presetName": {
+      "ollama": "Ollama（本机）",
+      "openai_compat": "自定义 OpenAI 兼容"
+    }
   },
   "manage": {
     "deletedConnection": "已删除的连接",
@@ -202,10 +206,22 @@
     "capSection": "能力",
     "capIntro": "「测试能力」会实际调用一次模型；结果不准可以手动改，以手动设置为准。",
     "cap": {
-      "tool_calling": { "label": "工具调用", "hint": "对话查阅文章、读取网页、调用外部工具都要它。" },
-      "structured_output": { "label": "结构化输出", "hint": "摘要、简报、记忆整理按固定格式返回结果。" },
-      "image_input": { "label": "图片输入", "hint": "对话里可以带上文章配图。不会自动测试。" },
-      "reasoning": { "label": "推理（思考）", "hint": "模型支持时才能选思考强度。" }
+      "tool_calling": {
+        "label": "工具调用",
+        "hint": "对话查阅文章、读取网页、调用外部工具都要它。"
+      },
+      "structured_output": {
+        "label": "结构化输出",
+        "hint": "摘要、简报、记忆整理按固定格式返回结果。"
+      },
+      "image_input": {
+        "label": "图片输入",
+        "hint": "对话里可以带上文章配图。不会自动测试。"
+      },
+      "reasoning": {
+        "label": "推理（思考）",
+        "hint": "模型支持时才能选思考强度。"
+      }
     },
     "support": {
       "supported": "支持",
@@ -297,12 +313,29 @@
       "digest": "简报每天 {{time}}"
     },
     "use": {
-      "chat": { "title": "对话", "hint": "新对话默认用它，对话里可以临时换。只列用于对话的模型。" },
-      "summary": { "title": "摘要", "hint": "本篇摘要、长文分段和相近报道综述；后台自动摘要与自动汇总另在下方「自动任务」里开关。" },
-      "digest": { "title": "简报", "hint": "日报、周报以及它们的选题。" },
-      "memory": { "title": "记忆整理", "hint": "从对话里提取记忆候选、压缩对话情节。" },
-      "translate": { "title": "翻译" },
-      "embed": { "title": "嵌入", "hint": "相似文章与记忆检索用的向量。" }
+      "chat": {
+        "title": "对话",
+        "hint": "新对话默认用它，对话里可以临时换。只列用于对话的模型。"
+      },
+      "summary": {
+        "title": "摘要",
+        "hint": "本篇摘要、长文分段和相近报道综述；后台自动摘要与自动汇总另在下方「自动任务」里开关。"
+      },
+      "digest": {
+        "title": "简报",
+        "hint": "日报、周报以及它们的选题。"
+      },
+      "memory": {
+        "title": "记忆整理",
+        "hint": "从对话里提取记忆候选、压缩对话情节。"
+      },
+      "translate": {
+        "title": "翻译"
+      },
+      "embed": {
+        "title": "嵌入",
+        "hint": "相似文章与记忆检索用的向量。"
+      }
     },
     "refreshFailed": "刷新模型设置失败，当前显示的是上次读取的内容：",
     "loadFailed": "读取模型设置失败：",

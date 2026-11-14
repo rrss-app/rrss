@@ -137,7 +137,7 @@ test("proxy drafts save, keep failed drafts, warn on SOCKS for Pi, and guard lea
 
 test("system mode shows the detected proxy and the connection check reports each use", async ({ page }) => {
   await installMockHost(page, { networkProxy: networkProxyFixture({
-    system: { http: "http://127.0.0.1:7890/", https: null, all: null, no_proxy: "corp.example", source: "Windows Internet 设置", pac: "已配置（未解析）" },
+    system: { http: "http://127.0.0.1:7890/", https: null, all: null, no_proxy: "corp.example", source: "windows_internet", pac: true },
   }) });
   await page.goto("/");
   await page.getByRole("button", { name: "设置", exact: true }).click();

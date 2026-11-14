@@ -8,6 +8,7 @@ use rrss_core::rag::{self, vec_available, vector_stats};
 
 use crate::views::*;
 
+/// The text fields are English diagnostics, like logs; they are not UI copy.
 pub fn diagnostics(conn: &Connection, db_path: &Path) -> DiagnosticsPage {
     let mut page = DiagnosticsPage {
         scheduler: crate::scheduler::Scheduler::diagnostics_for(db_path),
@@ -22,8 +23,8 @@ pub fn diagnostics(conn: &Connection, db_path: &Path) -> DiagnosticsPage {
         format!("sqlite-vec {}", vec.version.unwrap_or_default())
     } else {
         format!(
-            "sqlite-vec 不可用：{}",
-            vec.reason.unwrap_or_else(|| "未知".into())
+            "sqlite-vec unavailable: {}",
+            vec.reason.unwrap_or_else(|| "unknown".into())
         )
     };
     if let Ok(stats) = vector_stats(conn) {
@@ -46,7 +47,7 @@ pub fn diagnostics(conn: &Connection, db_path: &Path) -> DiagnosticsPage {
             .collect::<Vec<_>>()
             .join("\n");
         page.stats = format!(
-            "向量 {}/{} 已嵌入，待嵌入 chunk {} / 文章 {}。兴趣 {}/{}，记忆已嵌入 {}。维度 [{}] 模型 [{}]\n{}",
+            "vectors {}/{} embedded, pending chunks {} / articles {}; interests {}/{}, memories embedded {}; dims [{}] models [{}]\n{}",
             stats.chunks_embedded,
             stats.chunks_total,
             stats.chunks_pending,
@@ -68,7 +69,7 @@ pub fn diagnostics(conn: &Connection, db_path: &Path) -> DiagnosticsPage {
         .pragma_query_value(None, "journal_mode", |row| row.get(0))
         .unwrap_or_else(|_| "unknown".into());
     page.db = format!(
-        "库 {} · {} 字节 · user_version {version} · {wal} · FTS {fts} 行",
+        "db {} · {} bytes · user_version {version} · {wal} · FTS {fts} rows",
         db_path.display(),
         size
     );
@@ -78,13 +79,13 @@ pub fn diagnostics(conn: &Connection, db_path: &Path) -> DiagnosticsPage {
     let cache = rag::cache_row_count(conn).unwrap_or(0);
     let pi = pi_store::pi_usage_on(conn, &day).unwrap_or_default();
     page.ai = format!(
-        "作业今日 {} tok / 预算 {budget} · 缓存 {cache} 条 · 对话 {}+{} tok / ${:.4}",
+        "jobs today {} tok / budget {budget} · cache {cache} rows · chat {}+{} tok / ${:.4}",
         usage.tokens, pi.input_tokens, pi.output_tokens, pi.cost
     );
     if let Some(scheduler) = &page.scheduler {
         let feeds = &scheduler.feeds;
         page.stats.push_str(&format!(
-            "\n调度：抓取等待 {}（主机等待 {}），下载名额 {}/{}，解析 {}/{}，正文缓冲 {} 字节 / 高水位 {} 字节；模型在途 {}，交互等待 {}，后台等待 {}。",
+            "\nscheduler: fetch queued {} (host parked {}), downloads {}/{}, parsing {}/{}, body buffer {} bytes / high water {} bytes; models active {}, interactive waiting {}, background waiting {}.",
             feeds.queued, feeds.parked, feeds.http_active, feeds.http_limit,
             feeds.parsing, feeds.parsing_limit, feeds.buffered_bytes, feeds.buffer_high_water,
             scheduler.models.active, scheduler.models.waiting_interactive, scheduler.models.waiting_background,
