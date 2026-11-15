@@ -132,10 +132,6 @@ mod tests {
         assert_eq!(daily.len(), 1);
         assert_eq!(daily[0].period, "daily");
         assert_eq!(daily[0].period_start, 1_756_224_000_000);
-        assert_eq!(
-            daily[0].date_label,
-            rrss_core::ai_store::digest_date_label("daily", 1_756_224_000_000)
-        );
         assert!(
             digest_summaries(&conn, "weekly")
                 .iter()

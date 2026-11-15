@@ -217,20 +217,16 @@ fn classify_parts(url: &str, hint: EmbedHint, type_attr: Option<&str>) -> (UrlVe
 
 fn present_class(class: &EmbedClass, attr_title: Option<&str>) -> PresentedEmbed {
     let (kind, url, fallback) = match class {
-        EmbedClass::Youtube { open_url, .. } => (EmbedKind::Youtube, open_url.clone(), "YouTube"),
-        EmbedClass::Bilibili { open_url, .. } => {
-            (EmbedKind::Bilibili, open_url.clone(), "哔哩哔哩")
-        }
+        // Without a usable page title the title stays empty; the UI names
+        // the site or media kind in its own language.
+        EmbedClass::Youtube { open_url, .. } => (EmbedKind::Youtube, open_url.clone(), ""),
+        EmbedClass::Bilibili { open_url, .. } => (EmbedKind::Bilibili, open_url.clone(), ""),
         EmbedClass::Direct { media, url } => {
             let kind = match media {
                 DirectMedia::Audio => EmbedKind::Audio,
                 DirectMedia::Video => EmbedKind::Video,
             };
-            let fallback = match media {
-                DirectMedia::Audio => "音频",
-                DirectMedia::Video => "视频",
-            };
-            (kind, url.clone(), fallback)
+            (kind, url.clone(), "")
         }
         EmbedClass::External { open_url, label } => {
             (EmbedKind::Iframe, open_url.clone(), label.as_str())
@@ -408,7 +404,7 @@ fn site_label(url: &str) -> String {
         .and_then(|u| u.host_str().map(str::to_string))
         .map(|host| host.trim_start_matches("www.").to_string())
         .filter(|host| !host.is_empty())
-        .unwrap_or_else(|| "在浏览器打开".into())
+        .unwrap_or_default()
 }
 
 fn title_is_url(title: &str) -> bool {
@@ -425,7 +421,7 @@ fn usable_title(title: &str) -> bool {
     if lower.contains("youtube.com")
         || lower.contains("youtu.be")
         || lower.contains("bilibili.com")
-        || t.contains("在浏览器打开")
+        || crate::legacy::placeholder_embed_title(t)
     {
         return false;
     }

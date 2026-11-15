@@ -180,5 +180,6 @@
       "unavailable": "源暂时不可用（{{status}}）",
       "other": "源返回 {{status}}"
     }
-  }
+  },
+  "manualFeed": "手动收录"
 }

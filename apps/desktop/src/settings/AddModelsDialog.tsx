@@ -11,6 +11,7 @@ import { choiceKey, modelName, parseChoice, sameChoice } from "./modelChoices";
 import type { Ask } from "./SettingsPanel";
 import { MenuSelect } from "../components/MenuSelect";
 import { locale, useTranslation } from "../i18n";
+import { taskTitle } from "./taskNames";
 
 type Note = { tone: "ok" | "err"; text: string };
 
@@ -134,7 +135,7 @@ export function AddModelsDialog({ providers, pool, initial, note: firstNote, onA
         onChange={(id) => { setProviderId(Number(id)); setFilter(""); setNote(null); setReplacing(false); }} />
       {note && <p className={note.tone === "err" ? "form-status error" : "form-status"} role={note.tone === "err" ? "alert" : "status"}>{note.text}</p>}
       {replacing && (
-        <ReplacePrompt pool={pool} providers={providers} removing={removes} uses={used.map((x) => x.title)} disabled={busy}
+        <ReplacePrompt pool={pool} providers={providers} removing={removes} uses={used.map((x) => taskTitle(x.task))} disabled={busy}
           onConfirm={(r) => void apply(r)} onCancel={() => setReplacing(false)} />
       )}
       {catalog ? <>

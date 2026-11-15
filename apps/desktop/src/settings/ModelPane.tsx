@@ -24,6 +24,7 @@ import { TRANSLATE_BACKENDS, translateQueryOptions } from "./translateQuery";
 import { Pending } from "../components/Pending";
 import { embedChangeConfirm, VectorSpaceSection, vectorSpaceKey, vectorSpaceQueryOptions } from "./VectorSpaceSection";
 import { i18n, locale, Trans, useTranslation } from "../i18n";
+import { taskTitle } from "./taskNames";
 
 type Result = { tone: "ok" | "err"; text: string; detail?: string };
 
@@ -365,7 +366,7 @@ function UsesSection({ view, providers, pool, onAsk, onNavigate, onManage }: {
   const [scope, setScope] = useState<Record<string, boolean>>(() => Object.fromEntries(APPLY_DEFAULT.map((g) => [g, true])));
   const entries = pool?.pool ?? [];
   const applyModel = applyTo && findEntry(pool, applyTo) ? applyTo : entries[0] ?? null;
-  const title = (task: string) => view.tasks.find((x) => x.task === task)?.title ?? task;
+  const title = taskTitle;
 
   const save = async (tasks: string[], choice: ModelChoice, done: string) => {
     setStatus(null);

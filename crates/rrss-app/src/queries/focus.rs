@@ -105,7 +105,7 @@ pub fn cluster_summary(
                     Ok(ClusterArticleView {
                         article_id: id,
                         feed_id: row.get(0)?,
-                        feed_title: row.get(1)?,
+                        feed_title: rrss_core::feeds::display_title(&row.get::<_, String>(1)?, ""),
                         icon_href: String::new(),
                         title: row.get(2)?,
                         published_at: row.get(3)?,

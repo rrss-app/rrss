@@ -1,18 +1,19 @@
 {
-  "rrss-app/src/chat.rs": "Digest conversation prompt fragments; mixed title and validation text remains for later UI migrations.",
+  "rrss-app/src/chat.rs": "Digest conversation context fragments sent to Pi.",
   "rrss-app/src/jobs/summaries.rs": "Chunked full-text summary input and note headings sent to the model.",
-  "rrss-app/src/pi/workspace.rs": "Managed system-prompt suffix addressed to Pi; mixed filesystem errors remain for a later error migration.",
-  "rrss-core/src/ai_store.rs": "Built-in model prompt templates; this mixed file also has labels scheduled for a later UI migration.",
+  "rrss-app/src/pi/workspace.rs": "Managed system-prompt suffix addressed to Pi.",
+  "rrss-core/src/ai_store.rs": "Built-in model prompt templates and their internal template titles.",
   "rrss-core/src/cite.rs": "Citation context and instruction fragments sent to the model, not UI notices.",
   "rrss-core/src/cluster_summary.rs": "Numbered reporting input and instructions for model summaries.",
   "rrss-core/src/db/migrations.rs": "Migration SQL that matches titles written by older versions.",
-  "rrss-core/src/digest.rs": "Digest model-input prompts and Chinese model-output parsing patterns; mixed validation remains for a later error migration.",
+  "rrss-core/src/digest.rs": "Digest model-input prompts, date headings inside model input, and Chinese model-output parsing patterns.",
   "rrss-core/src/digest_sources.rs": "Fallback heading inside the generated digest document; follows the AI output language.",
   "rrss-core/src/memories.rs": "Confirmed-memory prefix injected into the Pi system prompt (model input).",
-  "rrss-core/src/pi_store.rs": "RRSS tool descriptions addressed to Pi; mixed UI tool labels remain for a later label migration.",
+  "rrss-core/src/pi_store.rs": "RRSS tool descriptions and parameter hints addressed to Pi; UI names are localized by tool name.",
   "rrss-core/src/rag.rs": "Retrieval context and instruction suffix sent to Pi.",
   "rrss-core/src/rank/features.rs": "Chinese stop words used by title-token feature extraction.",
   "rrss-core/src/simhash.rs": "Chinese stop words used by near-duplicate hashing.",
   "rrss-core/src/summary_extract.rs": "Model-input link-stub instructions and content-extraction markers.",
-  "rrss-core/src/vector_space.rs": "Fixed probe sentences embedded to detect vector-space drift (model input)."
+  "rrss-core/src/vector_space.rs": "Fixed probe sentences embedded to detect vector-space drift (model input).",
+  "rrss-render/src/legacy.rs": "Matches placeholder text that older versions stored in cached documents; never produced."
 }

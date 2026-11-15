@@ -175,7 +175,7 @@ const source = (row: ArticleView, number: number): DigestSourceView => ({
 const SOURCES = [source(LOCAL_FIRST, 1), source(FOCUS_ARTICLES[4], 2), source(WAYLAND_REP, 3), source(WAYLAND_NEW, 4), source(FOCUS_ARTICLES[7], 5)];
 const DIGEST: DigestView = {
   id: 101, period: "daily", period_start: new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime(),
-  date_label: todayLabel, revision: "readme-digest", source_state: "verified", source_index: SOURCES, unlocated_sources: [],
+  revision: "readme-digest", source_state: "verified", source_index: SOURCES, unlocated_sources: [],
   body: "",
   items: [
     { block_id: 1, sources: [SOURCES[0], SOURCES[1]] },
@@ -193,7 +193,7 @@ const DIGEST: DigestView = {
     ],
   },
 };
-const PREVIOUS_DIGEST: DigestView = { ...DIGEST, id: 100, date_label: "前一日", revision: "readme-digest-prev", period_start: DIGEST.period_start - 86_400_000 };
+const PREVIOUS_DIGEST: DigestView = { ...DIGEST, id: 100, revision: "readme-digest-prev", period_start: DIGEST.period_start - 86_400_000 };
 
 // ── 对话 ────────────────────────────────────────────────
 const message = (id: number, role: string, text: string, extra: Partial<ChatMessageView> = {}): ChatMessageView => ({

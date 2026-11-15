@@ -146,7 +146,8 @@ fn hidden_range_matches_feed_and_list_scope_and_only_returns_negative_reasons() 
             .unwrap()
             .articles[0]
             .feed_title,
-        "https://two.invalid/feed"
+        // Untitled feeds use the same short name as every other list.
+        "two.invalid"
     );
     for (scope, expected) in [
         (articles::ListScope::Unread, vec![7, 1]),

@@ -15,7 +15,7 @@ const document: Document = { v: 1, blocks: [
 export function digestSignatureFixtures(): DigestView[] {
   const base = PREVIEW_DIGESTS[0];
   const daily: DigestView = {
-    ...base, id: 101, revision: "signature-daily", date_label: "10月3日",
+    ...base, id: 101, revision: "signature-daily",
     // UTC 仍是星期五；Asia/Shanghai 已是星期六，验证本地时区而非 UTC。
     period_start: Date.parse("2026-10-02T16:00:00Z"), body: "本期要点", document,
     source_state: "verified",
@@ -23,17 +23,17 @@ export function digestSignatureFixtures(): DigestView[] {
   };
   const weekly: DigestView = {
     ...daily, id: 201, revision: "signature-weekly", period: "weekly",
-    period_start: Date.parse("2026-09-27T16:00:00Z"), date_label: "9月28日 – 10月4日",
+    period_start: Date.parse("2026-09-27T16:00:00Z"),
   };
   const withoutSources = { items: [], source_index: [], unlocated_sources: [] };
   return [
     daily,
-    { ...daily, ...withoutSources, id: 100, revision: "signature-no-closing", date_label: "10月2日", period_start: daily.period_start - 86_400_000,
+    { ...daily, ...withoutSources, id: 100, revision: "signature-no-closing", period_start: daily.period_start - 86_400_000,
       document: { v: 1, blocks: [h("无收尾"), p("导读"), li("•", "最后就是列表")] } },
-    { ...daily, ...withoutSources, id: 99, revision: "signature-no-list", date_label: "10月1日", period_start: daily.period_start - 172_800_000,
+    { ...daily, ...withoutSources, id: 99, revision: "signature-no-list", period_start: daily.period_start - 172_800_000,
       document: { v: 1, blocks: [h("无列表"), p("只有普通段落")] } },
     weekly,
-    { ...weekly, ...withoutSources, id: 200, revision: "signature-interrupted", date_label: "9月21日 – 9月27日", period_start: weekly.period_start - 604_800_000,
+    { ...weekly, ...withoutSources, id: 200, revision: "signature-interrupted", period_start: weekly.period_start - 604_800_000,
       document: { v: 1, blocks: [h("非收尾段落"), li("•", "要点"), p("后面仍有正文"), h("另一节"), p("另一节的普通段落")] } },
   ];
 }

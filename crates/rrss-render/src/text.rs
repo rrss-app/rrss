@@ -62,14 +62,12 @@ fn trim_url_end(text: &str, start: usize) -> usize {
     end
 }
 
-fn link_label(url: &str) -> String {
-    match url::Url::parse(url) {
-        Ok(parsed) => parsed
-            .host_str()
-            .map(|host| host.to_string())
-            .unwrap_or_else(|| "链接".into()),
-        Err(_) => "链接".into(),
-    }
+fn link_label(url: &str) -> Option<String> {
+    url::Url::parse(url)
+        .ok()?
+        .host_str()
+        .filter(|host| !host.is_empty())
+        .map(str::to_string)
 }
 
 fn url_like_label(label: &str) -> bool {
@@ -78,7 +76,8 @@ fn url_like_label(label: &str) -> bool {
 
 fn link_display(label: &str, href: &str) -> String {
     if label == href || url_like_label(label) {
-        link_label(href)
+        // A link without a host keeps its own text rather than a placeholder word.
+        link_label(href).unwrap_or_else(|| label.to_string())
     } else {
         label.to_string()
     }

@@ -481,7 +481,7 @@ pub fn list_interest_hits(conn: &Connection, interest_id: i64) -> Result<Vec<Int
         Ok(InterestHit {
             article_id: row.get(0)?,
             title: row.get(1)?,
-            feed_title: row.get(2)?,
+            feed_title: crate::feeds::display_title(&row.get::<_, String>(2)?, ""),
             weight: row.get(3)?,
         })
     })?;

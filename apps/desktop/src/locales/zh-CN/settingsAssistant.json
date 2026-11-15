@@ -35,7 +35,22 @@
       "edited": "已改说明",
       "edit": "编辑说明",
       "editAria": "编辑说明 {{label}}",
-      "toggle": "工具 {{label}}"
+      "toggle": "工具 {{label}}",
+      "labels": {
+        "search_articles": "搜索文章",
+        "get_article": "读文章",
+        "search_memory": "搜索记忆",
+        "get_assistant_config": "读助手配置",
+        "open_original": "打开原文",
+        "fetch_url": "抓取网址",
+        "list_focus": "今日焦点",
+        "explain_score": "解释分数",
+        "list_feeds": "订阅源",
+        "get_digest": "读 Digest",
+        "add_interest": "添加兴趣",
+        "mark_read": "标已读",
+        "star_article": "收藏"
+      }
     },
     "extensions": "扩展",
     "skills": {
@@ -384,6 +399,12 @@
       "note": "兴趣只影响可见文章的评分与排序，不会取消规则隐藏。"
     }
   },
-  "piSource": {"standalone": "独立二进制：{{path}}", "standalone_explicit": "独立二进制 · 显式路径：{{path}}", "node": "Node 包装（不推荐，会带上 npm 依赖树）：{{path}}", "node_explicit": "Node 包装（不推荐，会带上 npm 依赖树） · 显式路径：{{path}}", "missing": "未找到 pi 独立二进制。从 GitHub Releases 下载 pi-linux-x64.tar.gz / pi-windows-x64.zip，放到 PATH、与 rrss 同目录，或 ~/.local/share/rrss/bin（Windows：%APPDATA%\\rrss\\bin）。"},
+  "piSource": {
+    "standalone": "独立二进制：{{path}}",
+    "standalone_explicit": "独立二进制 · 显式路径：{{path}}",
+    "node": "Node 包装（不推荐，会带上 npm 依赖树）：{{path}}",
+    "node_explicit": "Node 包装（不推荐，会带上 npm 依赖树） · 显式路径：{{path}}",
+    "missing": "未找到 pi 独立二进制。从 GitHub Releases 下载 pi-linux-x64.tar.gz / pi-windows-x64.zip，放到 PATH、与 rrss 同目录，或 ~/.local/share/rrss/bin（Windows：%APPDATA%\\rrss\\bin）。"
+  },
   "piVersionUnknown": "已找到，未能读取版本"
 }

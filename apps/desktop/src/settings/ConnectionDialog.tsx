@@ -10,6 +10,7 @@ import { ChipBar, Field, SecretField } from "./chips";
 import { CompatEditor, jsonObject, prettyJson, sameJson } from "./compat";
 import { useSettingsWrite, type SettingsEditState } from "./editState";
 import type { Ask } from "./SettingsPanel";
+import { taskTitle } from "./taskNames";
 
 type Draft = { kind: string; name: string; base_url: string; protocol: string; compat_json: string };
 type Result = { tone: "ok" | "err"; text: string; detail?: string };
@@ -132,7 +133,7 @@ export function ConnectionDialog({ provider, presets, onAsk, onClose, onSaved, o
   const remove = () => {
     if (!provider || busy) return;
     const models = pool?.pool.filter((e) => e.provider_id === provider.id).length ?? 0;
-    const uses = bindings?.tasks.filter((x) => x.provider_id === provider.id).map((x) => x.title) ?? [];
+    const uses = bindings?.tasks.filter((x) => x.provider_id === provider.id).map((x) => taskTitle(x.task)) ?? [];
     const impact = [
       models ? t("connection.impactModels", { count: models }) : "",
       uses.length ? t("connection.impactUses", { uses: uses.join(t("connection.listSep")) }) : "",

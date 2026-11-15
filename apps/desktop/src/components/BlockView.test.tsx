@@ -37,6 +37,21 @@ describe("tables", () => {
     expect(opened).toEqual(["https://example.test/x"]);
     unmount();
   });
+
+  it("notes a truncated table from its original size, and nothing for a whole one", () => {
+    const cell = (text: string) => [{ t: "t", text }];
+    const table = (total?: { rows: number; columns: number }) => ({ v: 1, blocks: [
+      { t: "table", align: ["", ""], head: [cell("a"), cell("b")], rows: [[cell("1"), cell("2")]], ...(total ? { total } : {}) },
+    ] });
+    const cut = mount(<BlockView document={table({ rows: 250, columns: 2 })} />);
+    const note = cut.host.querySelector("table caption");
+    expect(note?.textContent).toContain("250");
+    expect(note?.textContent).not.toContain("{{");
+    cut.unmount();
+    const whole = mount(<BlockView document={table()} />);
+    expect(whole.host.querySelector("table caption")).toBeNull();
+    whole.unmount();
+  });
 });
 
 describe("Block IR", () => {

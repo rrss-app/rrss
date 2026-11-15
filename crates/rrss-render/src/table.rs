@@ -1,4 +1,4 @@
-use crate::{Block, Inline};
+use crate::{Block, Inline, TableTotal};
 
 pub(crate) const MAX_TABLE_COLUMNS: usize = 16;
 /// 数据行上限；表头另占一行。
@@ -22,25 +22,15 @@ impl Table {
         for row in &mut self.rows {
             row.resize(width, Vec::new());
         }
+        let cut = rows > MAX_TABLE_ROWS || columns > MAX_TABLE_COLUMNS;
         blocks.push(Block::Table {
             align: self.align,
             head: self.head,
             rows: self.rows,
+            total: cut.then(|| TableTotal {
+                rows: u32::try_from(rows).unwrap_or(u32::MAX),
+                columns: u32::try_from(columns).unwrap_or(u32::MAX),
+            }),
         });
-        let mut limits = Vec::new();
-        if rows > MAX_TABLE_ROWS {
-            limits.push(format!("{MAX_TABLE_ROWS} 行"));
-        }
-        if columns > MAX_TABLE_COLUMNS {
-            limits.push(format!("{MAX_TABLE_COLUMNS} 列"));
-        }
-        if !limits.is_empty() {
-            blocks.push(Block::Paragraph {
-                inlines: vec![Inline::text(format!(
-                    "（表格共 {rows} 行 {columns} 列，只显示前 {}）",
-                    limits.join(" ")
-                ))],
-            });
-        }
     }
 }

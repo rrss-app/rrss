@@ -27,7 +27,7 @@ export type Block =
   | { t: "hr" };
 
 /** 表格：`align` 每列一项（`l` / `c` / `r` / 空），`head` 一行，`rows` 已补齐到表头列数。 */
-export type TableBlock = { t: "table"; align: string[]; head: Inline[][]; rows: Inline[][][] };
+export type TableBlock = { t: "table"; align: string[]; head: Inline[][]; rows: Inline[][][]; total?: { rows: number; columns: number } };
 
 /** 表格的可见文字：表头与各行单元格依次拼接，给阅读时长、阅读位置这类按字数的计算用。 */
 export function tableText(block: TableBlock, inlineText: (nodes: Inline[]) => string): string {
@@ -45,7 +45,12 @@ function parseTable(node: Raw): TableBlock | null {
     const value = Array.isArray(node.align) ? node.align[i] : "";
     return value === "l" || value === "c" || value === "r" ? value : "";
   });
-  return { t: "table", align, head, rows: node.rows.map((row) => fit(cells(row))) };
+  const table: TableBlock = { t: "table", align, head, rows: node.rows.map((row) => fit(cells(row))) };
+  // 宿主截断了行或列时给原始大小，说明文字由界面生成。
+  if (isRecord(node.total) && Number.isInteger(node.total.rows) && Number.isInteger(node.total.columns)) {
+    table.total = { rows: Number(node.total.rows), columns: Number(node.total.columns) };
+  }
+  return table;
 }
 
 export type Document = { v: number; blocks: Block[] };
@@ -163,8 +168,9 @@ function validPatchBlock(node: unknown): boolean {
     case "embed": return typeof node.kind === "string" && typeof node.url === "string" && typeof node.title === "string";
     case "table": {
       const row = (value: unknown) => Array.isArray(value) && value.every((cell) => Array.isArray(cell) && cell.every(validInline));
+      const total = node.total == null || (isRecord(node.total) && Number.isInteger(node.total.rows) && Number.isInteger(node.total.columns));
       return Array.isArray(node.align) && node.align.every((a) => typeof a === "string")
-        && row(node.head) && Array.isArray(node.rows) && node.rows.every(row);
+        && row(node.head) && Array.isArray(node.rows) && node.rows.every(row) && total;
     }
     case "hr": return true;
     default: return false;

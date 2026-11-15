@@ -40,8 +40,7 @@ pub fn runtime_digest() -> String {
 
 /// 写在 agent 目录里的标记，提示这里的生成文件每次启动都会重写。
 pub const MANAGED_MARKER: &str = ".rrss-managed";
-const MANAGED_NOTE: &str =
-    "本目录由 RRSS 托管：settings.json、models.json 每次启动 Pi 时重写，请勿手改。\n";
+const MANAGED_NOTE: &str = "Managed by RRSS: settings.json and models.json are rewritten every time Pi starts; do not edit them by hand.\n";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspacePaths {

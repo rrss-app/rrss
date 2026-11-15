@@ -23,7 +23,6 @@ fn task_bindings(conn: &Connection) -> rrss_core::Result<Vec<TaskBindView>> {
             let (provider_id, model) = chosen.map(|(p, m)| (p.id, m)).unwrap_or_default();
             Ok(TaskBindView {
                 task: (*task).into(),
-                title: ai_store::task_title(task).into(),
                 provider_id,
                 model,
             })
@@ -218,7 +217,6 @@ pub fn digest_summaries(conn: &Connection, period: &str) -> Vec<DigestSummary> {
             id: d.id,
             period: d.period.clone(),
             period_start: d.period_start,
-            date_label: ai_store::digest_date_label(&d.period, d.period_start),
         })
         .collect()
 }
@@ -253,7 +251,6 @@ pub fn digest(conn: &Connection, id: i64) -> rrss_core::Result<DigestView> {
         id: d.id,
         period: d.period.clone(),
         period_start: d.period_start,
-        date_label: ai_store::digest_date_label(&d.period, d.period_start),
         document,
         body: d.body,
         revision: d.revision,

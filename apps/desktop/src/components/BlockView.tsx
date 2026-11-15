@@ -6,7 +6,7 @@ import { i18n, useTranslation } from "../i18n";
 import { WebLinksContext } from "../lib/webLinks";
 import { api, copyText, isSafeHttpUrl, openExternal } from "../lib/api";
 import { formatNotice } from "../lib/notice";
-import { parseDocument, type Block, type Document, type Inline } from "../lib/blockIr";
+import { parseDocument, type Block, type Document, type Inline, type TableBlock } from "../lib/blockIr";
 import { inlineText } from "../lib/readingTime";
 import { readSelection, type SelectedBlock, type SelectionPick } from "../lib/selection";
 import { EmbedBlock } from "./EmbedBlock";
@@ -203,6 +203,7 @@ function renderBlock(
                 {block.rows.map((row, r) => <tr key={r}>{row.map((cell, c) => <td key={c} style={align(c)}>{renderInlines(cell, onOpenUrl)}</td>)}</tr>)}
               </tbody>
             ) : null}
+            {block.total ? <caption className="block-table-note">{tableNote(block, block.total)}</caption> : null}
           </table>
         </div>
       );
@@ -246,6 +247,15 @@ function isSharedBlock(block: Block): boolean {
   return block.t === "pre" || block.t === "img" || block.t === "embed" || block.t === "table" || block.t === "hr";
 }
 
+
+/** 宿主截断表格时的说明：原始大小与实际显示到的行 / 列。 */
+function tableNote(block: TableBlock, total: { rows: number; columns: number }): string {
+  const limits = [
+    total.rows > block.rows.length ? i18n.t("block.tableRows", { ns: "reader", count: block.rows.length }) : "",
+    total.columns > block.head.length ? i18n.t("block.tableColumns", { ns: "reader", count: block.head.length }) : "",
+  ].filter(Boolean).join(" ");
+  return i18n.t("block.tableTruncated", { ns: "reader", rows: total.rows, columns: total.columns, limits });
+}
 export function digestBlockPositionsIntact(raw: unknown): boolean {
   if (!raw || typeof raw !== "object" || !Array.isArray((raw as { blocks?: unknown }).blocks)) return false;
   const blocks = (raw as { blocks: unknown[] }).blocks;

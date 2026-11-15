@@ -569,25 +569,6 @@ pub fn list_task_bindings(conn: &Connection) -> Result<Vec<TaskBinding>> {
         .map_err(Into::into)
 }
 
-pub fn task_title(task: &str) -> &str {
-    match task {
-        TASK_FOCUS_SUMMARY => "焦点摘要",
-        TASK_ARTICLE_SUMMARY => "本篇摘要",
-        TASK_ARTICLE_SEGMENT => "长文分段压缩",
-        TASK_DIGEST_DAILY => "日 Digest",
-        TASK_DIGEST_WEEKLY => "周 Digest",
-        TASK_DIGEST_PICK_DAILY => "日 Digest 选题",
-        TASK_DIGEST_PICK_WEEKLY => "周 Digest 选题",
-        TASK_CLUSTER_SUMMARY => "相近报道综述",
-        TASK_MEMORY_CANDIDATE => "记忆候选",
-        TASK_EPISODE_COMPRESS => "情节压缩",
-        TASK_ARTICLE_TRANSLATE => "本篇翻译",
-        TASK_EMBED => "嵌入",
-        TASK_CHAT => "对话",
-        other => other,
-    }
-}
-
 pub fn resolve_task(conn: &Connection, task: &str) -> Result<ResolvedTask> {
     let binding = get_task_binding(conn, task)?;
     let template = match binding.template_id {

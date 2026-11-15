@@ -7,6 +7,7 @@ import { App } from "./App";
 import { api, type ChatMessageView, type ChatStreamEvent, type CitationView, type DigestThreadView } from "./lib/api";
 import { PREVIEW_DIGESTS, PREVIEW_FEEDS, PREVIEW_FOCUS } from "./lib/preview";
 import { sourceLabel } from "./components/DigestSourcePreview";
+import { digestDateLabel } from "./components/DigestPane";
 
 const listeners = vi.hoisted(() => new Map<string, (payload: never) => void>());
 vi.mock("./lib/api", async (importOriginal) => {
@@ -219,7 +220,7 @@ describe("Digest 页内追问", () => {
     await click("返回");
     expect(host.querySelector(".drawer.reader")).toBeNull();
     expect(host.querySelector(".digest")).not.toBeNull();
-    expect(host.querySelector(".digest-date")!.textContent).toBe(latest.date_label);
+    expect(host.querySelector(".digest-date")!.textContent).toBe(digestDateLabel(latest.period, latest.period_start));
   });
 
   it("翻到上期时不显示其他期的流式回复，返回后恢复对应记录", async () => {
@@ -235,7 +236,7 @@ describe("Digest 页内追问", () => {
     expect(host.querySelector(".digest-discussion")!.textContent).not.toContain("本期独有回复");
     vi.mocked(api.messages).mockResolvedValue({ messages: [message(9, "本期独有回复")], has_more: false });
     await emit("done", 41);
-    expect(host.querySelector(".digest-date")!.textContent).toBe(previous.date_label);
+    expect(host.querySelector(".digest-date")!.textContent).toBe(digestDateLabel(previous.period, previous.period_start));
     expect(host.querySelector(".digest-discussion")!.textContent).toContain("上期独有回复");
     await click("下期");
     expect(host.querySelector(".digest-discussion")!.textContent).toContain("本期独有回复");
@@ -256,7 +257,7 @@ describe("Digest 页内追问", () => {
     await click("深度对话");
     expect(host.querySelector('.thread-item[data-on="1"]')!.textContent).toBe("普通会话");
     await click("简报");
-    expect(host.querySelector(".digest-date")!.textContent).toBe(previous.date_label);
+    expect(host.querySelector(".digest-date")!.textContent).toBe(digestDateLabel(previous.period, previous.period_start));
   });
 
   it("中文输入法确认不发送，发送失败保留草稿并允许重试", async () => {
@@ -348,7 +349,7 @@ describe("Digest 页内追问", () => {
     await click("发送");
     await click("上期");
     await act(async () => send.resolve(41));
-    expect(host.querySelector(".digest-date")!.textContent).toBe(previous.date_label);
+    expect(host.querySelector(".digest-date")!.textContent).toBe(digestDateLabel(previous.period, previous.period_start));
     expect(host.querySelector(".digest-discussion")!.textContent).toContain("上期内容");
     expect(host.querySelector(".chat-pane")).toBeNull();
   });

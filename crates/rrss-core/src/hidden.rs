@@ -59,7 +59,7 @@ pub fn list_hidden(
             id: row.get(0)?,
             title: row.get(1)?,
             feed_id: row.get(2)?,
-            feed_title: row.get(3)?,
+            feed_title: crate::feeds::display_title(&row.get::<_, String>(3)?, ""),
             published_at: row.get(4)?,
             score: row.get(5)?,
             reasons_json: row.get(6)?,

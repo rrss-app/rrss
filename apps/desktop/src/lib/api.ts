@@ -1,9 +1,10 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { i18n } from "../i18n";
 import { isTauri } from "./preview";
 import type { SelectedBlock } from "./selection";
+import { nameBuiltInFeeds } from "./feedNames";
 import type {
   ClientLogLevel,
   LogStatusView,
@@ -158,6 +159,11 @@ import type {
   ArticleEventInput,
   ReadSessionInput,
 } from "../bindings";
+
+/** Every command reply passes the built-in feed naming at the IPC boundary. */
+async function invoke<T>(command: string, args?: InvokeArgs): Promise<T> {
+  return nameBuiltInFeeds(await tauriInvoke<T>(command, args));
+}
 
 export type {
   ClusterSummaryView,

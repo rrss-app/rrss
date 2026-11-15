@@ -27,6 +27,7 @@ pub struct ToolParam {
 #[derive(Debug, Clone)]
 pub struct PiToolDef {
     pub name: &'static str,
+    /// Fallback name; the settings UI shows a localized name by `name`.
     pub label: &'static str,
     pub description: &'static str,
     pub confirm_required: bool,
@@ -36,70 +37,70 @@ pub struct PiToolDef {
 pub const DEFAULT_TOOLS: &[PiToolDef] = &[
     PiToolDef {
         name: "search_articles",
-        label: "搜索文章",
+        label: "Search articles",
         description: "检索本地文章库（FTS）。返回 id、标题、来源、时间、分数、摘录。",
         confirm_required: false,
         parameters: &[("query", "string", "检索词")],
     },
     PiToolDef {
         name: "get_article",
-        label: "读文章",
+        label: "Read article",
         description: "按 id 取一篇本地文章。元数据加摘要或剥标签正文前缀，不含 HTML。",
         confirm_required: false,
         parameters: &[("id", "number", "article id")],
     },
     PiToolDef {
         name: "search_memory",
-        label: "搜索记忆",
+        label: "Search memory",
         description: "按关键词或向量检索已确认与待确认的本地记忆。",
         confirm_required: false,
         parameters: &[("query", "string", "检索词")],
     },
     PiToolDef {
         name: "get_assistant_config",
-        label: "读助手配置",
+        label: "Read assistant config",
         description: "只读查看 RRSS 给助手的配置：助手说明、已启用的工具与技能、能否抓取网址、外部工具（MCP）允许的工具名，以及当前对话的模型别名与思考档位（拿得到时）。不含密钥、服务地址、启动命令、系统提示模板、记忆和文章，不修改任何配置。",
         confirm_required: false,
         parameters: &[],
     },
     PiToolDef {
         name: "open_original",
-        label: "打开原文",
+        label: "Open original",
         description: "用系统浏览器打开文章 URL。",
         confirm_required: false,
         parameters: &[("url", "string", "https URL")],
     },
     PiToolDef {
         name: "fetch_url",
-        label: "抓取网址",
+        label: "Fetch URL",
         description: "抓取远程 URL 并剥成纯文本。每次都必须先确认。",
         confirm_required: true,
         parameters: &[("url", "string", "https URL")],
     },
     PiToolDef {
         name: "list_focus",
-        label: "今日焦点",
+        label: "Today's focus",
         description: "列出今日焦点条目（标题、分数、摘要一句）。",
         confirm_required: false,
         parameters: &[("limit", "number", "条数，默认 20")],
     },
     PiToolDef {
         name: "explain_score",
-        label: "解释分数",
+        label: "Explain score",
         description: "读 reasons_json 与 interest_reasons_json，解释一篇为什么被隐藏或抬高。",
         confirm_required: false,
         parameters: &[("article_id", "number", "article id")],
     },
     PiToolDef {
         name: "list_feeds",
-        label: "订阅源",
+        label: "Feeds",
         description: "列出订阅源及噪声标记。",
         confirm_required: false,
         parameters: &[],
     },
     PiToolDef {
         name: "get_digest",
-        label: "读 Digest",
+        label: "Read digest",
         description: "按 id 精确读某一期简报，或按 period 取最新一期；含条目序号与 article_id。",
         confirm_required: false,
         parameters: &[
@@ -113,14 +114,14 @@ pub const DEFAULT_TOOLS: &[PiToolDef] = &[
     },
     PiToolDef {
         name: "add_interest",
-        label: "添加兴趣",
+        label: "Add interest",
         description: "新增一条显式兴趣（只影响可见列表排序，不改隐藏）。需确认。",
         confirm_required: true,
         parameters: &[("label", "string", "兴趣标签")],
     },
     PiToolDef {
         name: "mark_read",
-        label: "标已读",
+        label: "Mark read",
         description: "把一篇标为已读或未读。需确认。",
         confirm_required: true,
         parameters: &[
@@ -130,7 +131,7 @@ pub const DEFAULT_TOOLS: &[PiToolDef] = &[
     },
     PiToolDef {
         name: "star_article",
-        label: "收藏",
+        label: "Star article",
         description: "收藏或取消收藏一篇。需确认。",
         confirm_required: true,
         parameters: &[

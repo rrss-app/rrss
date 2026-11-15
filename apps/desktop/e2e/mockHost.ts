@@ -252,8 +252,7 @@ export const MOCK_DIGESTS: DigestView[] = [
   {
     id: 101,
     period: "daily",
-    period_start: Date.parse("2025-09-19T00:00:00+08:00"),
-    date_label: "9月19日",
+    period_start: Date.parse("2025-09-19T12:00:00+08:00"),
     body: "### 今日三条主线\n\n- **单库向量检索**：sqlite-vec 与 FTS5 共存的取舍，十万篇以内不需要外部向量库。\n- **桌面 IPC 线程模型**：Tauri 同步命令阻塞主线程，WebKitGTK 新版本改善了滚动合成。\n- **React 编译器**：自动记忆化对虚拟列表帮助有限，重点仍是数据层。\n\n今天的共同主题是「把慢的事情移出热路径」。",
     revision: "mock-daily-revision-101",
     source_state: "verified",
@@ -278,8 +277,7 @@ export const MOCK_DIGESTS: DigestView[] = [
   {
     id: 100,
     period: "daily",
-    period_start: Date.parse("2025-09-18T00:00:00+08:00"),
-    date_label: "9月18日",
+    period_start: Date.parse("2025-09-18T12:00:00+08:00"),
     body: "### 昨日主线\n\n昨天只有一条值得看的更新。",
     revision: "mock-daily-revision-100",
     source_state: "unavailable",
@@ -291,8 +289,7 @@ export const MOCK_DIGESTS: DigestView[] = [
   {
     id: 200,
     period: "weekly",
-    period_start: Date.parse("2025-09-15T00:00:00+08:00"),
-    date_label: "9月15日 – 9月21日",
+    period_start: Date.parse("2025-09-15T12:00:00+08:00"),
     body: "### 本周三条主线",
     revision: "mock-weekly-revision-200",
     source_state: "unavailable",
@@ -361,10 +358,10 @@ const TASK_MODELS: Record<string, [number, string]> = {
   embed: [1, "nomic-embed-text"], chat: [2, "anthropic/claude-sonnet-4"],
 };
 export const MOCK_BINDINGS: ModelBindingsView = bindingsFixture({
-  tasks: TASK_TITLES.map(([task, title]) => {
+  tasks: TASK_TITLES.map(([task]) => {
     const [provider_id, model] = TASK_MODELS[task] ?? [0, ""];
     const entry = MOCK_POOL.pool.find((e) => e.provider_id === provider_id && e.model === model);
-    return { task, title, provider_id, model, capabilities: entry?.effective };
+    return { task, provider_id, model, capabilities: entry?.effective };
   }),
 });
 for (const e of MOCK_POOL.pool) e.uses = MOCK_BINDINGS.tasks.filter((t) => t.provider_id === e.provider_id && t.model === e.model).map((t) => t.task);
@@ -1068,7 +1065,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               }
               case "digest_list":
                 if (harness.holdDigest) await new Promise<void>(resolve => pendingDigests.push(resolve));
-                return digests.filter((d) => d.period === args.period).map((d) => ({ id: d.id, period: d.period, period_start: d.period_start, date_label: d.date_label }));
+                return digests.filter((d) => d.period === args.period).map((d) => ({ id: d.id, period: d.period, period_start: d.period_start }));
               case "settings_schema":
                 return structuredClone(state.settings);
               case "set_setting": {

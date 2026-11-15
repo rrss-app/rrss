@@ -376,12 +376,12 @@ test("backup card writes a backup, checks a restore before asking and folds its 
   await card.getByRole("button", { name: "立即备份…" }).click();
   await expect(card.locator(".backup-result")).toContainText("已保存到 /home/user/Documents/rrss-backup-2026-09-27-1432.zip · 1.19 GB");
   await expect(card).toContainText("上次备份：今天 14:32。");
-  expect(await page.evaluate(() => (window as any).__mockHost.args.backup_create)).toEqual({ includeSecrets: false });
+  expect(await page.evaluate(() => (window as any).__mockHost.args.backup_create)).toEqual({ includeSecrets: false, labels: { title: expect.any(String), filter: expect.any(String) } });
   await expect(card.locator(".backup-result")).toContainText("不含密钥");
   await card.getByRole("button", { name: "备份包含密钥", exact: true }).click();
   await card.getByRole("button", { name: "立即备份…" }).click();
   await expect(card.locator(".backup-result")).toContainText("包含密钥");
-  expect(await page.evaluate(() => (window as any).__mockHost.args.backup_create)).toEqual({ includeSecrets: true });
+  expect(await page.evaluate(() => (window as any).__mockHost.args.backup_create)).toEqual({ includeSecrets: true, labels: { title: expect.any(String), filter: expect.any(String) } });
   await card.getByRole("button", { name: "备份包含密钥", exact: true }).click();
 
 

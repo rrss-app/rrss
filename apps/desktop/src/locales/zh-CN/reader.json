@@ -155,7 +155,10 @@
     "cite": "引用",
     "translate": "翻译",
     "selection": "选区",
-    "digestUnsafe": "这期简报的排版有问题，来源标记和划词引用暂时不可用。"
+    "digestUnsafe": "这期简报的排版有问题，来源标记和划词引用暂时不可用。",
+    "tableTruncated": "（表格共 {{rows}} 行 {{columns}} 列，只显示前 {{limits}}）",
+    "tableRows_other": "{{count}} 行",
+    "tableColumns_other": "{{count}} 列"
   },
   "image": {
     "retryFailed": "重试失败：",

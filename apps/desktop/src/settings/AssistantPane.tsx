@@ -5,7 +5,7 @@ import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { McpView, PiToolView } from "../bindings";
 import { api, type ModelChoice, type PiInstallView, type PiPage, type PiProbe } from "../lib/api";
 import { formatNotice } from "../lib/notice";
-import { Trans, useTranslation } from "../i18n";
+import { i18n, Trans, useTranslation } from "../i18n";
 import { aiMutationOptions } from "./aiQuery";
 import { Field, Fold, SettingRow, Toggle } from "./chips";
 import { McpDialog, McpImportDialog } from "./McpDialogs";
@@ -22,6 +22,12 @@ import { Pending } from "../components/Pending";
 type Run = (action: PiAction) => Promise<boolean>;
 type DialogState = { kind: "tool"; tool: PiToolView } | { kind: "skill"; name?: string } | { kind: "mcp"; server?: McpView } | { kind: "mcpImport" };
 
+
+/** 内置工具按 `name` 取语言包里的名字；不认识的工具用宿主给的名字。 */
+function toolLabel(tool: { name: string; label: string }): string {
+  const key = `assistant.tools.labels.${tool.name}` as "assistant.tools.labels.search_articles";
+  return i18n.exists(key, { ns: "settingsAssistant" }) ? String(i18n.t(key, { ns: "settingsAssistant" })) : tool.label;
+}
 export function AssistantPane({ onAsk, onNavigate, onEditStateChange }: {
   onAsk: Ask;
   onNavigate: Navigate;
@@ -104,13 +110,13 @@ export function AssistantPane({ onAsk, onNavigate, onEditStateChange }: {
             {data.tools.map((tool) => (
               <li key={tool.name} className="settings-list-row">
                 <div>
-                  <strong>{tool.label}</strong>{tool.confirm && <span className="meta-tag">{t("assistant.tools.confirm")}</span>}
+                  <strong>{toolLabel(tool)}</strong>{tool.confirm && <span className="meta-tag">{t("assistant.tools.confirm")}</span>}
                   {tool.description !== tool.default_description && <span className="meta-tag">{t("assistant.tools.edited")}</span>}
                   <p className="hint">{tool.description}</p>
                 </div>
-                <button type="button" className="btn sm" disabled={writing} aria-label={t("assistant.tools.editAria", { label: tool.label })}
+                <button type="button" className="btn sm" disabled={writing} aria-label={t("assistant.tools.editAria", { label: toolLabel(tool) })}
                   onClick={() => setDialog({ kind: "tool", tool })}>{t("assistant.tools.edit")}</button>
-                <Toggle label={t("assistant.tools.toggle", { label: tool.label })} on={tool.enabled} onLabel="" offLabel="" disabled={writing}
+                <Toggle label={t("assistant.tools.toggle", { label: toolLabel(tool) })} on={tool.enabled} onLabel="" offLabel="" disabled={writing}
                   onClick={() => void run({ type: "tool", name: tool.name, enabled: !tool.enabled })} />
               </li>
             ))}
@@ -338,7 +344,7 @@ function ToolDialog({ tool, run, onAsk, onClose, report }: DialogProps & { tool:
   const [text, setText] = useState(tool.description);
   const { writing, submit } = useDialogWrite(run);
   return (
-    <Dialog title={t("toolDialog.title", { label: tool.label })} dirty={text !== tool.description} busy={writing} onAsk={onAsk} onClose={onClose}
+    <Dialog title={t("toolDialog.title", { label: toolLabel(tool) })} dirty={text !== tool.description} busy={writing} onAsk={onAsk} onClose={onClose}
       onEditStateChange={report("dialog")}
       leading={<button type="button" className="btn ghost" disabled={writing || text === tool.default_description}
         onClick={() => setText(tool.default_description)}>{t("toolDialog.restoreDefault")}</button>}

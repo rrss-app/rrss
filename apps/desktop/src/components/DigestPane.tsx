@@ -40,6 +40,16 @@ function uniqueSources(sources: DigestView["source_index"]): DigestView["source_
 }
 
 
+/** 一期的日期：日报一天，周报起止七天；按当前语言格式化，跟随本机日历。 */
+export function digestDateLabel(period: string, start: number): string {
+  const day = new Intl.DateTimeFormat(locale(), { month: "long", day: "numeric" });
+  const from = new Date(start);
+  if (period !== "weekly") return day.format(from);
+  const to = new Date(start);
+  to.setDate(to.getDate() + 6);
+  return i18n.t("dateRange", { ns: "digest", from: day.format(from), to: day.format(to) });
+}
+
 export const digestPeriodLabel = (period: string): string =>
   i18n.t(period === "weekly" ? "period.weekly" : "period.daily", { ns: "digest" });
 
@@ -262,7 +272,7 @@ export function DigestPane({
           >
             <Icon name="chevronLeft" size={16} />
           </button>
-          <span className="digest-date">{selected?.date_label ?? (fetching ? "" : t("pane.noneYet"))}</span>
+          <span className="digest-date">{selected ? digestDateLabel(selected.period, selected.period_start) : fetching ? "" : t("pane.noneYet")}</span>
           <button
             type="button"
             className="tool-btn icon-only"
@@ -316,8 +326,8 @@ export function DigestPane({
               <div className="reader-column">
                 <div className="digest-doc-head">
                   <span className="digest-kicker">{digestPeriodLabel(showing.period)}</span>
-                  <span className="digest-doc-date">{showing.date_label}</span>
-                  {/* period_start 与后端 digest_date_label 一样是毫秒；不指定时区，跟随本机日历。 */}
+                  <span className="digest-doc-date">{digestDateLabel(showing.period, showing.period_start)}</span>
+                  {/* period_start 是本机日历的起始毫秒；不指定时区，跟随本机日历。 */}
                   {showing.period === "daily" ? <span className="digest-doc-weekday">{new Date(showing.period_start).toLocaleDateString(locale(), { weekday: "long" })}</span> : null}
                 </div>
                 {showing.document ? (

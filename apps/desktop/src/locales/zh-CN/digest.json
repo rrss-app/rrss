@@ -69,5 +69,6 @@
     "mismatch": "来源索引与正文不一致，已关闭条目来源。",
     "unlocated": "旧稿来源未定位，已关闭条目来源。",
     "unavailable": "本期没有可用来源。"
-  }
+  },
+  "dateRange": "{{from}} – {{to}}"
 }

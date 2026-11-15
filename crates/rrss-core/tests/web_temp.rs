@@ -196,10 +196,8 @@ fn manual_feed_is_stable_and_never_due_or_fetched() {
     assert_eq!(feeds::manual_feed(&conn).unwrap(), id);
     feeds::update_feed_url(&conn, id, "https://manual.test/edited").unwrap();
     assert_eq!(feeds::manual_feed(&conn).unwrap(), id);
-    assert_eq!(
-        feeds::get_feed(&conn, id).unwrap().title.as_deref(),
-        Some("手动收录")
-    );
+    // The built-in source has no stored name; the UI supplies one.
+    assert_eq!(feeds::get_feed(&conn, id).unwrap().title, None);
     assert!(ingest::due_feeds(&conn, i64::MAX / 2).unwrap().is_empty());
     struct NeverFetch;
     impl ingest::HttpFetcher for NeverFetch {

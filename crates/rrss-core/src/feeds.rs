@@ -70,9 +70,11 @@ pub struct SubscribeRequest {
 /// Internal placeholder, never fetched. Identity is enforced by the unique manual-kind index.
 pub const MANUAL_URL: &str = "rrss:manual";
 
+/// Created without a title: the UI names the built-in source in its own language.
+/// Databases from older versions keep the name stored then, like a user's rename.
 pub fn manual_feed(conn: &Connection) -> Result<i64> {
     conn.execute(
-        "INSERT INTO feeds(url,title,kind,title_custom,created_at) VALUES(?1,'手动收录','manual',1,?2) ON CONFLICT DO NOTHING",
+        "INSERT INTO feeds(url,title,kind,title_custom,created_at) VALUES(?1,NULL,'manual',0,?2) ON CONFLICT DO NOTHING",
         params![MANUAL_URL, now_ms()],
     )?;
     Ok(conn.query_row("SELECT id FROM feeds WHERE kind='manual'", [], |r| r.get(0))?)
@@ -533,29 +535,30 @@ fn title_from_url(url: &str) -> String {
         .filter(|s| !skip_feed_filename(s))
         .collect();
     if host_is_local_or_ip(host) {
+        // RSSHub-style local bridges are named by their first route segment;
+        // without one, the address itself is the most specific neutral name.
         return segs
             .first()
             .map(|s| (*s).to_string())
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "未命名源".into());
+            .unwrap_or_else(|| host_no_user.to_string());
     }
-    if host.is_empty() {
-        "未命名源".into()
-    } else {
-        host.to_string()
-    }
+    host.to_string()
 }
 
 /// 列表 / Toast 用的短名。没有标题时用主机名或 RSSHub 路径，不用整段 URL。
+/// 没改过名的内置手动收录源返回空串，界面按当前语言给它起名；有标题或地址的其他源总有名字。
 pub fn display_title(title: &str, url: &str) -> String {
     let t = title.trim();
+    if t == MANUAL_URL || (t.is_empty() && url.trim() == MANUAL_URL) {
+        return String::new();
+    }
     if !t.is_empty() && !looks_like_url(t) {
         return t.to_string();
     }
-    let from = if url.trim().is_empty() { t } else { url };
+    let from = if url.trim().is_empty() { t } else { url.trim() };
     let out = title_from_url(from);
     if out.is_empty() {
-        "未命名源".into()
+        from.to_string()
     } else {
         out
     }
@@ -729,7 +732,13 @@ mod tests {
             ),
             "v2ex"
         );
-        assert_eq!(display_title("", ""), "未命名源");
+        assert_eq!(
+            display_title("", "http://192.0.2.10:1200/"),
+            "192.0.2.10:1200"
+        );
+        assert_eq!(display_title("", MANUAL_URL), "");
+        assert_eq!(display_title(MANUAL_URL, ""), "");
+        assert_eq!(display_title("", ""), "");
     }
 
     #[test]

@@ -32,7 +32,7 @@ describe("model choice inside a conversation", () => {
     box.stub.handle("threadList", () => ({ folders: [], threads: [threadFixture({ id: 1, title: "线程一", chat_model: { provider_id: 2, model: "qwen/qwen3-8b" } })], archived_count: 0 }));
     box.stub.handle("messages", () => ({ messages: [], has_more: false }));
     box.stub.handle("ai", () => aiPageFixture({ providers: [providerFixture({ id: 1, name: "本机" }), providerFixture({ id: 2, name: "云端" })] }));
-    box.stub.handle("modelBindings", () => bindingsFixture({ tasks: [{ task: "chat", title: "对话", provider_id: 1, model: "m" }] }));
+    box.stub.handle("modelBindings", () => bindingsFixture({ tasks: [{ task: "chat", provider_id: 1, model: "m" }] }));
     box.stub.handle("modelPool", () => modelPoolFixture({ pool: [
       poolEntryFixture({ provider_id: 2, model: "qwen/qwen3-8b", chat: true }),
       poolEntryFixture({ provider_id: 1, model: "m-fast", chat: true }),

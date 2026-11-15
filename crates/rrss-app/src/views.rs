@@ -920,8 +920,8 @@ pub struct ProviderTestView {
 /// 用途当前选的模型；`provider_id` 为 0 表示还没选。
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct TaskBindView {
+    // 用途 id；名字由前端按 id 取语言包。
     pub task: String,
-    pub title: String,
     pub provider_id: i64,
     pub model: String,
 }
@@ -963,16 +963,16 @@ pub struct DigestLineView {
 pub struct DigestSummary {
     pub id: i64,
     pub period: String,
+    // 本机日历的起始毫秒；日期文字由前端按语言格式化。
     pub period_start: i64,
-    pub date_label: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct DigestView {
     pub id: i64,
     pub period: String,
+    // 本机日历的起始毫秒；日期文字由前端按语言格式化。
     pub period_start: i64,
-    pub date_label: String,
     pub body: String,
     pub revision: String,
     // verified / legacy / mismatch / unavailable；说明文字由前端按状态生成。

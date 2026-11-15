@@ -132,7 +132,7 @@ export function sceneToHostPayload(scene: GeneratedScene): HostPayload {
     digestBanner: scene.digestBanner,
     ai: JSON.parse(JSON.stringify(scene.ai)) as AiPage,
     pool: modelPoolFixture({ pool: [poolEntryFixture({ chat: true, engine_context_window: 32000 })] }),
-    bindings: bindingsFixture({ tasks: [{ task: "chat", title: "对话", provider_id: 1, model: "fixture-model" }] }),
+    bindings: bindingsFixture({ tasks: [{ task: "chat", provider_id: 1, model: "fixture-model" }] }),
     digestThread: digestThreadFixture({thread_id: scene.digestThreadId, messages: scene.digestMessages}),
     rules: JSON.parse(JSON.stringify(scene.rules)) as RulesPage,
     memory: JSON.parse(JSON.stringify(scene.memory)) as MemoryPage,
@@ -538,7 +538,7 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
       case "digest_list": {
         const period = asString(rawArgs.period, "daily");
         return clone(payload.digests.filter((row) => row.period === period).map((row) => ({
-          id: row.id, period: row.period, period_start: row.period_start, date_label: row.date_label,
+          id: row.id, period: row.period, period_start: row.period_start,
         })));
       }
       case "digest": {

@@ -1,6 +1,6 @@
 import { act, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DigestPane } from "./DigestPane";
+import { DigestPane, digestDateLabel } from "./DigestPane";
 import { api } from "../lib/api";
 import { PREVIEW_DIGESTS } from "../lib/preview";
 import { createReactHarness } from "../test/react";
@@ -53,16 +53,17 @@ it("walks daily periods with previous and next", async () => {
   expect(next.disabled).toBe(true);
   click(host.querySelector("button[aria-label='上期']"));
   expect(host.querySelector("h3")?.textContent).toBe("昨日主线");
-  expect(host.textContent).toContain("8月26日");
+  const label = (index: number) => digestDateLabel(PREVIEW_DIGESTS[index].period, PREVIEW_DIGESTS[index].period_start);
+  expect(host.textContent).toContain(label(1));
   click(next);
   expect(host.querySelector("h3")?.textContent).toBe("今日三条主线");
-  expect(host.textContent).toContain("8月27日");
+  expect(host.textContent).toContain(label(0));
 });
 
 describe("kept alive while hidden", () => {
   const win = window as Window & { __TAURI_INTERNALS__?: unknown };
   const daily = PREVIEW_DIGESTS.filter((digest) => digest.period === "daily");
-  const summary = ({ id, period, period_start, date_label }: (typeof daily)[number]) => ({ id, period, period_start, date_label });
+  const summary = ({ id, period, period_start }: (typeof daily)[number]) => ({ id, period, period_start });
   let toggle: () => void = () => {};
   function Host({ onCite }: { onCite?: () => void }) {
     const [visible, setVisible] = useState(true);
@@ -89,13 +90,13 @@ describe("kept alive while hidden", () => {
     expect(host.querySelector("h3")?.textContent).toBe("昨日主线");
     const bodyReads = vi.mocked(api.digest).mock.calls.length;
     // 后台生成的新一期排到最前，原下标会指向别的期，选中期须按 id 找回。
-    const fresh = { ...summary(daily[0]), id: 999, date_label: "8月28日" };
+    const fresh = { ...summary(daily[0]), id: 999, period_start: daily[0].period_start + 86_400_000 };
     vi.mocked(api.digests).mockResolvedValueOnce([fresh, ...daily.map(summary)]);
     await switchAwayAndBack();
     expect(api.digests).toHaveBeenCalledTimes(2);
     expect(api.digest).toHaveBeenCalledTimes(bodyReads);
     expect(host.querySelector("h3")?.textContent).toBe("昨日主线");
-    expect(host.querySelector(".digest-date")?.textContent).toBe(daily[1].date_label);
+    expect(host.querySelector(".digest-date")?.textContent).toBe(digestDateLabel(daily[1].period, daily[1].period_start));
     // No loading or failure status; the issue's own source note may remain.
     expect(host.querySelector("[role='status']:not(.digest-notice)")).toBeNull();
     click(host.querySelector("button[aria-label='下期']"));

@@ -49,11 +49,11 @@ describe("AssistantPane", () => {
     page = {
       ...structuredClone(FIXTURE_PI_PAGE),
       thinking_levels: ["off", "low"],
-      tools: [{ name: "get_article", label: "读取原文", description: "只读前 3 段", default_description: "按 ID 读取正文块", enabled: true, confirm: false }],
+      tools: [{ name: "fixture_tool", label: "读取原文", description: "只读前 3 段", default_description: "按 ID 读取正文块", enabled: true, confirm: false }],
       skills: [{ name: "notes", description: "整理笔记", bundled: false, enabled: true, loaded: false }],
       mcp_servers: [mcpFixture({ id: 7, name: "files", args: ["--stdio"] })],
     };
-    bindings = bindingsFixture({ tasks: [{ task: "chat", title: "对话", provider_id: 1, model: "qwen2.5:14b" }] });
+    bindings = bindingsFixture({ tasks: [{ task: "chat", provider_id: 1, model: "qwen2.5:14b" }] });
     const { stub } = createPiFixture();
     stub.handle("pi", () => structuredClone(page));
     stub.handle("modelBindings", () => structuredClone(bindings));
@@ -138,7 +138,7 @@ describe("AssistantPane", () => {
     await harness.flush();
 
     expect(calls).toEqual([
-      ["tool", "get_article", "按 ID 读取正文块"],
+      ["tool", "fixture_tool", "按 ID 读取正文块"],
       ["skill", { name: "notes", description: "整理笔记", body: "先列要点，再写结论" }],
     ]);
     expect(dialog(host)).toBeNull();

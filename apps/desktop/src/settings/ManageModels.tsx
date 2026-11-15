@@ -13,6 +13,7 @@ import { chatDefault, choiceKey, modelName, sameChoice, thinkingOptions } from "
 import { piQueryOptions } from "./piQuery";
 import type { Ask } from "./SettingsPanel";
 import { locale, useTranslation } from "../i18n";
+import { taskTitle } from "./taskNames";
 
 export type ModelFilter = "" | "chat" | "untested" | "unused";
 const FILTERS: ModelFilter[] = ["", "chat", "untested", "unused"];
@@ -127,7 +128,7 @@ export function ManageModels({ providers, initialFilter, initialModel, onAsk, on
   };
 
   const isDefault = !!current && sameChoice(chatDefault(bindings), current);
-  const uses = current ? current.uses.map((use) => bindings?.tasks.find((x) => x.task === use)?.title ?? use) : [];
+  const uses = current ? current.uses.map(taskTitle) : [];
   const reasoningOff = current?.effective.reasoning === "unsupported";
   // 引擎握手报告过的更高档位；只读缓存，不为它发请求。
   const reported = useQuery({ ...piQueryOptions(), enabled: false }).data?.thinking_levels;

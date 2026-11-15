@@ -33,11 +33,11 @@ fn markdown_ragged_rows_follow_header_width() {
 
 #[test]
 fn markdown_limits_report_only_exceeded_dimensions() {
-    for (rows, cols, note) in [
-        (200, 16, None),
-        (201, 2, Some("200 行")),
-        (2, 17, Some("16 列")),
-        (201, 17, Some("200 行 16 列")),
+    for (rows, cols, cut) in [
+        (200, 16, false),
+        (201, 2, true),
+        (2, 17, true),
+        (201, 17, true),
     ] {
         let row = format!("|{}\n", " x |".repeat(cols));
         let md = format!("{row}|{}\n{}", " --- |".repeat(cols), row.repeat(rows));
@@ -46,6 +46,7 @@ fn markdown_limits_report_only_exceeded_dimensions() {
             align,
             head,
             rows: body,
+            total,
         } = &doc.blocks[0]
         else {
             panic!("table");
@@ -54,15 +55,15 @@ fn markdown_limits_report_only_exceeded_dimensions() {
         assert_eq!(align.len(), head.len());
         assert_eq!(body.len(), rows.min(200));
         assert!(body.iter().all(|r| r.len() == head.len()));
-        if let Some(note) = note {
-            assert_eq!(doc.blocks.len(), 2);
-            assert_eq!(
-                rrss_render::block_plain(&doc.blocks[1]),
-                format!("（表格共 {rows} 行 {cols} 列，只显示前 {note}）")
-            );
-        } else {
-            assert_eq!(doc.blocks.len(), 1);
-        }
+        // The cut is recorded on the table; the UI words the note.
+        assert_eq!(doc.blocks.len(), 1);
+        assert_eq!(
+            *total,
+            cut.then_some(rrss_render::TableTotal {
+                rows: rows as u32,
+                columns: cols as u32,
+            })
+        );
     }
 }
 
@@ -113,7 +114,10 @@ fn html_simple_table_preserves_sections_alignment_and_inline_content() {
             Block::Paragraph { .. }
         ]
     ));
-    let Block::Table { align, head, rows } = &doc.blocks[1] else {
+    let Block::Table {
+        align, head, rows, ..
+    } = &doc.blocks[1]
+    else {
         panic!("table");
     };
     assert_eq!(align, &["l", "c", "r"]);

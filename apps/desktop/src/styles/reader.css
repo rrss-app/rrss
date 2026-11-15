@@ -309,6 +309,7 @@ button.reader-article-drawer-main:hover { background: transparent; color: inheri
 .reader .block-table :is(th, td) { padding: 6px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
 .reader .block-table :is(th, td) + :is(th, td) { border-left: 1px solid var(--border); }
 .reader .block-table th { background: var(--surface-sunken); font-weight: 600; color: var(--text); white-space: nowrap; }
+.reader .block-table-note { caption-side: bottom; padding: 6px 12px; text-align: left; font-size: 0.92em; color: var(--text-muted); }
 .reader .block-table tbody tr:last-child td { border-bottom: 0; }
 .reader .block-table td { max-width: 32em; }
 .reader blockquote {

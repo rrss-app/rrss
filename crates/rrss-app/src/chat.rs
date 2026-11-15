@@ -13,16 +13,18 @@ use crate::views::SendMessageArgs;
 /// 随划选附上的所在段落最多多少字：够看懂语境，不把长段整段塞进每轮消息。
 const PASSAGE_CHARS: usize = 600;
 
-pub fn thread_title(text: &str) -> String {
+/// A new thread is named after its first question; without one it stays
+/// untitled and the UI shows its own placeholder.
+pub fn thread_title(text: &str) -> Option<String> {
     let t = text.trim();
     let mut chars = t.chars();
     let short: String = chars.by_ref().take(24).collect();
     if chars.next().is_some() {
-        format!("{short}…")
+        Some(format!("{short}…"))
     } else if short.is_empty() {
-        "新对话".into()
+        None
     } else {
-        short
+        Some(short)
     }
 }
 
@@ -68,20 +70,10 @@ pub fn prepare_send(conn: &Connection, args: &SendMessageArgs) -> Result<Prepare
         }
         thread
     } else if let Some(d) = context.as_ref() {
-        let label = if d.period == "weekly" {
-            "周报"
-        } else {
-            "日报"
-        };
-        let date = ai_store::digest_date_label(&d.period, d.period_start);
-        threads::get_or_create_anchored_thread(
-            conn,
-            &format!("{date} {label}追问"),
-            "digest",
-            d.id,
-        )?
+        // Anchored threads never appear in thread lists; the digest names them.
+        threads::get_or_create_anchored_thread(conn, "", "digest", d.id)?
     } else {
-        threads::create_thread(conn, Some(&thread_title(&args.text)))?
+        threads::create_thread(conn, thread_title(&args.text).as_deref())?
     };
     let chosen = args
         .model
@@ -210,9 +202,13 @@ mod tests {
 
     #[test]
     fn title_truncates() {
-        assert_eq!(thread_title("短"), "短");
-        assert_eq!(thread_title(""), "新对话");
-        assert!(thread_title("这是一段超过二十四字的中文标题用来截断显示省略号！").ends_with('…'));
+        assert_eq!(thread_title("短").as_deref(), Some("短"));
+        assert_eq!(thread_title("  "), None);
+        assert!(
+            thread_title("这是一段超过二十四字的中文标题用来截断显示省略号！")
+                .unwrap()
+                .ends_with('…')
+        );
     }
 
     #[test]

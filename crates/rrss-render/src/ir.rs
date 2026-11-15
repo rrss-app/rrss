@@ -43,6 +43,9 @@ pub enum Block {
         align: Vec<String>,
         head: Vec<Vec<Inline>>,
         rows: Vec<Vec<Vec<Inline>>>,
+        /// Original size when rows or columns were cut; the UI words the note.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        total: Option<TableTotal>,
     },
     #[serde(rename = "embed")]
     Embed {
@@ -52,6 +55,12 @@ pub enum Block {
     },
     #[serde(rename = "hr")]
     Rule,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TableTotal {
+    pub rows: u32,
+    pub columns: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
