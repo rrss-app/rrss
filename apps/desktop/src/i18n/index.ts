@@ -43,6 +43,28 @@ if (typeof document !== "undefined") {
   i18n.on("languageChanged", (language) => { document.documentElement.lang = language; });
 }
 
+/** 有完整语言包、可以切换过去的语言。英文包补齐之前只有中文（阶段 27 · I4b 加 `en`）。 */
+export const LANGUAGES: readonly string[] = [SOURCE_LANGUAGE];
+
+/**
+ * 与宿主 `rrss_app::ui_language::resolve` 同一套规则，给没有宿主的浏览器预览用：
+ * 显式设置优先；跟随系统时取第一个认识的（`zh*` → 简体中文，`en*` → 英文），都不认识落到英文。
+ */
+export function resolveLanguage(setting: string, system: readonly string[]): string {
+  if (setting === "zh-CN" || setting === "en") return setting;
+  for (const tag of system) {
+    const primary = tag.trim().split(/[-_]/)[0]?.toLowerCase();
+    if (primary === "zh") return "zh-CN";
+    if (primary === "en") return "en";
+  }
+  return "en";
+}
+
+/** 切到解析出的语言；还没有语言包的语言先留在源语言。 */
+export function applyLanguage(language: string): Promise<unknown> {
+  return i18n.changeLanguage(LANGUAGES.includes(language) ? language : SOURCE_LANGUAGE);
+}
+
 /** 当前界面语言：`Intl` 与 `toLocale*String` 都从这里取，不写死语言。 */
 export const locale = (): string => i18n.language;
 

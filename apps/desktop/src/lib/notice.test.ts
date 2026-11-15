@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatNotice } from "./notice";
+import { formatNotice, withPrefix } from "./notice";
 import type { UiError } from "../bindings";
 
 describe("formatNotice", () => {
@@ -26,5 +26,11 @@ describe("formatNotice", () => {
     expect(formatNotice("刷新失败：", "database is locked")).toBe(
       "刷新失败：数据库正忙，请稍后重试",
     );
+  });
+
+  it("spaces an ASCII colon prefix but not a full-width one", () => {
+    expect(withPrefix("Couldn't rename:", "busy")).toBe("Couldn't rename: busy");
+    expect(withPrefix("operation: ", "busy")).toBe("operation: busy");
+    expect(withPrefix("重命名失败：", "忙")).toBe("重命名失败：忙");
   });
 });

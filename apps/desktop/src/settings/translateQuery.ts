@@ -2,7 +2,7 @@ import { settingsQueryPolicy } from "./queryPolicy";
 import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
 import type { TranslatePage } from "../bindings";
 import { api } from "../lib/api";
-import { formatNotice } from "../lib/notice";
+import { formatNotice, withPrefix } from "../lib/notice";
 import { formatError } from "../lib/errors";
 import { i18n } from "../i18n";
 import { redactAiText, secretsFromUrl } from "./aiError";
@@ -76,7 +76,7 @@ export function translateMutationOptions(client: QueryClient) {
         saved = true;
         if (args.action === "test") {
           const sample = await api.testTranslate();
-          status = { tone: "ok", text: i18n.t("translate.notice.testOk", { ns: "settingsJobs" }) + redactAiText(sample, [submitted.deepl_key ?? "", submitted.deeplx_token ?? "", submitted.http_key ?? ""]) };
+          status = { tone: "ok", text: withPrefix(i18n.t("translate.notice.testOk", { ns: "settingsJobs" }), redactAiText(sample, [submitted.deepl_key ?? "", submitted.deeplx_token ?? "", submitted.http_key ?? ""])) };
         } else {
           status = { tone: "ok", text: i18n.t("translate.notice.saved", { ns: "settingsJobs" }) };
         }

@@ -224,6 +224,7 @@ export type WindowControlsStyle = "windows" | "gnome";
 export type WindowChromeView = { controls: WindowControlsStyle, tray: boolean, };
 export type CloseChoice = "tray" | "quit";
 export type TrayLabels = { open: string, refresh: string, quit: string, };
+export type UiLanguageView = { setting: string, language: string, };
 export type NativeDialogLabels = { title: string, filter: string, };
 export type NativeWebLabels = { failure: string, open_in_browser: string, copy_link: string, dialog_title: string, };
 export type ClientLogLevel = "warn" | "error";

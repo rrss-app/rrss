@@ -1217,6 +1217,8 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 return;
               case "plugin:opener|open_url":
                 return;
+              case "ui_language":
+                return { setting: "system", language: "zh-CN" };
               case "window_chrome":
                 return { controls: windowControls, tray: true };
               case "tray_install":

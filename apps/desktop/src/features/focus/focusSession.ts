@@ -4,10 +4,9 @@ import { trackEvent } from "../../lib/signals";
 import { applyStarToFocusPage, flattenFeeds, focusExcludes, mergeFocusPage, refreshFocusRows, rowKey } from "../../lib/focusUtils";
 import { i18n } from "../../i18n";
 import { formatNotice } from "../../lib/notice";
-import { formatReason } from "../../lib/reasons";
 import { isTauri, PREVIEW_FOCUS } from "../../lib/preview";
 import { FALLBACK_RANKING, type RankingToggle } from "../../components/FocusPane";
-import type { SpotAction, SpotReview } from "../../components/SpotCheckReveal";
+import type { SpotAction, SpotResult, SpotReview } from "../../components/SpotCheckReveal";
 import { refreshProblem, waitForRefresh } from "./refreshOperation";
 
 // 约一张普通卡片的高度（px）；超过此距离视为已离开列表顶部。
@@ -146,10 +145,10 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
   async function decideSpotCheck(id: number, action: SpotAction) {
     const review = state.spotReviews[id];
     if (!active || !review || state.spotBusy) return;
-    if (action === "keep") { saveReview(id, { ...review, result: i18n.t("session.spot.kept", { ns: "focus" }), undo: undefined }); return; }
+    if (action === "keep") { saveReview(id, { ...review, result: { kind: "kept" }, undo: undefined }); return; }
     publish({ spotBusy: true });
     try {
-      let result: string | undefined;
+      let result: SpotResult | undefined;
       let undo: SpotReview["undo"];
       if (action === "undo") await review.undo?.();
       else {
@@ -158,21 +157,21 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
         if (action === "allow") {
           const added = await api.allowRuleForFeed(reason.rule_id, review.article.feed_id);
           undo = () => api.discardRule(added);
-          result = i18n.t("session.spot.allowed", { ns: "focus", feed: review.article.feed_title });
+          result = { kind: "allowed", feed: review.article.feed_title };
         } else {
           const rule = (await api.rules()).rules.find(r => r.id === reason.rule_id);
           if (!rule?.enabled) throw new Error(i18n.t("session.spot.ruleGone", { ns: "focus" }));
           if (action === "disable") {
             await api.setRuleAction(rule.id, 2);
             undo = () => api.setRuleAction(rule.id, rule.polarity === "like" ? 0 : 1);
-            result = i18n.t("session.spot.disabled", { ns: "focus", label: formatReason(reason) });
+            result = { kind: "disabled", reason };
           } else {
             const original = { polarity: rule.polarity, dimension: rule.dimension_id, pattern: rule.pattern,
               weight: rule.weight, scope_kind: rule.scope_kind, scope_id: rule.scope_id };
             const weight = Math.max(1, Math.round(rule.weight / 2));
             await api.updateRule(rule.id, { ...original, weight });
             undo = () => api.updateRule(rule.id, original);
-            result = i18n.t("session.spot.halved", { ns: "focus", label: formatReason(reason) });
+            result = { kind: "halved", reason };
           }
         }
       }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Ref } from "react";
-import { useTranslation } from "./i18n";
+import { i18n, useTranslation } from "./i18n";
 import { useFeedUpdates } from "./app/useFeedUpdates";
 import { readingMinutes } from "./lib/readingTime";
 import { api, onWindowCloseRequested, onWindowRestored, type ArticleView, type CitationView, type ThreadView } from "./lib/api";
@@ -286,7 +286,10 @@ function DesktopShell() {
   const openOverlay = useRef(open);
   openOverlay.current = open;
   useEffect(() => {
-    void api.trayInstall(trayLabels()).catch((error) => console.error("tray unavailable", error));
+    const installTray = () => void api.trayInstall(trayLabels()).catch((error) => console.error("tray unavailable", error));
+    installTray();
+    // 换界面语言后托盘菜单跟着换文字（已建好的托盘只改文字）。
+    i18n.on("languageChanged", installTray);
     let disposed = false;
     const stops: Array<() => void> = [];
     const keep = (subscription: Promise<() => void>) => void subscription
@@ -295,7 +298,7 @@ function DesktopShell() {
       .catch(() => {});
     keep(onWindowCloseRequested(() => openOverlay.current("close-ask")));
     keep(onWindowRestored(() => { void focus.adoptLatest(); void column.adoptLatest(); }));
-    return () => { disposed = true; stops.forEach((stop) => stop()); };
+    return () => { disposed = true; i18n.off("languageChanged", installTray); stops.forEach((stop) => stop()); };
   }, [focus, column]);
 
   const settingsRootRef = useRef<HTMLDivElement>(null);

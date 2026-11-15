@@ -350,6 +350,16 @@ const DEFS: &[Def] = &[
         write: None,
     },
     Def {
+        id: crate::ui_language::SETTING,
+        domain: SettingDomain::Reader,
+        level: SettingLevel::L0,
+        kind: Kind::Enum(crate::ui_language::OPTIONS),
+        default: crate::ui_language::FOLLOW_SYSTEM,
+        apply: SettingApply::Immediate,
+        affects_pi: false,
+        write: None,
+    },
+    Def {
         id: "ui_debug_mode",
         domain: SettingDomain::Reader,
         level: SettingLevel::L2,

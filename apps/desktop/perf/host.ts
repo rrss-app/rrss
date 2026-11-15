@@ -586,6 +586,8 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
         return clone(payload.diag.log);
       case "log_export":
         return null;
+      case "ui_language":
+        return { setting: "system", language: "zh-CN" };
       case "window_chrome":
         return { controls: "windows", tray: true };
       case "tray_install":

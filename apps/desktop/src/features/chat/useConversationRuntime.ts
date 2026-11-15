@@ -185,8 +185,9 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
     subscribe(onChatStatus((event) => {
       // 一步过程只进回复位置的等待过程，不进输入框上方的过程条。
       if (event.step) { turns.step(event.step, event.thread_id); return; }
-      if (event.notice_version) activity.set({ notice: { text: event.notice ? formatError(event.notice) : "", version: event.notice_version } });
-      else activity.set({ line: event.notice ? formatError(event.notice) : "" });
+      const notice = event.notice;
+      if (event.notice_version) activity.set({ notice: { text: () => notice ? formatError(notice) : "", version: event.notice_version } });
+      else activity.set({ line: notice ? () => formatError(notice) : "" });
     }));
     subscribe(onChatConfirm((event) => {
       activity.set({ confirm: event });
@@ -214,13 +215,13 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
   const chooseModel = useCallback((id: number, context: string, choice: ModelChoice | null, label: string) => {
     const key = modelKey(id, context);
     setModels((old) => ({ ...old, [key]: { ...optionsFor(old, key), model: choice } }));
-    if (id > 0) activity.set({ line: i18n.t("runtime.modelSwitched", { ns: "chat", label }) });
+    if (id > 0) activity.set({ line: () => i18n.t("runtime.modelSwitched", { ns: "chat", label }) });
   }, [activity]);
   /** 思考强度同模型：null 跟随所用模型的设置。 */
   const chooseThinking = useCallback((id: number, context: string, level: string | null, label: string) => {
     const key = modelKey(id, context);
     setModels((old) => ({ ...old, [key]: { ...optionsFor(old, key), thinking: level } }));
-    if (id > 0) activity.set({ line: level ? i18n.t("runtime.thinkingSet", { ns: "chat", level: thinkingLabel(level) }) : i18n.t("runtime.thinkingFollow", { ns: "chat", label }) });
+    if (id > 0) activity.set({ line: () => level ? i18n.t("runtime.thinkingSet", { ns: "chat", level: thinkingLabel(level) }) : i18n.t("runtime.thinkingFollow", { ns: "chat", label }) });
   }, [activity]);
   /** 新对话每次从默认开始；上一次从这里发出、已归到新线程的消息不再留在「新对话」里。 */
   const resetNewModel = useCallback((context: string) => {

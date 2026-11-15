@@ -91,6 +91,7 @@ export const REGISTRY = {
   pi_auto_download: { hint: true, control: true, on: true, off: true },
   pi_auto_update: { hint: true, control: true, on: true, off: true },
   close_action: { hint: true, options: ["ask", "tray", "quit"] },
+  ui_language: { options: ["system", "zh-CN", "en"] },
   pi_cache_warming: { hint: true, options: ["off", "streaming", "idle"], optionHints: ["streaming", "idle"] },
 } satisfies Record<SettingId, RegistryShape>;
 

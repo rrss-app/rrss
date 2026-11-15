@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { i18n, useTranslation } from "../i18n";
 import type { ConnectionTestView, ProviderPreset, ProviderView } from "../lib/api";
+import { withPrefix } from "../lib/notice";
 import { Dialog } from "./Dialog";
 import { aiMutationOptions, bindingsQueryOptions, poolQueryOptions, testConnection, type AiWrite } from "./aiQuery";
 import { explainAiError, secretsFromConnection, type AiErrorView } from "./aiError";
@@ -81,7 +82,7 @@ export function ConnectionDialog({ provider, presets, onAsk, onClose, onSaved, o
   const atDefaults = !defaults || (defaults.base_url === draft.base_url && defaults.protocol === draft.protocol && sameJson(defaults.compat_json, draft.compat_json));
 
   const secrets = () => secretsFromConnection(key, draft.base_url);
-  const failure = (view: AiErrorView, prefix = ""): Result => ({ tone: "err", text: prefix + view.title, detail: view.detail });
+  const failure = (view: AiErrorView, prefix = ""): Result => ({ tone: "err", text: prefix ? withPrefix(prefix, view.title) : view.title, detail: view.detail });
 
   const test = async () => {
     if (!draft.base_url.trim()) { setResult({ tone: "err", text: t("connection.needUrl") }); return; }

@@ -30,6 +30,7 @@ pub mod site_rules;
 pub mod tool;
 pub mod translate;
 pub mod ui_error;
+pub mod ui_language;
 pub mod views;
 pub mod web;
 pub mod web_snapshot;
@@ -262,6 +263,7 @@ mod export_ts {
             WindowChromeView::decl(),
             crate::window_close::CloseChoice::decl(),
             TrayLabels::decl(),
+            crate::ui_language::UiLanguageView::decl(),
             NativeDialogLabels::decl(),
             NativeWebLabels::decl(),
             ClientLogLevel::decl(),

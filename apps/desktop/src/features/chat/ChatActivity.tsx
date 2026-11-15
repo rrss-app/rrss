@@ -4,9 +4,13 @@ import { formatNotice } from "../../lib/notice";
 import { Trans, useTranslation } from "../../i18n";
 
 /** 一轮对话里的过程信息：一行进度、需要看见的提示、等待回应的确认。只存最新一份，不按线程保留历史。 */
+/** 文字可以给函数：显示时才取译文，切换界面语言后跟着变。 */
+export type ActivityText = string | (() => string);
+const textOf = (text: ActivityText) => typeof text === "function" ? text() : text;
+
 export type ChatActivityState = {
-  line: string;
-  notice: { text: string; version: string } | null;
+  line: ActivityText;
+  notice: { text: ActivityText; version: string } | null;
   confirm: ChatConfirmEvent | null;
 };
 const EMPTY: ChatActivityState = { line: "", notice: null, confirm: null };
@@ -56,11 +60,11 @@ export function ChatActivity({ store }: { store: ActivityStore }) {
       {confirm && <ConfirmCard key={confirm.id} confirm={confirm} store={store} />}
       {notice && (
         <div className="chat-notice" role="status">
-          <span>{notice.text}</span>
+          <span>{textOf(notice.text)}</span>
           <button type="button" className="btn ghost sm" onClick={() => store.set({ notice: null })}>{t("activity.dismiss")}</button>
         </div>
       )}
-      {line && !confirm && <p className="chat-status-line" role="status">{line}</p>}
+      {line && !confirm && <p className="chat-status-line" role="status">{textOf(line)}</p>}
     </div>
   );
 }

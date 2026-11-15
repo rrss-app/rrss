@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { FloatingMenu, type MenuAnchor } from "./FloatingMenu";
 import { Icon } from "./Icon";
+import { withPrefix } from "../lib/notice";
 
 /**
  * 下拉触发器 + 浮层菜单（搜索筛选胶囊的同一套）。不用原生 `<select>`：WebView2 / WebKitGTK 会弹系统样式的列表。
@@ -65,7 +66,7 @@ export function MenuSelect<T extends string | number>({ value, options, onChange
 }) {
   const current = options.find((option) => option.value === value);
   return <MenuButton label={label} className={className} menuClassName={menuClassName} title={title} disabled={disabled} active={active}
-    face={<>{icon}<span className="menu-select-value">{prefix}{current?.label ?? ""}</span><Icon name="chevronDown" size={12} className="menu-caret" /></>}>
+    face={<>{icon}<span className="menu-select-value">{prefix ? withPrefix(prefix, current?.label ?? "") : current?.label ?? ""}</span><Icon name="chevronDown" size={12} className="menu-caret" /></>}>
     {(close) => options.map((option) => (
       <MenuCheck key={String(option.value)} radio checked={option.value === value} onSelect={() => { onChange(option.value); close(); }}>{option.label}</MenuCheck>
     ))}

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { i18n } from "../i18n";
+import { i18n, locale } from "../i18n";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -11,11 +11,21 @@ function startOfDay(ms: number, offsetDays = 0): number {
   return new Date(day.getFullYear(), day.getMonth(), day.getDate() + offsetDays).getTime();
 }
 
+/**
+ * 中文日期照语言包的模板拼（「11月13日」）；其他语言交给 `Intl`。中文不走 `Intl`：
+ * 各 WebView 的 ICU 对 zh-CN 的输出不一致。只有中文用到的模板键见 `SOURCE_ONLY_KEYS`。
+ */
+export const usesChineseDates = (): boolean => locale().startsWith("zh");
+
 /** 当年只写月日，跨年带年份。 */
 function shortDate(date: Date, now: number): string {
   const month = date.getMonth() + 1;
   const day = date.getDate();
-  return date.getFullYear() === new Date(now).getFullYear()
+  const sameYear = date.getFullYear() === new Date(now).getFullYear();
+  if (!usesChineseDates()) {
+    return new Intl.DateTimeFormat(locale(), sameYear ? { month: "short", day: "numeric" } : { year: "numeric", month: "short", day: "numeric" }).format(date);
+  }
+  return sameYear
     ? i18n.t("time.monthDay", { ns: "shell", month, day })
     : i18n.t("time.date", { ns: "shell", year: date.getFullYear(), month, day });
 }
@@ -49,6 +59,9 @@ export function formatDay(ms: number | null | undefined, now: number = Date.now(
 export function formatPublishedFull(ms: number | null | undefined): string {
   if (ms == null || !Number.isFinite(ms)) return "";
   const date = new Date(ms);
+  if (!usesChineseDates()) {
+    return new Intl.DateTimeFormat(locale(), { dateStyle: "medium", timeStyle: "short", hourCycle: "h23" }).format(date);
+  }
   return i18n.t("time.fullDateTime", {
     ns: "shell",
     year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate(),
@@ -88,4 +101,15 @@ function getNow() {
 
 export function useMinuteClock(): number {
   return useSyncExternalStore(subscribe, getNow, getNow);
+}
+
+const WEEKDAY = { weekday: "long", month: "long", day: "numeric" } as const;
+
+/** 焦点题头的日期：中文写「十一月十三日 · 星期五」，其他语言用 `Intl`（「Friday, November 13」）。 */
+export function formatMastheadDate(date: Date): string {
+  if (!usesChineseDates()) return new Intl.DateTimeFormat(locale(), WEEKDAY).format(date);
+  const digits = i18n.t("masthead.digits", { ns: "focus" });
+  const ten = i18n.t("masthead.ten", { ns: "focus" });
+  const chinese = (n: number) => n < 10 ? digits[n] : `${n >= 20 ? digits[Math.floor(n / 10)] : ""}${ten}${n % 10 ? digits[n % 10] : ""}`;
+  return i18n.t("masthead.date", { ns: "focus", month: chinese(date.getMonth() + 1), day: chinese(date.getDate()), weekday: i18n.t("masthead.weekdays", { ns: "focus" })[date.getDay()] });
 }

@@ -59,6 +59,7 @@ import type {
   WindowChromeView,
   CloseChoice,
   TrayLabels,
+  UiLanguageView,
   SettingsSchema,
   SettingSpec,
   SettingValue,
@@ -257,6 +258,7 @@ export type {
   RelatedArticleView,
   CloseChoice,
   TrayLabels,
+  UiLanguageView,
   RefreshOperation,
   RefreshStarted,
   SchedulerSnapshot,
@@ -403,6 +405,8 @@ export const api = {
   /** 弹出保存对话框后打包；返回保存位置，取消时为 null。 */
   logExport: () => invoke<string | null>("log_export", { labels: dialogLabels("diag.dialog.title", "diag.dialog.filter") }),
   /** 自绘标题栏：窗口三键按宿主给的平台样子画；没有宿主（浏览器预览）时为 null，不画三键。 */
+  /** 首帧前取一次：设置原值与宿主解析出的界面语言。浏览器预览没有宿主时为 null。 */
+  uiLanguage: (): Promise<UiLanguageView | null> => isTauri() ? invoke<UiLanguageView>("ui_language") : Promise.resolve(null),
   windowChrome: (): Promise<WindowChromeView | null> => isTauri() ? invoke<WindowChromeView>("window_chrome") : Promise.resolve(null),
   /** 关闭询问的结果：隐藏到托盘或退出程序；`remember` 时写进设置「关闭窗口时」。 */
   windowCloseChoice: (choice: CloseChoice, remember: boolean) => invoke<void>("window_close_choice", { choice, remember }),

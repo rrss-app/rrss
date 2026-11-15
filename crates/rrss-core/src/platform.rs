@@ -605,8 +605,140 @@ pub fn installed_cjk_fonts() -> Option<Vec<&'static str>> {
     )
 }
 
+/// 系统偏好的界面语言，按优先顺序，BCP 47 写法（`zh-CN`、`en-US`）；读不到时为空。
+/// Linux 依次看 `LANGUAGE`（冒号分隔的列表）、`LC_ALL`、`LC_MESSAGES`、`LANG`；
+/// Windows 读用户的界面语言列表（`GetUserPreferredUILanguages`）。
+pub fn ui_languages() -> Vec<String> {
+    #[cfg(windows)]
+    {
+        windows_ui_languages()
+    }
+    #[cfg(not(windows))]
+    {
+        let var = |name| std::env::var(name).ok();
+        posix_ui_languages(
+            var("LANGUAGE").as_deref(),
+            var("LC_ALL").as_deref(),
+            var("LC_MESSAGES").as_deref(),
+            var("LANG").as_deref(),
+        )
+    }
+}
+
+/// POSIX 语言环境变量转语言列表。`LANGUAGE` 只在 `LC_ALL` / `LC_MESSAGES` / `LANG`
+/// 定出的语言不是 `C` / `POSIX` 时生效（与 gettext 一致），排在它们前面。
+pub fn posix_ui_languages(
+    language: Option<&str>,
+    lc_all: Option<&str>,
+    lc_messages: Option<&str>,
+    lang: Option<&str>,
+) -> Vec<String> {
+    fn set(value: Option<&str>) -> Option<&str> {
+        value.filter(|v| !v.trim().is_empty())
+    }
+    let Some(primary) = set(lc_all).or(set(lc_messages)).or(set(lang)) else {
+        return set(language).map(posix_list).unwrap_or_default();
+    };
+    let Some(primary) = posix_tag(primary) else {
+        return Vec::new();
+    };
+    let mut out = set(language).map(posix_list).unwrap_or_default();
+    if !out.contains(&primary) {
+        out.push(primary);
+    }
+    out
+}
+
+fn posix_list(list: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for tag in list.split(':').filter_map(posix_tag) {
+        if !out.contains(&tag) {
+            out.push(tag);
+        }
+    }
+    out
+}
+
+/// `zh_CN.UTF-8@modifier` → `zh-CN`；`C`、`POSIX` 与空值没有语言。
+fn posix_tag(raw: &str) -> Option<String> {
+    let base = raw.trim().split(['.', '@']).next().unwrap_or_default();
+    if base.is_empty() || base == "C" || base == "POSIX" {
+        return None;
+    }
+    Some(base.replace('_', "-"))
+}
+
+/// `GetUserPreferredUILanguages` 返回的多字符串（以 NUL 分隔、两个 NUL 结束）转列表。
+pub fn windows_language_list(buffer: &[u16]) -> Vec<String> {
+    buffer
+        .split(|&unit| unit == 0)
+        .filter(|part| !part.is_empty())
+        .map(String::from_utf16_lossy)
+        .collect()
+}
+
+#[cfg(windows)]
+fn windows_ui_languages() -> Vec<String> {
+    use windows_sys::Win32::Globalization::{GetUserPreferredUILanguages, MUI_LANGUAGE_NAME};
+    let mut count = 0u32;
+    let mut len = 0u32;
+    // SAFETY: 先传空缓冲区取所需长度，再按这个长度分配后读取；两次调用都只写传入的计数与缓冲区。
+    unsafe {
+        if GetUserPreferredUILanguages(
+            MUI_LANGUAGE_NAME,
+            &mut count,
+            std::ptr::null_mut(),
+            &mut len,
+        ) == 0
+            || len == 0
+        {
+            return Vec::new();
+        }
+        let mut buffer = vec![0u16; len as usize];
+        if GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &mut count, buffer.as_mut_ptr(), &mut len)
+            == 0
+        {
+            return Vec::new();
+        }
+        buffer.truncate(len as usize);
+        windows_language_list(&buffer)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn posix_locales_follow_gettext_order() {
+        use super::posix_ui_languages as langs;
+        assert_eq!(langs(None, None, None, Some("zh_CN.UTF-8")), ["zh-CN"]);
+        assert_eq!(
+            langs(None, Some("en_US.UTF-8"), Some("zh_CN"), Some("de_DE")),
+            ["en-US"]
+        );
+        assert_eq!(
+            langs(None, Some(""), Some("fr_FR@euro"), Some("de_DE")),
+            ["fr-FR"]
+        );
+        assert_eq!(
+            langs(Some("zh_TW:en"), None, None, Some("en_US.UTF-8")),
+            ["zh-TW", "en", "en-US"]
+        );
+        // LANGUAGE 在 C / POSIX 语言环境下不生效。
+        assert!(langs(Some("zh_CN"), None, None, Some("C.UTF-8")).is_empty());
+        assert!(langs(None, None, None, Some("POSIX")).is_empty());
+        assert_eq!(langs(Some("en::en"), None, None, None), ["en"]);
+        assert!(langs(None, None, None, None).is_empty());
+    }
+
+    #[test]
+    fn windows_language_lists_split_on_nul() {
+        let wide = |s: &str| s.encode_utf16().collect::<Vec<_>>();
+        let mut buffer = wide("zh-CN\0en-US\0\0");
+        assert_eq!(super::windows_language_list(&buffer), ["zh-CN", "en-US"]);
+        buffer.clear();
+        assert!(super::windows_language_list(&buffer).is_empty());
+    }
+
     #[test]
     fn exit_descriptions_preserve_windows_exception_codes_and_unix_signals() {
         use super::*;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode, type Ref, type RefObject } from "react";
 import type { FeedView, SearchHitBlocksView, SearchHitView, SearchQuery, ThreadSearchHitView } from "../../lib/api";
 import { useExposureTracker, type ExposureObserver } from "../../lib/useExposureTracker";
+import { withPrefix } from "../../lib/notice";
 import type { ReaderSearchOpen } from "../reader";
 import { SourceAvatar } from "../../components/ArticleCard";
 import { Icon } from "../../components/Icon";
@@ -412,7 +413,7 @@ function ThreadResults({ search, hasQuery, short, active, folderName, onPick }: 
           <RelativeTime ms={hit.message_id ? hit.created_at : hit.updated_at} />
         </span>
         {hit.snippet ? <span className="search-row-snippet">
-          <span className="search-thread-who">{t("thread.snippetWho", { who: t(hit.role === "user" ? "thread.who.user" : "thread.who.assistant") })}</span><Highlight text={hit.snippet} query={search.searched} />
+          <span className="search-thread-who">{withPrefix(t("thread.snippetWho", { who: t(hit.role === "user" ? "thread.who.user" : "thread.who.assistant") }), "")}</span><Highlight text={hit.snippet} query={search.searched} />
         </span> : null}
       </button>;
     })}

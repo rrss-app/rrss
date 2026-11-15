@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useRetainedScroll } from "../lib/useRetainedScroll";
 import { reducedMotion, useViewEnter } from "../lib/motion";
-import { useMinuteClock } from "../lib/time";
+import { formatMastheadDate, useMinuteClock } from "../lib/time";
 import { rankingNoteText } from "../lib/focusUtils";
 import type { ExposureObserver } from "../lib/useExposureTracker";
 import type { ArticleView, FeedView, FocusPage, RankingSettings } from "../lib/api";
@@ -98,11 +98,8 @@ export function emptyIcon(page: FocusPage | null, feeds: FeedView[]): "inbox" | 
 function DatedMasthead() {
   const { t } = useTranslation("focus");
   const date = new Date(useMinuteClock());
-  const digits = t("masthead.digits");
-  const ten = t("masthead.ten");
-  const chinese = (n: number) => n < 10 ? digits[n] : `${n >= 20 ? digits[Math.floor(n / 10)] : ""}${ten}${n % 10 ? digits[n % 10] : ""}`;
   return <header className="focus-masthead">
-    <p className="focus-kicker">{t("masthead.date", { month: chinese(date.getMonth() + 1), day: chinese(date.getDate()), weekday: t("masthead.weekdays")[date.getDay()] })}</p>
+    <p className="focus-kicker">{formatMastheadDate(date)}</p>
     <h1>{t("masthead.title")}</h1>
   </header>;
 }
