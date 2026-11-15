@@ -1,0 +1,79 @@
+{
+  "discussion": {
+    "region": "Digest follow-ups",
+    "title": "Follow-ups",
+    "retry": "Retry loading follow-ups",
+    "loadFailed": "Couldn’t load follow-ups:"
+  },
+  "cite": {
+    "added_one": "Added digest excerpt, linked to 1 source",
+    "added_other": "Added digest excerpt, linked to {{count}} sources",
+    "failed": "Couldn’t cite:"
+  },
+  "send": {
+    "failed": "Couldn’t send:",
+    "stopFailed": "Couldn’t stop:"
+  },
+  "composer": {
+    "aria": "Ask about this digest",
+    "placeholder": "Ask about this digest, e.g. expand the second item…",
+    "noDigest": "Open a digest to ask follow-ups",
+    "context": "Ask about {{date}} · {{period}}",
+    "contextNotLoaded": "Ask about {{date}} · {{period}} · Follow-ups not loaded",
+    "contextLoading": "Ask about {{date}} · {{period}} · Loading follow-ups…",
+    "dock": "Follow up on this digest",
+    "dockCount_one": "1 follow-up",
+    "dockCount_other": "{{count}} follow-ups"
+  },
+  "pane": {
+    "loading": "Loading digest",
+    "refreshFailed": "Couldn’t refresh the digest list: {{message}}",
+    "loadFailed": "Couldn’t load digest: {{message}}",
+    "noneGenerated": "This digest wasn’t generated: no unread articles match right now.",
+    "generateFailed": "Couldn’t generate: {{message}}",
+    "periodGroup": "Digest period",
+    "daily": "Daily",
+    "weekly": "Weekly",
+    "pager": "Browse issues",
+    "prevAria": "Previous issue",
+    "prevTitle": "Previous issue",
+    "nextAria": "Next issue",
+    "nextTitle": "Next issue",
+    "noneYet": "No digest yet",
+    "generate": "Generate this digest",
+    "generating": "Generating this digest…",
+    "retry": "Retry",
+    "retryLoad": "Retry loading",
+    "emptyHint": "No digest yet. Select “Generate this digest” to create one.",
+    "renderFailed": "The body of this digest can’t be displayed; sources and paging still work."
+  },
+  "source": {
+    "removed": "Article removed; only the title and feed name from generation are kept",
+    "unavailable": "Article details aren’t available right now",
+    "unknownFeed": "Unknown feed",
+    "labelNumbered": "Source {{number}}: “{{title}}”, {{feed}}",
+    "labelNumberedNote": "Source {{number}}: “{{title}}”, {{feed}} ({{note}})",
+    "label": "Source: “{{title}}”, {{feed}}",
+    "labelNote": "Source: “{{title}}”, {{feed}} ({{note}})"
+  },
+  "sourceIndex": {
+    "numbered_one": "Sources in this digest ({{count}})",
+    "numbered_other": "Sources in this digest ({{count}})",
+    "legacy_one": "Legacy sources (unlocated) ({{count}})",
+    "legacy_other": "Legacy sources (unlocated) ({{count}})",
+    "unlocated_one": "Unlocated sources ({{count}})",
+    "unlocated_other": "Unlocated sources ({{count}})",
+    "hint": "These sources don’t match specific entries, so they can’t be cited from a selection."
+  },
+  "period": {
+    "daily": "Daily",
+    "weekly": "Weekly"
+  },
+  "sourceNote": {
+    "legacy": "Legacy sources keep their original positions; the historical mapping can’t be verified.",
+    "mismatch": "The source index doesn’t match the body, so entry sources are turned off.",
+    "unlocated": "Legacy sources weren’t located, so entry sources are turned off.",
+    "unavailable": "No sources are available for this digest."
+  },
+  "dateRange": "{{from}} – {{to}}"
+}

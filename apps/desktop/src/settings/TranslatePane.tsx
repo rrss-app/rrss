@@ -8,16 +8,19 @@ import { findEntry, ModelMenu, modelName, taskChoice, usePoolChoices } from "./m
 import { TRANSLATE_BACKENDS, translateError } from "./translateQuery";
 import { useTranslateSettings } from "./useTranslateSettings";
 import { Pending } from "../components/Pending";
-import { Trans, useTranslation } from "../i18n";
+import { locale, Trans, useTranslation } from "../i18n";
 
-const LANG_IDS = ["zh", "en", "ja"] as const;
+/** `auto` 跟随界面语言（默认），其余是常用的目标语言；别的语言在「其他语言」里填代码。 */
+const LANG_IDS = ["auto", "zh", "en", "ja"] as const;
 
 export function TranslatePane({ onEditStateChange, onOpenModels }: {
   onEditStateChange?: (state: SettingsEditState | null) => void;
   onOpenModels: () => void;
 }) {
   const { t } = useTranslation("settingsJobs");
-  const LANGS = LANG_IDS.map((id) => ({ id, label: t(`translate.lang.${id}`) }));
+  // 跟随界面时实际用的语言，与后端 `ui_language::translation_target` 一致。
+  const followed = locale().startsWith("zh") ? "zh" : "en";
+  const LANGS = LANG_IDS.map((id) => ({ id, label: id === "auto" ? t("translate.lang.auto", { current: t(`translate.lang.${followed}`) }) : t(`translate.lang.${id}`) }));
   const { query, draft, baseline, dirty, busy, pending, status, change, pick, run, reload, discard } = useTranslateSettings(onEditStateChange);
   if (!draft || !baseline) return (
     <div className="translate-pane">

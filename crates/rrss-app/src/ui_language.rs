@@ -45,6 +45,24 @@ fn supported(tag: &str) -> Option<&'static str> {
     }
 }
 
+/// 翻译目标语言跟随界面时的语言代码（翻译用两位代码：`zh`、`en`）。
+pub fn translation_target(language: &str) -> &'static str {
+    if language.starts_with("zh") {
+        "zh"
+    } else {
+        "en"
+    }
+}
+
+/// 翻译实际用的目标语言：设置为跟随界面（`auto`）时按当前界面语言取。
+pub fn translate_target(conn: &Connection) -> rrss_core::Result<String> {
+    let raw = rrss_core::translations::target_lang(conn)?;
+    if raw != rrss_core::translations::TARGET_FOLLOW_UI {
+        return Ok(raw);
+    }
+    Ok(translation_target(&current(conn)?.language).into())
+}
+
 pub fn setting(conn: &Connection) -> rrss_core::Result<String> {
     let raw = rrss_core::db::get_setting(conn, SETTING)?.unwrap_or_default();
     Ok(if OPTIONS.contains(&raw.as_str()) {
@@ -87,6 +105,18 @@ mod tests {
         assert_eq!(resolve("system", &[]), "en");
         // 认不出的设置值按跟随系统处理。
         assert_eq!(resolve("ja", &tags(&["zh-CN"])), "zh-CN");
+    }
+
+    #[test]
+    fn translation_follows_the_interface_unless_chosen() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = rrss_core::db::open_at(&dir.path().join("t.db")).unwrap();
+        crate::settings_schema::set(&conn, SETTING, "en").unwrap();
+        assert_eq!(translate_target(&conn).unwrap(), "en");
+        crate::settings_schema::set(&conn, SETTING, "zh-CN").unwrap();
+        assert_eq!(translate_target(&conn).unwrap(), "zh");
+        rrss_core::translations::set_target_lang(&conn, "ja").unwrap();
+        assert_eq!(translate_target(&conn).unwrap(), "ja");
     }
 
     #[test]

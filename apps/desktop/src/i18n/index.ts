@@ -15,6 +15,21 @@ import settingsJobs from "../locales/zh-CN/settingsJobs.json" with { type: "json
 import settingsModels from "../locales/zh-CN/settingsModels.json" with { type: "json" };
 import settingsSystem from "../locales/zh-CN/settingsSystem.json" with { type: "json" };
 import shell from "../locales/zh-CN/shell.json" with { type: "json" };
+import enChat from "../locales/en/chat.json" with { type: "json" };
+import enCommon from "../locales/en/common.json" with { type: "json" };
+import enDigest from "../locales/en/digest.json" with { type: "json" };
+import enErrors from "../locales/en/errors.json" with { type: "json" };
+import enFeeds from "../locales/en/feeds.json" with { type: "json" };
+import enFocus from "../locales/en/focus.json" with { type: "json" };
+import enReader from "../locales/en/reader.json" with { type: "json" };
+import enReasons from "../locales/en/reasons.json" with { type: "json" };
+import enSearch from "../locales/en/search.json" with { type: "json" };
+import enSettingsAssistant from "../locales/en/settingsAssistant.json" with { type: "json" };
+import enSettingsContent from "../locales/en/settingsContent.json" with { type: "json" };
+import enSettingsJobs from "../locales/en/settingsJobs.json" with { type: "json" };
+import enSettingsModels from "../locales/en/settingsModels.json" with { type: "json" };
+import enSettingsSystem from "../locales/en/settingsSystem.json" with { type: "json" };
+import enShell from "../locales/en/shell.json" with { type: "json" };
 
 /** 源语言，也是缺译文时的回退语言。 */
 export const SOURCE_LANGUAGE = "zh-CN";
@@ -24,6 +39,11 @@ export const resources = {
   "zh-CN": {
     chat, common, digest, errors, feeds, focus, reader, reasons, search,
     settingsAssistant, settingsContent, settingsJobs, settingsModels, settingsSystem, shell,
+  },
+  en: {
+    chat: enChat, common: enCommon, digest: enDigest, errors: enErrors, feeds: enFeeds,
+    focus: enFocus, reader: enReader, reasons: enReasons, search: enSearch, settingsAssistant: enSettingsAssistant,
+    settingsContent: enSettingsContent, settingsJobs: enSettingsJobs, settingsModels: enSettingsModels, settingsSystem: enSettingsSystem, shell: enShell,
   },
 } as const;
 
@@ -43,8 +63,8 @@ if (typeof document !== "undefined") {
   i18n.on("languageChanged", (language) => { document.documentElement.lang = language; });
 }
 
-/** 有完整语言包、可以切换过去的语言。英文包补齐之前只有中文（阶段 27 · I4b 加 `en`）。 */
-export const LANGUAGES: readonly string[] = [SOURCE_LANGUAGE];
+/** 有完整语言包、可以切换过去的语言（`check:locales` 保证与中文的键一致）。 */
+export const LANGUAGES: readonly string[] = [SOURCE_LANGUAGE, "en"];
 
 /**
  * 与宿主 `rrss_app::ui_language::resolve` 同一套规则，给没有宿主的浏览器预览用：
@@ -60,8 +80,13 @@ export function resolveLanguage(setting: string, system: readonly string[]): str
   return "en";
 }
 
+let languageSetting = "system";
+/** 设置里的原值（`system` / `zh-CN` / `en`），给语言切换控件显示当前选择。 */
+export const uiLanguageSetting = (): string => languageSetting;
+
 /** 切到解析出的语言；还没有语言包的语言先留在源语言。 */
-export function applyLanguage(language: string): Promise<unknown> {
+export function applyLanguage(language: string, setting = languageSetting): Promise<unknown> {
+  languageSetting = setting;
   return i18n.changeLanguage(LANGUAGES.includes(language) ? language : SOURCE_LANGUAGE);
 }
 

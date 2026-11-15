@@ -80,7 +80,8 @@
     "title": "设置",
     "description": "订阅、规则、模型与本机诊断",
     "backToReader": "返回阅读",
-    "theme": "外观"
+    "theme": "外观",
+    "language": "语言"
   },
   "settingsBusy": "正在保存或测试{{label}}，请等本次操作完成后再离开。",
   "settingsFix": {

@@ -8,6 +8,8 @@ use crate::feeds::now_ms;
 
 pub const TRANSLATE_ENABLED_KEY: &str = "translate_enabled";
 pub const TRANSLATE_TARGET_LANG_KEY: &str = "translate_target_lang";
+/// 目标语言跟随界面语言（默认）；实际语言由 `rrss_app::ui_language` 解析。
+pub const TARGET_FOLLOW_UI: &str = "auto";
 pub const TRANSLATE_BACKEND_KEY: &str = "translate_backend";
 pub const TRANSLATE_DEEPL_URL_KEY: &str = "translate_deepl_url";
 pub const TRANSLATE_DEEPL_KEY_KEY: &str = "translate_deepl_key";
@@ -53,7 +55,8 @@ pub fn set_enabled(conn: &Connection, enabled: bool) -> Result<()> {
 }
 
 pub fn target_lang(conn: &Connection) -> Result<String> {
-    let raw = get_setting(conn, TRANSLATE_TARGET_LANG_KEY)?.unwrap_or_else(|| "zh".into());
+    let raw =
+        get_setting(conn, TRANSLATE_TARGET_LANG_KEY)?.unwrap_or_else(|| TARGET_FOLLOW_UI.into());
     Ok(normalize_lang(&raw))
 }
 
@@ -177,7 +180,7 @@ pub fn set_http_endpoint(conn: &Connection, url: &str, api_key: Option<&str>) ->
 pub fn normalize_lang(lang: &str) -> String {
     let t = lang.trim().to_ascii_lowercase();
     if t.is_empty() {
-        return "zh".into();
+        return TARGET_FOLLOW_UI.into();
     }
     t.chars()
         .take(16)
@@ -310,7 +313,7 @@ mod tests {
         let hit = get(&conn, 1, "zh", ENGINE_COMPLETE).unwrap().unwrap();
         assert_eq!(hit.title, "你好");
         assert_eq!(hit.source_hash, "abc");
-        assert_eq!(target_lang(&conn).unwrap(), "zh");
+        assert_eq!(target_lang(&conn).unwrap(), TARGET_FOLLOW_UI);
         set_backend(&conn, ENGINE_HTTP).unwrap();
         set_http_endpoint(&conn, "http://127.0.0.1:5000", Some("k")).unwrap();
         assert_eq!(backend_id(&conn).unwrap(), ENGINE_HTTP);

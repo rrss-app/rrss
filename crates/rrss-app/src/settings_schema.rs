@@ -311,7 +311,7 @@ const DEFS: &[Def] = &[
         domain: SettingDomain::Reader,
         level: SettingLevel::L0,
         kind: Kind::Language,
-        default: "zh",
+        default: translations::TARGET_FOLLOW_UI,
         apply: SettingApply::Immediate,
         affects_pi: false,
         write: Some(|conn, id, value| {
@@ -357,7 +357,10 @@ const DEFS: &[Def] = &[
         default: crate::ui_language::FOLLOW_SYSTEM,
         apply: SettingApply::Immediate,
         affects_pi: false,
-        write: None,
+        // 翻译目标跟随界面时，换界面语言就换了翻译配置：与目标语言一样经配置写入，在途译文作废。
+        write: Some(|conn, id, value| {
+            crate::configuration::write(conn, |tx| db::set_setting(tx, id, value))
+        }),
     },
     Def {
         id: "ui_debug_mode",
@@ -870,12 +873,13 @@ mod tests {
             "http://127.0.0.1:1",
         )
         .unwrap();
-        set(&conn, translations::TRANSLATE_TARGET_LANG_KEY, "en").unwrap();
+        // 默认跟随界面；改成一个界面不会解析到的语言，确保生效的目标确实变了。
+        set(&conn, translations::TRANSLATE_TARGET_LANG_KEY, "ja").unwrap();
         assert_eq!(
             crate::configuration::translation_revision(&conn).unwrap(),
             1
         );
-        set(&conn, translations::TRANSLATE_TARGET_LANG_KEY, "EN").unwrap();
+        set(&conn, translations::TRANSLATE_TARGET_LANG_KEY, "JA").unwrap();
         assert_eq!(
             crate::configuration::translation_revision(&conn).unwrap(),
             1

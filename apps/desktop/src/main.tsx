@@ -18,7 +18,7 @@ startSignals();
 // 首帧前定好界面语言，不先画一帧中文再换。取不到宿主（浏览器预览）或命令失败时按浏览器语言。
 async function start() {
   const host = await api.uiLanguage().catch(() => null);
-  await applyLanguage(host?.language ?? resolveLanguage("system", navigator.languages));
+  await applyLanguage(host?.language ?? resolveLanguage("system", navigator.languages), host?.setting ?? "system");
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <App />

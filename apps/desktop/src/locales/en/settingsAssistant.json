@@ -1,0 +1,415 @@
+{
+  "action": {
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit"
+  },
+  "assistant": {
+    "editLabel": "Chat assistant settings",
+    "actionFailed": "Operation failed:",
+    "loadFailed": "Couldn’t load chat assistant settings:",
+    "reload": "Reload",
+    "abilities": {
+      "title": "Models and abilities",
+      "hint": "This default model is the same setting as “Chat” on the Models page.",
+      "localArticles": {
+        "label": "Look up local articles",
+        "hint": "Search and read your subscribed articles, digests and memories.",
+        "always": "Always available"
+      },
+      "fetchUrl": {
+        "label": "Read web pages",
+        "hint": "Each link still needs confirmation in the chat."
+      }
+    },
+    "note": {
+      "title": "Assistant instructions",
+      "hint": "Included in every chat. Good for preferences like answer style or preferred language.",
+      "rowsLabel": "Assistant instructions",
+      "viewPrompt": "View fixed prompt"
+    },
+    "tools": {
+      "title": "Tools",
+      "hint": "Tools you turn off are hidden from the assistant.",
+      "confirm": "Needs confirmation",
+      "edited": "Description changed",
+      "edit": "Edit description",
+      "editAria": "Edit description for {{label}}",
+      "toggle": "Tool: {{label}}",
+      "labels": {
+        "search_articles": "Search articles",
+        "get_article": "Read article",
+        "search_memory": "Search memories",
+        "get_assistant_config": "Read assistant config",
+        "open_original": "Open original page",
+        "fetch_url": "Fetch URL",
+        "list_focus": "Today’s Focus",
+        "explain_score": "Explain score",
+        "list_feeds": "Feeds",
+        "get_digest": "Read Digest",
+        "add_interest": "Add interest",
+        "mark_read": "Mark as read",
+        "star_article": "Star article"
+      }
+    },
+    "extensions": "Extensions",
+    "skills": {
+      "title": "Skills",
+      "summary": "{{total}} total · {{enabled}} enabled",
+      "bundled": "Built-in",
+      "custom": "Custom",
+      "editAria": "Edit skill {{name}}",
+      "toggle": "Skill: {{name}}",
+      "create": "New skill"
+    },
+    "mcpFold": {
+      "title": "External tools",
+      "count_one": "1 service",
+      "count_other": "{{count}} services",
+      "none": "None added"
+    },
+    "advanced": "Advanced settings for this page →"
+  },
+  "chatModel": {
+    "defaultModel": "Default model",
+    "hint": {
+      "own": "“Use my own Pi configuration” is on; the models available to Pi are listed here.",
+      "chosen": "New chats use it by default. In a chat you can temporarily switch to another chat model.",
+      "none": "No chat model selected; chat is paused."
+    },
+    "noTools": "This model can’t call tools, so chats can’t look up articles or read web pages.",
+    "saveFailed": "Couldn’t save:",
+    "thinking": "Reasoning effort",
+    "thinkingHint": "Set it in each model’s settings; to change it for one chat, use the control next to the input box.",
+    "reasoningUnsupported": "Reasoning not supported",
+    "changeInModels": "Change in model settings"
+  },
+  "engine": {
+    "title": "Chat engine",
+    "restart": "Restart engine",
+    "idle": "Idle timeout",
+    "version": "Version",
+    "source": "Source",
+    "autoUpdate": "Chat engine downloads and updates",
+    "downloadFailed": "Download failed: {{message}}",
+    "redownload": "Download again",
+    "detectFailed": "Couldn’t detect the chat engine.",
+    "redetect": "Detect again",
+    "detecting": "Detecting the chat engine…",
+    "missing": "Chat engine not found.",
+    "download": "Download chat engine",
+    "tooOld": "Chat engine version is too old ({{version}}).",
+    "upgrade": "Upgrade chat engine",
+    "setModel": "Set up a chat model",
+    "ready": "Engine ready",
+    "progressLabel": "Chat engine download progress",
+    "versionNote": {
+      "unverified": "Pi {{version}} · Unverified version, may have compatibility issues",
+      "ok": "Pi {{version}} · Verified",
+      "tooOld": "Pi {{version}} · Version too old",
+      "other": "Pi {{version}} · "
+    },
+    "recheck": "Check again",
+    "installBackground": "Downloading in the background. You can leave this page and you’ll be notified when it’s done.",
+    "installNote": "The chat engine installs in RRSS’s own folder and doesn’t affect any Pi you already have on your computer.",
+    "installNoteDir": "The chat engine installs in RRSS’s own folder (<code>{{dir}}</code>) and doesn’t affect any Pi you already have on your computer."
+  },
+  "install": {
+    "installing": "Verifying and installing the chat engine…",
+    "connecting": "Connecting to the download server…",
+    "downloading": "Downloading the chat engine {{received}} / {{total}}",
+    "downloadingNoTotal": "Downloading the chat engine {{received}}",
+    "done": "Chat engine ready ({{message}})",
+    "failed": "Chat engine download failed: {{message}}"
+  },
+  "pi": {
+    "label": {
+      "savePath": "save the path",
+      "developerTools": "update developer tools",
+      "fetchUrl": "update web page reading",
+      "tool": "update the tool",
+      "toolDescription": "save the tool description",
+      "skill": "update the skill",
+      "skillSave": "save the skill",
+      "skillDelete": "delete the skill",
+      "mcpImport": "import external tools",
+      "mcpToggle": "update the external tool service",
+      "mcpDelete": "delete the external tool service",
+      "mcpSave": "save the external tool service",
+      "config": "save chat engine settings",
+      "restart": "restart the engine"
+    },
+    "failed": "Couldn’t {{label}}:",
+    "updated": "Updated; takes effect the next time you send a message.",
+    "imported": "Import finished: {{imported}} added, {{skipped}} skipped because the name already exists. New services are off by default.",
+    "restarted": "Chat engine restarted.",
+    "refreshFailed": "But the latest settings couldn’t be loaded; load them again:"
+  },
+  "toolDialog": {
+    "title": "Edit description: {{label}}",
+    "restoreDefault": "Restore default",
+    "field": "Tool description",
+    "hint": "The assistant uses this description to decide when to call the tool."
+  },
+  "skillDialog": {
+    "edit": "Edit skill",
+    "create": "New skill",
+    "delete": "Delete skill",
+    "confirmMessage": "Delete “{{name}}”? This can’t be undone.",
+    "loadFailed": "Couldn’t load skill:",
+    "loading": "Loading…",
+    "name": "Name",
+    "nameHint": "Lowercase letters, digits and hyphens, for example weekly-notes.",
+    "when": "When to use",
+    "whenHint": "A one-line description the assistant uses to decide whether to use this skill.",
+    "body": "Content"
+  },
+  "mcp": {
+    "loginIncomplete": "Browser sign-in didn’t finish: {{reason}}.",
+    "loginIncompleteBare": "Browser sign-in didn’t finish.",
+    "title": "External tools (MCP)",
+    "hint": "Let the assistant use tools you add, such as reading and writing local notes or querying online services. Each service has its own switch and takes effect from the next chat.",
+    "importJson": "Import from JSON",
+    "add": "Add service",
+    "empty": "No services yet. Add one, or paste the JSON config from the service’s instructions.",
+    "listLabel": "External tool services",
+    "transport": {
+      "stdio": "Local command",
+      "http": "Remote HTTP",
+      "sse": "Legacy SSE"
+    },
+    "oauthTag": "{{tag}} · Browser sign-in",
+    "health": {
+      "legacy": "This legacy address no longer connects; switch to the new address before turning it on",
+      "waiting": "Waiting for browser sign-in to finish…",
+      "needsLogin": "Sign-in required · Authorize in your browser to use it",
+      "connecting": "Connecting…",
+      "connected": "Connected · {{open}} / {{total}} tools available · {{seconds}}s",
+      "failed": "Connection failed · {{reason}}",
+      "noConnect": "Not connected",
+      "loggedIn": "Signed in · Not tested",
+      "untested": "Not tested"
+    },
+    "editAddress": "Change address",
+    "editAddressAria": "Change address for {{name}}",
+    "viewTools": "Show tools",
+    "hideTools": "Hide tools",
+    "viewDetails": "Show details",
+    "hideDetails": "Hide details",
+    "cancel": "Cancel",
+    "cancelAria": "Cancel sign-in for {{name}}",
+    "login": "Sign in",
+    "loginAria": "Sign in to {{name}}",
+    "probe": "Test",
+    "probeAria": "Test {{name}}",
+    "edit": "Edit",
+    "editAria": "Edit service {{name}}",
+    "missing": "Fill these in again: {{names}}",
+    "toggle": "Service: {{name}}",
+    "on": "On",
+    "off": "Off",
+    "errorFallback": "Couldn’t connect.",
+    "probeIncomplete": "Test didn’t finish",
+    "noTools": "This service doesn’t offer any tools.",
+    "toolsHead": "Checked tools are available to the assistant. Tools that change files are unchecked by default; once you check one, it asks before each call.",
+    "selectAll": "Select all",
+    "toolsLabel": "Tools available to the assistant",
+    "ask": "Asks before each call",
+    "writes": "Changes files"
+  },
+  "mcpDialog": {
+    "auth": {
+      "none": "None",
+      "token": "Access token",
+      "oauth": "Browser sign-in"
+    },
+    "saved": "Saved; leave blank to keep it",
+    "pasteConfirm": {
+      "title": "Unsaved changes to a new external tool",
+      "message": "Pasting JSON replaces what you filled in here, and those entries won’t be saved.",
+      "ok": "Continue without saving",
+      "cancel": "Keep editing"
+    },
+    "titleEdit": "Edit external tool",
+    "titleAdd": "Add external tool",
+    "subtitle": "Have a JSON config ready?",
+    "paste": "Paste it",
+    "deleteConfirm": {
+      "title": "Delete external tool service",
+      "message": "Delete “{{name}}”?"
+    },
+    "probeButton": "Test connection",
+    "saveAndLogin": "Save and sign in",
+    "legacyTitle": "This address no longer connects",
+    "legacyBody": "Most services have a new address, usually by replacing the trailing <code>/sse</code> with <code>/mcp</code>; check the service’s instructions. Save it, then turn the service on from the list.",
+    "legacySwap": "Use …/mcp",
+    "kindsLabel": "Type",
+    "kind": {
+      "stdio": {
+        "label": "Local program",
+        "desc": "A command that runs on your computer, such as npx or uvx"
+      },
+      "http": {
+        "label": "Online service",
+        "desc": "Connects through a URL"
+      }
+    },
+    "name": "Name",
+    "line": "Startup command",
+    "lineIncomplete": "A quote in the startup command isn’t closed.",
+    "env": "Environment variables",
+    "addVar": "Add variable",
+    "url": "URL",
+    "authLabel": "Authentication",
+    "token": "Token",
+    "tokenPlaceholder": "Access token",
+    "hideToken": "Hide token",
+    "showToken": "Show token",
+    "addHeader": "Add another",
+    "otherHeaders": "Other headers",
+    "valuePlaceholder": "Value",
+    "kv": {
+      "env": {
+        "name": "Environment variable name {{n}}",
+        "value": "Environment variable value {{n}}",
+        "hide": "Hide environment variable value {{n}}",
+        "show": "Show environment variable value {{n}}",
+        "remove": "Remove environment variable {{n}}"
+      },
+      "header": {
+        "name": "Header name {{n}}",
+        "value": "Header value {{n}}",
+        "hide": "Hide header value {{n}}",
+        "show": "Show header value {{n}}",
+        "remove": "Remove header {{n}}"
+      }
+    },
+    "probe": {
+      "ok_one": "Connected · 1 tool · {{seconds}}s",
+      "ok_other": "Connected · {{count}} tools · {{seconds}}s",
+      "failed": "Can’t connect · {{reason}}",
+      "noConnect": "Not connected"
+    },
+    "import": {
+      "title": "Import external tools from JSON",
+      "field": "Paste configuration",
+      "hint": "Supports common formats such as Claude Desktop and Cursor: just the mcpServers part or a whole config file.",
+      "listLabel": "Services to import",
+      "secrets_one": "1 secret",
+      "secrets_other": "{{count}} secrets",
+      "skipped": "Skipped: a service with this name already exists",
+      "sseAdd": "Will be added; needs a new address before it can be turned on",
+      "add": "Will be added, off by default",
+      "apply_one": "Import 1 service",
+      "apply_other": "Import {{count}} services",
+      "applyNone": "Import"
+    }
+  },
+  "memory": {
+    "loading": "Loading memories…",
+    "loadFailed": "Couldn’t load memories:",
+    "retry": "Retry loading",
+    "interestLoadFailed": "Couldn’t load interests:",
+    "processing": "Processing…",
+    "hitsFailed": "Couldn’t load related articles:",
+    "editReport": "Memories and interests",
+    "opDone": "{{label}} completed.",
+    "opFailed": "{{label}} failed:",
+    "opDoneRefreshFailed": "{{label}} completed. The memories list couldn’t refresh and still shows the previous content; the change itself went through, so load it again:",
+    "discardEdit": {
+      "title": "Discard memory changes",
+      "message": "This memory has unsaved changes. Discard them and continue?"
+    },
+    "op": {
+      "pin": "Pin update",
+      "memoryAsInterest": "Interest addition",
+      "discard": "Memory discard",
+      "confirm": "Memory confirmation",
+      "delete": "Memory deletion",
+      "updateInterest": "Interest update",
+      "deleteInterest": "Interest deletion",
+      "export": "Memory export",
+      "clear": "Memory clearing",
+      "updateRanking": "Ranking update",
+      "save": "Memory update",
+      "addInterest": "Interest addition"
+    },
+    "content": {
+      "title": "Content",
+      "hint": "Preferences mentioned in chats go to “Pending” first and take effect only after you confirm them."
+    },
+    "tabsLabel": "Memory settings tabs",
+    "tab": {
+      "memory": "Memories",
+      "interest": "Interests"
+    },
+    "searchPlaceholder": "Search memories and press Enter",
+    "searchLabel": "Search memories",
+    "noMatch": "No matching memories.",
+    "empty": "No memories yet. Preferences you confirm in chats appear here.",
+    "editLabel": "Memory content",
+    "save": "Save",
+    "cancel": "Cancel",
+    "pendingTag": "Pending",
+    "pinned": "Pinned",
+    "unpin": "Unpin",
+    "pin": "Pin",
+    "edit": "Edit",
+    "addAsInterest": "Add as interest",
+    "ignore": "Ignore",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "deleteConfirm": {
+      "title": "Delete memory",
+      "message": "Delete “{{content}}”?"
+    },
+    "interest": {
+      "newLabel": "New interest tag",
+      "newPlaceholder": "New interest tag, for example “local-first”",
+      "add": "Add",
+      "confirmed": "Confirmed interests",
+      "empty": "No interest tags yet. Add one above, or turn a pending memory into an interest.",
+      "embeddingReady": "Semantic matching ready",
+      "embeddingNot": "Semantic matching not ready yet",
+      "hits_one": "1 related article",
+      "hits_other": "{{count}} related articles",
+      "loadingHits": "Loading…",
+      "collapse": "Hide articles",
+      "related": "Related articles",
+      "toggle": "Interest: {{label}}",
+      "on": "Enabled",
+      "off": "Disabled",
+      "deleteAria": "Delete interest {{label}}",
+      "delete": "Delete",
+      "hitsAria": "Articles related to this interest",
+      "hitsTitle": "{{label}} · Related articles",
+      "loadingHitsStatus": "Loading related articles…",
+      "noHits": "No matching articles right now."
+    },
+    "exportFold": {
+      "summary": "Export and clear memories",
+      "hint": "Export to a JSON file to keep a copy. Clearing permanently deletes all memories and asks for confirmation first.",
+      "export": "Export memories",
+      "clear": "Clear all memories",
+      "clearTitle": "Clear memories",
+      "clearMessage": "Delete every memory? This can’t be undone."
+    },
+    "ranking": {
+      "title": "Ranking",
+      "hint": "Only affects the order in Focus; articles are never hidden.",
+      "boost": "Interest boost",
+      "boostHint": "Boosts visible articles related to interests you’ve confirmed.",
+      "rerank": "Rerank Focus by interests",
+      "rerankHint": "When off, Focus is ordered only by time and rule scores.",
+      "note": "Interests only affect the score and order of visible articles; they never undo rule-based hiding."
+    }
+  },
+  "piSource": {
+    "standalone": "Standalone binary: {{path}}",
+    "standalone_explicit": "Standalone binary · Explicit path: {{path}}",
+    "node": "Node wrapper (not recommended; includes the npm dependency tree): {{path}}",
+    "node_explicit": "Node wrapper (not recommended; includes the npm dependency tree) · Explicit path: {{path}}",
+    "missing": "Couldn’t find the standalone pi binary. Download pi-linux-x64.tar.gz or pi-windows-x64.zip from GitHub Releases and put it on PATH, next to rrss, or in ~/.local/share/rrss/bin (Windows: %APPDATA%\\rrss\\bin)."
+  },
+  "piVersionUnknown": "Found, but the version couldn’t be read"
+}

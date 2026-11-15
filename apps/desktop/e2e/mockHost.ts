@@ -555,6 +555,8 @@ export type MockHostOptions = {
   clearWebDataError?: UiError | string;
   webLinks?: Record<string, OpenWebLinkView | FulltextError>;
   linkSafety?: Record<string, LinkSafety>;
+  /** 跟随系统时宿主解析出的界面语言；默认中文，英文界面用例给 `en`。 */
+  systemLanguage?: string;
   digests?: DigestView[];
   /** 向量库状态；默认已绑定 nomic-embed-text。`allow_model_change` 总是取设置项的当前值。 */
   vectorSpace?: Partial<VectorSpaceStatusView>;
@@ -631,7 +633,7 @@ export type MockHostOptions = {
 /** 在页面脚本之前注入模拟 IPC。返回的 `invoke` 同步产生结果，不涉及真实宿主。 */
 export async function installMockHost(page: Page, options: MockHostOptions = {}) {
   await page.addInitScript(
-    ({ webExtractions, webWindowError, clearWebDataError, siteRules, siteRuleReport, webLinks, linkSafety, related, focus, feeds, threads, threadFolders, messages, digests, sendFailures, holdSend, ai, bindings, pool, presets, rules, memory, pi, probe, piConfig, networkProxy, generated, settings, diag, storage, retention, backup, translate, reader, readers, readerSequences, holdOpen, holdFocusPage, holdDigest, focusPageSize, clusterArticles, clusterSummaries, clusterGenerated, holdClusterSummary, clusterSummaryModelReady, holdSummary, summary, selectionTranslation, holdSelectionTranslation, refreshFails, piDelayMs, feedIconHrefs, brokenBlocks, trainingFeatures, vectorSpace, hidden, ruleStats, timelineArticles, feedsPageSize, feedsHiddenCount, feedTreeOrder, windowControls }) => {
+    ({ webExtractions, webWindowError, clearWebDataError, siteRules, siteRuleReport, webLinks, linkSafety, systemLanguage, related, focus, feeds, threads, threadFolders, messages, digests, sendFailures, holdSend, ai, bindings, pool, presets, rules, memory, pi, probe, piConfig, networkProxy, generated, settings, diag, storage, retention, backup, translate, reader, readers, readerSequences, holdOpen, holdFocusPage, holdDigest, focusPageSize, clusterArticles, clusterSummaries, clusterGenerated, holdClusterSummary, clusterSummaryModelReady, holdSummary, summary, selectionTranslation, holdSelectionTranslation, refreshFails, piDelayMs, feedIconHrefs, brokenBlocks, trainingFeatures, vectorSpace, hidden, ruleStats, timelineArticles, feedsPageSize, feedsHiddenCount, feedTreeOrder, windowControls }) => {
       const applyFeedTreeOrder = eval(`(${feedTreeOrder})`) as (tree: FeedTree, op: "move" | "restore", args: { items?: string[]; parentFolderId?: number | null; before?: string | null; layout?: { item: string; parent_folder_id: number | null; position: number }[] }) => { tree: FeedTree; layout: { item: string; parent_folder_id: number | null; position: number }[] };
       const collectWebArticle = (id: number) => {
         for (const value of Object.values(webLinks)) {
@@ -1217,8 +1219,11 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 return;
               case "plugin:opener|open_url":
                 return;
-              case "ui_language":
-                return { setting: "system", language: "zh-CN" };
+              case "ui_language": {
+                // 与宿主一致：显式设置优先，跟随系统时用场景给的系统语言（默认中文）。
+                const setting = state.settings.values.find((v: { id: string }) => v.id === "ui_language")?.value ?? "system";
+                return { setting, language: setting === "system" ? systemLanguage : setting };
+              }
               case "window_chrome":
                 return { controls: windowControls, tray: true };
               case "tray_install":
@@ -1846,6 +1851,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
       webWindowError: options.webWindowError ?? "", clearWebDataError: options.clearWebDataError ?? "",
       webLinks: options.webLinks ?? {},
       linkSafety: options.linkSafety ?? {},
+      systemLanguage: options.systemLanguage ?? "zh-CN",
       related: options.related ?? {},
       focus: options.focus ?? MOCK_FOCUS,
       feeds: options.feeds ?? MOCK_FEEDS,

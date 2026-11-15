@@ -1,0 +1,280 @@
+{
+  "list": {
+    "enumSeparator": ", ",
+    "commaSeparator": ", "
+  },
+  "cluster": {
+    "openSource": "Open “{{title}}” from {{feed}}",
+    "summarizing": "Summarizing coverage…",
+    "summarizingCount_one": "Summarizing 1 article…",
+    "summarizingCount_other": "Summarizing {{count}} articles…",
+    "retry": "Retry",
+    "pickModel": "Choose a model",
+    "summarizeAll_one": "Summarize this article",
+    "summarizeAll_other": "Summarize these {{count}} articles",
+    "needModel": "Choose a summary model to generate an overview",
+    "generateHint": "Writes an overview that notes what each source adds and where they disagree · Uses the summary model, {{tokens}}",
+    "tokens": "about {{n}} tokens",
+    "generate": "Generate overview",
+    "fresh_one": "1 new article: {{items}}",
+    "fresh_other": "{{count}} new articles: {{items}}",
+    "listSeparator": ", ",
+    "updated": "This coverage has updates",
+    "update": "Update overview",
+    "overview": "Overview",
+    "basis_one": "Based on 1 article",
+    "basis_other": "Based on {{count}} articles",
+    "basisGenerated_one": "Based on 1 article · Generated {{time}}",
+    "basisGenerated_other": "Based on {{count}} articles · Generated {{time}}",
+    "copy": "Copy",
+    "regenerate": "Regenerate",
+    "regenerateHint": "Regenerating uses the summary model again",
+    "additions": "What each source adds",
+    "conflicts": "Where sources disagree",
+    "loadFailed": "Couldn’t load overview:",
+    "generateFailed": "Couldn’t generate overview:"
+  },
+  "screen": {
+    "columnNote": "Showing only the “{{name}}” folder",
+    "columnNoteUnread_one": "1 unread · Showing only the “{{name}}” folder",
+    "columnNoteUnread_other": "{{count}} unread · Showing only the “{{name}}” folder",
+    "cited": "Cited “{{title}}”",
+    "copied": "Overview copied",
+    "copyFailed": "Couldn’t copy: {{message}}"
+  },
+  "training": {
+    "rateFailed": "Couldn’t save rating:",
+    "recorded": "Preference saved",
+    "saveFailed": "Couldn’t save rule:"
+  },
+  "columns": {
+    "saveFailed": "Column wasn’t saved:"
+  },
+  "refresh": {
+    "feedFallback": "Feed #{{id}}",
+    "failed_one": "1 feed failed",
+    "failed_other": "{{count}} feeds failed",
+    "failedNamed_one": "1 feed failed ({{names}})",
+    "failedNamed_other": "{{count}} feeds failed ({{names}})",
+    "failedNamedMore_one": "1 feed failed ({{names}} and others)",
+    "failedNamedMore_other": "{{count}} feeds failed ({{names}} and others)",
+    "skipped_one": "1 feed didn’t finish",
+    "skipped_other": "{{count}} feeds didn’t finish",
+    "doneWithProblems": "Refresh finished, {{parts}}",
+    "listenEnded": "Refresh tracking ended",
+    "runtimeStopped": "The background runtime restarted or stopped; refresh again",
+    "recordExpired": "The refresh record expired; refresh again"
+  },
+  "session": {
+    "spot": {
+      "kept": "Kept as is.",
+      "noRule": "There’s no hide rule to act on.",
+      "allowed": "Let “{{feed}}” through.",
+      "ruleGone": "This rule was disabled or deleted; refresh Focus.",
+      "disabled": "Disabled “{{label}}”.",
+      "halved": "Halved the weight of “{{label}}”."
+    },
+    "ruleFailed": "Couldn’t apply rule:",
+    "loadFailed": "Couldn’t load:",
+    "retry": "Retry",
+    "settingFailed": "Couldn’t save setting:",
+    "starred": "Starred",
+    "unstarred": "Unstarred",
+    "starFailed": "Couldn’t star:",
+    "noUnread": "No unread articles",
+    "marked_one": "Marked 1 article as read",
+    "marked_other": "Marked {{count}} articles as read",
+    "undo": "Undo",
+    "undoFailed": "Couldn’t undo:",
+    "markFailed": "Couldn’t mark as read:",
+    "groupAlreadyRead": "Everything in this group is already read",
+    "groupMarked_one": "Marked this group as read",
+    "groupMarked_other": "Marked this group of {{count}} articles as read",
+    "refreshedInserted_one": "Refresh finished, 1 new article added",
+    "refreshedInserted_other": "Refresh finished, {{count}} new articles added",
+    "refreshFailed": "Couldn’t refresh:"
+  },
+  "hidden": {
+    "title": "Hidden articles",
+    "close": "Close",
+    "releaseFailed": "Couldn’t let through:",
+    "optionAll_one": "All articles",
+    "optionAll_other": "All {{count}}",
+    "optionSpotLiked_one": "You liked 1 in a spot check",
+    "optionSpotLiked_other": "You liked {{count}} in spot checks",
+    "hint": "This list only shows hidden articles; nothing changes here. To let one through, pick an option.",
+    "range": "Current scope: {{scope}}{{listScope}} · last 7 days · hide threshold {{threshold}} · read-only",
+    "allFeeds": "All feeds",
+    "rangeUnread": " · Unread",
+    "rangeStarred": " · Starred",
+    "loading": "Loading hidden articles…",
+    "loadFailed": "Couldn’t load:",
+    "retryLoad": "Retry loading",
+    "filterLabel": "Filter by rule",
+    "empty": "No hidden articles match this filter.",
+    "listLabel": "Hidden articles list",
+    "timeUnknown": "Time unknown",
+    "totalScore": "Total score",
+    "spotLikedNote": "Brought back to Focus in a spot check after you opened or liked it.",
+    "releasedNote": "Let through; it will appear in Focus.",
+    "open": "Open",
+    "releaseLabel": "Let “{{title}}” through",
+    "releaseFace": "Let through…",
+    "releaseOne": "Let only this article through",
+    "disableRule": "Disable “{{label}}”",
+    "ruleUnavailable": "Rule unavailable",
+    "allowFeed": "Let “{{feed}}” through"
+  },
+  "clusterHead": {
+    "note": "Related coverage · {{size}} articles{{sources}}{{span}}",
+    "noteSources_one": " · 1 source",
+    "noteSources_other": " · {{count}} sources",
+    "freshTitle": "Coverage added since the last overview",
+    "fresh_one": "1 new",
+    "fresh_other": "{{count}} new",
+    "summarize": "Summarize",
+    "ariaOpen": "{{label}} · {{size}} articles · Collapse",
+    "ariaClosed": "{{label}} · {{size}} articles · Expand",
+    "collapse": "Collapse",
+    "expand_one": "Show 1 more article",
+    "expand_other": "Show {{count}} more articles"
+  },
+  "clusterMember": {
+    "representative": "Representative"
+  },
+  "clusterFoot": {
+    "collapse": "Collapse",
+    "total_one": "1 article total",
+    "total_other": "{{count}} articles total",
+    "markRead": "Mark all as read",
+    "cite": "Cite whole group to chat"
+  },
+  "card": {
+    "openFeed": "Open “{{feed}}” in Feeds",
+    "representative": "Representative",
+    "reasonSeparator": "; ",
+    "noisy": "Noisy feed",
+    "spotCheckTitle": "An article that should have been hidden, brought back at random to check whether the rules got it wrong",
+    "spotCheck": "Spot check",
+    "starred": "Starred",
+    "scoreTitle": "Rule and interest score",
+    "actions": "Article actions",
+    "unstar": "Unstar",
+    "star": "Star",
+    "citeTitle": "Cite to chat",
+    "cite": "Cite",
+    "like": "Like",
+    "dislike": "Dislike"
+  },
+  "trainingBar": {
+    "close": "Close",
+    "dislike": "Not interested",
+    "like": "Interested",
+    "hint": "Preference saved. Pick a rule; it takes effect after you confirm.",
+    "scoreDown": "Lower score: {{label}}",
+    "scoreUp": "Higher score: {{label}}",
+    "global": "Global",
+    "feedOnly": "This feed only"
+  },
+  "spot": {
+    "result": "Spot check: {{result}}",
+    "wouldHideUp": "Spot check: it would have been hidden by <reasons/>, with a total score of {{score}} against a hide threshold of {{threshold}}.",
+    "wouldHideDown": "Spot check: it would have been hidden by <reasons/>, so the rules got it right.",
+    "reasonSeparator": ", ",
+    "weight": " ({{weight}})",
+    "fallbackRule": "a hide rule",
+    "undo": "Undo",
+    "disable": "Disable this rule",
+    "halve": "Halve weight",
+    "allow": "Let {{feed}} through",
+    "keep": "Keep as is",
+    "noteUp": "Rules aren’t changed automatically; pick an option to apply it, and you can undo anytime.",
+    "noteDown": "This feedback counts as a correct hide."
+  },
+  "reasonRow": {
+    "because": "Recommended because"
+  },
+  "reader": {
+    "columnFallback": "Column",
+    "focusTitle": "Today"
+  },
+  "masthead": {
+    "title": "Today",
+    "columnKicker": "Today · Column"
+  },
+  "pane": {
+    "loading": "Loading Focus",
+    "filterLabel": "Score filter",
+    "scopeLabel": "Reading scope",
+    "filter": {
+      "focus": "Focus only",
+      "hide_faded": "Hide faded",
+      "all": "All articles"
+    },
+    "scope": {
+      "all": "All",
+      "unread": "Unread",
+      "starred": "Starred"
+    },
+    "display": "View",
+    "menu": {
+      "clusterGroup": "Group related coverage",
+      "interestBoost": "Interest boost",
+      "interestBoostNotReady": "Interest boost (not ready)",
+      "rerank": "Rank by interest",
+      "hideNoisy": "Hide noisy feeds",
+      "learnedTitle": "Adjusts the order based on your reading habits; doesn’t affect which articles are hidden",
+      "showDetails": "Why this"
+    },
+    "learned": {
+      "rank_features": "Topics and authors you read often",
+      "rank_source": "Feeds you read often",
+      "rank_coverage": "Covered by multiple sources",
+      "rank_freshness": "Newer articles first",
+      "rank_affinity": "Similar to articles you read often"
+    },
+    "search": "Search",
+    "searchTitle": "Search articles (Ctrl+K)",
+    "refresh": "Refresh",
+    "refreshTitle": "Fetch all feeds (R)",
+    "markAllRead": "Mark all as read",
+    "markAllReadTitle": "Mark items in the current scope as read",
+    "newContent_one": "1 new article",
+    "newContent_other": "{{count}} new articles",
+    "digestTitle": "Today’s digest",
+    "digestCta": "Read digest",
+    "retryLoadMore": "Retry loading more",
+    "empty": {
+      "loading": "Loading…",
+      "noFeeds": "No feeds yet. Add RSS / Atom feeds in Settings, then refresh.",
+      "noStarred": "Nothing starred yet. Click the star on a card or in the reader.",
+      "viewAll": "View all items",
+      "noUnread": "No unread articles.",
+      "noisyHidden": "Noisy feeds are hidden.",
+      "showNoisy": "Show noisy feeds",
+      "noFocus": "No articles match the “Focus only” filter yet. View all articles, or add rules in Settings.",
+      "viewAllArticles": "View all articles",
+      "none": "No articles yet. Try refreshing."
+    },
+    "noisy": {
+      "hidden": "Noisy feeds hidden · {{names}}",
+      "hiddenMore": "Noisy feeds hidden · {{names}} and more",
+      "hide": "Hide noisy feeds · {{names}}",
+      "hideMore": "Hide noisy feeds · {{names}} and more"
+    }
+  },
+  "ruleConditions": {
+    "author": "Author is ‘{{pattern}}’",
+    "tag": "Tagged ‘{{pattern}}’",
+    "title_kw": "Title contains ‘{{pattern}}’",
+    "title_re": "Title matches regex ‘{{pattern}}’",
+    "url_phrase": "URL contains ‘{{pattern}}’",
+    "url_re": "URL matches regex ‘{{pattern}}’",
+    "body_phrase": "Body contains ‘{{pattern}}’",
+    "body_re": "Body matches regex ‘{{pattern}}’"
+  },
+  "rankingNote": {
+    "interest_boost_inactive": "Interest boost isn’t active: no interest vectors yet, so ranking uses rule scores only",
+    "interest_not_ready": "Interests aren’t ready: no interest vectors yet, so results are ordered by time for now"
+  }
+}

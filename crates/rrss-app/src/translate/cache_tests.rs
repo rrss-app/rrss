@@ -18,6 +18,8 @@ fn article_db(url: &str) -> (tempfile::TempDir, PathBuf) {
     conn.execute("INSERT INTO articles (id, feed_id, title, content_html, hash, created_at) VALUES (7, 1, 'An article', '<p>The original article body.</p>', 'feed-hash', 1)", []).unwrap();
     translations::set_backend(&conn, ENGINE_HTTP).unwrap();
     translations::set_http_config(&conn, Some(url), None).unwrap();
+    // 默认跟随界面语言（随测试机的语言环境变）；这里的断言按中文译文写，显式选中文。
+    translations::set_target_lang(&conn, "zh").unwrap();
     (dir, path)
 }
 

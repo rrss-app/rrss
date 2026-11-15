@@ -2,7 +2,7 @@ use rusqlite::Connection;
 
 use crate::error::{Error, Result};
 
-pub const SCHEMA_VERSION: i32 = 42;
+pub const SCHEMA_VERSION: i32 = 43;
 
 /// 低于此版本的库不能在当前程序里升级。
 pub const MIN_UPGRADE_VERSION: i32 = 33;
@@ -13,7 +13,7 @@ const SETTINGS_PATCHES: &str = "
 INSERT OR IGNORE INTO settings (key, value) VALUES ('pi_auto_download', '1');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('pi_auto_update', '0');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('pi_managed_version', '');
-INSERT OR IGNORE INTO settings (key, value) VALUES ('translate_target_lang', 'zh');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('translate_target_lang', 'auto');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('translate_backend', 'complete');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('translate_http_url', '');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('translate_http_key', '');
@@ -31,6 +31,7 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         (40, apply_v40),
         (41, apply_v41),
         (42, apply_v42),
+        (43, apply_v43),
     ];
     let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if !(0..=SCHEMA_VERSION).contains(&version) {
@@ -182,6 +183,21 @@ fn apply_v42(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// 翻译目标语言改为默认跟随界面语言。旧库都存着设置补丁写入的 `zh`，分不出是不是用户选的；
+/// 在这之前界面只有中文，`zh` 与跟随界面效果相同，所以一并改成 `auto`，其他语言保留。
+fn apply_v43(conn: &Connection) -> Result<()> {
+    let tx = crate::db::write_transaction(conn)?;
+    tx.execute(
+        "UPDATE settings SET value = ?1 WHERE key = ?2 AND trim(lower(value)) IN ('zh', '')",
+        [
+            crate::translations::TARGET_FOLLOW_UI,
+            crate::translations::TRANSLATE_TARGET_LANG_KEY,
+        ],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
 fn apply_settings_patches(conn: &Connection) -> Result<()> {
     conn.execute_batch(SETTINGS_PATCHES)?;
     Ok(())
@@ -321,6 +337,28 @@ fn apply_v34(conn: &Connection) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn v43_moves_the_default_chinese_target_to_follow_the_interface() {
+        use crate::translations::{TARGET_FOLLOW_UI, TRANSLATE_TARGET_LANG_KEY, target_lang};
+        let dir = tempfile::tempdir().unwrap();
+        let conn = crate::db::open_at(&dir.path().join("target.db")).unwrap();
+        assert_eq!(
+            target_lang(&conn).unwrap(),
+            TARGET_FOLLOW_UI,
+            "new databases follow the interface"
+        );
+        for (stored, expected) in [("zh", TARGET_FOLLOW_UI), ("ja", "ja"), ("en", "en")] {
+            crate::db::set_setting(&conn, TRANSLATE_TARGET_LANG_KEY, stored).unwrap();
+            conn.execute_batch("PRAGMA user_version=42;").unwrap();
+            migrate(&conn).unwrap();
+            assert_eq!(target_lang(&conn).unwrap(), expected, "stored {stored}");
+        }
+        // Choosing Chinese after the upgrade is kept.
+        crate::db::set_setting(&conn, TRANSLATE_TARGET_LANG_KEY, "zh").unwrap();
+        migrate(&conn).unwrap();
+        assert_eq!(target_lang(&conn).unwrap(), "zh");
+    }
 
     #[test]
     fn v42_removes_retired_citation_task_without_disturbing_active_tasks_or_usage() {

@@ -1,0 +1,193 @@
+{
+  "view": {
+    "focus": "Today",
+    "column": "Column",
+    "feeds": "Feeds",
+    "digest": "Digest",
+    "chat": "Chat"
+  },
+  "sidebar": {
+    "archivedLabel": "Archived chats",
+    "settings": "Settings",
+    "about": "About",
+    "aboutTitle": "About RRSS",
+    "searchTitle": "Search titles and body text (Ctrl+K)",
+    "searchLabel": "Search articles",
+    "navLabel": "Main views",
+    "unreadCount_one": "1 unread article",
+    "unreadCount_other": "{{count}} unread articles",
+    "newThread": "New chat",
+    "feedsLabel": "Feeds",
+    "back": "Back to {{name}} (Esc)"
+  },
+  "column": {
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "remove": "Remove from focus columns",
+    "menuLabel": "{{name}} column menu",
+    "menuTitle": "Column menu",
+    "add": "Add column",
+    "added": " (added)"
+  },
+  "updates": {
+    "readFailed": "Feeds were updated, but loading failed. Refresh to try again.",
+    "listenFailed": "Couldn’t listen for feed updates. Reopen the app and try again."
+  },
+  "session": {
+    "setFailed": "Couldn’t save settings:",
+    "loadFailed": "Couldn’t load:",
+    "markReadFailed": "Couldn’t mark as read:"
+  },
+  "screen": {
+    "scopeLabel": "Reading scope",
+    "scope": {
+      "all": "All",
+      "unread": "Unread",
+      "starred": "Starred"
+    },
+    "markReadTitle": "Mark visible unread articles in this scope as read",
+    "markRead": "Mark as read",
+    "fetchTitle": "Fetch all feeds",
+    "refresh": "Refresh",
+    "path": "Feeds",
+    "pathNested": "Feeds · {{path}}",
+    "unreadLine_one": "1 unread · by time",
+    "unreadLine_other": "{{count}} unread · by time",
+    "empty": "No articles in this scope",
+    "troubled": "{{title}}: {{reason}}",
+    "read": "Read",
+    "unread": "Unread",
+    "retryMore": "Retry loading more",
+    "hidden_one": "1 more hidden by rules",
+    "hidden_other": "{{count}} more hidden by rules"
+  },
+  "scope": {
+    "all": "All feeds"
+  },
+  "move": {
+    "where": {
+      "root": "to the root level",
+      "top": "to the top",
+      "rootTop": "to the top of the root level",
+      "folder": "to “{{name}}”"
+    },
+    "doneOne": "Moved “{{name}}” {{where}}",
+    "doneMany_one": "Moved 1 item {{where}}",
+    "doneMany_other": "Moved {{count}} items {{where}}",
+    "undo": "Undo"
+  },
+  "tree": {
+    "label": "Feeds",
+    "filterPlaceholder": "Filter feeds…",
+    "filterLabel": "Filter feeds by name",
+    "filterEmpty": "No folders or feeds match “{{query}}”",
+    "rowActions": "Actions for {{name}}",
+    "fetchError": "Fetch failed: {{error}}",
+    "picked_one": "1 selected",
+    "picked_other": "{{count}} selected",
+    "done": "Done",
+    "newFolderLabel": "New folder name",
+    "folderName": "Folder name",
+    "secPinned": "Pinned",
+    "secAll": "All",
+    "renameLabel": "Rename {{name}}",
+    "organize": "Organize",
+    "settings": "Settings",
+    "moveTo": "Move to…",
+    "error": {
+      "move": "Couldn’t move:",
+      "newFolder": "Couldn’t create the folder:",
+      "undo": "Couldn’t undo:",
+      "pin": "Couldn’t pin:",
+      "column": "Couldn’t set the focus column:",
+      "rename": "Couldn’t rename:"
+    },
+    "limit": {
+      "pinned": "You can pin up to 10 items",
+      "columns": "You can have up to 5 focus columns"
+    },
+    "menu": {
+      "add": "New",
+      "newFolder": "New folder",
+      "newSubfolder": "New subfolder",
+      "rename": "Rename",
+      "moveFolder": "Move to folder",
+      "row": "Row actions",
+      "unpin": "Unpin",
+      "reveal": "Show in tree",
+      "addFeed": "Add feed…",
+      "noFolder": "No folder (top level)",
+      "addSource": "Add existing feeds…",
+      "toTop": "Move to top",
+      "up": "Move up",
+      "down": "Move down",
+      "toFolder": "Move to folder…",
+      "pin": "Pin",
+      "unsetColumn": "Remove from focus columns",
+      "setColumn": "Set as focus column"
+    }
+  },
+  "picker": {
+    "label": "Add feeds to {{name}}",
+    "title": "Add feeds to “{{name}}”",
+    "introFresh": "The folder is ready. Check the feeds to add, or drag feeds onto the folder later.",
+    "intro": "Checked feeds are added at once; they’ll no longer be in their previous folders.",
+    "close": "Close",
+    "search": "Search feeds",
+    "searchLabel": "Search feeds to add to the folder",
+    "looseOnly": "Only feeds not in a folder",
+    "empty": "No feeds match “{{query}}”",
+    "unselectAll": "Deselect all",
+    "selectAll": "Select all",
+    "here": "Already here",
+    "selected_one": "1 selected",
+    "selected_other": "{{count}} selected",
+    "selectedMoving_one": "1 selected; {{moving}} will move out of the current folder",
+    "selectedMoving_other": "{{count}} selected; {{moving}} will move out of their current folders",
+    "none": "Nothing selected",
+    "skip": "Skip",
+    "cancel": "Cancel",
+    "apply_one": "Add 1 feed",
+    "apply_other": "Add {{count}} feeds",
+    "applyNone": "Add feeds",
+    "loose": "Not in a folder"
+  },
+  "health": {
+    "feed_health_failing": {
+      "initialLabel": "Fetch failed",
+      "label": "{{failures}} failures in a row · {{days}} days",
+      "detail": "Latest error: {{error}}\n{{success}}"
+    },
+    "feed_health_stale": {
+      "label": "No new articles in {{days}} days",
+      "detail": "{{pace}}{{last}}\n{{fetch}}. {{success}}",
+      "pace": "Usually about one article every {{days}} days. ",
+      "lastArticle": "Last article added {{date}}.",
+      "noArticles": "No articles have been added since you subscribed.",
+      "fetchFailed": "The last fetch failed",
+      "fetchOk": "Fetches are working"
+    },
+    "feed_health_noisy": {
+      "label": "Most content is hidden",
+      "detail": "Most articles in the last {{days}} days were hidden by rules or disliked. You can unsubscribe or adjust the rules."
+    },
+    "timeout": "The feed request timed out",
+    "recentSuccess": "Last success: {{date}}",
+    "neverSucceeded": "Never fetched successfully",
+    "truncated": "{{text}}…",
+    "date": {
+      "today": "Today {{time}}",
+      "yesterday": "Yesterday {{time}}",
+      "monthDay": "{{month}}/{{day}} {{time}}",
+      "yearDay": "{{month}}/{{day}}/{{year}}"
+    },
+    "http": {
+      "limited": "The feed is rate-limited; try again later",
+      "denied": "The feed refused access",
+      "missing": "Feed not found (404)",
+      "unavailable": "The feed is temporarily unavailable ({{status}})",
+      "other": "The feed returned {{status}}"
+    }
+  },
+  "manualFeed": "Saved pages"
+}

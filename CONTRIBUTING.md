@@ -56,8 +56,32 @@ cargo build --release --locked -p rrss-desktop
 - **网络**：新的网络请求必须接入对应的 `NetworkScope`，不要直接创建未配置代理的 `reqwest::Client`。Windows 的系统代理从 `rrss-core::platform` 读取。
 - **隐私**：界面错误、日志与诊断里的密钥、令牌和代理认证统一经 `rrss-core::logsafe` 清洗；正文、查询与模型响应不写进日志。
 - **演示数据**：截图、预览与测试夹具用虚构的来源、作者和 `.example` 域名，不把编造的内容挂在真实媒体、作者或项目名下，不写真实的内网地址。
-- **展示文案**：界面目前只有中文，多语言正在分批推进。后端不拼给用户看的句子：原因、状态、校验与错误提示由 `views.rs` 返回「码 + 参数」，由前端格式化；落库存码不存句。前端文案写进 `apps/desktop/src/locales/zh-CN/<功能>.json`，用 `src/i18n` 导出的 `useTranslation` / `Trans` 取，带数量的句子用 `count` 与 `_other` 后缀的键，不在代码里拼；日期与数字用 `Intl` 时语言取 `locale()`。「保存失败：」这类前缀键整句带冒号，接后文用 `lib/notice` 的 `withPrefix`，不直接拼字符串。`check:locales` 核对每个语言包与中文的键、变量与标签一致。还没迁移的旧文件里的中文字面量由 `check:i18n` 按文件计数，不许超过基线；减少时只提示，一批迁移合并后运行 `node tooling/check-i18n.mjs --update` 收紧基线。测试按角色或码断言，不新增对中文文案的断言。
+- **展示文案**：界面有简体中文与英文，中文是源语言，翻译方式见下一节。后端不拼给用户看的句子：原因、状态、校验与错误提示由 `views.rs` 返回「码 + 参数」，由前端格式化；落库存码不存句。前端文案写进 `apps/desktop/src/locales/zh-CN/<功能>.json`，用 `src/i18n` 导出的 `useTranslation` / `Trans` 取，带数量的句子用 `count` 与 `_other` 后缀的键，不在代码里拼；日期与数字用 `Intl` 时语言取 `locale()`。「保存失败：」这类前缀键整句带冒号，接后文用 `lib/notice` 的 `withPrefix`，不直接拼字符串。`check:locales` 核对每个语言包与中文的键、变量与标签一致。还没迁移的旧文件里的中文字面量由 `check:i18n` 按文件计数，不许超过基线；减少时只提示，一批迁移合并后运行 `node tooling/check-i18n.mjs --update` 收紧基线。测试按角色或码断言，不新增对中文文案的断言。
 - **样式**：使用 `apps/desktop/src/styles/tokens.css` 的语义令牌与 4px 网格；长列表用虚拟化。
+
+## 翻译
+
+语言包在 `apps/desktop/src/locales/<语言>/<功能>.json`，按功能分文件，与 `zh-CN` 同名同结构；中文是源语言，其他语言照它翻。
+
+- **看上下文再译**：`node apps/desktop/tooling/locale-context.mjs <功能>` 列出每条中文和它在代码里的位置，能看出是按钮、标题、提示还是错误；大文件可以用 `--keys a,b` 或 `--part 1/2` 分块。
+- **检查**：`pnpm --dir apps/desktop check:locales` 核对每个语言与中文的键一致（复数按该语言的复数类别）、`{{变量}}` 与 `<标签>` 一致、冒号结尾的前缀译文也以冒号结尾、译文里没有中文；分块翻译时加 `--partial` 只查已有的部分。
+- **写法**：英文用美式拼写、句首大写，按钮与菜单项用祈使式、不加句号；带数量的句子写 `_one` 与 `_other` 两条；以冒号结尾的前缀（「保存失败：」）译成以半角冒号结尾、不留行尾空格；中文引号「」译成 “ ”。专有名词照写：RRSS、Pi、MCP、OPML、RSSHub、DeepL、DeepLX。
+- **术语**（英文）：
+
+| 中文 | 英文 | 中文 | 英文 |
+|---|---|---|---|
+| 今日焦点 / 焦点 | Today / Focus | 订阅 / 订阅源 | Feeds / feed |
+| 栏目 | Column | 文件夹 | Folder |
+| 简报 / 日报 / 周报 | Digest / Daily / Weekly | 对话 / 会话 | Chat（列表叫 Chats） |
+| 相近报道 / 综述 | Related coverage / Overview | 推荐详情 | Why this |
+| 规则 / 隐藏 / 放行 | Rules / Hidden / Let through | 抽查 | Spot check |
+| 兴趣 / 记忆 | Interests / Memories | 收藏 / 已读 / 未读 | Starred / Read / Unread |
+| 阅读器 / 原网页 | Reader / Original page | 引用 / 划词 | Cite / selection |
+| 助手（Pi） | Assistant | 外部工具（MCP） | External tools (MCP) |
+| 模型连接 / 用途 | Model connection / task | 嵌入 / 向量空间 | Embeddings / vector space |
+| 托盘 | System tray | 备份 / 保留 | Backup / Retention |
+
+新语言需要维护者在 `apps/desktop/src/i18n/index.ts` 登记后才会出现在语言选项里。
 
 ## 测试
 

@@ -1,0 +1,272 @@
+{
+  "goModels": "Choose a model",
+  "estimateSuffix": "{{text}} (estimated)",
+  "toggle": {
+    "on": "On",
+    "off": "Off"
+  },
+  "notice": {
+    "saveFailed": "Couldn’t save:"
+  },
+  "tenThousands": "{{n}} × 10k",
+  "fit": {
+    "onlyDigest": "Only enough for the automatic digest (about {{total}} tokens a day); automatic summaries will rarely run",
+    "onlyDigestCluster": "Only enough for the automatic digest and overviews (about {{total}} tokens a day); automatic summaries will rarely run",
+    "overLimit": "After about {{digest}} tokens for the automatic digest, the remaining budget still covers more than {{limit}} articles a day, so the budget isn’t the bottleneck",
+    "overLimitCluster": "After about {{digest}} tokens for the automatic digest and {{cluster}} tokens for automatic overviews, the remaining budget still covers more than {{limit}} articles a day, so the budget isn’t the bottleneck",
+    "fits": "After about {{digest}} tokens for the automatic digest, enough for about {{n}} articles a day",
+    "fitsCluster": "After about {{digest}} tokens for the automatic digest and {{cluster}} tokens for automatic overviews, enough for about {{n}} articles a day"
+  },
+  "unlimited": {
+    "plain": "Automatic summaries use at most about {{most}} tokens a day ({{limit}} articles × about {{per}}, plus about {{digest}} for the automatic digest; estimated)",
+    "cluster": "Automatic summaries use at most about {{most}} tokens a day ({{limit}} articles × about {{per}}, plus about {{digest}} for the automatic digest and {{cluster}} for automatic overviews; estimated)"
+  },
+  "upgrade": {
+    "dismissFailed": "Couldn’t dismiss the notice:",
+    "title": "Automatic summaries are off",
+    "body": "Background summaries call the generation model for every new article and are the main ongoing cost, so this update turns them off. “Summarize this article” in the reader and daily digests still work.",
+    "reenable": "To turn it back on: Settings → Models → Automatic tasks. With your current setting ({{tier}}), about {{tokens}} tokens per article (estimated).",
+    "budgetDefaulted": "Automatic tasks now have daily budgets: <strong>{{generation}} tokens a day for generation and {{embedding}} tokens a day for embeddings</strong>. When one runs out, that kind of task pauses for the day and resumes the next day. You hadn’t set a budget before (unlimited), so this default now applies; you can change it under “Usage”.",
+    "budgetKept": "Your daily budget of {{budget}} tokens is kept as the daily generation budget. Embeddings are counted separately, with a default of {{embedding}} tokens a day.",
+    "showJobs": "View automatic tasks",
+    "dismiss": "Got it"
+  },
+  "budgetNote": {
+    "fit": "About {{tokens}} tokens per article with the {{tier}} input setting. {{fit}} (estimated).",
+    "unlimitedOn": "Currently unlimited: {{text}}. Consider setting a cap, for example 200k tokens.",
+    "unlimitedOff": "Currently unlimited. Consider setting a cap, for example 200k tokens."
+  },
+  "usage": {
+    "todayOut": "Today {{today}} / {{cap}} tokens · used up",
+    "todayCap": "Today <strong>{{today}}</strong> / {{cap}} tokens",
+    "today": "Today <strong>{{today}}</strong> tokens",
+    "month": "This month {{month}} tokens",
+    "generation": {
+      "label": "Generation usage",
+      "hint": "Read-only. Automatic and manual summaries, digests, and memory consolidation all count; days follow your local time.",
+      "paused": "Today’s generation budget is used up, so automatic summaries and digests are paused until tomorrow. Manual summaries and digests still work."
+    },
+    "embedding": {
+      "label": "Embedding usage",
+      "hint": "Read-only. Only embedding requests count.",
+      "paused": "Today’s embedding budget is used up, so new articles can only be found by full-text search until tomorrow. Summaries and digests aren’t affected."
+    },
+    "chat": {
+      "label": "Chat usage",
+      "hint": "Read-only. Chats don’t count toward any budget."
+    }
+  },
+  "auto": {
+    "label": "Automatic summaries",
+    "disabled": "Automatic summaries are off. “Summarize this article” and digests still work.",
+    "enabled": "Automatic summaries are on. The next batch starts within {{minutes}} minutes.",
+    "enabledWithBudget": "Automatic summaries are on, with a daily generation budget of {{budget}} tokens. The next batch starts within {{minutes}} minutes.",
+    "on": {
+      "intro": "Writes summaries for new articles in the background, shown directly on the cards in Today. This is an ongoing cost.",
+      "scopeWindow": "Only articles added in the last {{days}} days with a positive score are processed; for older ones, select “Summarize this article”.",
+      "scopeLimit": "At most {{limit}} articles a day (manual summaries don’t count), in batches of {{size}} every {{minutes}} minutes.",
+      "scopeCostBudget": "About {{tokens}} tokens per article with the {{tier}} input setting; daily generation budget {{budget}} tokens. {{fit}} (estimated).",
+      "scopeCostUnlimited": "About {{tokens}} tokens per article with the {{tier}} input setting; the daily generation budget is unlimited.",
+      "noModel": "No model is selected for “Summary”, so automatic summaries are paused",
+      "pausedToday": "Summarized today: {{today}} · generation budget used up; resumes tomorrow",
+      "today": "Summarized today: {{today}} / {{limit}}"
+    },
+    "off": {
+      "intro": "When off, nothing is summarized in the background. “Summarize this article” still works while reading, and the daily digest is still generated; articles without a summary are picked by title alone, so the digest may be a little thinner.",
+      "enableFit": "Once on, only positively scored articles added in the last {{days}} days are processed, at most {{limit}} a day. {{fit}} (estimated).",
+      "enableUnlimited": "Once on, only positively scored articles added in the last {{days}} days are processed, at most {{limit}} a day; the daily generation budget is currently unlimited.",
+      "noModel": "No model is selected for “Summary” yet: you can turn this on now, and it starts once you pick one."
+    }
+  },
+  "neutral": {
+    "label": "Extra summaries for neutral unread articles",
+    "needAuto": "Turn on automatic summaries first."
+  },
+  "cluster": {
+    "label": "Automatic overviews for related coverage",
+    "disabled": "Automatic overviews are off. “Summarize” still generates one on demand.",
+    "enabled": "Automatic overviews for related coverage are on. The next batch runs after automatic summaries.",
+    "on": {
+      "intro": "Writes overviews for related coverage in Today in the background, ready when you expand a group, the same as the ones you generate with “Summarize”. Counts toward the daily generation budget.",
+      "scopeSources": "Only groups with at least 2 sources whose newest article is within 3 days are covered; groups without an overview go first.",
+      "scopeUpdate": "Groups that already have an overview are updated only after a new article arrives and more than 24 hours have passed since the last generation.",
+      "scopeLimit": "At most {{limit}} groups a day, after automatic summaries; about {{per}} tokens per group, at most about {{most}} tokens a day (estimated).",
+      "noModel": "No model is selected for “Related coverage overview”, so automatic overviews are paused",
+      "pausedToday": "Overviews today: {{today}} · generation budget used up; resumes tomorrow",
+      "today": "Overviews today: {{today}} / {{limit}} groups"
+    },
+    "off": {
+      "intro": "When off, overviews are generated only when you select “Summarize”. When on, RRSS writes overviews for multi-source related coverage in the background, at most {{limit}} groups a day and about {{tokens}} tokens a day (estimated), counting toward the daily generation budget."
+    }
+  },
+  "digest": {
+    "label": "Automatic digest generation"
+  },
+  "dialog": {
+    "title": "Turn on automatic summaries?",
+    "intro": "When on, RRSS calls the generation model in the background to write summaries for new articles. <strong>This is an ongoing cost</strong>: usage accumulates every day the app is open.",
+    "scopeWindow": "Only positively scored articles added in the last {{days}} days are processed.",
+    "scopeLimit": "At most {{limit}} articles a day, in batches of {{size}} every {{minutes}} minutes; manual summaries don’t count.",
+    "model": "Uses the model for “Summary”: <mono>{{model}}</mono>.",
+    "estimateTag": "Estimate",
+    "estimateFit": "About {{per}} tokens per article, enough for about {{n}} articles a day",
+    "estimateOnlyDigest": "About {{per}} tokens per article; the budget only covers the automatic digest",
+    "estimateOnlyDigestCluster": "About {{per}} tokens per article; the budget only covers the automatic digest and overviews",
+    "deduct": "Rough estimate with the current input setting ({{tier}}); the daily generation budget is {{budget}} tokens, minus about {{digest}} tokens a day for the automatic digest.",
+    "deductCluster": "Rough estimate with the current input setting ({{tier}}); the daily generation budget is {{budget}} tokens, minus about {{digest}} tokens a day for the automatic digest and {{cluster}} for automatic overviews.",
+    "estimateNote": "Actual usage varies with article length and model. When the budget runs out, everything stops until the next day, including the automatic digest, which uses the same budget.",
+    "noBudgetTag": "No daily generation budget yet",
+    "unlimitedIntro": "The budget is currently unlimited. Once on: {{text}}. Consider setting a cap first:",
+    "budgetAria": "Daily generation budget (10k tokens)",
+    "budgetUnit": "10k tokens / day",
+    "budgetInvalid": "Enter a number greater than 0; you can change it later under “Usage”.",
+    "enableNoBudget": "Turn on without a budget",
+    "enable": "Turn on automatic summaries",
+    "enableWithBudget": "Set budget and turn on"
+  },
+  "vector": {
+    "title": "Vector space",
+    "intro": "Vectors can only be compared with vectors from the same model, so your library is bound to one embedding model.",
+    "effortLocal": "about {{minutes}} min, at no cost",
+    "effortRemote": "about {{tokens}} tokens, billed at your provider’s rates",
+    "bind": {
+      "title": "Bind vectors for your library",
+      "ok": "Bind and start generating",
+      "effortUnknown": "the time depends on the number of articles",
+      "message": "Vectors for your library will be generated by {{label}}: about {{chunks}} chunks, {{effort}}. Changing the embedding model later requires rebuilding the entire vector space. Generation runs in the background; you can keep using the app meanwhile."
+    },
+    "change": {
+      "title": "Change embedding model and rebuild",
+      "ok": "Start rebuilding",
+      "message": "Switching from {{from}} to {{label}} requires regenerating about {{chunks}} chunks, {{effort}}. Until the rebuild finishes, related articles and chat search keep using {{from}}; they switch automatically when it’s done, and the old vectors are replaced."
+    },
+    "dims": {
+      "label": "Vector dimensions",
+      "auto": "Auto (up to 1024 dimensions)",
+      "n": "{{dims}} dimensions",
+      "native": "Native",
+      "nativeN": "Native ({{dims}} dimensions)",
+      "hint": "Only some models support reduced dimensions (such as OpenAI text-embedding-3, Gemini embedding, Qwen3-Embedding, and EmbeddingGemma); other models perform noticeably worse at fewer dimensions. The default stays at or below 1024 dimensions to save space.",
+      "hintStale": "Vector generation is paused. Restore the original configuration before changing dimensions.",
+      "hintBuilding": "The vector space is rebuilding. You can change dimensions after it finishes or is canceled."
+    },
+    "notice": {
+      "failed": "Couldn’t complete:",
+      "readFailed": "Couldn’t read vector space status:",
+      "dimsSaved": "Vector dimensions saved.",
+      "cancelled": "Rebuild canceled.",
+      "restored": "Original configuration restored and rechecked.",
+      "checked": "Check finished."
+    },
+    "resize": {
+      "title": "Adjust vector dimensions",
+      "truncate": "Adjusts the vector space from {{from}} to {{to}} dimensions by truncating the existing {{chunks}} chunks locally; no requests are made and no cost is incurred. Search keeps using the current {{from}} dimensions until it finishes.",
+      "rebuild": "Adjusts the vector space from {{from}} to {{to}} dimensions, which requires regenerating vectors: about {{chunks}} chunks, {{effort}}. Search keeps using the current {{from}} dimensions until the rebuild finishes.",
+      "okAdjust": "Start adjusting",
+      "okRebuild": "Start rebuilding"
+    },
+    "bound": {
+      "tag": "Vectors bound to your library",
+      "summary": "{{model}} ({{provider}}) · {{dims}} dimensions · {{chunks}} chunks",
+      "summaryNative": "{{model}} ({{provider}}) · {{dims}} dimensions (native {{sourceDims}}) · {{chunks}} chunks",
+      "providerDeleted": "Connection deleted"
+    },
+    "unbound": "No embedding model yet. Without one, chat search uses full-text search only, and ranking doesn’t use vectors.",
+    "building": {
+      "resizing": "Adjusting the vector space to {{dims}} dimensions: {{written}} / {{total}} chunks",
+      "rebuilding": "Rebuilding the vector space with {{model}}: {{written}} / {{total}} chunks",
+      "progressAria": "Vector space rebuild progress",
+      "keepDims": "Until the rebuild finishes, search keeps using the current {{dims}} dimensions; it switches automatically when done.",
+      "keepModel": "Until the rebuild finishes, search keeps using {{model}}; it switches automatically when done.",
+      "previousVectors": "the previous vectors"
+    },
+    "cancel": {
+      "button": "Cancel rebuild",
+      "title": "Cancel rebuild",
+      "messageDims": "The new vectors generated so far will be deleted, and the dimensions go back to {{dims}}.",
+      "messageModel": "The new vectors generated so far will be deleted, and embeddings go back to the previous model.",
+      "ok": "Cancel rebuild",
+      "keep": "Keep rebuilding"
+    },
+    "stale": {
+      "title": "New vector generation is paused",
+      "restore": "Restore original configuration",
+      "defaultReason": "The service returns vectors that differ from the ones the space was built with; the model version or quantization may have changed. ",
+      "existingUsable": "Existing vectors still work for search.",
+      "probeMismatch": "The vectors don’t match the ones the space was built with; the connection, model version, quantization, or dimensions may have changed. "
+    },
+    "check": {
+      "title": "Check generation setup",
+      "hint": "Periodically checks whether the service’s vectors have changed; if they have, generation pauses and you’re notified. ",
+      "last": "Last checked: {{time}}.",
+      "button": "Check now"
+    }
+  },
+  "translate": {
+    "editLabel": "Translation settings",
+    "loading": "Loading saved translation settings…",
+    "retry": "Retry loading",
+    "backend": {
+      "complete": "LLM",
+      "deepl": "DeepL (official)",
+      "deeplx": "DeepLX",
+      "http": "HTTP service"
+    },
+    "lang": {
+      "auto": "Match interface language ({{current}})",
+      "zh": "Chinese",
+      "en": "English",
+      "ja": "Japanese"
+    },
+    "notice": {
+      "readFailedRetry": "Couldn’t load translation settings. Try again:",
+      "readFailedKept": "Couldn’t load translation settings; your input was kept:",
+      "testOk": "Settings saved. Test translation:",
+      "saved": "Translation settings saved.",
+      "testFailed": "Settings saved, but the test failed:",
+      "saveFailedNoTest": "Couldn’t save; the test wasn’t started:",
+      "saveFailed": "Couldn’t save:",
+      "savedButReadFailed": "Settings saved, but {{error}}"
+    },
+    "reading": {
+      "title": "Reading",
+      "enable": "Enable translation",
+      "enableHint": "When off, translations don’t appear in the reader.",
+      "targetLang": "Target language",
+      "otherLangs": "Other languages",
+      "langCode": "Language code",
+      "langCodeHint": "For other languages, enter a code such as de (German) or fr (French)."
+    },
+    "service": {
+      "title": "Service",
+      "hint": "Picking one applies it right away. Each service keeps its own URL and key when you switch.",
+      "aria": "Translation service",
+      "test": "Test connection",
+      "testDirtyTitle": "Saves your changes first, then tests"
+    },
+    "deepl": {
+      "hint": "Enter your DeepL API key. Free-plan keys end in :fx. If you leave the custom URL empty, the official endpoint is chosen from the key.",
+      "keyLabel": "API key",
+      "keyPlaceholder": "e.g. 12345678-abcd-...:fx",
+      "urlLabel": "Custom API URL (optional)",
+      "urlPlaceholder": "Leave empty for the official default"
+    },
+    "deeplx": {
+      "hint": "Enter the URL of your DeepLX deployment; if the service requires authentication, fill in the Token as well.",
+      "urlLabel": "DeepLX service URL",
+      "tokenLabel": "Token (optional)"
+    },
+    "http": {
+      "hint": "Enter the URL of a LibreTranslate-compatible translation service.",
+      "urlLabel": "HTTP service URL",
+      "keyLabel": "API key (optional)",
+      "keyPlaceholder": "Optional API key"
+    },
+    "model": {
+      "label": "Model",
+      "hint": "The same as the “Translation” task on the Models page.",
+      "menuLabel": "Translation model",
+      "saved": "Saved: translation now uses {{model}}."
+    }
+  }
+}

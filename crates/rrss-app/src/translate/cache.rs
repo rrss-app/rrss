@@ -38,7 +38,7 @@ fn endpoint(url: &str) -> CoreResult<String> {
 impl Config {
     pub fn read(conn: &Connection) -> CoreResult<Self> {
         let backend = selected_backend(conn)?;
-        let lang = translations::target_lang(conn)?;
+        let lang = crate::ui_language::translate_target(conn)?;
         let complete = if backend == TranslateBackend::Complete {
             Some(ai_store::resolve_task(conn, TASK_ARTICLE_TRANSLATE)?)
         } else {

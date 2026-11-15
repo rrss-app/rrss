@@ -191,7 +191,8 @@ pub fn translate_page(conn: &Connection) -> rrss_core::Result<TranslatePage> {
         enabled: translations::is_enabled(conn).unwrap_or(true),
         backend: translations::backend_id(conn)
             .unwrap_or_else(|_| translations::ENGINE_COMPLETE.into()),
-        target_lang: translations::target_lang(conn).unwrap_or_else(|_| "zh".into()),
+        target_lang: translations::target_lang(conn)
+            .unwrap_or_else(|_| translations::TARGET_FOLLOW_UI.into()),
         deepl_key: secret(deepl_key.as_deref(), translations::TRANSLATE_DEEPL_KEY_KEY)?,
         deepl_url: deepl_url.unwrap_or_default(),
         deeplx_url,

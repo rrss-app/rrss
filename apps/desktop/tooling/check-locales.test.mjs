@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compareLocale, flatten } from "./check-locales.mjs";
+import { compareLocale, flatten, onlyNamespaces } from "./check-locales.mjs";
 
 const messages = (ns, tree) => flatten(ns, tree);
 
@@ -28,4 +28,18 @@ test("missing keys, plural forms, variables, tags, colons and Chinese are report
 test("source-only date templates may be left out", () => {
   const source = messages("shell", { time: { monthDay: "{{month}}月{{day}}日", today: "今天" } });
   assert.deepEqual(compareLocale("en", source, messages("shell", { time: { today: "Today" } })), []);
+});
+
+test("partial checks keep only the namespaces the translation already has", () => {
+  const source = new Map([...messages("search", { a: "甲" }), ...messages("focus", { b: "乙" })]);
+  const target = messages("search", { a: "A" });
+  assert.deepEqual([...onlyNamespaces(source, target).keys()], ["search:a"]);
+  assert.deepEqual(compareLocale("en", onlyNamespaces(source, target), target), []);
+});
+
+test("partial checks also work on a few top-level groups of a large namespace", () => {
+  const source = messages("errors", { a: "甲", b_other: "{{count}} 条", c: { d: "丙" }, e: "丁" });
+  const target = messages("errors", { a: "A", b_one: "1 item", b_other: "{{count}} items", c: { d: "C" } });
+  assert.deepEqual([...onlyNamespaces(source, target).keys()], ["errors:a", "errors:b_other", "errors:c.d"]);
+  assert.deepEqual(compareLocale("en", onlyNamespaces(source, target), target), []);
 });

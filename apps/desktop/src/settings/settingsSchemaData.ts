@@ -31,7 +31,7 @@ export const SETTING_SPECS: SettingSpec[] = [
   {"id":"focus_hide_noisy","domain":"reader","level":"l0","kind":{"type":"bool"},"default":"0","apply":"immediate","affects_pi":false},
   {"id":"feed_fetch_per_host","domain":"reader","level":"l1","kind":{"type":"int","min":1,"max":8},"default":"4","apply":"draft","affects_pi":false},
   {"id":"hide_threshold","domain":"reader","level":"l0","kind":{"type":"int","min":-9223372036854775808,"max":9223372036854775807},"default":"-10","apply":"draft","affects_pi":false},
-  {"id":"translate_target_lang","domain":"reader","level":"l0","kind":{"type":"text","max":16},"default":"zh","apply":"immediate","affects_pi":false},
+  {"id":"translate_target_lang","domain":"reader","level":"l0","kind":{"type":"text","max":16},"default":"auto","apply":"immediate","affects_pi":false},
   {"id":"developer_tools","domain":"assistant","level":"l2","kind":{"type":"bool"},"default":"0","apply":"immediate","affects_pi":true},
   {"id":"fetch_url_enabled","domain":"assistant","level":"l1","kind":{"type":"bool"},"default":"0","apply":"immediate","affects_pi":true},
   {"id":"close_action","domain":"reader","level":"l1","kind":{"type":"enum","options":[{"id":"ask"},{"id":"tray"},{"id":"quit"}]},"default":"ask","apply":"immediate","affects_pi":false},

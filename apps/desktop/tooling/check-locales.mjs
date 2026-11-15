@@ -101,12 +101,25 @@ export function compareLocale(locale, source, target) {
   return problems;
 }
 
-export function runCheckLocales(dir = LOCALES_DIR, io = { stdout: process.stdout, stderr: process.stderr }) {
-  const source = readLocale(path.join(dir, SOURCE));
+/** `ns:a.b.c` 的命名空间与第一层键：`ns:a`。复数后缀也去掉，`ns:a_other` 归到 `ns:a`。 */
+const topGroup = (key) => key.replace(/^([^:]+:[^.]+?)(_(zero|one|two|few|many|other))?(\..*)?$/, "$1");
+
+/**
+ * 只留译文里已有的第一层分组：分批翻译时逐块验收（`--partial`），一块可以是一个命名空间，
+ * 也可以是大命名空间里的几个顶层键。正式检查不加，缺了就是缺键。
+ */
+export function onlyNamespaces(source, target) {
+  const present = new Set([...target.keys()].map(topGroup));
+  return new Map([...source].filter(([key]) => present.has(topGroup(key))));
+}
+
+export function runCheckLocales(dir = LOCALES_DIR, io = { stdout: process.stdout, stderr: process.stderr }, { partial = false } = {}) {
+  const all = readLocale(path.join(dir, SOURCE));
   const others = fs.readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory() && entry.name !== SOURCE).map((entry) => entry.name).sort();
   let failed = false;
   for (const locale of others) {
-    const problems = compareLocale(locale, source, readLocale(path.join(dir, locale)));
+    const target = readLocale(path.join(dir, locale));
+    const problems = compareLocale(locale, partial ? onlyNamespaces(all, target) : all, target);
     if (problems.length) {
       failed = true;
       io.stderr.write(`locales check failed for ${locale} (${problems.length}):\n`);
@@ -114,10 +127,10 @@ export function runCheckLocales(dir = LOCALES_DIR, io = { stdout: process.stdout
       if (problems.length > 50) io.stderr.write(`  … ${problems.length - 50} more\n`);
     }
   }
-  if (!failed) io.stdout.write(`locales check ok: ${source.size} source messages, ${others.length ? others.join(", ") : "no other locales yet"}\n`);
+  if (!failed) io.stdout.write(`locales check ok${partial ? " (partial)" : ""}: ${all.size} source messages, ${others.length ? others.join(", ") : "no other locales yet"}\n`);
   return failed ? 1 : 0;
 }
 
 if (isDirectRun(import.meta.url)) {
-  process.exit(runCheckLocales());
+  process.exit(runCheckLocales(LOCALES_DIR, undefined, { partial: process.argv.includes("--partial") }));
 }

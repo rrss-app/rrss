@@ -14,6 +14,7 @@ import { useOverlayStack } from "./lib/useOverlayStack";
 import { useWindowKeydown } from "./lib/useWindowKeydown";
 import { ConfirmBar } from "./components/ConfirmBar";
 import { CloseAskDialog, trayLabels } from "./app/CloseAskDialog";
+import { LanguageSwitch } from "./app/LanguageSwitch";
 import { AboutOverlay } from "./components/AboutOverlay";
 import { Toast } from "./components/Toast";
 import { ProbePage, RenderFixture } from "./components/DevPages";
@@ -438,9 +439,9 @@ function DesktopShell() {
         <FocusSettings focus={focus} siteRuleSeed={siteRuleSeed} onSiteRuleSeedUsed={() => setSiteRuleSeed(undefined)} navigationHead={<div className="settings-nav-head" data-tauri-drag-region="deep">
           <button type="button" className="tool-btn" data-settings-back onClick={closeTop}><Icon name="arrowLeft" size={16} />{t("settings.backToReader")}</button>
           <h2 id="settings-title">{t("settings.title")}</h2><span id="settings-desc" hidden>{t("settings.description")}</span>
-        </div>} navigationFoot={<div className="settings-theme"><span>{t("settings.theme")}</span><ChipBar className="segmented" value={theme} options={THEMES.map((id) => ({ id, label: t(`theme.${id}`) }))} onChange={(next) => {
+        </div>} navigationFoot={<><div className="settings-theme"><span>{t("settings.theme")}</span><ChipBar className="segmented" value={theme} options={THEMES.map((id) => ({ id, label: t(`theme.${id}`) }))} onChange={(next) => {
             setTheme(next); document.documentElement.dataset.theme = next; void api.setSetting("theme_preference", next).catch(() => {});
-          }} /></div>} tab={settingsTab} onTab={(next) => {
+          }} /></div><LanguageSwitch /></>} tab={settingsTab} onTab={(next) => {
           if (next !== settingsTab) overlays.requestLeave("settings", () => setSettingsTab(next));
         }} onEditStateChange={onSettingsEditStateChange} onAsk={(title, message, onOk, options) => {
           setConfirm({ title, message, onOk, ...options }); open("confirm");

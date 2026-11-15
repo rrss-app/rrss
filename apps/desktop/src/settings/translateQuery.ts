@@ -67,7 +67,7 @@ export function translateMutationOptions(client: QueryClient) {
     gcTime: 0,
     mutationFn: async (args: WriteArgs) => {
       await client.cancelQueries({ queryKey: translateKeys.page, exact: true });
-      const submitted = { ...args.draft, target_lang: args.draft.target_lang || "zh" };
+      const submitted = { ...args.draft, target_lang: args.draft.target_lang || "auto" };
       let saved = false;
       let page: TranslatePage | undefined;
       let status: TranslateStatus;

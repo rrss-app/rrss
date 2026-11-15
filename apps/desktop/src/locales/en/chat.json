@@ -1,0 +1,238 @@
+{
+  "activity": {
+    "dismiss": "Got it",
+    "answerFailed": "Couldn’t respond:",
+    "allowUse": "Allow {{tool}} from {{server}}?",
+    "allowUseRich": "Allow {{tool}} from <srv>{{server}}</srv>?",
+    "mutatesWithArgs": "This tool changes content. Here are the arguments:",
+    "mutates": "This tool changes content.",
+    "remember": "Don’t ask about {{tool}} again in this chat",
+    "timeout_one": "Denied automatically if no answer within 1 minute",
+    "timeout_other": "Denied automatically if no answer within {{count}} minutes",
+    "allow": "Allow",
+    "deny": "Deny"
+  },
+  "failure": {
+    "notInstalled": {
+      "title": "Chat engine not found",
+      "detail": "You can download it in settings."
+    },
+    "version": {
+      "title": "Chat engine needs an update",
+      "detail": "Update it in settings."
+    },
+    "config": {
+      "title": "Chat model unavailable",
+      "detail": "No chat model is set up yet."
+    },
+    "model": {
+      "title": "Model service error",
+      "detail": "No reason was given."
+    },
+    "processExit": {
+      "title": "Chat engine quit unexpectedly",
+      "detail": "It will restart automatically the next time you send."
+    },
+    "default": {
+      "title": "Chat error"
+    },
+    "withDetail": "{{title}}: {{detail}}",
+    "fix": "Open settings"
+  },
+  "linkPreview": {
+    "articleDialog": "Article preview",
+    "linkDialog": "Link preview",
+    "unknownSource": "Unknown source",
+    "read": "Read",
+    "unread": "Unread",
+    "loading": "Loading…",
+    "open": "Open",
+    "cite": "Cite in message",
+    "openWeb": "Open original page",
+    "copied": "Link copied",
+    "copyFailed": "Couldn’t copy link",
+    "copy": "Copy link"
+  },
+  "runtime": {
+    "eventsFailed": "Couldn’t connect to chat events:",
+    "replyLoadFailed": "Couldn’t load reply:",
+    "messagesLoadFailed": "Couldn’t load messages:",
+    "modelSwitched": "Later replies use {{label}}",
+    "thinkingSet": "Later replies use {{level}} thinking",
+    "thinkingFollow": "Later replies follow the model’s thinking level ({{label}})",
+    "busy": "The previous reply hasn’t finished. Wait for it to end or stop generating before sending."
+  },
+  "messages": {
+    "renderFailed": "This message can’t be displayed. Other messages aren’t affected.",
+    "loadingOlder": "Loading earlier messages…",
+    "loadOlder": "Load earlier messages",
+    "loadOlderFailed": "Couldn’t load more: {{error}}. Try again.",
+    "working": "Reading and replying…",
+    "emptyTitle": "In-depth chat",
+    "emptyText": "Cite an article from Focus, or just ask a question."
+  },
+  "jump": {
+    "fresh": "New reply",
+    "latest": "Jump to latest"
+  },
+  "meter": {
+    "usageNone": "Context usage: none yet",
+    "usageTokens": "Context usage {{used}}",
+    "usagePercent": "Context usage {{pct}}%",
+    "ariaLabel": "{{label}}. Click for details",
+    "dialog": "Context usage",
+    "headingNone": "Context —",
+    "headingUsed": "Context {{used}}",
+    "headingUsedPercent": "Context {{used}} · {{pct}}%",
+    "headingLimit": "Context {{used}} / {{limit}}",
+    "headingLimitPercent": "Context {{used}} / {{limit}} · {{pct}}%",
+    "limitUnknown": "The context limit isn’t known yet; it will appear after the chat engine has started once.",
+    "limitUser": "Limit {{limit}} is the context length you set for {{model}} in settings.",
+    "limitEngine": "Limit {{limit}} is the default the chat engine reports for {{model}} (left blank in settings).",
+    "limitLast": "Limit {{limit}} is based on the model used when you last sent a message.",
+    "noteUsage": "Context used by this chat at the end of the last turn.",
+    "noteNoRecord": "This chat has no usage recorded yet; it will appear after you send a message.",
+    "warnNear": "You’re near the limit: the chat engine compresses earlier content automatically, so details may be lost. If you need the full context, start a new chat and cite the key points from this one.",
+    "warnSoon": "You’re approaching the limit: the chat engine compresses earlier content automatically, so details may be lost. If you need the full context, start a new chat and cite the key points from this one.",
+    "thisModel": "This model"
+  },
+  "progress": {
+    "think": "Thinking",
+    "useTool": "Using {{tool}} from <srv>{{server}}</srv>",
+    "asking": "Waiting for approval: {{tool}} from <srv>{{server}}</srv>",
+    "seconds": "{{n}}s",
+    "allowed": "Allowed",
+    "denied": "Denied",
+    "tools_one": "1 lookup",
+    "tools_other": "{{count}} lookups",
+    "external_one": "1 external tool call",
+    "external_other": "{{count}} external tool calls",
+    "elapsed": "{{seconds}}s"
+  },
+  "chip": {
+    "renameBusy": "Another model setting is being saved. Try again shortly.",
+    "renameFailed": "Not saved:",
+    "piDefault": "Pi default",
+    "noReasoning": "{{model}} doesn’t support reasoning, so replies won’t use thinking.",
+    "thinkingLevel": "Thinking level",
+    "thinking": "Thinking",
+    "hintDefault": "{{model}} defaults to {{level}}; changes here only affect this chat.",
+    "hintOwn": "The default comes from your Pi configuration; changes here only affect this chat.",
+    "hintNoDefault": "If {{model}} has no default level, its own default applies; changes here only affect this chat.",
+    "hintSnap": "Levels the model doesn’t support are switched to the closest one."
+  },
+  "composer": {
+    "otherBusy": "Another chat is replying. Wait for it to finish or stop generating.",
+    "stop": "Stop generating",
+    "sendHint": "Enter to send",
+    "newlineHint": "Shift+Enter for a new line",
+    "send": "Send"
+  },
+  "picker": {
+    "search": "Search models",
+    "displayNameOf": "Display name for “{{name}}”",
+    "renameHint": "Press Enter to save; leave blank to use the short name · {{name}}",
+    "renameOf": "Rename “{{name}}”",
+    "rename": "Rename",
+    "noMatch": "No models match “{{query}}”."
+  },
+  "thread": {
+    "section": "Chats",
+    "newFolder": "New folder",
+    "newThread": "New chat",
+    "archived": "Archived",
+    "pinned": "Pinned",
+    "emptyFolder": "Empty folder",
+    "actionsFor": "Actions for {{title}}",
+    "folderActionsFor": "Actions for the {{name}} folder",
+    "placeholder": {
+      "folderName": "Folder name",
+      "autoTitle": "Leave blank to use the automatic title"
+    },
+    "label": {
+      "title": "Chat title",
+      "folderName": "Folder name",
+      "newFolderName": "New folder name"
+    },
+    "menu": {
+      "confirmDelete": "Confirm deletion",
+      "folder": "Folder actions",
+      "thread": "Chat actions",
+      "moveTo": "Move to folder",
+      "moveToEllipsis": "Move to folder…",
+      "newFolderAndMove": "Create folder and move",
+      "moveOut": "Move out of folder",
+      "rename": "Rename",
+      "pin": "Pin",
+      "unpin": "Unpin",
+      "archive": "Archive",
+      "unarchive": "Unarchive",
+      "delete": "Delete…",
+      "deleteFolder": "Delete folder…",
+      "moveUp": "Move up",
+      "moveDown": "Move down"
+    },
+    "failure": {
+      "createFolder": "Couldn’t create folder:",
+      "rename": "Couldn’t rename:",
+      "renameFolder": "Couldn’t rename folder:",
+      "collapse": "Couldn’t collapse folder:",
+      "delete": "Couldn’t delete:",
+      "deleteFolder": "Couldn’t delete folder:",
+      "move": "Couldn’t move:",
+      "pin": "Couldn’t pin:",
+      "unpin": "Couldn’t unpin:",
+      "archive": "Couldn’t archive:",
+      "undoArchive": "Couldn’t undo archive:",
+      "unarchive": "Couldn’t unarchive:",
+      "reorder": "Couldn’t reorder:"
+    },
+    "notice": {
+      "deleted": "Deleted “{{title}}”",
+      "movedTo": "Moved to “{{name}}”",
+      "movedOut": "Moved out of the folder",
+      "archived": "Archived “{{title}}”",
+      "unarchived": "Unarchived “{{title}}”",
+      "undo": "Undo",
+      "deletedFolder": "Deleted folder “{{name}}”",
+      "deletedFolderWithThreads": "Deleted folder “{{name}}”; its chats are now outside any folder"
+    },
+    "confirm": {
+      "askThread": "Delete “{{title}}”?",
+      "askFolder": "Delete the folder “{{title}}”?",
+      "noteThread": "Messages and the Pi chat record are deleted too; this can’t be undone. If you just want it out of the sidebar, archive it instead.",
+      "noteThreads_one": "Its chat will be moved out of the folder, not deleted.",
+      "noteThreads_other": "Its {{count}} chats will be moved out of the folder, not deleted.",
+      "noteEmpty": "This folder is empty.",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "deleteFolder": "Delete folder"
+    },
+    "archivedView": {
+      "back": "Chats",
+      "backTitle": "Back to chats (Esc)",
+      "none": "No archived chats.",
+      "note": "Archived chats are hidden from the sidebar and search. Sending a new message after opening one unarchives it automatically."
+    },
+    "untitled": "Untitled chat"
+  },
+  "steps": {
+    "engine": "Starting chat engine",
+    "tool": "Using tool {{tool}}",
+    "tools": {
+      "search_articles": "Searching local articles",
+      "list_focus": "Searching local articles",
+      "list_feeds": "Searching local articles",
+      "get_article": "Reading article",
+      "get_digest": "Reading digest",
+      "search_memory": "Searching memories",
+      "fetch_url": "Reading web page",
+      "open_original": "Opening original page",
+      "explain_score": "Checking score reasons",
+      "mark_read": "Marking as read",
+      "star_article": "Starring article",
+      "add_interest": "Saving interest"
+    },
+    "external": "Using {{tool}} from {{server}}"
+  }
+}

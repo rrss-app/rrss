@@ -1,0 +1,133 @@
+{
+  "time": {
+    "justNow": "Just now",
+    "minutesAgo_one": "1 minute ago",
+    "minutesAgo_other": "{{count}} minutes ago",
+    "hoursAgo_one": "1 hour ago",
+    "hoursAgo_other": "{{count}} hours ago",
+    "yesterdayAt": "Yesterday {{time}}",
+    "undated": "No date",
+    "today": "Today",
+    "yesterday": "Yesterday"
+  },
+  "notice": {
+    "invalidJson": "The model didn’t return usable JSON. Try a different model or try again.",
+    "databaseBusy": "The database is busy. Try again in a moment.",
+    "rateFailed": "Couldn’t rate:",
+    "threadLoadFailed": "Couldn’t load chat:",
+    "sendFailed": "Couldn’t send:",
+    "unarchiveFailed": "Couldn’t unarchive:",
+    "stopFailed": "Couldn’t stop:",
+    "closeWindowFailed": "Couldn’t close the window:"
+  },
+  "webFailure": {
+    "Waf": {
+      "summary": "The site has access protection",
+      "detail": "The site uses access protection, so RRSS got a verification page instead of the article."
+    },
+    "Network": {
+      "summary": "Network request failed",
+      "detail": "The request failed, so this page can’t be read right now."
+    },
+    "Empty": {
+      "summary": "No article text found",
+      "detail": "No article text could be extracted from this page. It may load its content with scripts or need a sign-in."
+    },
+    "NotArticle": {
+      "summary": "This page isn’t an article",
+      "detail": "This address may point to a home page or list page; no article-like text was found."
+    }
+  },
+  "blockIr": {
+    "invalidPosition": "Invalid body block position",
+    "invalidPatch": "Invalid translation patch"
+  },
+  "api": {
+    "feedUpdatesNotReady": "Feed update monitoring isn’t ready yet. Try again in a moment."
+  },
+  "tray": {
+    "open": "Open RRSS",
+    "refresh": "Refresh now",
+    "quit": "Quit"
+  },
+  "closeAsk": {
+    "caption": "Close RRSS",
+    "question": "What should happen when you close the main window?",
+    "remember": "Remember my choice",
+    "tray": "Hide to system tray",
+    "quit": "Quit",
+    "cancel": "Cancel"
+  },
+  "window": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close",
+    "closeWindow": "Close window"
+  },
+  "about": {
+    "close": "Close",
+    "tagline": "A local-first reading and digest tool",
+    "intro": "A reading and digest tool that runs on your computer. Subscriptions, articles, and chats all stay on this machine; models are called with your configuration.",
+    "factLocal": "Articles, summaries, and digests are all saved on this machine",
+    "factModels": "You choose the model service; summaries and digests use your settings",
+    "factKeys": "Ctrl+K to search, J / K to select, Enter to read",
+    "license": "MIT License · Windows / Linux"
+  },
+  "confirm": {
+    "close": "Close",
+    "ok": "Confirm",
+    "cancel": "Cancel"
+  },
+  "toast": {
+    "dismiss": "Dismiss notification"
+  },
+  "theme": {
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "Feeds, rules, models, and local diagnostics",
+    "backToReader": "Back to reading",
+    "theme": "Appearance",
+    "language": "Language"
+  },
+  "settingsBusy": "Saving or testing {{label}}. Wait for this to finish before leaving.",
+  "settingsFix": {
+    "action": "Go to settings"
+  },
+  "citeGroup": {
+    "done_one": "Added this citation to a new chat",
+    "done_other": "Added these {{count}} citations to a new chat",
+    "action": "Go to chat"
+  },
+  "column": {
+    "fallbackName": "Column"
+  },
+  "chat": {
+    "newThread": "New chat",
+    "backToArticle": "Back to article ·",
+    "backToArticleTitle": "Back to article · {{title}}",
+    "archivedNotice": "This chat is archived. Sending a new message will unarchive it.",
+    "unarchive": "Unarchive",
+    "composerLabel": "Chat message",
+    "composerPlaceholder": "Ask about a citation, or explore freely…"
+  },
+  "web": {
+    "warningLabel": "Link safety warning",
+    "label": "Original page"
+  },
+  "leave": {
+    "title": "{{label}} has unsaved changes",
+    "saving": "Saving…",
+    "askSave": "Save these changes before leaving?",
+    "savingOk": "Saving…",
+    "saveAndLeave": "Save and leave",
+    "discard": "Don’t save",
+    "keepEditing": "Keep editing",
+    "willDiscard": "Leaving will discard these changes.",
+    "discardAndLeave": "Don’t save and leave"
+  }
+}

@@ -122,7 +122,7 @@ async fn overlong_and_changed_configuration_never_reach_the_service() {
     let wire = serde_json::to_value(err.error.unwrap()).unwrap();
     assert_eq!(wire["code"], "translate_selection_too_long");
     assert_eq!(wire["params"]["max"], MAX_CHARS);
-    translations::set_target_lang(&db::open_at(&path).unwrap(), "en").unwrap();
+    translations::set_target_lang(&db::open_at(&path).unwrap(), "ja").unwrap();
     let err = translate_selection(&path, &client, "Hello".into(), old)
         .await
         .unwrap_err();

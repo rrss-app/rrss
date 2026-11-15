@@ -10,6 +10,9 @@ export default defineConfig({
     baseURL: DEV_ORIGIN,
     headless: true,
     trace: "off",
+    // 模拟中文系统：没装模拟宿主的用例（浏览器预览）按浏览器语言选界面语言，现有用例按中文断言。
+    // 英文界面的用例经模拟宿主的 systemLanguage 指定。
+    locale: "zh-CN",
     // 预装浏览器与 Playwright 版本不一致时，用 RRSS_CHROMIUM 指定可执行文件。
     launchOptions: process.env.RRSS_CHROMIUM ? { executablePath: process.env.RRSS_CHROMIUM } : {},
   },

@@ -1,0 +1,425 @@
+{
+  "mode": {
+    "original": "Original",
+    "bilingual": "Bilingual",
+    "translated": "Translated"
+  },
+  "head": {
+    "back": "Back",
+    "prev": "Previous",
+    "prevArticle": "Previous article",
+    "returnPrev": "Back to previous article",
+    "nextArticle": "Next article",
+    "returnTo": "Back to “{{title}}”",
+    "returnToThread": "Back to chat “{{title}}”",
+    "returnToSearch": "Back to search “{{term}}”",
+    "backToSearch": "Back to search",
+    "thread": "Chat",
+    "search": "Search",
+    "drawer": "Articles",
+    "pager": "Article navigation",
+    "position": "Article {{label}}",
+    "rateNext": "Dislike and open the next article"
+  },
+  "tools": {
+    "busy": "Working…",
+    "translate": "Translate",
+    "more": "More",
+    "fetching": "Fetching…",
+    "fetchFulltext": "Fetch full text",
+    "fetchFulltextTitle": "Fetch the full text from the original site (U)",
+    "liked": "Liked",
+    "disliked": "Disliked"
+  },
+  "rail": {
+    "label": "Translation view"
+  },
+  "body": {
+    "fetchingFulltext": "Fetching full text…",
+    "dismissNotice": "Dismiss notice",
+    "summarizing": "Summarizing…",
+    "summary": "Summary",
+    "summaryStale": "This summary was written from the earlier text, which has since been updated.",
+    "generating": "Generating…",
+    "regenerate": "Regenerate",
+    "pruned": "The text was cleared under your retention settings, so only the title, summary, and reading history remain.",
+    "openOriginal": "Open original",
+    "refetch": "Fetch the text again",
+    "renderError": "This text won’t display. Go back to the list or open another article.",
+    "retry": "Retry"
+  },
+  "hits": {
+    "label": "Search matches",
+    "position": "Match {{n}} of {{total}}",
+    "next": "Next match",
+    "prev": "Previous match"
+  },
+  "top": {
+    "title": "Back to top (Home)",
+    "titleLabel": "Back to top: {{title}}"
+  },
+  "drawer": {
+    "defaultTitle": "Today",
+    "collapse": "Collapse article list",
+    "collapseTitle": "Collapse (L)",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "filter": "Filter",
+    "scope": {
+      "all": "All",
+      "unread": "Unread",
+      "starred": "Starred"
+    },
+    "clusterSize_one": "1 article",
+    "clusterSize_other": "{{count}} articles",
+    "cluster": "Related coverage · ",
+    "rate": "Dislike “{{title}}”",
+    "rateTitle": "Dislike (X)",
+    "loading": "Loading…",
+    "footMove": "Move",
+    "footOpen": "Open",
+    "footCollapse": "Collapse"
+  },
+  "menu": {
+    "label": "Article actions",
+    "continueAsking": "Keep asking in chat",
+    "view": "View",
+    "retranslate": "Retranslate the full article",
+    "translate": "Translate this article",
+    "summarizing": "Summarizing…",
+    "resummarize": "Regenerate summary",
+    "summarize": "Summarize this article",
+    "collect": "Save to library",
+    "citeFull": "Cite the full article in chat",
+    "star": "Star",
+    "unstar": "Unstar",
+    "viewOriginal": "View original",
+    "top": "Back to top"
+  },
+  "masthead": {
+    "minutes_one": "About 1 min",
+    "minutes_other": "About {{count}} min"
+  },
+  "ending": {
+    "related": {
+      "title": "Related reading",
+      "hint": "Similar by title and summary · excludes the same coverage group",
+      "read": "Read"
+    },
+    "next": {
+      "end": "That’s the end",
+      "result": "Next result",
+      "article": "Next article"
+    },
+    "hint": {
+      "doneSearch": "Going back keeps your search and stays on this result.",
+      "doneFocus": "Press Esc to return to Today, still on this article.",
+      "next": "You’re at the end of this article. Press Space to focus the next one, or J to keep going."
+    },
+    "rating": {
+      "label": "Article rating",
+      "prompt": "Was this a good recommendation?",
+      "up": "Like",
+      "down": "Dislike"
+    },
+    "star": "Star",
+    "cite": "Cite in chat",
+    "position": "{{index}} of {{total}}",
+    "done": {
+      "search": "You’ve reached the end of the search results",
+      "focus": "You’ve caught up on Today"
+    },
+    "doneMeta": {
+      "search": "Go back and try another keyword, or look through the earlier results again.",
+      "focus": "Go back to the list to browse starred articles or other feeds."
+    },
+    "returnToSearch": "Back to search"
+  },
+  "selection": {
+    "httpService": "HTTP service",
+    "notConfigured": "Translation service not set up",
+    "notConfiguredNotice": "The translation service isn’t set up yet.",
+    "networkFailed": "Couldn’t connect to the translation service; try again later",
+    "label": "Selection translation",
+    "head": "Translation",
+    "close": "Close selection translation",
+    "translating": "Translating",
+    "tooLong": "The selection is longer than {{max}} characters. Use full-article translation instead.",
+    "goSettings": "Open settings",
+    "copy": "Copy translation",
+    "citeOriginal": "Cite original text",
+    "note": "Translates just this passage; it isn’t added to the full translation"
+  },
+  "block": {
+    "summary": "Summary",
+    "copyCode": "Copy code",
+    "copy": "Copy",
+    "cite": "Cite",
+    "translate": "Translate",
+    "selection": "Selection",
+    "digestUnsafe": "This digest’s layout is broken, so source markers and selection citations aren’t available for now.",
+    "tableTruncated": "(The table has {{rows}} rows and {{columns}} columns; only part of it is shown: {{limits}})",
+    "tableRows_one": "1 row",
+    "tableRows_other": "{{count}} rows",
+    "tableColumns_one": "1 column",
+    "tableColumns_other": "{{count}} columns"
+  },
+  "image": {
+    "retryFailed": "Retry failed:",
+    "loading": "Loading image…",
+    "cacheFailedReason": "Image couldn’t be cached ({{reason}}): {{label}}",
+    "cacheFailed": "Image couldn’t be cached: {{label}}",
+    "retry": "Retry",
+    "openInBrowser": "Open image in browser",
+    "failed": "Image couldn’t be shown: {{fallback}}"
+  },
+  "citation": {
+    "sendFailed": "Send failed:",
+    "full": "Full article ·",
+    "digest": "Digest ·",
+    "articleTitle": "“{{title}}”",
+    "excerpt": "“{{excerpt}}”",
+    "open": "Open citation “{{title}}”",
+    "remove": "Remove citation"
+  },
+  "embed": {
+    "preparing": "Preparing to play…",
+    "downloading": "Downloading…",
+    "play": "Play",
+    "bilibili": "Bilibili",
+    "coverFailed": "{{label}} · cover couldn’t be shown",
+    "openInBrowser": "Open in browser"
+  },
+  "tray": {
+    "targetNew": "New chat",
+    "targetDigest": "Digest follow-up",
+    "label": "Citation tray",
+    "count": "Citations: {{n}}",
+    "removeCitation": "Remove citation {{n}}",
+    "clear": "Clear",
+    "inputLabel": "Ask about the citations",
+    "placeholderThread": "Keep asking in “{{title}}”…",
+    "placeholder": "Ask about these citations…",
+    "sendToLabel": "Send to {{target}}",
+    "sendTo": "Send to <b>{{target}}</b>",
+    "sending": "Sending…",
+    "send": "Send",
+    "busy": "A reply is being generated. Wait for it to finish before sending.",
+    "sendToCaption": "Send to"
+  },
+  "host": {
+    "opening": "Opening article",
+    "back": "Back",
+    "previewTitle": "Preview",
+    "openFailedPrefix": "Couldn’t open:",
+    "noArticle": "No article text found",
+    "extractFailedPrefix": "Extraction failed:",
+    "collectFailedPrefix": "Couldn’t save to library:",
+    "fulltextUpdated": "Full text updated",
+    "fulltextFailed": "Couldn’t fetch the full text",
+    "viewOriginal": "View original",
+    "summaryFailedPrefix": "Couldn’t generate summary:",
+    "unreadFailedPrefix": "Couldn’t mark as unread:",
+    "regenerate": {
+      "title": "Retranslate the full article?",
+      "detail": "This calls the translation service again and may cost money. Existing valid translations stay until new results replace them."
+    }
+  },
+  "translation": {
+    "timeout": "Timed out while checking translation status",
+    "disconnected": "Connection lost; existing translations are still readable",
+    "failedPrefix": "Translation failed:",
+    "articleMismatch": "Article identity mismatch",
+    "snapshotStale": "Snapshot is out of date",
+    "eventGap": "Event gap remains after recovery",
+    "inconsistent": "Translation state is inconsistent; a snapshot recovery is needed",
+    "note": {
+      "keptOriginal": "Not translated here · original kept",
+      "keptTranslation": "Not translated this time · existing translation kept",
+      "withReason": "{{note}} ({{reason}})",
+      "showOriginal": "Show original",
+      "inflight": "Translating"
+    }
+  },
+  "status": {
+    "action": {
+      "recover": "Recover translation",
+      "regenerate": "Retranslate the full article",
+      "save": "Retry save",
+      "retry": "Retry untranslated parts",
+      "retryTranslation": "Retry translation",
+      "restart": "Translate again",
+      "start": "Translate"
+    },
+    "error": {
+      "timeout": "Translating some content timed out",
+      "network": "Couldn’t connect to the translation service",
+      "invalid_output": "Some translated text was in an invalid format",
+      "authentication": "Translation service authentication failed. Check your key",
+      "quota": "Translation service quota is used up. Check your account",
+      "rate_limited": "Translation service is rate-limiting requests. Try again later",
+      "configuration": "Translation settings aren’t usable. Check your model and service settings",
+      "invalidated": "The text or translation settings changed. Translate again",
+      "storage": "The translation wasn’t saved, but you can keep reading",
+      "capacity": "Too many translation jobs are running. Wait for one to finish",
+      "retry_unavailable": "The record of untranslated parts expired. Retranslate the full article"
+    },
+    "keptWithError": "{{error}}; not everything was translated this time, so the previous complete translation was kept",
+    "kept": "Not everything was translated this time, so the previous complete translation was kept",
+    "partial": "Some content wasn’t translated and shows the original",
+    "queued": "Queued for translation",
+    "running": "Translating",
+    "done": "Translation complete",
+    "progress": "Translated {{done}}/{{total}}",
+    "progressFailed": "Translated {{done}}/{{total}} · {{failed}} not translated",
+    "locate": "Show untranslated parts",
+    "busy": "Working…",
+    "progressLabel": "Translation progress"
+  },
+  "web": {
+    "back": "Back",
+    "backTo": "Back to “{{title}}”",
+    "actualAddress": "Actual address",
+    "viewLabel": "View",
+    "readerView": "Reader view",
+    "originalPage": "Original page",
+    "openOriginal": "Open original page",
+    "openInBrowser": "Open in system browser",
+    "systemBrowser": "System browser",
+    "saved": "Saved",
+    "save": "Save",
+    "layer": {
+      "UserRule": "Extracted with your site rule",
+      "BuiltinRule": "Extracted with the built-in site rule",
+      "General": "General detection",
+      "Fallback": "General detection (fallback)",
+      "Container": "The page’s article / main"
+    },
+    "origin": {
+      "temporary": "Opened temporarily · not in the library",
+      "inLibrary": "Saved to the library",
+      "extractedAt": "Extracted from the original page · <rel /> · if the page has loaded more content since, you can",
+      "reextract": "Extract again",
+      "openFirst": "Open the original page first",
+      "statsHost": "{{layer}} ({{host}}) · {{chars}} chars · {{images}} images",
+      "stats": "{{layer}} · {{chars}} chars · {{images}} images",
+      "autoSave": "Saved automatically when you cite it or send it to a chat"
+    },
+    "failure": {
+      "title": "Couldn’t extract text from this page",
+      "notAutoLoaded": "{{detail}} The original page won’t load automatically.",
+      "openToVerify": "Open the original page to pass verification",
+      "retry": "Retry",
+      "verifyNote": "After you pass the human verification on the original page, RRSS will try extracting on its own. You do the verification yourself; RRSS doesn’t automate it.",
+      "causes": "Other common causes: the page builds its text with scripts, it requires a login, or the address points to a home page rather than an article. You can also <rule>write a rule for {{host}}</rule>."
+    },
+    "firstTip": {
+      "text": "<strong>This is an external page, and its content comes from {{host}}.</strong> RRSS only extracted and formatted it; it hasn’t been verified. Don’t trust links on the page, and don’t enter passwords, verification codes, or payment details there.",
+      "never": "Don’t show again",
+      "ok": "Got it",
+      "failed": "Couldn’t save the tip setting. Try again."
+    }
+  },
+  "webWarning": {
+    "mixedScript": {
+      "title": "The domain in this address mixes scripts and may be a lookalike site.",
+      "detail": "It looks like <code>{{unicode}}</code>, but the real domain is <code>{{punycode}}</code>."
+    },
+    "hostMismatch": {
+      "title": "The link text doesn’t match the actual address.",
+      "detail": "The link says <code>{{text}}</code>, but it actually goes to <code>{{actual}}</code>."
+    },
+    "nonHttps": {
+      "title": "This page doesn’t use HTTPS.",
+      "detail": "The content could be altered in transit, so what you see in Reader view may not match the site. Don’t submit any information on the original page."
+    },
+    "cancel": "Don’t open",
+    "openAnyway": "Open anyway",
+    "continue": "Continue",
+    "note": "These warnings can’t be turned off; they’re unrelated to the first-time tip."
+  },
+  "verify": {
+    "progress": "Original page extraction progress",
+    "extracted": "<b>Extracted text from the original page</b> · “{{title}}” · {{chars}} chars · {{images}} images. The original page is still open; switching back won’t reload it.",
+    "missed": "No article text found",
+    "missedReason": " · {{reason}}",
+    "waiting": "<b>Waiting for verification</b> · Once you complete the verification in the page below, RRSS will extract the current page on its own.",
+    "extracting": "<b>Pre-extracting</b> · The page has loaded, and RRSS is trying to extract it.",
+    "read": "Switch to Reader view",
+    "retryLater": "Extract again later",
+    "retryNow": "Extract again now",
+    "abandon": "Give up"
+  },
+  "webLinks": {
+    "citing": "Fetching the page to add an article citation…",
+    "cited": "Article citation added",
+    "citeFailed": "Couldn’t cite the link: {{summary}}",
+    "actionFailedPrefix": "Link action failed:",
+    "checkFailedPrefix": "Couldn’t check the link:",
+    "copyFailedPrefix": "Copy failed:",
+    "menu": {
+      "label": "Link actions",
+      "reader": "Open in RRSS",
+      "readerHint": "Click",
+      "web": "Open original page",
+      "browser": "Open in system browser",
+      "copy": "Copy link",
+      "cite": "Cite link"
+    }
+  },
+  "webWindow": {
+    "showFailedPrefix": "Couldn’t show the original page:",
+    "downloadBlocked": "Download blocked; open it in the system browser instead",
+    "systemBrowser": "System browser",
+    "eventsFailedPrefix": "Couldn’t receive events from the original page:",
+    "boundsFailedPrefix": "Couldn’t update the original page position:",
+    "extractFailedPrefix": "Extraction failed:",
+    "closeFailedPrefix": "Couldn’t close the original page:",
+    "actionFailedPrefix": "Original page action failed:",
+    "actionDone": {
+      "copy": "Current address copied",
+      "disable-js": "JavaScript is now disabled for this site. Reopen the original page for it to take effect.",
+      "clear": "Original page data cleared"
+    },
+    "tipSaveFailed": "Couldn’t save the tip setting. Try again.",
+    "tip": {
+      "text": "<strong>The original page runs {{host}}’s own scripts.</strong> Sign-ins and verifications last only until you quit RRSS; everything is cleared on the next launch. Don’t enter passwords, verification codes, or payment details there.",
+      "cancel": "Cancel"
+    },
+    "error": {
+      "proxy": "The original page can’t use your current proxy settings.",
+      "open": "Couldn’t open the original page.",
+      "useReader": "Use Reader view",
+      "proxySettings": "View proxy settings",
+      "retryHint": "Try again after changing the proxy settings."
+    },
+    "hint": "Original page · site scripts are running · <kbd>Esc</kbd> to return to Reader view",
+    "tool": {
+      "back": "Back",
+      "forward": "Forward",
+      "reload": "Reload",
+      "more": "More"
+    },
+    "paused": {
+      "title": "Page hidden for now",
+      "detail": "Native pages cover menus, dialogs, and toasts, so this page is hidden while they’re open. It comes right back when they close, without reloading."
+    },
+    "opening": "Opening the original page…",
+    "menu": {
+      "label": "Original page actions",
+      "noteRoute": "Content network · {{route}} · cleared when you quit RRSS",
+      "noteDefault": "Content network · current settings · cleared when you quit RRSS",
+      "copy": "Copy current address",
+      "open": "Open in system browser",
+      "extract": "Extract text from this page",
+      "disable-js": "Disable JavaScript for this site",
+      "clear": "Clear original page data",
+      "close": "Close original page"
+    },
+    "native": {
+      "openInBrowser": "Open in system browser",
+      "copyLink": "Copy link",
+      "dialogTitle": "Original page — RRSS"
+    }
+  }
+}

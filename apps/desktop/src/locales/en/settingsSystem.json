@@ -1,0 +1,990 @@
+{
+  "advanced": {
+    "ui": {
+      "aria": "Interface debugging",
+      "head": "Interface",
+      "label": "Interface debugging"
+    },
+    "window": {
+      "head": "Window",
+      "label": "When closing the window",
+      "trayUnavailable": "The system tray isn’t available on this computer, so “Hide to system tray” will minimize the window instead."
+    },
+    "model": {
+      "head": "Models",
+      "hint": "Connection addresses, protocols, and compatibility switches are under “Edit” on each connection on the Models page; per-model compatibility settings are under “Manage models”.",
+      "overrideLabel": "Model definition override",
+      "overrideHint": "Extra parameters for models, such as context length and image limits. Change addresses, keys, and model lists on the Models page."
+    },
+    "engine": {
+      "head": "Chat engine and security",
+      "hint": "These switches loosen what the assistant can do; leaving them at their defaults is usually best.",
+      "opFailed": "Operation failed:",
+      "readFailed": "Couldn’t load chat engine settings:",
+      "reload": "Reload",
+      "pathReport": "Chat engine path",
+      "warming": "Cache warming",
+      "own": {
+        "title": "Use my own Pi config",
+        "confirm": "Chat will use the models, keys, and extensions in ~/.pi instead, and RRSS model settings will no longer apply to chat. Turning this off restores the previous setup and keeps your earlier choices.",
+        "okLabel": "Use my config",
+        "hint": "Use the models and keys in ~/.pi."
+      },
+      "dev": {
+        "confirmTitle": "Turn on developer tools",
+        "confirm": "The assistant will be able to run commands and read and write files in the working directory. Only turn this on if you understand the consequences.",
+        "okLabel": "Turn on",
+        "label": "Developer tools",
+        "hint": "Lets the assistant read and write files and run commands. Off by default."
+      },
+      "piPath": {
+        "label": "Pi executable path",
+        "hint": "Leave blank to use the version RRSS downloaded, falling back to one installed on the system.",
+        "placeholder": "Leave blank to use the downloaded version",
+        "saveLabel": "Pi path"
+      },
+      "settingsOverrideLabel": "Pi settings override",
+      "settingsOverrideHint": "Extra chat engine settings that aren’t in the interface yet. If an entry conflicts with one the app manages, the app’s value wins.",
+      "sessionDir": {
+        "label": "Session folder",
+        "hint": "Where chat records are saved."
+      },
+      "generated": {
+        "label": "Generated config",
+        "hint": "Parameters and settings used when the chat engine starts; keys are hidden.",
+        "view": "View"
+      }
+    },
+    "override": {
+      "invalid": "{{label}} isn’t a valid JSON object and wasn’t saved. Fix it and try again.",
+      "saveFailed": "Couldn’t save:",
+      "notRead": "Not loaded",
+      "badFormat": "Invalid format",
+      "goodFormat": "Valid format"
+    },
+    "generated": {
+      "title": "Generated config",
+      "close": "Close",
+      "generating": "Generating…",
+      "failed": "Couldn’t generate config:",
+      "own": "You’re using your own Pi config: models, keys, and extensions come from ~/.pi, and only what RRSS passes in is listed here.",
+      "ignored": "These override entries are managed by RRSS and were ignored:",
+      "args": "Launch arguments",
+      "env": "Environment variables",
+      "unparsable": "(Config couldn’t be parsed; file contents not shown)"
+    }
+  },
+  "backup": {
+    "title": "Backup and restore",
+    "loadFailed": "Couldn’t load backup info: {{message}}",
+    "dismiss": "Got it",
+    "restarting": "Backing up your current data; the app will restart and restore when it’s done…",
+    "report": "Backup",
+    "schedule": {
+      "off": "Off",
+      "daily": "Daily",
+      "weekly": "Weekly"
+    },
+    "all": {
+      "title": "Back up all data",
+      "hint": "Articles, feeds, rules, memories, chats, and settings packed into one file.",
+      "withSecrets": "This backup includes keys; keep it safe.",
+      "running": "Backing up…",
+      "action": "Back up now…"
+    },
+    "secrets": {
+      "label": "Include keys",
+      "hint": "API keys, translation keys, and external tools’ environment variables and request headers. Off by default: a backup on cloud storage or another computer won’t carry your keys, and you can just re-enter them after restoring.",
+      "toggle": "Include keys in backup",
+      "on": "Included",
+      "off": "Not included"
+    },
+    "done": {
+      "saved": "Saved to {{path}} · {{size}}",
+      "note": "Media cache and the chat engine program aren’t included; they’ll be downloaded again when needed after restoring.",
+      "reveal": "Open containing folder",
+      "close": "Done"
+    },
+    "restore": {
+      "title": "Restore from backup",
+      "hint": "Replaces all current data; a backup is made automatically first. The app needs to restart.",
+      "checking": "Checking…",
+      "action": "Choose backup file…",
+      "okLabel": "Back up current data and restart to restore"
+    },
+    "restoreMessage": {
+      "checked": "{{name}} passed the check",
+      "replace": "· All current data will be replaced by this backup.",
+      "autoBackup": "· Current data is backed up automatically first (without keys); you’ll need to re-enter keys after restoring from that automatic backup.",
+      "restart": "· The app needs to restart."
+    },
+    "auto": {
+      "title": "Automatic backups",
+      "scheduled": "Scheduled backups",
+      "hint": "Saved in the backups folder in the data directory; only the 5 most recent are kept. A backup is always made before a database upgrade. Automatic backups never include keys.",
+      "restore": "Restore",
+      "empty": "No automatic backups yet."
+    },
+    "prefs": {
+      "title": "Export preferences only",
+      "sum": "Rules, interests, memories",
+      "hint": "Move just your preferences to another computer, without articles. No keys. Export feeds with OPML on the Feeds page. Import merges, so nothing already there is duplicated.",
+      "contentAria": "Export contents",
+      "part": {
+        "rules": "Rules",
+        "interests": "Interests",
+        "memories": "Memories"
+      },
+      "count": {
+        "rules_one": " (1)",
+        "rules_other": " ({{count}})",
+        "interests_one": " (1)",
+        "interests_other": " ({{count}})",
+        "memories_one": " (1)",
+        "memories_other": " ({{count}})"
+      },
+      "export": "Export…",
+      "import": "Import…",
+      "imported": "Import complete: {{summary}}",
+      "skipped_one": "This item wasn’t imported:",
+      "skipped_other": "These {{count}} items weren’t imported:",
+      "exported": "Preferences exported."
+    },
+    "err": {
+      "backup": "Backup failed:",
+      "restore": "Couldn’t prepare the restore; no data was changed:",
+      "inspect": "Can’t use this backup:",
+      "schedule": "Couldn’t save the automatic backup schedule:",
+      "notice": "Operation failed:",
+      "reveal": "Couldn’t open the folder:",
+      "export": "Export failed:",
+      "import": "Import failed:"
+    },
+    "preview": {
+      "lastManual": "Not connected to local data.",
+      "autoSummary": "Before upgrades · Automatic backups: Off"
+    },
+    "format": {
+      "lastManual": "Last backup: {{when}}.",
+      "noManual": "No manual backups yet.",
+      "autoSummary": "Before upgrades · Automatic backups: {{schedule}}",
+      "scheduleOff": "Off",
+      "whenToday": "Today {{clock}}",
+      "whenYesterday": "Yesterday {{clock}}",
+      "whenMonth": "{{month}}/{{day}} {{clock}}",
+      "whenYear": "{{month}}/{{day}}/{{year}}",
+      "entry": "{{kind}} · {{bytes}} · {{secrets}}",
+      "unreadableEntry": "Unreadable file · {{bytes}}",
+      "secrets": "Includes keys",
+      "noSecrets": "No keys",
+      "createdNoSecrets": "No keys; re-enter them after restoring",
+      "restoreNoSecrets": "No keys; re-enter API keys and external tool variables after restoring",
+      "counts": "Articles: {{count}} · Feeds: {{feeds}} · Rules: {{rules}} · Chats: {{threads}}",
+      "summary": "{{counts}} · {{secrets}}",
+      "taken": "Backed up {{when}} · Version v{{version}}",
+      "separator": " · ",
+      "restoreDefaultName": "Backup",
+      "restoreKept": ", and files from the backup remain in the {{dir}} folder"
+    },
+    "kinds": {
+      "manual": "Manual backup",
+      "upgrade": "Automatic backup before upgrade · v{{version}}",
+      "scheduled": "Scheduled backup",
+      "before_restore": "Data before restore",
+      "before_prune": "Automatic backup before old articles were cleaned up",
+      "unreadable": "Unreadable file"
+    },
+    "messages": {
+      "legacy_text": "{{text}}",
+      "backup_created_one": "{{summary}}",
+      "backup_created_other": "{{summary}}",
+      "backup_restore_summary_one": "{{summary}}",
+      "backup_restore_summary_other": "{{summary}}",
+      "prefs_rules_one": "Rules: 1 added{{duplicates}}",
+      "prefs_rules_other": "Rules: {{count}} added{{duplicates}}",
+      "prefs_packs_one": "Preset pack: 1 added",
+      "prefs_packs_other": "Preset packs: {{count}} added",
+      "prefs_interests_one": "Interests: 1 added{{duplicates}}",
+      "prefs_interests_other": "Interests: {{count}} added{{duplicates}}",
+      "prefs_memories_one": "Memories: 1 added{{duplicates}}",
+      "prefs_memories_other": "Memories: {{count}} added{{duplicates}}",
+      "prefs_empty": "The file has nothing to import.",
+      "restore_done": "Restored from {{name}}.",
+      "restore_exit_timeout": "Couldn’t restore from {{name}}; no data was changed: the previous RRSS run didn’t exit within {{seconds}} seconds, so no files were replaced. Close all RRSS windows and try restoring again",
+      "restore_staging_incomplete": "Couldn’t restore from {{name}}; no data was changed: the staged backup is incomplete",
+      "restore_rolled_back": "Couldn’t restore from {{name}}; no data was changed.",
+      "restore_partial": "Couldn’t restore from {{name}}, and some files couldn’t be moved back. Your original data is in the {{old}} folder in the data directory{{kept}}. Quit RRSS, move those files back into the data directory, and then open the app; don’t delete these folders.",
+      "restore_legacy": "{{text}}"
+    },
+    "duplicates": {
+      "rules_one": ", 1 duplicate skipped",
+      "rules_other": ", {{count}} duplicates skipped",
+      "interests_one": ", 1 duplicate skipped",
+      "interests_other": ", {{count}} duplicates skipped",
+      "memories_one": ", 1 duplicate skipped",
+      "memories_other": ", {{count}} duplicates skipped"
+    },
+    "skip": {
+      "rule_scope_missing": "Rule {{rule}}: limited to {{scope}}, which doesn’t exist on this computer",
+      "rule_invalid": "Rule {{rule}}: {{error}}",
+      "pack_missing": "Preset pack {{pack}}: this version of RRSS doesn’t include that pack",
+      "memory_scope_missing": "Memory “{{content}}”: limited to {{scope}}, which doesn’t exist on this computer",
+      "rule": "{{polarity}} {{dimension}} “{{pattern}}”",
+      "polarity": {
+        "like": "Liked",
+        "dislike": "Disliked"
+      },
+      "dimension": {
+        "author": "author",
+        "tag": "tag",
+        "title_kw": "title",
+        "title_re": "title regex",
+        "url_phrase": "URL",
+        "url_re": "URL regex",
+        "body_phrase": "body",
+        "body_re": "body regex"
+      },
+      "scope": {
+        "global": "the global scope",
+        "feed": "{{url}}",
+        "folder": "the folder “{{path}}”"
+      },
+      "pathSeparator": " / "
+    },
+    "dialog": {
+      "saveTitle": "Save backup",
+      "pickTitle": "Choose backup file",
+      "filter": "RRSS backup"
+    }
+  },
+  "diagLog": {
+    "lastEvent": {
+      "today": "Today {{time}}",
+      "date": "{{month}}/{{day}} {{time}}"
+    },
+    "levelFailed": "Couldn’t change the log level:",
+    "export": {
+      "title": "Export diagnostics",
+      "confirm": "Saves a ZIP file with recent logs (redacted again on export), plus version, system, and status details.\nNo database, settings, or keys. You choose where to save it, and whether to share it.",
+      "okLabel": "Choose location"
+    },
+    "title": "Logs",
+    "hint": "Saved on this computer; old logs are cleaned up automatically.",
+    "state": {
+      "off": "Not recording",
+      "on": "Recording"
+    },
+    "unavailable": {
+      "other_instance": {
+        "title": "Another RRSS window is logging",
+        "text": "This window doesn’t write a log file. Close the other window and restart RRSS to resume logging."
+      },
+      "not_writable": {
+        "title": "Can’t write to the log folder",
+        "text": "Check the permissions on the log folder, then restart RRSS."
+      },
+      "disk_full": {
+        "title": "Not enough disk space; logging has stopped",
+        "text": "Free up disk space and restart RRSS, or clear the logs on the Storage page."
+      }
+    },
+    "unclean": {
+      "title": "RRSS didn’t exit normally last time",
+      "bodyAt": "Last logged {{when}}. You can export diagnostics to help find out why it exited.",
+      "body": "You can export diagnostics to help find out why it exited."
+    },
+    "reveal": "Show in folder",
+    "copyAria": "Copy log location",
+    "copy": "Copy",
+    "size": "Current file {{current}} · All logs {{total}}",
+    "level": {
+      "label": "Log level",
+      "default": "Default",
+      "detailed": "Detailed",
+      "detailedHint": "Logs more troubleshooting detail and increases log size. Returns to Default after a restart.",
+      "defaultHint": "Logs a summary of the run and any errors. Applies only until RRSS restarts."
+    },
+    "feedback": {
+      "label": "Report a problem",
+      "hint": "Export recent logs and status; attaching them to your report makes problems easier to pin down.",
+      "exporting": "Exporting…"
+    },
+    "saved": "Diagnostics saved."
+  },
+  "diag": {
+    "loadFailed": "Couldn’t load diagnostics: {{message}}. Refresh the status to try again.",
+    "busy": "Running maintenance…",
+    "report": "Diagnostics",
+    "refreshFailed": "Diagnostics couldn’t refresh, so the previous content is still shown; maintenance has run, so just refresh the status:",
+    "opFailed": {
+      "embed": "Couldn’t generate embeddings:",
+      "resetFailed": "Couldn’t reset the failure count:"
+    },
+    "status": {
+      "title": "Status",
+      "hint": "An overview of current data and usage. Click Refresh status to load it again.",
+      "refresh": "Refresh status",
+      "failed": "Couldn’t load",
+      "loading": "Loading…"
+    },
+    "rows": {
+      "db": "Database",
+      "vec": "Vector search",
+      "stats": "Statistics",
+      "ai": "AI usage"
+    },
+    "index": {
+      "title": "Index maintenance",
+      "embed": {
+        "label": "Generate article embeddings",
+        "hint": "Adds embeddings to a batch of content that doesn’t have them yet, making related articles and search by meaning more accurate. Using a remote model incurs charges.",
+        "done": "Finished embeddings for this batch.",
+        "action": "Process a batch"
+      },
+      "retry": {
+        "label": "Allow failed content to retry",
+        "hint": "Content that failed before goes back in the queue. No articles are deleted.",
+        "done": "Queued again; these items will be processed later.",
+        "action": "Reset failure count"
+      }
+    },
+    "preview": {
+      "vec": "Browser preview",
+      "stats": "Sample data only; no local data loaded",
+      "db": "Not connected to the local database",
+      "ai": "Not connected to a model"
+    },
+    "dialog": {
+      "title": "Export diagnostics",
+      "filter": "Diagnostics"
+    }
+  },
+  "panel": {
+    "navAria": "Settings sections",
+    "newHint": "New notice",
+    "dataLocal": "Data stays on this computer",
+    "subscribeSummary": "Sources: {{sources}} · Folders: {{folders}}",
+    "tabs": {
+      "subscribe": {
+        "label": "Feeds",
+        "title": "Feeds",
+        "desc": "Add sources, or import an existing list."
+      },
+      "web": {
+        "label": "Web reading",
+        "title": "Web reading",
+        "desc": "How web links open, and which prompts appear."
+      },
+      "rules": {
+        "label": "Rules",
+        "title": "Rules",
+        "desc": "Matching articles gain or lose points. Interests only affect ranking and aren’t changed here."
+      },
+      "memory": {
+        "label": "Memories",
+        "title": "Memories",
+        "desc": "Preferences stored on this computer. Interests only affect ranking and never change rules."
+      },
+      "model": {
+        "label": "Models",
+        "title": "Models",
+        "desc": "Pick a connection and model for each task. Tasks without a choice are paused."
+      },
+      "assistant": {
+        "label": "Assistant",
+        "title": "Assistant",
+        "desc": "Which model chat uses, and what it can call."
+      },
+      "translate": {
+        "label": "Translation",
+        "title": "Translation",
+        "desc": "The service is only called when you click “Translate” while reading; the original text isn’t rewritten."
+      },
+      "diagnostics": {
+        "label": "Diagnostics",
+        "title": "Status and troubleshooting",
+        "desc": "Check how things are running and do maintenance when needed."
+      },
+      "storage": {
+        "label": "Storage",
+        "title": "Storage",
+        "desc": "Cleanup only removes caches, never feeds or rules."
+      },
+      "advanced": {
+        "label": "Advanced",
+        "title": "Advanced",
+        "desc": "You usually don’t need to change anything here. If models or the assistant misbehave, check the status at the top of the Assistant page first."
+      }
+    }
+  },
+  "proxy": {
+    "title": "Network proxy",
+    "hint": "Articles, model services, and the chat engine can each use their own connection. You usually don’t need to change this.",
+    "loading": "Loading proxy settings…",
+    "loadFailed": "Couldn’t load proxy settings:",
+    "reload": "Reload",
+    "saved": "Saved. New requests use this right away; an open chat uses the new settings only after the chat engine starts again.",
+    "saveFailed": "Couldn’t save proxy settings:",
+    "scope": {
+      "global": {
+        "name": "Global",
+        "hint": "All three tasks below use this setting unless they have their own."
+      },
+      "content": {
+        "name": "Content network",
+        "hint": "Feeds, full text, images, site icons, media, and web page reading."
+      },
+      "api": {
+        "name": "Model API",
+        "hint": "Summaries, digests, embeddings, translations, model lists, and connection tests."
+      },
+      "pi": {
+        "name": "Pi",
+        "hint": "Downloading, updating, and chatting with the chat engine."
+      }
+    },
+    "mode": {
+      "inherit": "Use global",
+      "direct": "No proxy",
+      "system": "System proxy",
+      "custom": "Custom proxy"
+    },
+    "route": {
+      "customPending": "Custom proxy · address not set"
+    },
+    "validate": {
+      "incompleteUrl": "Enter a complete proxy address, such as http://127.0.0.1:7890.",
+      "noProxyFormat": "The no-proxy list should contain only domains, IPs, network ranges, or *."
+    },
+    "uses": {
+      "title": "Per-task settings",
+      "summary_one": "1 task set separately",
+      "summary_other": "{{count}} tasks set separately",
+      "allInherit": "All use global"
+    },
+    "scheme": {
+      "socks5h": "SOCKS5H: the proxy resolves the target domain.",
+      "socks5": "SOCKS5: this computer resolves the target domain; use socks5h:// to let the proxy do it.",
+      "default": "Supports http, https, socks5, and socks5h; socks5h:// is recommended so the proxy resolves domains."
+    },
+    "rule": {
+      "globalLabel": "Global proxy",
+      "modeAria": "{{name}} proxy mode"
+    },
+    "custom": {
+      "url": "Proxy address",
+      "urlAria": "{{name}} proxy address",
+      "noProxy": "No-proxy addresses",
+      "noProxyHint": "Domains, IPs, or network ranges separated by commas or spaces; * means connect directly. Local addresses always connect directly; add a range here for your LAN.",
+      "noProxyAria": "{{name}} no-proxy addresses",
+      "noProxyPlaceholder": "For example example.com, 192.168.0.0/16"
+    },
+    "auth": {
+      "groupAria": "{{name}} proxy authentication",
+      "title": "Proxy authentication",
+      "state": {
+        "clear": "Clear on save",
+        "replace": "Replace on save",
+        "enable": "Enable on save",
+        "saved": "Set, not shown",
+        "unset": "Not set"
+      },
+      "keep": "Keep current credentials",
+      "noReplace": "Don’t replace",
+      "noAuth": "No authentication",
+      "replace": "Replace",
+      "add": "Add credentials",
+      "clear": "Clear credentials",
+      "endpointChanged": "The proxy scheme, host, or port has changed. To avoid sending saved credentials to a different proxy, the saved credentials will be cleared when you save. Enter new credentials if needed.",
+      "usernameAria": "{{name}} proxy username",
+      "username": "Username",
+      "passwordAria": "{{name}} proxy password",
+      "password": "Password",
+      "hint": "Not shown again after saving. Pasting an address with credentials moves them into these two fields automatically."
+    },
+    "system": {
+      "noProxy": "No proxy",
+      "title": "Detected system proxy",
+      "source": "Source: {{source}}",
+      "none": "No proxy settings were found, so this mode connects directly.",
+      "pac": "The system also has an auto-config script (PAC). RRSS doesn’t use it and connects using the address above.",
+      "sources": {
+        "environment": "Environment variables",
+        "windows_internet": "Windows Internet settings"
+      }
+    },
+    "check": {
+      "title": "Connection check",
+      "hint": "Visits GitHub with the values currently entered, including unsaved changes; nothing is saved after the test.",
+      "test": "Test connection",
+      "inheritRoute": "Global · {{route}}",
+      "socksNote": "Whether chats can use a SOCKS proxy depends on the chat engine and model service; article and image downloads always support it.",
+      "testing": "Testing",
+      "ok": "Reachable · {{ms}} ms",
+      "okTitle": "GitHub is reachable · HTTP {{status}} · {{ms}} ms",
+      "httpTitle": "Connected to GitHub, but it returned HTTP {{status}}"
+    }
+  },
+  "registry": {
+    "web_javascript": {
+      "label": "Allow JavaScript on original pages",
+      "hint": "Applies to original pages opened after the change."
+    },
+    "web_open_mode": {
+      "label": "Clicking external links",
+      "hint": "Right-click a link to choose another way at any time.",
+      "options": {
+        "reader": "Open in the RRSS reader view",
+        "web": "Open the original page",
+        "browser": "Open in your system browser"
+      }
+    },
+    "web_original_tip": {
+      "label": "Warn before opening original pages"
+    },
+    "web_first_tip": {
+      "label": "Remind you not to trust pages when opening"
+    },
+    "allow_embedding_model_change": {
+      "label": "Allow changing the embeddings model",
+      "hint": "Changing it rebuilds the entire vector store."
+    },
+    "feed_icons_enabled": {
+      "label": "Show site icons",
+      "hint": "Icons are saved locally; turning this off stops new downloads."
+    },
+    "feed_fetch_per_host": {
+      "label": "Simultaneous downloads per site",
+      "hint": "How many feeds from the same site download at once. Raising it refreshes many feeds from one site faster (such as a self-hosted RSSHub), but may get rate-limited; a rate-limited site pauses for a while.",
+      "control": "Feeds downloaded at once per site (1–8)"
+    },
+    "theme_preference": {
+      "label": "Appearance",
+      "options": {
+        "system": "System",
+        "light": "Light",
+        "dark": "Dark"
+      }
+    },
+    "focus_filter": {
+      "label": "Focus filter",
+      "options": {
+        "focus": "Focus only",
+        "hide_faded": "Hide faded",
+        "all": "All"
+      }
+    },
+    "focus_columns": {
+      "label": "Focus columns"
+    },
+    "list_scope": {
+      "label": "List scope",
+      "options": {
+        "all": "All",
+        "unread": "Unread",
+        "starred": "Starred"
+      }
+    },
+    "feeds_scope": {
+      "label": "Feed scope"
+    },
+    "feeds_list_scope": {
+      "label": "Feed list scope",
+      "options": {
+        "all": "All",
+        "unread": "Unread",
+        "starred": "Starred"
+      }
+    },
+    "feeds_pinned": {
+      "label": "Pinned"
+    },
+    "cluster_group_enabled": {
+      "label": "Group related articles"
+    },
+    "interest_boost_enabled": {
+      "label": "Interest boost"
+    },
+    "rank_features_enabled": {
+      "label": "Feature preference"
+    },
+    "rank_source_enabled": {
+      "label": "Source preference"
+    },
+    "rank_coverage_enabled": {
+      "label": "Multi-feed coverage"
+    },
+    "rank_freshness_enabled": {
+      "label": "Freshness decay"
+    },
+    "rank_affinity_enabled": {
+      "label": "Similar to articles you read"
+    },
+    "focus_show_details": {
+      "label": "Why this"
+    },
+    "hidden_spot_check_rate": {
+      "label": "Spot-check rate for hidden articles"
+    },
+    "focus_rerank_enabled": {
+      "label": "Rerank by interest"
+    },
+    "focus_hide_noisy": {
+      "label": "Hide noisy feeds"
+    },
+    "hide_threshold": {
+      "label": "Hide threshold"
+    },
+    "translate_target_lang": {
+      "label": "Translation target"
+    },
+    "developer_tools": {
+      "label": "Developer tools"
+    },
+    "fetch_url_enabled": {
+      "label": "Web page reading"
+    },
+    "ui_debug_mode": {
+      "label": "UI debug mode",
+      "hint": "Shows reader translation progress, pinned below the toolbar. Off by default.",
+      "on": "On",
+      "off": "Off"
+    },
+    "focus_auto_summary": {
+      "label": "Auto-summary"
+    },
+    "cluster_auto_summary": {
+      "label": "Auto-generate overviews for related coverage"
+    },
+    "ai_daily_budget_tokens": {
+      "label": "Daily generation budget",
+      "hint": "Background generation tasks such as auto-summary and auto-digest use at most this many tokens a day; they pause when it runs out and resume the next day. Manual article summaries and manual digests count toward usage but aren’t limited. 0 means no limit.",
+      "control": "Daily generation budget (10k tokens, 0 = no limit)"
+    },
+    "ai_embed_daily_budget_tokens": {
+      "label": "Daily embedding budget",
+      "hint": "Counts embedding requests only (the vectors used for related articles, interests, and memory search). Running out stops embeddings only; summaries and digests keep working. Embedding on demand is also limited by it. 0 means no limit.",
+      "control": "Daily embedding budget (10k tokens, 0 = no limit)"
+    },
+    "focus_summary_neutral_limit": {
+      "label": "Extra neutral unread summaries",
+      "hint": "Beyond high-scoring articles, also summarize this many neutral unread articles. This too looks only at recently added articles and counts toward the daily auto-summary limit. 0 turns it off.",
+      "control": "Extra neutral unread summaries (0 = off)"
+    },
+    "ai_input_tier": {
+      "label": "Body text sent to the model",
+      "hint": "Switching affects only summaries and digests generated afterward; existing summaries aren’t regenerated.",
+      "options": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
+      },
+      "optionHints": {
+        "low": "Lean",
+        "medium": "Balanced",
+        "high": "Less splitting"
+      }
+    },
+    "digest_generate_minutes": {
+      "label": "Auto-generate",
+      "hint": "The daily digest is generated after this time each day; the weekly on Mondays after this time. If the app is closed, it catches up when you next open it. “Generate this digest” in the digest still works at any time.",
+      "control": "Digest auto-generation time"
+    },
+    "pi_idle_timeout_secs": {
+      "label": "Release after idle (minutes)",
+      "hint": "After this long without a chat, the chat engine closes and frees memory; it starts again on the next message. 0 never releases it.",
+      "control": "Release after idle (minutes)"
+    },
+    "pi_assistant_note": {
+      "label": "Notes for the assistant",
+      "hint": "Included in every chat; good for preferences such as reply style or preferred language."
+    },
+    "pi_auto_download": {
+      "label": "Auto-download",
+      "hint": "Allow the app to download the chat engine automatically when it’s missing.",
+      "control": "Auto-download the chat engine",
+      "on": "On",
+      "off": "Off"
+    },
+    "pi_auto_update": {
+      "label": "Auto-update",
+      "hint": "Updates the chat engine within the versions the app supports.",
+      "control": "Auto-update the chat engine",
+      "on": "On",
+      "off": "Off"
+    },
+    "ui_language": {
+      "label": "Interface language",
+      "options": {
+        "system": "System",
+        "zh-CN": "简体中文",
+        "en": "English"
+      }
+    },
+    "close_action": {
+      "label": "When closing the window",
+      "hint": "While hidden in the system tray, RRSS keeps updating feeds on schedule; click the tray icon or open RRSS again to come back.",
+      "options": {
+        "ask": "Ask every time",
+        "tray": "Hide to system tray",
+        "quit": "Quit"
+      }
+    },
+    "pi_cache_warming": {
+      "label": "Cache warming",
+      "hint": "Keeping the provider’s prompt cache warm outside chats makes the next reply faster and cheaper, but costs extra.",
+      "options": {
+        "off": "Off",
+        "streaming": "While replying",
+        "idle": "Also when idle"
+      },
+      "optionHints": {
+        "streaming": "Keep the provider’s prompt cache warm while a reply streams.",
+        "idle": "Also keep it warm between questions; this may incur charges even with no chat open."
+      }
+    }
+  },
+  "storage": {
+    "report": "Storage cleanup",
+    "loadFailed": "Couldn’t measure storage use: {{message}}. Select Rescan to try again.",
+    "scanning": "Measuring",
+    "scannedAt": "Measured at {{time}}",
+    "rescan": "Rescan",
+    "cleanFailed": "Couldn’t complete “{{title}}”:",
+    "rescanFailed": "Rescan failed; still showing the last result. Select Rescan; there’s no need to clean again:",
+    "parts": {
+      "articles": "Articles and index",
+      "vectors": "Vectors",
+      "media": "Media",
+      "ai": "AI cache",
+      "translations": "Translations",
+      "recommendation_logs": "Recommendation log",
+      "engine": "Chat engine",
+      "backups": "Backups",
+      "logs": "Run logs",
+      "other": "Other",
+      "free": "Reclaimable space"
+    },
+    "composition": {
+      "aria": "Measured breakdown: {{parts}}",
+      "separator": ", ",
+      "empty": "No storage use yet",
+      "hint": "Hover over a bar or legend item to see each part’s size"
+    },
+    "location": {
+      "label": "Data location",
+      "reveal": "Show in folder",
+      "copyAria": "Copy path",
+      "copy": "Copy"
+    },
+    "row": {
+      "compacting": "Compacting…",
+      "cleaning": "Cleaning…"
+    },
+    "group": {
+      "database": "Shrinks with retention.",
+      "media": "Regenerated when needed after cleanup."
+    },
+    "total": {
+      "title": "Total",
+      "hintReady": "Database, media cache, chat engine, and automatic backups combined.",
+      "hintScanning": "Measuring reads through the database; a large library may take a few seconds, and you can keep using the app meanwhile.",
+      "failed": "Couldn’t measure"
+    },
+    "preview": {
+      "dataDir": "Browser preview",
+      "summary": "Not connected to local data"
+    },
+    "groups": {
+      "database": "Database",
+      "media": "Media cache",
+      "engine": "Chat engine",
+      "backups": "Automatic backups",
+      "logs": "Run logs"
+    },
+    "items": {
+      "articles": "Articles",
+      "search_index": "Full-text index",
+      "vectors": "Vectors",
+      "ai_cache": "AI cache",
+      "translations": "Translation cache",
+      "recommendation_logs": "Recommendation log",
+      "other": "Other",
+      "legacy": "Legacy data",
+      "free": "Free space",
+      "images": "Image cache",
+      "videos": "Audio and video cache",
+      "media_one": "Cover details",
+      "media_other": "Cover details",
+      "untracked_media": "Unregistered files",
+      "pi_program": "Chat engine program",
+      "pi_sessions": "Chat records (engine side)",
+      "auto_backups": "Automatic backups",
+      "logs": "Run logs"
+    },
+    "actions": {
+      "old_vectors": "Clear old-model vectors",
+      "ai_cache": "Clear",
+      "translations": "Clear",
+      "recommendation_logs": "Clear",
+      "legacy_tables": "Delete",
+      "vacuum": "Compact database",
+      "images": "Clear",
+      "videos": "Clear",
+      "untracked_media": "Clean up",
+      "logs": "Clear"
+    },
+    "confirmTitles": {
+      "old_vectors": "Clear old-model vectors",
+      "ai_cache": "Clear AI cache",
+      "translations": "Clear translation cache",
+      "recommendation_logs": "Clear recommendation log",
+      "legacy_tables": "Delete legacy data",
+      "vacuum": "Compact database",
+      "images": "Clear image cache",
+      "videos": "Clear audio and video cache",
+      "untracked_media": "Clean up unregistered files",
+      "logs": "Clear run logs?"
+    },
+    "passive": {
+      "follows_articles": "Changes with articles",
+      "manage_elsewhere": "Managed on their own pages",
+      "manage_backups": "Managed in Backup and restore",
+      "none": "None",
+      "other_log_instance": "Another RRSS window is logging",
+      "log_unavailable": "Log folder isn’t writable"
+    },
+    "messages": {
+      "legacy_text": "{{text}}",
+      "storage_summary": "Database {{database_bytes}} · Media cache {{media_bytes}} · Chat engine {{engine_bytes}}{{backup}}{{logs}}",
+      "storage_articles_one": "1 article · Title, body text, and read status",
+      "storage_articles_other": "{{count}} articles · Titles, body text, and read status",
+      "storage_search_index": "Used for search; grows and shrinks with articles",
+      "storage_vectors_unset_one": "1 vector · No embeddings model set",
+      "storage_vectors_unset_other": "{{count}} vectors · No embeddings model set",
+      "storage_vectors_other_one": "1 vector · {{old_count}} from another model",
+      "storage_vectors_other_other": "{{count}} vectors · {{old_count}} from other models",
+      "storage_vectors_current_one": "1 vector · Current model {{model}}",
+      "storage_vectors_current_other": "{{count}} vectors · Current model {{model}}",
+      "storage_old_vectors_confirm_one": "Delete 1 vector that wasn’t generated by the current model {{model}}.",
+      "storage_old_vectors_confirm_other": "Delete {{count}} vectors that weren’t generated by the current model {{model}}.",
+      "storage_old_vectors_warning": "Vectors from the current model aren’t affected. These articles get new vectors generated with the current model later, which may incur charges with a remote model.",
+      "storage_ai_cache_one": "1 entry · Anything older than 30 days is cleared automatically",
+      "storage_ai_cache_other": "{{count}} entries · Anything older than 30 days is cleared automatically",
+      "storage_ai_cache_confirm_one": "Delete 1 cached summary or digest result.",
+      "storage_ai_cache_confirm_other": "Delete {{count}} cached summaries and digest results.",
+      "storage_ai_cache_warning": "Matching content calls the model again later, which may incur charges.",
+      "storage_translations_one": "1 article",
+      "storage_translations_other": "{{count}} articles",
+      "storage_translations_confirm_one": "Delete the translation for 1 article.",
+      "storage_translations_confirm_other": "Delete translations for {{count}} articles.",
+      "storage_translations_warning": "Viewing a translation again translates it again, which may incur charges.",
+      "storage_recommendation_logs_one": "1 entry · Impressions, actions, and reading sessions combined · Kept 180 days",
+      "storage_recommendation_logs_other": "{{count}} entries · Impressions, actions, and reading sessions combined · Kept 180 days",
+      "storage_recommendation_logs_confirm_one": "Delete 1 impression, action, or reading session entry.",
+      "storage_recommendation_logs_confirm_other": "Delete {{count}} impressions, actions, and reading session entries.",
+      "storage_recommendation_logs_warning": "Articles, ratings, stars, and read status aren’t affected.",
+      "storage_one": "Chats and memories {{chat_bytes}} ({{threads}} chat) · Settings, feeds, and rules {{other_bytes}} · Digests {{digest_bytes}} ({{periods}} issue)",
+      "storage_other": "Chats and memories {{chat_bytes}} ({{threads}} chats) · Settings, feeds, and rules {{other_bytes}} · Digests {{digest_bytes}} ({{periods}} issues)",
+      "storage_legacy": "Tables left over from earlier versions and no longer used: {{tables}}",
+      "storage_legacy_confirm": "Delete the {{tables}} tables.",
+      "storage_legacy_warning": "The current version no longer reads them; translations were moved to a new table.",
+      "storage_free": "Space left by deleted data is returned to the disk after compacting. Needs about {{required_bytes}} of temporary space{{available}}",
+      "storage_vacuum_confirm": "Return {{bytes}} of free space to the disk.",
+      "storage_vacuum_space": "Needs about {{required_bytes}} of temporary disk space{{available}}; a large library may take a minute or two.",
+      "storage_vacuum_wait": "Refreshes and background jobs wait during this; you can keep reading.",
+      "storage_wal": "Includes {{bytes}} in the write-ahead log",
+      "storage_images": "Up to 256 MB; downloaded as needed when you open articles",
+      "storage_images_confirm": "Delete saved article images and free about {{bytes}}.",
+      "storage_images_warning": "Images are downloaded again when you open the article.",
+      "storage_videos": "Up to 512 MB",
+      "storage_videos_confirm": "Delete saved audio and video and free about {{bytes}}.",
+      "storage_videos_warning": "Media is downloaded again on playback.",
+      "storage_media_one": "Small files such as video covers",
+      "storage_media_other": "Small files such as video covers",
+      "storage_untracked_one": "1 file · Interrupted downloads and the like; safe to delete",
+      "storage_untracked_other": "{{count}} files · Interrupted downloads and the like; safe to delete",
+      "storage_untracked_confirm_one": "Delete 1 unregistered file in the media folder, about {{bytes}}.",
+      "storage_untracked_confirm_other": "Delete {{count}} unregistered files in the media folder, about {{bytes}}.",
+      "storage_untracked_warning": "No articles are affected.",
+      "storage_pi_program": "Pi managed by RRSS",
+      "storage_pi_sessions": "Needed to resume chats; saved with backups",
+      "storage_auto_backups_one": "1 backup · Only the latest {{keep}} are kept",
+      "storage_auto_backups_other": "{{count}} backups · Only the latest {{keep}} are kept",
+      "storage_logs": "Used for troubleshooting; logging continues after clearing",
+      "storage_logs_confirm": "Delete the current log files; new logs keep recording afterward.",
+      "storage_logs_warning": "Feeds, articles, and settings aren’t affected.",
+      "storage_logs_location": "Saved in the local log folder; not included in backups.",
+      "storage_cleaned_one": "{{result}}",
+      "storage_cleaned_other": "{{result}}"
+    },
+    "format": {
+      "backup": " · Automatic backups {{bytes}}",
+      "logs": " · Run logs {{bytes}}",
+      "available": ", {{bytes}} left",
+      "vacuumAvailable": " ({{bytes}} free)",
+      "tableSeparator": ", "
+    },
+    "results": {
+      "ai_cache_one": "Cleared the AI cache (1 entry).",
+      "ai_cache_other": "Cleared the AI cache ({{count}} entries).",
+      "recommendation_logs_one": "Cleared the recommendation log (1 entry).",
+      "recommendation_logs_other": "Cleared the recommendation log ({{count}} entries).",
+      "translations_one": "Cleared the translation cache (1 article).",
+      "translations_other": "Cleared the translation cache ({{count}} articles).",
+      "images_one": "Cleared the image cache (1 file).",
+      "images_other": "Cleared the image cache ({{count}} files).",
+      "videos_one": "Cleared the audio and video cache (1 file).",
+      "videos_other": "Cleared the audio and video cache ({{count}} files).",
+      "untracked_media_one": "Cleaned up 1 unregistered file.",
+      "untracked_media_other": "Cleaned up {{count}} unregistered files.",
+      "old_vectors_one": "Cleared 1 old-model vector; it’ll be regenerated with the current model.",
+      "old_vectors_other": "Cleared {{count}} old-model vectors; they’ll be regenerated with the current model.",
+      "legacy_tables_one": "Deleted legacy data.",
+      "legacy_tables_other": "Deleted legacy data.",
+      "vacuum_one": "Database compacted.",
+      "vacuum_other": "Database compacted.",
+      "logs_one": "Run logs cleared; logging continues.",
+      "logs_other": "Run logs cleared; logging continues."
+    }
+  },
+  "dialog": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "unsavedTitle": "{{title}} has unsaved changes",
+    "saveBeforeLeave": "Save these changes before leaving?",
+    "saveAndLeave": "Save and leave",
+    "discard": "Don’t save",
+    "keepEditing": "Keep editing",
+    "discardNote": "Anything you entered will be lost when this closes.",
+    "discardAndLeave": "Leave without saving"
+  },
+  "stepper": {
+    "decrease": "Decrease {{label}}",
+    "increase": "Increase {{label}}"
+  },
+  "rows": {
+    "problem": "{{label}}: {{problem}}",
+    "saveFailed": "Couldn’t save:",
+    "saveRowFailed": "Couldn’t save “{{label}}”:",
+    "savedAffectsPi": "Saved. Applies the next time you send a message.",
+    "saved": "Saved.",
+    "on": "On",
+    "off": "Off",
+    "restoreDefault": "Restore default",
+    "loading": "Loading settings…",
+    "loadFailed": "Couldn’t load settings:",
+    "reload": "Reload",
+    "wanUnit": "10k tokens / day",
+    "check": {
+      "integer": "Enter a whole number.",
+      "range": "Enter a value from {{min}} to {{max}}.",
+      "maxLength": "Use no more than {{max}} characters."
+    }
+  },
+  "inputTier": {
+    "hint": "{{lead}}: each summary sends up to {{summary}} of body text (about {{tokens}} tokens; 50% more for starred or high-scoring articles), and each article in a digest is excerpted up to {{digest}}.",
+    "chars": "{{value}} characters",
+    "wanChars": "{{value}}0,000 characters"
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "dialog": "Search articles",
+  "close": "Close search",
+  "placeholder": "Search titles and body text…",
+  "clear": "Clear",
+  "count": {
+    "articles_one": "1 article",
+    "articles_other": "{{count}} articles",
+    "articlesCapped_one": "First article",
+    "articlesCapped_other": "First {{count}} articles",
+    "threads_one": "1 chat",
+    "threads_other": "{{count}} chats",
+    "threadsCapped_one": "First chat",
+    "threadsCapped_other": "First {{count}} chats"
+  },
+  "error": {
+    "articles": "Search failed: {{message}}",
+    "threads": "Chat search failed: {{message}}"
+  },
+  "recent": {
+    "caption": "Recent searches",
+    "session": "This session"
+  },
+  "hint": {
+    "short": "Type at least 2 characters",
+    "loading": "Searching…",
+    "threadsEmpty": "Type a word to search chat titles and messages."
+  },
+  "none": {
+    "title": "No results for “{{query}}”",
+    "inThreads_one": "Not in articles, but there is 1 chat.",
+    "inThreads_other": "Not in articles, but there are {{count}} chats.",
+    "seeThreads": "See chats",
+    "advice": "Try a shorter word or remove the quotes; articles hidden by rules don’t appear here.",
+    "clearFilters": "Clear filters",
+    "reset": "Clear and search again",
+    "threadsTitle": "No chats found for “{{query}}”",
+    "threadsAdvice": "Only unarchived chats are searched; archived chats are in “Archived” in the sidebar."
+  },
+  "results": {
+    "articles": "Results",
+    "threads": "Chat results"
+  },
+  "foot": {
+    "select": "Select",
+    "openArticle": "Open at match",
+    "openThread": "Open chat",
+    "local": "Local full-text search · no model calls"
+  },
+  "state": {
+    "read": "Read",
+    "starred": "Starred"
+  },
+  "tips": {
+    "articlesTitle": "How search works",
+    "articlesBody": "Titles and body text are both searched. For Chinese, any two or more characters work; English is case-insensitive. Wrap a phrase in quotes like <code>\"local-first\"</code> to match it exactly. Articles hidden by rules don’t appear here.",
+    "threadsTitle": "Search chats",
+    "threadsBody": "Chat titles and your messages with the assistant are both searched; archived chats and digest follow-ups aren’t included. Opening a result jumps to the matched message."
+  },
+  "thread": {
+    "who": {
+      "user": "You",
+      "assistant": "Assistant"
+    },
+    "snippetWho": "{{who}}:",
+    "source": "Chat",
+    "sourceIn": "Chat · {{folder}}",
+    "hitUser": "Matched your question",
+    "hitAssistant": "Matched the assistant’s reply",
+    "hitTitle": "Title match · latest message",
+    "goMessage": "Press Enter to open the chat at this message",
+    "goLatest": "Press Enter to open the chat from the latest message"
+  },
+  "filter": {
+    "kind": "Search in",
+    "kindArticles": "Articles",
+    "kindThreads": "Chats",
+    "threadsNote": "Unarchived chats only, including titles and messages",
+    "scope": "Scope",
+    "scopePrefix": "Scope:",
+    "scopeOption": {
+      "all": "All",
+      "unread": "Unread",
+      "starred": "Starred"
+    },
+    "feeds": "Filter by feed",
+    "feedsValue": "Feed: {{value}}",
+    "feedsAll": "All",
+    "feedsCount_one": "1 feed",
+    "feedsCount_other": "{{count}} feeds",
+    "feedsEvery": "All feeds",
+    "time": "Filter by publish time",
+    "timePrefix": "Time:",
+    "timeOption": {
+      "any": "Any time",
+      "today": "Today",
+      "7d": "Last 7 days",
+      "30d": "Last 30 days"
+    }
+  },
+  "preview": {
+    "label": "Preview",
+    "minutes_one": "About 1 min",
+    "minutes_other": "About {{count}} min",
+    "score": "Score",
+    "where": "Match location",
+    "whereTitle": "Title",
+    "whereBody": "Body",
+    "whereBodyCount": "Body ({{n}})",
+    "bodyHit": "Body match",
+    "bodyStart": "Start of body",
+    "blocksError": "Matched paragraphs aren’t available right now; open the article to find them in the body.",
+    "goBody": "Click or press Enter to open at the first matched paragraph in the body.",
+    "goTitle": "Title match only: click or press Enter to open from the top.",
+    "siblings": "From the same feed",
+    "siblingsTitle": "Same feed in these results"
+  },
+  "hits": {
+    "label": "Body matches",
+    "head": "{{n}} body matches",
+    "total_one": "1 paragraph total",
+    "total_other": "{{count}} paragraphs total",
+    "ordinal": "Paragraph {{n}}",
+    "go": "Open here →",
+    "more_one": "Show 1 more match",
+    "more_other": "Show {{count}} more matches"
+  }
+}

@@ -1,0 +1,445 @@
+{
+  "rules": {
+    "polarity": {
+      "like": "Add",
+      "dislike": "Subtract"
+    },
+    "dimension": {
+      "title_kw": "Title",
+      "title_re": "Title regex",
+      "author": "Author",
+      "tag": "Tag",
+      "url_phrase": "URL",
+      "url_re": "URL regex",
+      "body_phrase": "Body",
+      "body_re": "Body regex"
+    },
+    "scopeMeta": {
+      "global": "Global",
+      "folder": "Folder",
+      "feed": "Feed"
+    },
+    "scopeKind": {
+      "global": "Global",
+      "folder": "Folder",
+      "feed": "Feed"
+    },
+    "filter": {
+      "summary": "Filter rules",
+      "all": "All",
+      "like": "Boosted",
+      "dislike": "Lowered",
+      "pending": "Pending"
+    },
+    "verb": {
+      "regex": "matches regex",
+      "contains": "contains"
+    },
+    "loading": "Loading rules…",
+    "readFailed": "Couldn’t load rules, and your form wasn’t overwritten: {{error}}",
+    "retryRead": "Reload",
+    "editLabel": "Rule settings",
+    "composer": {
+      "editTitle": "Edit rule",
+      "newTitle": "New rule",
+      "hint": "Reads like a sentence: when something contains something, add or subtract points.",
+      "when": "When",
+      "position": "Match field",
+      "pattern": "Text to match",
+      "patternPlaceholder": "Word or phrase",
+      "weight": "Score weight",
+      "points": "points",
+      "saveEdit": "Save changes",
+      "add": "Add",
+      "more": "More",
+      "scope": "Applies to",
+      "cancel": "Cancel"
+    },
+    "group": {
+      "suggested": {
+        "title": "Suggested rules",
+        "hint": "Suggestions wait here for confirmation and aren’t enabled automatically."
+      },
+      "existing": {
+        "title": "Existing rules",
+        "hint": "Disabled rules are kept and can be turned back on anytime."
+      }
+    },
+    "empty": {
+      "all": "No rules yet. Create a rule or enable one of the presets below.",
+      "filtered": "No rules in this category. Switch to “All” to see other rules."
+    },
+    "meta": {
+      "preset": "From preset",
+      "manual": "Added manually",
+      "suggest": "Suggested",
+      "pending": "Pending suggestion",
+      "disabled": "Disabled"
+    },
+    "stats": {
+      "hits": "{{hits}} matches in the last 30 days · last match: {{last}}",
+      "withHidden": "{{hits}} matches in the last 30 days · last match: {{last}} · {{hidden}} hidden by it",
+      "none": "never"
+    },
+    "advice": {
+      "stale": "No matches in 90 days; safe to remove",
+      "broad": "Matches too broadly",
+      "disable": "Disable",
+      "narrow": "Narrow…"
+    },
+    "row": {
+      "edit": "Edit",
+      "editAria": "Edit rule {{pattern}}",
+      "confirm": "Confirm",
+      "discard": "Discard",
+      "delete": "Delete",
+      "deleteConfirm": "Delete the rule “{{pattern}}”?",
+      "enableAria": "Enable rule {{pattern}}"
+    },
+    "action": {
+      "disable": "Disable rule",
+      "confirm": "Confirm rule",
+      "discard": "Discard rule",
+      "delete": "Delete rule",
+      "update": "Update rule",
+      "save": "Save rule",
+      "create": "Create rule",
+      "saveThreshold": "Save hidden threshold",
+      "saveSpotRate": "Save spot check rate",
+      "rescore": "Recalculate scores",
+      "removePreset": "Remove preset",
+      "applyPreset": "Enable preset"
+    },
+    "write": {
+      "failed": "{{label}} failed:",
+      "done": "{{label}} completed.",
+      "refreshFailed": "Couldn’t refresh the rule list, so the previous list is still shown. Your changes were saved; reload to see them:",
+      "patternRequired": "Enter the text to match",
+      "thresholdInvalid": "Enter a valid hidden threshold; it can’t be empty."
+    },
+    "hidden": {
+      "title": "Hidden",
+      "threshold": "Hidden threshold",
+      "thresholdHint": "Articles scoring below this value don’t appear in Today.",
+      "spot": "Spot check",
+      "spotHint": "Randomly let a few articles that should be hidden through, to see whether rules are hiding good ones.",
+      "spotOff": "Off",
+      "statsLoading": "Loading spot check stats…",
+      "statsFailed": "Couldn’t load spot check settings or stats.",
+      "spotStats": "{{exposed}} let through in the last 30 days: you opened or liked {{liked}}, and disliked {{disliked}}.",
+      "insufficient": "Too few samples to estimate the false-hide rate yet",
+      "estimate": "About {{percent}}% may be wrongly hidden",
+      "viewLiked": "View liked articles ({{liked}})",
+      "spotNote": "Articles let through look like any other; only “Why this” marks them as a spot check and explains why after you give feedback.",
+      "history": "Article history",
+      "historyHint": "After changing rules, you can recalculate scores for existing articles.",
+      "rescore": "Recalculate scores"
+    },
+    "presets": {
+      "summary": "Presets",
+      "none": "No presets available.",
+      "enabledOf": "{{enabled}} of {{total}} enabled",
+      "notInstalled_one": "1 rule, not installed",
+      "notInstalled_other": "{{count}} rules, not installed",
+      "remove": "Remove",
+      "apply": "Enable"
+    },
+    "scopeList": {
+      "failed": "Couldn’t load scopes. Try loading the rules again.",
+      "loading": "Loading scopes…",
+      "empty": "No scopes available yet. Add a feed or folder in “Feeds” first.",
+      "aria": "Choose a scope"
+    },
+    "summary": "{{prefix}}{{condition}}: {{effect}} · {{scope}}",
+    "effect": {
+      "boost": "adds points",
+      "hide": "hides the article",
+      "lower": "deducts points",
+      "none": "score unchanged"
+    },
+    "summaryScope": {
+      "global": "All feeds",
+      "feed": "This feed only",
+      "folder": "This folder and subfolders"
+    },
+    "summaryPrefix": {
+      "feed": "From “{{name}}” — ",
+      "folder": "In folder “{{name}}” — "
+    }
+  },
+  "subscribe": {
+    "aria": "Feed settings",
+    "editLabel": "Feed settings",
+    "uncategorized": "Uncategorized",
+    "retentionMode": {
+      "follow": "Use global setting",
+      "keep": "Keep forever",
+      "custom": "Custom days"
+    },
+    "action": {
+      "unsubscribe": "Unsubscribe",
+      "add": "Add",
+      "newFolder": "New folder",
+      "import": "Import",
+      "export": "Export",
+      "save": "Save",
+      "delete": "Delete",
+      "dismiss": "Dismiss"
+    },
+    "write": {
+      "failed": "{{label}} failed:",
+      "done": "{{label}} completed.",
+      "refreshFailed": "Couldn’t refresh the feed list, so the previous list is still shown. Your changes were saved; reload to see them:",
+      "stale": "The feed list hasn’t refreshed yet. Click “Reload” and check before making changes."
+    },
+    "batch": {
+      "title": "Unsubscribe feeds that keep failing",
+      "warning": "Articles from these feeds will be deleted too, including starred ones.",
+      "done_one": "Unsubscribed 1 feed.",
+      "done_other": "Unsubscribed {{count}} feeds.",
+      "ok_one": "Unsubscribe 1 feed",
+      "ok_other": "Unsubscribe {{count}} feeds"
+    },
+    "add": {
+      "title": "Add a feed",
+      "hint": "Paste a feed URL to add a source you follow.",
+      "urlAria": "Feed URL",
+      "urlPlaceholder": "Paste a feed URL, such as https://example.com/feed.xml",
+      "button": "Add",
+      "success": "Added: {{message}}",
+      "formats": "Supports RSS, Atom, and JSON Feed.",
+      "notice": {
+        "fetching": "Added; fetching in the background",
+        "offline": "Added; you’re offline, so fetching will continue once you’re back online",
+        "deferred": "Added, {{reason}}",
+        "not_scheduled": "Added, but fetching isn’t scheduled: {{reason}}"
+      }
+    },
+    "display": {
+      "title": "Display",
+      "hint": "How sources look in Today cards and in the feed list.",
+      "icons": "Site icons"
+    },
+    "fetch": {
+      "title": "Fetching",
+      "hint": "How feeds are downloaded from each site during refresh.",
+      "label": "Fetching"
+    },
+    "organize": {
+      "title": "Organize",
+      "hint": "Folders only group the sidebar and don’t change the order.",
+      "newFolder": "New folder",
+      "folderNameAria": "New folder name",
+      "folderPlaceholder": "For example: Tech, Design, Life",
+      "created": "Created folder “{{name}}”",
+      "create": "Create"
+    },
+    "opml": {
+      "hint": "Includes only the feed list, not article text.",
+      "import": "Import",
+      "export": "Export",
+      "imported": "Imported {{imported}} feeds, skipped {{skipped}} duplicates, created {{folders}} folders"
+    },
+    "loadFailed": "Couldn’t load feeds. Reload before making changes:",
+    "list": {
+      "title": "My feeds",
+      "hint": "Grouped by folder.",
+      "reload": "Reload",
+      "loading": "Loading feeds…",
+      "empty": "No feeds yet. Add a source above or import an existing feed list."
+    },
+    "health": {
+      "issues_one": "1 feed needs attention: failing repeatedly, no new articles, or most content hidden.",
+      "issues_other": "{{count}} feeds need attention: failing repeatedly, no new articles, or most content hidden.",
+      "showAll": "Show all",
+      "onlyThese": "Show only these",
+      "unsubscribeFailing": "Unsubscribe feeds that keep failing…"
+    },
+    "edit": "Edit",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "saveEdit": "Save changes",
+    "folder": {
+      "name": "Folder name",
+      "missing": "This folder is no longer in the feed list. Your unsaved input is kept.",
+      "deleteTitle": "Delete folder",
+      "deleteConfirm": "Delete “{{name}}”? Its feeds will move to “Uncategorized”."
+    },
+    "feed": {
+      "deleteTitle": "Unsubscribe from feed",
+      "deleteConfirm": "Unsubscribe from “{{title}}”? Its articles will be deleted too.",
+      "dismiss": "Dismiss",
+      "dismissed": "Dismissed the warning for “{{title}}”; it won’t show again for 30 days.",
+      "unsubscribe": "Unsubscribe",
+      "refreshFailed": "Refresh failed",
+      "name": "Feed name",
+      "namePlaceholder": "Leave blank to use the source’s default name",
+      "folder": "Folder",
+      "folderGone": "Original folder is unavailable",
+      "url": "Feed URL",
+      "retention": "Keep article text",
+      "retentionDays": "Days to keep",
+      "retentionHint": "Once an article has been saved for this many days, its text is cleared, keeping only the title, link, and reading history. Set the default for all feeds in “Storage”.",
+      "missing": "This feed is no longer in the list. Your unsaved input is kept."
+    }
+  },
+  "siteRule": {
+    "title": "Site rule",
+    "save": "Save",
+    "domainRequired": "Enter a domain.",
+    "saveFailed": "Couldn’t save:",
+    "testFailed": "Test failed:",
+    "field": {
+      "domain": "Domain",
+      "body": "Body",
+      "title": "Title",
+      "author": "Author",
+      "date": "Date"
+    },
+    "fieldPlaceholder": "Leave blank to use generic extraction",
+    "strip": "Remove",
+    "stripPlaceholder": "One CSS selector per line",
+    "disableJs": "Disable JavaScript for this site in the original page",
+    "hintStored": "To change the domain, create a new rule.",
+    "hint": "Use CSS selectors to pick the article body and parts to remove. “*.example.com” matches all subdomains but not example.com itself.",
+    "testUrl": "Test URL",
+    "test": "Test",
+    "result": {
+      "userHit": "Your rule · matched",
+      "userMiss": "Your rule · not matched",
+      "builtinUnused": "Built-in rule · not used",
+      "layerHit": "{{name}} · matched",
+      "layerUnused": "{{name}} · not used",
+      "generic": "Generic extraction",
+      "fallbackTag": "(fallback)",
+      "summary": "Title “{{title}}” · Author {{author}} · {{date}} · Body {{chars}} chars · {{images}} images · {{seconds}} sec",
+      "noAuthor": "unknown",
+      "noDate": "date unknown",
+      "stripped_one": "1 element removed by the remove selectors.",
+      "stripped_other": "{{count}} elements removed by the remove selectors."
+    }
+  },
+  "siteRules": {
+    "title": "Site rules",
+    "new": "New rule",
+    "writeFailed": "Couldn’t save changes:",
+    "readFailed": "Couldn’t load site rules.",
+    "retry": "Try again",
+    "loading": "Loading site rules…",
+    "row": {
+      "user": "Your rule",
+      "body": "Body {{body}}",
+      "strip": "Remove {{selectors}}",
+      "updated": "Updated {{date}}",
+      "enableAria": "Enable {{domain}}",
+      "edit": "Edit",
+      "delete": "Delete",
+      "deleteTitle": "Delete site rule?",
+      "deleteConfirm": "After you delete the rule for {{domain}}, built-in rules or generic extraction will be used."
+    },
+    "builtin": {
+      "title_one": "1 built-in rule",
+      "title_other": "{{count, number}} built-in rules",
+      "detail": "From {{source}} (public domain) · version {{commit}} · updated with RRSS · covers few Chinese sites, so most rely on generic extraction"
+    },
+    "refreshFailed": "Couldn’t refresh the list. Your changes were saved; reload to see them.",
+    "hint": "Article text uses your rule first, then built-in rules, then generic extraction."
+  },
+  "webReading": {
+    "editLabel": "Web reading",
+    "saveFailed": "Couldn’t save:",
+    "firstTipReset": "The first-time tip will show again the next time you open the reader or an original page.",
+    "clearFailed": "Couldn’t clear:",
+    "cleared": "Original page data cleared.",
+    "readFailed": "Couldn’t load web reading settings.",
+    "retry": "Try again",
+    "loading": "Loading web reading settings…",
+    "intro": "External links in articles open in RRSS first. Pages you open aren’t added to the library by default.",
+    "open": {
+      "title": "Opening links",
+      "click": "Clicking an external link",
+      "clickHint": "You can always right-click a link to choose another way.",
+      "optionHint": "({{hint}})"
+    },
+    "tip": {
+      "label": "First-time tip",
+      "hint": "Warnings always appear for lookalike domains, link text that doesn’t match the address, and non-HTTPS pages.",
+      "reset": "Show the first-time tip again"
+    },
+    "page": {
+      "title": "Original page",
+      "js": "Allow JavaScript on web pages",
+      "jsHint": "Turning it off is safer, but many sites won’t display fully. Changes apply to newly opened original pages; you can also turn it off for a single site in its site rule.",
+      "jsAria": "Allow JavaScript",
+      "data": "Browsing data is kept only until you quit RRSS",
+      "dataHint": "During this session, original pages share sign-ins, cookies, and cache, so passing one human check avoids repeats. Everything is deleted when you close the main window and quit; the next launch starts fresh. Camera, microphone, location, and notifications are always denied; downloads are blocked and can be handed to your system browser.",
+      "clearTitle": "Clear original page data now?",
+      "clearBody": "This closes the current original page and clears sign-ins, cookies, and cache saved during this session.",
+      "clear": "Clear now"
+    }
+  },
+  "retention": {
+    "title": "Retention",
+    "saveFailed": "Couldn’t save retention settings:",
+    "cleanFailed": "Cleanup failed:",
+    "savedDays_one": "Now keeping articles for 1 day.",
+    "savedDays_other": "Now keeping articles for {{count}} days.",
+    "savedOff": "Retention is off; articles won’t be cleaned up.",
+    "daysInvalid": "Days to keep must be a whole number greater than 0.",
+    "readFailed": "Couldn’t load retention settings: {{error}}",
+    "fold": "Old article text",
+    "foldOn_one": "Kept 1 day",
+    "foldOn_other": "Kept {{count}} days",
+    "foldOff": "Off",
+    "keep": "Keep article text",
+    "keepOnHint_one": "Articles saved for 1 day lose their text, vectors, translations, and images, keeping only the title, link, and reading history.",
+    "keepOnHint_other": "Articles saved for {{count}} days lose their text, vectors, translations, and images, keeping only the title, link, and reading history.",
+    "keepOffHint": "When off, no articles are cleaned up. When on, age is counted from when the article was saved; on the feed page you can set a different period for one feed or keep it forever.",
+    "toggleOn": "On",
+    "toggleOff": "Off",
+    "days": "Days to keep",
+    "daysHint": "Counted from when the article was saved.",
+    "customFeeds_one": " 1 feed has its own retention setting.",
+    "customFeeds_other": " {{count}} feeds have their own retention settings.",
+    "daysUnit": "days",
+    "protectedA": "Never cleaned up: starred articles, articles cited in chats, and articles used as digest sources.",
+    "protectedB": "Unread articles are cleaned up too; after cleanup they can still be found by title, and the text is re-fetched when you open them.",
+    "cleaning": "Cleaning…",
+    "cleanNow": "Clean up now",
+    "previewConfirmTitle": "Clean up old article text now",
+    "previewConfirmOk": "Clean up",
+    "messages": {
+      "legacy_text": "{{text}}",
+      "retention_preview_one": "1 article will be cleaned up",
+      "retention_preview_other": "{{count}} articles will be cleaned up",
+      "retention_preview_empty": "Nothing to clean up right now",
+      "retention_preview_hint": "Frees about {{bytes}}; you can compact the database afterward to return the space to disk. Runs automatically after each daily refresh{{first}}.",
+      "retention_daily": "Runs automatically once after each daily refresh.",
+      "retention_confirm_one": "Clean up the text, vectors, translations, and images of 1 article{{scope}}.",
+      "retention_confirm_other": "Clean up the text, vectors, translations, and images of {{count}} articles{{scope}}.",
+      "retention_preserve": "Titles, links, reading history, and likes/dislikes are kept; articles can still be found by title, and the text is re-fetched when opened.",
+      "retention_backup": "This is the first cleanup, so all data will be backed up first.",
+      "retention_cleaned_one": "{{backup}}Cleaned up old article text for 1 article. You can compact the database to free disk space.",
+      "retention_cleaned_other": "{{backup}}Cleaned up old article text for {{count}} articles. You can compact the database to free disk space."
+    },
+    "format": {
+      "first": "; all data is backed up automatically before the first run",
+      "scope": " older than {{days}} days",
+      "customScope": " that expired in feeds with their own retention settings",
+      "backedUp": "Backed up all data first. ",
+      "confirmTitle": "Clean up old article text now",
+      "confirmFirst": "Back up and clean up",
+      "confirm": "Clean up"
+    }
+  },
+  "ruleConditions": {
+    "author": "Author is ‘{{pattern}}’",
+    "tag": "Has tag ‘{{pattern}}’",
+    "title_kw": "Title contains ‘{{pattern}}’",
+    "title_re": "Title matches regex ‘{{pattern}}’",
+    "url_phrase": "URL contains ‘{{pattern}}’",
+    "url_re": "URL matches regex ‘{{pattern}}’",
+    "body_phrase": "Body contains ‘{{pattern}}’",
+    "body_re": "Body matches regex ‘{{pattern}}’"
+  }
+}
