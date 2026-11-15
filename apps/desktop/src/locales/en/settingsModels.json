@@ -448,6 +448,7 @@
     "collapse": "Hide breakdown",
     "expand_one": "Breakdown (1)",
     "expand_other": "Breakdown ({{count}})",
-    "addFirst": "Add models first, then choose one for each task."
+    "addFirst": "Add models first, then choose one for each task.",
+    "outputLanguage": "AI output language"
   }
 }

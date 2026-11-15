@@ -6,7 +6,8 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ### Added
 
-- English interface: a Language option at the bottom of the settings navigation (System / 简体中文 / English) switches immediately without a restart. It follows the system language by default: Chinese systems get Chinese, everything else gets English. AI-generated text (summaries, digests, chat replies) is still written in Chinese for now.
+- English interface: a Language option at the bottom of the settings navigation (System / 简体中文 / English) switches immediately without a restart. It follows the system language by default: Chinese systems get Chinese, everything else gets English. Chat replies from the assistant are still written in Chinese for now.
+- AI output language: summaries, digests, related coverage overviews and memories are written in the interface language by default, or in a language you choose under Settings → Models → "AI output language" (Simplified Chinese or English). Only content generated afterwards changes; existing summaries and digests keep their language until regenerated.
 - Run in the background: closing the window can hide RRSS to the system tray, where it keeps updating feeds on schedule. The first close asks and can remember the choice; change it later under Settings → Advanced → "When closing the window". The tray menu opens the window, refreshes now or quits, and coming back from the tray shows the latest items in Today. Starting RRSS again brings up the running window.
 - "Related reading" at the end of an article: up to 3 articles with similar titles and summaries after "Next article" (requires an embedding model). Esc or "Previous" returns to the original article, and previous / next still follow the original list.
 - Syntax highlighting in code blocks: code in the reader, chats and digests is highlighted by the language the source declares; without a declaration it is only colored when the language is recognized reliably. Copied and cited text is unchanged.
@@ -14,6 +15,7 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ### Changed
 
+- AI summaries and digests read more directly: summaries no longer say "the article says" or point out what the source leaves out, and drop scores and community reactions; digest items open with a headline-style bold lead, and commands and settings are shown as code.
 - Translation now targets the interface language by default: a Chinese interface still translates into Chinese, an English interface into English. A target language chosen earlier is kept.
 - Feeds without a title show their host name in every list (local bridges show the route name or address) instead of "Unnamed source" or the full address.
 - Proxy addresses with a username and password are shown as `***@host` in the detected system proxy and the generated chat-engine configuration under Settings → Advanced.
@@ -22,6 +24,7 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ### Fixed
 
+- Compressing the older part of a long chat into memory no longer fails with model services that enforce structured output.
 - Importing a preferences file explains why a rule was skipped (for example, an invalid regular expression), without mixed-language messages.
 - When a feed fails on its first fetch, a short failure note is kept, and timeouts read "the feed request timed out".
 - Code blocks in the reader show the language declared by the source (including common blog formats such as Jekyll, GitHub and Hugo), and Markdown code block language names are normalized. Applies to articles fetched from now on.

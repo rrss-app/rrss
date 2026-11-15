@@ -141,7 +141,7 @@ pub fn digest_date_label(period: &str, period_start: i64) -> String {
 }
 
 fn format_month_day(date: chrono::NaiveDate) -> String {
-    format!("{}月{}日", date.month(), date.day())
+    date.format("%Y-%m-%d").to_string()
 }
 
 pub fn insert_digest(
@@ -612,6 +612,7 @@ fn parse_summary_details_inner(
 }
 
 /// 去掉卡片摘要里常见的 HN 分、社区热度等不宜出现在简报正文的片段。
+/// 摘要可能是任一种输出语言写的，中英两组规则都跑；中文规则碰不到英文，反之亦然。
 pub fn sanitize_digest_blurb(text: &str) -> String {
     use regex::Regex;
     let mut s = text.trim().to_string();
@@ -627,6 +628,7 @@ pub fn sanitize_digest_blurb(text: &str) -> String {
         r"[，,]?\s*有用户(?:在社区)?分享[^，。；]*",
         r"[，,]?\s*有人(?:在社区)?分享[^，。；]*",
         r"[，,]?\s*网友(?:表示|分享|热议)[^，。；]*",
+        r"(?i)\s*\(\s*\d+\s*(?:points?|comments?)\s*\)",
     ];
     for pat in patterns {
         if let Ok(re) = Regex::new(pat) {
@@ -679,18 +681,22 @@ pub fn sanitize_digest_body_with_item_refs(
 }
 
 /// 成稿后兜底：删掉模型偶发的覆盖率空话；二手转述行只在没有实质信息时才删。
-/// 宁可漏删也不误删——正文信息量优先。
+/// 宁可漏删也不误删——正文信息量优先。中英两组规则都跑，英文只收评测里见过的写法。
 pub fn sanitize_digest_body(body: &str) -> String {
     use regex::Regex;
     let always_drop = [
         r"^[-*•·\s]*(?:今日|本周|本期)[^。]{0,24}(?:还涵盖|还包括|另有)",
         r"(?:等综合快讯|涉及多领域|涵盖多个领域)",
         r"^[-*•·\s]*此外还(?:有|涵盖|包括)",
+        r"(?i)^[-*•·\s]*(?:today|this week|this issue)\b[^.]{0,40}\balso (?:covers|covered|includes|included)\b",
+        r"(?i)\b(?:spanning|covering) (?:many|multiple|various) (?:fields|areas|topics)\b",
     ];
     let drop_if_thin = [
         r"^[-*•·\s]*(?:有用户|有人)(?:在社区)?分享",
         r"^[-*•·\s]*网友(?:表示|分享|热议)",
         r"^[-*•·\s]*社区(?:讨论|热议|关注)",
+        r"(?i)^[-*•·\s]*(?:a user|users|some users|someone|netizens|commenters)\b[^.]{0,20}\b(?:shared|said|noted|reported)\b",
+        r"(?i)^[-*•·\s]*(?:the )?community (?:discussion|reaction|buzz)\b",
     ];
     let compile =
         |pats: &[&str]| -> Vec<Regex> { pats.iter().filter_map(|p| Regex::new(p).ok()).collect() };
@@ -770,7 +776,7 @@ pub fn format_digest_items(items: &[DigestItem]) -> String {
         if group_items.len() > 1 {
             let first = group_items[0];
             let mut group_text = format!(
-                "## 话题：{}（包含 {} 篇报道）",
+                "## Topic: {} ({} reports)",
                 first.title,
                 group_items.len()
             );
@@ -779,7 +785,7 @@ pub fn format_digest_items(items: &[DigestItem]) -> String {
 
             for it in &group_items {
                 let (ol, kp) = parse_summary_details(&it.summary, it.summary_json.as_deref());
-                group_text.push_str(&format!("\n- {}｜{}", it.title, ol));
+                group_text.push_str(&format!("\n- {} | {}", it.title, ol));
                 for point in kp {
                     let norm = point.trim().to_lowercase();
                     if points_set.insert(norm) && all_points.len() < 5 {
@@ -788,7 +794,7 @@ pub fn format_digest_items(items: &[DigestItem]) -> String {
                 }
             }
             if !all_points.is_empty() {
-                group_text.push_str("\n  核心要点：");
+                group_text.push_str("\n  Key points:");
                 for p in all_points {
                     group_text.push_str(&format!("\n  * {p}"));
                 }
@@ -796,7 +802,7 @@ pub fn format_digest_items(items: &[DigestItem]) -> String {
             out.push(group_text);
         } else if let Some(it) = group_items.first() {
             let (ol, kp) = parse_summary_details(&it.summary, it.summary_json.as_deref());
-            let mut line = format!("- {}｜{}", it.title, ol);
+            let mut line = format!("- {} | {}", it.title, ol);
             if !kp.is_empty() {
                 for p in kp.into_iter().take(3) {
                     line.push_str(&format!("\n  * {p}"));
@@ -820,13 +826,13 @@ pub fn format_digest_input(
     }
     let target = pick_max.min(items.len());
     let mut packed = format!(
-        "候选 {} 篇，请选出 {} 篇。\n\n{}",
+        "{} candidates; pick {}.\n\n{}",
         items.len(),
         target,
         catalog
     );
     if !noisy_titles.is_empty() {
-        packed.push_str("\n\n噪声源（选题时低优先级，成稿勿提及源名）：\n");
+        packed.push_str("\n\nNoisy sources (lower priority when picking; never name them in the digest):\n");
         for title in noisy_titles {
             packed.push_str("- ");
             packed.push_str(title);
@@ -858,11 +864,11 @@ pub fn format_digest_catalog(items: &[DigestItem]) -> String {
     for (_cid, group) in groups {
         if group.len() > 1 {
             let first = group[0];
-            let mut block = format!("话题：{}（{} 篇）", first.title, group.len());
+            let mut block = format!("Topic: {} ({} articles)", first.title, group.len());
             for it in group {
                 let (ol, kp) =
                     parse_summary_details_for_digest(&it.summary, it.summary_json.as_deref());
-                block.push_str(&format!("\n[id:{}] {}｜{}", it.article_id, it.title, ol));
+                block.push_str(&format!("\n[id:{}] {} | {}", it.article_id, it.title, ol));
                 for p in kp {
                     block.push_str(&format!("\n  * {p}"));
                 }
@@ -871,7 +877,7 @@ pub fn format_digest_catalog(items: &[DigestItem]) -> String {
         } else if let Some(it) = group.first() {
             let (ol, kp) =
                 parse_summary_details_for_digest(&it.summary, it.summary_json.as_deref());
-            let mut line = format!("[id:{}] {}｜{}", it.article_id, it.title, ol);
+            let mut line = format!("[id:{}] {} | {}", it.article_id, it.title, ol);
             for p in kp {
                 line.push_str(&format!("\n  * {p}"));
             }
@@ -934,7 +940,7 @@ pub(crate) fn brief_lines(item: &DigestItem) -> String {
         block.push('\n');
     }
     if !facts.is_empty() {
-        block.push_str("\n关键事实：");
+        block.push_str("\nKey facts:");
         for f in facts {
             block.push_str(&format!("\n- {f}"));
         }
@@ -992,7 +998,7 @@ pub fn format_weekly_input(
     }
     let mut parts = Vec::new();
     if !daily_lines.is_empty() {
-        parts.push(format!("## 日报条目\n\n{}", daily_lines.join("\n")));
+        parts.push(format!("## Daily digest items\n\n{}", daily_lines.join("\n")));
         let sources: Vec<String> = numbered_items
             .iter()
             .enumerate()
@@ -1002,7 +1008,7 @@ pub fn format_weekly_input(
                     .to_string()
             })
             .collect();
-        parts.push(format!("## 来源文章\n\n{}", sources.join("\n\n")));
+        parts.push(format!("## Source articles\n\n{}", sources.join("\n\n")));
     }
 
     // 补充文章的摘录最多占档位总量的一半（有日报时），按篇平分。
@@ -1034,9 +1040,9 @@ pub fn format_weekly_input(
     }
     if !extra.is_empty() {
         let heading = if daily_lines.is_empty() {
-            "## 补充文章"
+            "## Supplementary articles"
         } else {
-            "## 补充文章（日报未收）"
+            "## Supplementary articles (not in the daily digests)"
         };
         parts.push(format!("{heading}\n\n{}", extra.join("\n\n---\n\n")));
     }
@@ -1048,7 +1054,7 @@ pub fn format_weekly_input(
     }
     Ok(DigestDeepInput {
         prompt: format!(
-            "本周日报条目 {} 条，补充文章 {} 篇。引用请用〈序号〉。\n\n{}",
+            "Daily digest items this week: {}; supplementary articles: {}. Cite with the 〈n〉 numbers.\n\n{}",
             daily_lines.len(),
             extra.len(),
             parts.join("\n\n")
@@ -1087,9 +1093,9 @@ pub fn format_digest_deep_input(
         let mut parts = Vec::new();
         let n = group.len();
         let header = if n > 1 {
-            format!("【{}】{} 篇", event_blocks.len() + 1, n)
+            format!("【Event {}】{} articles", event_blocks.len() + 1, n)
         } else {
-            format!("【{}】", event_blocks.len() + 1)
+            format!("【Event {}】", event_blocks.len() + 1)
         };
         parts.push(header);
         for item in group {
@@ -1118,7 +1124,7 @@ pub fn format_digest_deep_input(
     }
     Ok(DigestDeepInput {
         prompt: format!(
-            "本期 {} 个事件（共 {} 篇报道）。引用请用〈序号〉。\n\n{}",
+            "This issue: {} events ({} articles in all). Cite with the global 〈n〉 numbers.\n\n{}",
             event_blocks.len(),
             numbered_items.len(),
             event_blocks.join("\n\n")
@@ -1268,7 +1274,7 @@ mod tests {
             .expect("daily midnight");
         assert_eq!(
             digest_date_label("daily", daily.timestamp_millis()),
-            "8月27日"
+            "2026-08-27"
         );
         let weekly = chrono::Local
             .with_ymd_and_hms(2026, 8, 25, 0, 0, 0)
@@ -1276,7 +1282,7 @@ mod tests {
             .expect("week start");
         assert_eq!(
             digest_date_label("weekly", weekly.timestamp_millis()),
-            "8月25日 – 8月31日"
+            "2026-08-25 – 2026-08-31"
         );
     }
 
@@ -1421,8 +1427,12 @@ mod tests {
         let day = |n: i64| 1_900_000_000_000 + n * DAY_MS;
         let write = |start: i64, sections: serde_json::Value, numbered: &[DigestItem]| {
             let draft =
-                prepare_digest_draft(&serde_json::json!({ "sections": sections }), numbered)
-                    .unwrap();
+                prepare_digest_draft(
+                    &serde_json::json!({ "sections": sections }),
+                    numbered,
+                    crate::ai_store::OutputLanguage::ZhCn,
+                )
+                .unwrap();
             insert_digest(&conn, "daily", start, &draft.body, &draft.items_json).unwrap();
         };
         let items = digest_items_by_ids(&conn, &[1, 2, 3]).unwrap();
@@ -1458,7 +1468,7 @@ mod tests {
         assert_eq!(ids, vec![1, 2, 3, 9]);
         let prompt = &input.prompt;
         assert!(
-            prompt.starts_with("本周日报条目 3 条，补充文章 1 篇。"),
+            prompt.starts_with("Daily digest items this week: 3; supplementary articles: 1."),
             "{prompt}"
         );
         assert!(prompt.contains("】**Acme** 发布 X2 芯片 〈1〉"), "{prompt}");
@@ -1467,11 +1477,11 @@ mod tests {
             "{prompt}"
         );
         assert!(
-            prompt.contains("## 来源文章\n\n〈1〉芯片发布\n\n芯片发布一句话"),
+            prompt.contains("## Source articles\n\n〈1〉芯片发布\n\n芯片发布一句话"),
             "{prompt}"
         );
         assert!(
-            prompt.contains("## 补充文章（日报未收）\n\n〈4〉补充长文"),
+            prompt.contains("## Supplementary articles (not in the daily digests)\n\n〈4〉补充长文"),
             "{prompt}"
         );
         assert!(prompt.contains("42 项改进"), "{prompt}");
@@ -1480,7 +1490,7 @@ mod tests {
         // 没有日报时只有补充文章。
         let only = format_weekly_input(&conn, &[], &supplements, InputTier::Medium).unwrap();
         assert!(
-            only.prompt.contains("## 补充文章\n\n〈1〉补充长文"),
+            only.prompt.contains("## Supplementary articles\n\n〈1〉补充长文"),
             "{}",
             only.prompt
         );
@@ -1522,7 +1532,7 @@ mod tests {
             .prompt;
         assert!(low.chars().count() < 1_800, "{}", low.chars().count());
         assert!(high.chars().count() > 5_000);
-        assert!(low.contains("关键事实：\n- 售价 499 美元"));
+        assert!(low.contains("Key facts:\n- 售价 499 美元"));
         assert_eq!(
             low.matches("- 要点").count(),
             1,
@@ -1590,6 +1600,22 @@ mod tests {
     }
 
     #[test]
+    fn english_output_gets_the_same_cleanup() {
+        assert_eq!(
+            sanitize_digest_blurb("Rust 1.90 ships a new borrow checker (412 points)"),
+            "Rust 1.90 ships a new borrow checker"
+        );
+        let raw = "### Tech\n\n- **Rust 1.90** ships with a new borrow checker.\n- Users shared stories about the airdrop.\n- Today's digest also covers roundups spanning many fields.\n";
+        let cleaned = sanitize_digest_body(raw);
+        assert!(cleaned.contains("**Rust 1.90**"));
+        assert!(!cleaned.contains("Users shared"));
+        assert!(!cleaned.contains("also covers"));
+        // 有粗体主体或数字的转述行留着。
+        let kept = sanitize_digest_body("### Security\n\n- A user shared packet captures from the **Cloudflare** outage.\n");
+        assert!(kept.contains("Cloudflare"));
+    }
+
+    #[test]
     fn sanitize_digest_body_keeps_lines_with_substance() {
         let raw = "### 安全\n\n- 网友分享了 **Cloudflare** 宕机期间的抓包数据，指向 BGP 撤销。\n";
         let cleaned = sanitize_digest_body(raw);
@@ -1626,7 +1652,7 @@ mod tests {
             },
         ];
         let packed = format_digest_input(&items, &[], 5);
-        assert!(packed.contains("候选 2 篇，请选出 2 篇"));
+        assert!(packed.contains("2 candidates; pick 2."));
         assert!(format_digest_input(&[], &[], 5).is_empty());
     }
 
@@ -2014,13 +2040,13 @@ mod tests {
         ];
 
         let packed = format_digest_items(&items);
-        assert!(packed.contains("## 话题：Rust 1.90 发布（包含 2 篇报道）"));
-        assert!(packed.contains("- Rust 1.90 发布｜Rust 1.90 稳定版发布"));
-        assert!(packed.contains("- Rust 1.90 更新解读｜解析新版本性能优化"));
-        assert!(packed.contains("核心要点："));
+        assert!(packed.contains("## Topic: Rust 1.90 发布 (2 reports)"));
+        assert!(packed.contains("- Rust 1.90 发布 | Rust 1.90 稳定版发布"));
+        assert!(packed.contains("- Rust 1.90 更新解读 | 解析新版本性能优化"));
+        assert!(packed.contains("Key points:"));
         assert!(packed.contains("* 引入新语法"));
         assert!(packed.contains("* 提升编译速度"));
         assert!(packed.contains("* 修复若干回归问题"));
-        assert!(packed.contains("- 独立文章标题｜独立报道摘要。"));
+        assert!(packed.contains("- 独立文章标题 | 独立报道摘要。"));
     }
 }

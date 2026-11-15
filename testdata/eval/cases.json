@@ -1,0 +1,168 @@
+{
+  "feeds": [
+    { "key": "harbor", "title": "Harbor Tech Daily", "url": "https://harbor.example/feed.xml" },
+    { "key": "ledger", "title": "Ledger Wire", "url": "https://ledger-wire.example/rss" },
+    { "key": "fernhill", "title": "Fernhill Dev Notes", "url": "https://fernhill.example/atom.xml" },
+    { "key": "metro", "title": "Metro Ledger", "url": "https://metro-ledger.example/rss" },
+    { "key": "qingliu", "title": "青柳科技", "url": "https://qingliu.example/rss" },
+    { "key": "liwood", "title": "栎木开源周刊", "url": "https://liwood.example/feed" },
+    { "key": "binjiang", "title": "滨江晨报", "url": "https://binjiang-morning.example/rss" },
+    { "key": "riverside", "title": "江畔观察", "url": "https://riverside-watch.example/rss" },
+    { "key": "foothill", "title": "山麓科研", "url": "https://foothill-science.example/feed" }
+  ],
+  "clusters": [
+    { "id": 901, "label": "Kestrel 3" },
+    { "id": 902, "label": "Larchdb 2.0" },
+    { "id": 903, "label": "滨江电池新规" }
+  ],
+  "articles": [
+    {
+      "key": "kestrel-en",
+      "feed": "harbor",
+      "cluster": 901,
+      "hours_ago": 6,
+      "title": "Northwind Robotics unveils Kestrel 3 warehouse robot",
+      "html": "<p>Northwind Robotics on Thursday introduced Kestrel 3, the third generation of its autonomous picking robot for mid-sized warehouses. The company says the new model picks 40 percent more items per hour than Kestrel 2 in its own test warehouse, mainly thanks to a redesigned two-finger gripper and a faster vision model that runs on the robot instead of a nearby server.</p><p>Kestrel 3 will cost 18,000 US dollars per unit, or 900 dollars a month under a three-year lease. Northwind said the first units will ship in March 2027, starting with customers in Germany and the Netherlands. A single charge lasts about nine hours.</p><p>Chief executive Mara Lind said the company has 1,200 pre-orders but declined to name customers. Northwind did not say whether existing Kestrel 2 fleets can be upgraded.</p>"
+    },
+    {
+      "key": "kestrel-zh",
+      "feed": "qingliu",
+      "cluster": 901,
+      "hours_ago": 5,
+      "title": "北风机器人发布第三代仓储拣货机器人 Kestrel 3",
+      "html": "<p>北风机器人（Northwind Robotics）周四发布第三代仓储拣货机器人 Kestrel 3。官方称新机型的每小时拣货量比上一代提升 40%，提升主要来自重新设计的双指夹爪，以及改在机身本地运行的视觉模型。</p><p>Kestrel 3 单台售价 1.8 万美元，也可按月租赁。据北风机器人在发布会上的说法，首批设备将于 2027 年 5 月起交付，先面向欧洲客户。</p><p>社区讨论热烈（318 分），有用户分享了自己仓库试用上一代产品的经历。</p>"
+    },
+    {
+      "key": "kestrel-ledger",
+      "feed": "ledger",
+      "cluster": 901,
+      "hours_ago": 3,
+      "title": "Northwind to wind down Kestrel 2 line as new robot arrives",
+      "html": "<p>Northwind Robotics will stop producing its Kestrel 2 robot by the end of the second quarter of 2027, according to an internal memo seen by Ledger Wire. About 60 assembly workers at the company's plant in Aarhus will be offered roles on the Kestrel 3 line.</p><p>Kestrel 3 uses swappable battery packs that can be changed in about six minutes, the memo says, which lets warehouses run the robots around the clock without charging docks. Northwind confirmed the memo but would not comment on staffing.</p>"
+    },
+    {
+      "key": "larch-en",
+      "feed": "fernhill",
+      "cluster": 902,
+      "hours_ago": 20,
+      "title": "Larchdb 2.0: a new storage engine, and what it breaks",
+      "html": "<p>Larchdb, the embedded key-value database used by several open-source sync tools, has released version 2.0 after eighteen months of work. This is the largest change to the project since it started, and it is worth reading the upgrade notes before you move production data.</p><h2>A new storage engine</h2><p>The headline change is a new log-structured storage engine called Strata. In 1.x, every write went through a single B-tree protected by one global lock. Strata instead appends writes to an in-memory table, flushes it to sorted files on disk, and merges those files in the background. The maintainers report that write throughput on their standard benchmark, which inserts 100 million 1 KB records, went from about 41,000 to about 128,000 writes per second on the same eight-core machine, roughly a threefold improvement. Read latency at the 99th percentile stayed within five percent of 1.x.</p><h2>Multi-version concurrency</h2><p>2.0 also adds multi-version concurrency control. Readers now see a consistent snapshot and never block writers, which removes the most common complaint in the issue tracker: long-running scans stalling the whole database. Snapshots are kept for 30 seconds by default; the limit can be changed with the new snapshot_ttl option.</p><h2>What breaks</h2><p>The configuration file moves from INI to TOML, and several options were renamed. Old configuration files are rejected at start-up with an error that points to the migration guide. The on-disk format is also new: 1.x data directories cannot be opened directly. The project ships a tool, larch-migrate, that converts a 1.x directory in place; the maintainers measured about four minutes per 10 GB on an NVMe drive and recommend taking a backup first.</p><p>Support for 32-bit platforms has been dropped. The license stays Apache-2.0.</p><h2>What comes next</h2><p>The roadmap for 2.1 lists online backups and a C API. The maintainers say 1.x will receive security fixes until the end of 2027.</p>"
+    },
+    {
+      "key": "larch-zh",
+      "feed": "liwood",
+      "cluster": 902,
+      "hours_ago": 18,
+      "title": "Larchdb 2.0 发布：写入吞吐提升约 3 倍，配置格式不兼容",
+      "html": "<p>嵌入式键值数据库 Larchdb 发布 2.0 版本，换用名为 Strata 的日志结构存储引擎。维护者给出的基准测试中，写入吞吐从每秒约 4.1 万次提升到约 12.8 万次。</p><p>新版本加入多版本并发控制，长时间扫描不再阻塞写入。配置文件由 INI 改为 TOML，1.x 的数据目录需要用 larch-migrate 工具转换后才能打开。项目同时停止支持 32 位平台。</p><p>该消息在社区获得高关注（412 分），网友热议迁移成本。</p>"
+    },
+    {
+      "key": "binjiang-long",
+      "feed": "binjiang",
+      "cluster": 903,
+      "hours_ago": 30,
+      "title": "滨江市出台电动自行车电池新规，明年元旦起施行",
+      "html": "<p>滨江市市场监管局昨日发布《电动自行车用锂离子电池安全管理办法》，明确自 2027 年 1 月 1 日起，在本市销售、更换的电动自行车电池必须带有统一的安全认证标识，并在电池外壳上标注生产批次和额定容量。</p><p>根据办法，已经在用的无标识电池设 180 天过渡期，过渡期内仍可正常使用，但不得再转售。过渡期结束后，经查出仍在使用无标识电池的车辆，将被要求限期更换。</p><p>为了降低市民更换成本，市里同步推出以旧换新补贴：市民交回旧电池并购买带认证标识的新电池，每块可获 300 元补贴，每人限两块。补贴资金由市财政和参与活动的销售商按七比三分担，预计覆盖约 40 万辆电动自行车。</p><p>办法还要求，住宅小区的集中充电点须在 2027 年 6 月底前加装温度监测和自动断电装置，新建小区的充电点按每 20 户不少于 1 个配建。物业企业未按期整改的，由街道督促整改。</p><p>市场监管局相关负责人表示，近三年本市电动自行车火灾中，约六成与使用改装或劣质电池有关。新规的目的是从销售端把住电池质量关，同时给存量车辆留出足够的更换时间。</p><p>多家电池销售商表示，带认证标识的电池价格比普通电池高出约 15%，补贴基本可以抵消差价。也有骑手担心过渡期结束前补贴额度用完，监管部门回应称会根据申领情况追加资金。</p>"
+    },
+    {
+      "key": "binjiang-short",
+      "feed": "riverside",
+      "cluster": 903,
+      "hours_ago": 26,
+      "title": "滨江电池新规解读：旧电池还能用多久？",
+      "html": "<p>滨江市新出台的电动自行车电池管理办法规定，无认证标识的旧电池有 90 天过渡期。市民以旧换新可领取每块 300 元补贴。</p><p>据了解，全市还将在年内新增 1200 个换电柜，方便外卖骑手就近更换电池。</p>"
+    },
+    {
+      "key": "binjiang-en",
+      "feed": "metro",
+      "cluster": 903,
+      "hours_ago": 24,
+      "title": "Binjiang to require certified e-bike batteries from January",
+      "html": "<p>The city of Binjiang will require all e-bike batteries sold or replaced in the city to carry a safety certification mark from January 1, 2027. Residents who hand in an old battery and buy a certified one will receive a 300 yuan subsidy per battery, up to two per person.</p>"
+    },
+    {
+      "key": "glacier-zh",
+      "feed": "foothill",
+      "hours_ago": 12,
+      "title": "高原水文实验室用卫星数据评估冰川湖溃决风险",
+      "html": "<p>高原水文实验室近日在《山地水文通讯》发表研究，利用 2000 年至 2025 年的卫星影像，对喜马拉雅中段 1,642 个冰川湖的面积变化和溃决风险进行了评估。</p><p>研究发现，这些冰川湖的总面积在 25 年间扩大了约 23%，其中面积超过 0.1 平方公里的湖泊有 186 个，扩张速度明显快于小型湖泊。研究团队结合湖泊面积、下游坡度、坝体类型和上游冰川的稳定性，给每个湖泊打出风险分值，最终把 47 个湖泊列为高风险。</p><p>论文指出，高风险湖泊中有 29 个位于跨境流域，一旦溃决，洪水可能在数小时内影响下游国家的村庄和水电站。研究估计，这 47 个湖泊下游 50 公里范围内约有 12 万人居住。</p><p>与以往研究相比，这项工作的不同之处在于把冰崩和滑坡等触发因素也纳入了模型，而不是只看湖泊面积。作者承认，卫星影像无法直接测量冰碛坝内部的结构，高风险名单还需要实地勘察来核实。</p><p>研究团队建议，优先在高风险湖泊安装水位传感器，并与下游地区共享预警数据。团队计划在 2027 年夏季对其中 10 个湖泊开展实地考察。</p>"
+    },
+    {
+      "key": "wren-en",
+      "feed": "harbor",
+      "hours_ago": 9,
+      "title": "Wren browser 12 adds per-site memory limits",
+      "html": "<p>The Wren browser team released version 12, which lets users cap how much memory a single site may use. When a tab exceeds its limit, Wren pauses its background scripts instead of reloading the page. In the team's tests with 40 open tabs, total memory use dropped by about 25 percent.</p><p>Limits can be set per site from the address bar menu. Version 12 also removes support for the old extension format, which the team deprecated two years ago.</p>"
+    },
+    {
+      "key": "quillpad-en",
+      "feed": "ledger",
+      "hours_ago": 4,
+      "title": "Quillpad 4 beta opens to testers",
+      "html": ""
+    },
+    {
+      "key": "huichuan-zh",
+      "feed": "qingliu",
+      "hours_ago": 15,
+      "title": "汇川支付完成 2 亿美元 C 轮融资",
+      "html": "<p>跨境支付公司汇川支付宣布完成 2 亿美元 C 轮融资，由一家主权基金领投。公司表示，资金将主要用于东南亚市场的牌照申请和本地团队建设，计划在 2027 年底前进入印尼和越南。</p><p>汇川支付称，过去一年的交易额同比增长 140%，但公司仍未盈利，预计 2028 年实现盈亏平衡。</p>"
+    }
+  ],
+  "summaries": [
+    "kestrel-en",
+    "larch-en",
+    "wren-en",
+    "quillpad-en",
+    "real:hnrss-frontpage.xml#0",
+    "real:lwn.xml#0",
+    "binjiang-long",
+    "glacier-zh",
+    "larch-zh",
+    "real:solidot.xml#0",
+    "real:sspai.xml#0",
+    "real:ruanyifeng-atom.xml#0"
+  ],
+  "digests": [
+    {
+      "name": "Mixed issue",
+      "pick_max": 12,
+      "pick_min": 6,
+      "articles": [
+        "kestrel-en", "kestrel-zh", "kestrel-ledger",
+        "larch-en", "larch-zh",
+        "binjiang-long", "binjiang-short", "binjiang-en",
+        "glacier-zh", "wren-en", "quillpad-en", "huichuan-zh",
+        "real:hnrss-frontpage.xml#0", "real:hnrss-frontpage.xml#1", "real:hnrss-frontpage.xml#2",
+        "real:solidot.xml#0", "real:solidot.xml#1", "real:solidot.xml#2",
+        "real:lwn.xml#0", "real:lwn.xml#1",
+        "real:sspai.xml#0", "real:sspai.xml#1"
+      ]
+    },
+    {
+      "name": "Real snapshots",
+      "pick_max": 10,
+      "pick_min": 5,
+      "articles": [
+        "real:hnrss-frontpage.xml#3", "real:hnrss-frontpage.xml#4", "real:hnrss-frontpage.xml#5",
+        "real:solidot.xml#3", "real:solidot.xml#4", "real:solidot.xml#5",
+        "real:lwn.xml#2", "real:lwn.xml#3",
+        "real:sspai.xml#2", "real:sspai.xml#3",
+        "real:ruanyifeng-atom.xml#0", "real:jsonfeed-org.json#0",
+        "real:v2ex-atom.xml#0", "real:v2ex-atom.xml#1",
+        "wren-en", "huichuan-zh"
+      ]
+    }
+  ],
+  "clusters_to_summarize": [901, 902, 903],
+  "memory": [
+    {
+      "name": "Preferences in Chinese",
+      "transcript": "user: 我主要关注 Rust 和数据库方面的新闻，加密货币的内容不太感兴趣，简报里能少放一点吗？\nassistant: 可以。我会在之后的回答里优先提 Rust 和数据库相关的报道，加密货币相关的内容尽量少放。如果你想彻底不看，也可以在规则里把相关来源隐藏。\nuser: 好的。另外我一般中午才看简报，早上来不及。\nassistant: 明白，中午看的话日报已经生成好了，不影响阅读。"
+    },
+    {
+      "name": "News only, in English",
+      "transcript": "user: What does the Wren 12 memory limit actually do when a tab goes over?\nassistant: When a tab exceeds the limit you set for that site, Wren pauses the page's background scripts instead of reloading it. In the team's test with 40 tabs, total memory use fell by about 25 percent.\nuser: And the old extension format is gone in 12?\nassistant: Yes, version 12 removes support for the old extension format, which was deprecated two years ago."
+    }
+  ]
+}

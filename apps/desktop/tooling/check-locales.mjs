@@ -21,7 +21,7 @@ export const SOURCE_ONLY = new Set([
 ]);
 
 /** 语言选项用各自的语言写（「简体中文」「English」），不随界面语言翻译，译文里允许出现中文。 */
-export const AUTONYMS = new Set(["settingsSystem:registry.ui_language.options.zh-CN"]);
+export const AUTONYMS = new Set(["settingsSystem:registry.ui_language.options.zh-CN", "settingsSystem:registry.ai_output_language.options.zh-CN"]);
 
 /** 命名空间文件压平成 `ns:a.b.c` → 文字。 */
 export function flatten(ns, tree, prefix = "", out = new Map()) {

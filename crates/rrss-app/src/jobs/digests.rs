@@ -32,6 +32,8 @@ struct DigestPrep {
     tier: ai_store::InputTier,
     pick_task: Option<ai_store::ResolvedTask>,
     final_task: ai_store::ResolvedTask,
+    /// 成稿任务正文里语言指令用的语言；兜底小节标题跟着它。
+    language: ai_store::OutputLanguage,
 }
 
 fn article_version(conn: &rusqlite::Connection, id: i64) -> rrss_core::Result<String> {
@@ -175,8 +177,9 @@ async fn run_digest_inner(
             daily_snapshot: if weekly { Some((now - ai_store::WEEKLY_WINDOW_MS, now, daily_version(conn, now - ai_store::WEEKLY_WINDOW_MS, now)?)) } else { None },
             previous: previous_digest(conn, period, start)?,
             tier: ai_store::input_tier(conn)?,
-            pick_task: if shallow.is_empty() { None } else { Some(ai_store::resolve_task(conn, if weekly { TASK_DIGEST_PICK_WEEKLY } else { TASK_DIGEST_PICK_DAILY })?) },
-            final_task: ai_store::resolve_task(conn, if weekly { TASK_DIGEST_WEEKLY } else { TASK_DIGEST_DAILY })?,
+            pick_task: if shallow.is_empty() { None } else { Some(crate::ai_language::resolve_task(conn, if weekly { TASK_DIGEST_PICK_WEEKLY } else { TASK_DIGEST_PICK_DAILY })?) },
+            final_task: crate::ai_language::resolve_task(conn, if weekly { TASK_DIGEST_WEEKLY } else { TASK_DIGEST_DAILY })?,
+            language: crate::ai_language::current(conn)?,
             mapped,
             shallow,
             pick_max,
@@ -229,6 +232,7 @@ async fn run_digest_inner(
         tier,
         pick_task,
         final_task,
+        language,
         ..
     } = prep;
     let deep_input = spawn_db(path.clone(), move |conn| {
@@ -263,7 +267,7 @@ async fn run_digest_inner(
         prepared,
         &deep_input.prompt,
         digest_json_schema(),
-        |parsed| Ok(ai_store::prepare_digest_draft(parsed, &numbered)?),
+        |parsed| Ok(ai_store::prepare_digest_draft(parsed, &numbered, language)?),
     )
     .await?;
     let stored = spawn_db(path, move |conn| {
@@ -321,7 +325,7 @@ mod tests {
     async fn weekly_digest_builds_on_daily_digests_and_supplements() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(body_string_contains("请选出"))
+            .and(body_string_contains("candidates; pick"))
             .respond_with(reply(
                 json!({"picks": [{"article_id": 2, "reason": "补充"}]}),
             ))
@@ -358,6 +362,7 @@ mod tests {
             let draft = ai_store::prepare_digest_draft(
                 &json!({"sections": [{"title": "硬件", "items": [{"text": "**Acme** 发布 X2", "refs": [1]}]}]}),
                 &numbered,
+                ai_store::OutputLanguage::ZhCn,
             )
             .unwrap();
             ai_store::insert_digest(
@@ -385,9 +390,9 @@ mod tests {
             "{}",
             bodies[0]
         );
-        assert!(bodies[0].contains("请选出 2 篇"), "{}", bodies[0]);
+        assert!(bodies[0].contains("pick 2."), "{}", bodies[0]);
         assert!(
-            bodies[1].contains("## 日报条目") && bodies[1].contains("**Acme** 发布 X2 〈1〉"),
+            bodies[1].contains("## Daily digest items") && bodies[1].contains("**Acme** 发布 X2 〈1〉"),
             "{}",
             bodies[1]
         );
@@ -420,7 +425,7 @@ mod tests {
         server.reset().await;
         let changed = path.clone();
         Mock::given(method("POST")).respond_with(move |request: &wiremock::Request| {
-            if String::from_utf8_lossy(&request.body).contains("请选出") {
+            if String::from_utf8_lossy(&request.body).contains("candidates; pick") {
                 reply(json!({"picks":[{"article_id":2,"reason":"补充"}]}))
             } else {
                 db::open_at(&changed).unwrap().execute("UPDATE digests SET body=body||' revised' WHERE period='daily'", []).unwrap();

@@ -69,7 +69,7 @@ impl ManualJob {
         // An opaque fingerprint; never expose configuration or input in the key.
         let mut config = Vec::new();
         for task in tasks {
-            match ai_store::resolve_task(conn, task) {
+            match crate::ai_language::resolve_task(conn, task) {
                 Ok(resolved) => config.push(serde_json::json!([
                     task,
                     resolved.model,
@@ -582,7 +582,7 @@ async fn observe_environment(shared: Arc<Shared>, send: watch::Sender<Environmen
             for (index, tasks) in tasks.into_iter().enumerate() {
                 let values = tasks
                     .iter()
-                    .map(|task| match ai::resolve_task(conn, task) {
+                    .map(|task| match crate::ai_language::resolve_task(conn, task) {
                         Ok(task) => serde_json::json!([
                             task.model,
                             task.provider.id,

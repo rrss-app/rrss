@@ -1,6 +1,7 @@
 //! UI 无关的应用层：视图模型、动作、作业、Pi 运行时、CLI。
 
 pub mod actions;
+pub mod ai_language;
 pub mod capabilities;
 pub mod chat;
 mod configuration;

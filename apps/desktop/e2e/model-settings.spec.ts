@@ -281,3 +281,16 @@ test("automatic summaries explain the upgrade, confirm before turning on and set
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
   await expect(budget).toHaveValue("10");
 });
+
+test("AI output language follows the interface by default and can be set on its own", async ({ page }) => {
+  await installMockHost(page, { systemLanguage: "en" });
+  await page.goto("/");
+  await page.locator(".sidebar-foot button").first().click();
+  const settings = page.locator(".settings-drawer");
+  await settingsTab(settings, "model").click();
+  const row = settings.getByRole("group", { name: "AI output language", exact: true });
+  await expect(row.getByRole("button", { name: "Same as interface (English)", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await row.getByRole("button", { name: "English", exact: true }).click();
+  await expect(row.getByRole("button", { name: "English", exact: true })).toHaveAttribute("aria-pressed", "true");
+  expect(await page.evaluate(() => (window as any).__mockHost.args.set_setting)).toMatchObject({ id: "ai_output_language", value: "en" });
+});

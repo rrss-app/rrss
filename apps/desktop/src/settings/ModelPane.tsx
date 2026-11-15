@@ -128,6 +128,8 @@ export function ModelPane({ onAsk, onNavigate, onEditStateChange }: {
       {auto && <AutoSummaryUpgradeNotice auto={auto} tier={tier ?? ""} onShowJobs={showJobs}
         defaults={{ generation: specDefault("ai_daily_budget_tokens"), embedding: specDefault("ai_embed_daily_budget_tokens") }} />}
 
+      <SettingsRows ids={["ai_output_language"]} label={t("pane.outputLanguage")} disabled={writing} onEditStateChange={report("output-language")} />
+
       <section className="settings-group settings-section" aria-labelledby="model-connections">
         <div className="settings-section-meta">
           <div className="settings-group-head"><h4 id="model-connections">{t("pane.connections")} <span className="settings-count">{providers.length}</span></h4></div>

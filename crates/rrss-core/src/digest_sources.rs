@@ -13,6 +13,7 @@ use crate::digest::{
     parse_digest_items_json, sanitize_digest_body, sanitize_digest_body_with_item_refs,
 };
 use crate::error::{Error, Result};
+use crate::ai_store::OutputLanguage;
 
 #[derive(Debug, Clone)]
 pub struct DigestDraft {
@@ -196,10 +197,18 @@ fn normalize_item_text(raw: &str) -> Option<String> {
     }
 }
 
-fn safe_title(raw: &str) -> String {
+/// 模型给了空的小节标题时用的兜底标题，跟着 AI 输出语言。
+fn fallback_title(language: OutputLanguage) -> &'static str {
+    match language {
+        OutputLanguage::ZhCn => "本期要闻",
+        OutputLanguage::En => "Top stories",
+    }
+}
+
+fn safe_title(raw: &str, language: OutputLanguage) -> String {
     let title = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     let title = if title.is_empty() {
-        "本期要闻"
+        fallback_title(language)
     } else {
         title.as_str()
     };
@@ -239,7 +248,11 @@ fn serialize_v2(body: &str, items: Vec<V2Item>) -> Result<String> {
     .map_err(|_| digest_error(crate::error::JobFailure::DigestDraftSerialize))
 }
 
-pub fn prepare_digest_draft(output: &Value, numbered: &[DigestItem]) -> Result<DigestDraft> {
+pub fn prepare_digest_draft(
+    output: &Value,
+    numbered: &[DigestItem],
+    language: OutputLanguage,
+) -> Result<DigestDraft> {
     let object = output
         .as_object()
         .ok_or_else(|| digest_error(crate::error::JobFailure::DigestDraftNotObject))?;
@@ -303,7 +316,7 @@ pub fn prepare_digest_draft(output: &Value, numbered: &[DigestItem]) -> Result<D
                 lines.push(format!("- {cleaned}"));
             }
             if !lines.is_empty() {
-                rendered.push(format!("### {}\n\n{}", safe_title(title), lines.join("\n")));
+                rendered.push(format!("### {}\n\n{}", safe_title(title, language), lines.join("\n")));
             }
         }
         if rendered.is_empty() {
@@ -589,6 +602,10 @@ fn inlines_to_markdown(inlines: &[Inline]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn prepare_digest_draft(output: &Value, numbered: &[DigestItem]) -> Result<DigestDraft> {
+        super::prepare_digest_draft(output, numbered, OutputLanguage::ZhCn)
+    }
 
     fn item(id: i64, title: &str) -> DigestItem {
         DigestItem {

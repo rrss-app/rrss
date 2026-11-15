@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use rrss_ai::facts_json_schema;
+use rrss_ai::{episode_json_schema, facts_json_schema};
 use rrss_core::ai_store::{self, TASK_EPISODE_COMPRESS, TASK_MEMORY_CANDIDATE};
 use rrss_core::memories::{self, MemoryKind};
 use serde_json::Value;
@@ -80,7 +80,7 @@ pub async fn compress_episode_if_needed(
         client,
         TASK_EPISODE_COMPRESS,
         &input,
-        facts_json_schema(),
+        episode_json_schema(),
         false,
     )
     .await?;

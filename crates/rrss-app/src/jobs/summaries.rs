@@ -26,7 +26,7 @@ pub async fn run_focus_summaries(db_path: &Path, client: &reqwest::Client) -> Re
         if slots == 0 {
             return Ok(Vec::new());
         }
-        let task = ai_store::resolve_task(conn, TASK_FOCUS_SUMMARY)?;
+        let task = crate::ai_language::resolve_task(conn, TASK_FOCUS_SUMMARY)?;
         let context = ai_store::hash_input(
             &serde_json::json!([
                 task.model,
@@ -160,7 +160,7 @@ async fn summarize_job_inner(
         Ok((
             articles::get_article(conn, id)?,
             ai_store::input_tier(conn)?,
-            ai_store::resolve_task(conn, &task_name)?,
+            crate::ai_language::resolve_task(conn, &task_name)?,
         ))
     })
     .await?;
@@ -183,7 +183,7 @@ async fn summarize_job_inner(
     let segment_task = if segments.is_some() {
         Some(
             spawn_db(db_path.to_path_buf(), |conn| {
-                ai_store::resolve_task(conn, TASK_ARTICLE_SEGMENT)
+                crate::ai_language::resolve_task(conn, TASK_ARTICLE_SEGMENT)
             })
             .await?,
         )
@@ -306,7 +306,7 @@ async fn segment_notes_payload(
         let path = db_path.to_path_buf();
         let client = client.clone();
         let resolved = resolved.clone();
-        let user = format!("{title}\n\n（第 {} / {total} 部分）\n\n{segment}", i + 1);
+        let user = format!("{title}\n\n(part {} of {total})\n\n{segment}", i + 1);
         set.spawn(
             async move {
                 let input = user.clone();
@@ -342,7 +342,7 @@ async fn segment_notes_payload(
 
 fn format_segment_notes(title: &str, notes: &[Value]) -> String {
     let mut out = format!(
-        "{title}\n\n以下是全文按原文顺序分 {} 部分整理的笔记：",
+        "{title}\n\nNotes on the full text, in {} parts in the original order:",
         notes.len()
     );
     for (i, note) in notes.iter().enumerate() {
@@ -351,7 +351,7 @@ fn format_segment_notes(title: &str, notes: &[Value]) -> String {
             .and_then(Value::as_str)
             .map(str::trim)
             .unwrap_or("");
-        out.push_str(&format!("\n\n【第 {} 部分】{text}", i + 1));
+        out.push_str(&format!("\n\n[Part {}] {text}", i + 1));
         let facts = note
             .get("facts")
             .and_then(Value::as_array)
@@ -620,7 +620,7 @@ mod tests {
     async fn failed_segment_fails_the_whole_summary_and_keeps_the_old_one() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(body_string_contains("其中一部分"))
+            .and(body_string_contains("one part of a long article"))
             .respond_with(ResponseTemplate::new(500).set_body_string("boom"))
             .mount(&server)
             .await;
@@ -641,7 +641,7 @@ mod tests {
         assert!(
             bodies
                 .iter()
-                .all(|r| String::from_utf8_lossy(&r.body).contains("其中一部分"))
+                .all(|r| String::from_utf8_lossy(&r.body).contains("one part of a long article"))
         );
     }
 
@@ -711,7 +711,7 @@ mod tests {
     async fn manual_summary_of_long_article_compresses_segments_first() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(body_string_contains("其中一部分"))
+            .and(body_string_contains("one part of a long article"))
             .respond_with(reply(
                 json!({"notes": "这一部分讲了 X2 芯片。", "facts": ["售价 499 美元"]}),
             ))
@@ -732,7 +732,7 @@ mod tests {
             .iter()
             .map(|r| String::from_utf8_lossy(&r.body).into_owned())
             .collect();
-        let segments = bodies.iter().filter(|b| b.contains("其中一部分")).count();
+        let segments = bodies.iter().filter(|b| b.contains("one part of a long article")).count();
         assert!(
             (2..=summary_extract::MAX_SEGMENTS).contains(&segments),
             "{segments}"
@@ -741,7 +741,7 @@ mod tests {
         assert!(
             bodies
                 .iter()
-                .any(|b| b.contains("【第 1 部分】") && b.contains("售价 499 美元"))
+                .any(|b| b.contains("[Part 1]") && b.contains("售价 499 美元"))
         );
 
         // 低档不分段：只请求一次（输入变了，不会命中缓存）。
@@ -763,11 +763,11 @@ mod tests {
             json!({"notes": "结尾讨论供货。", "facts": []}),
         ];
         let out = format_segment_notes("长文", &notes);
-        assert!(out.starts_with("长文\n\n以下是全文按原文顺序分 2 部分整理的笔记："));
+        assert!(out.starts_with("长文\n\nNotes on the full text, in 2 parts in the original order:"));
         let first = out
-            .find("【第 1 部分】开篇介绍 X2 芯片。\n- 售价 499 美元")
+            .find("[Part 1] 开篇介绍 X2 芯片。\n- 售价 499 美元")
             .unwrap();
-        assert!(out.find("【第 2 部分】结尾讨论供货。").unwrap() > first);
+        assert!(out.find("[Part 2] 结尾讨论供货。").unwrap() > first);
         assert_eq!(out.matches("\n- ").count(), 1);
     }
 }

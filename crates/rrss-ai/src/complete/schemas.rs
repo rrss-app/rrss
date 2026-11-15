@@ -116,6 +116,16 @@ pub fn facts_json_schema() -> Value {
     })
 }
 
+/// 情节压缩：一段摘要正文。
+pub fn episode_json_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": { "body": { "type": "string" } },
+        "required": ["body"],
+        "additionalProperties": false
+    })
+}
+
 pub fn translate_json_schema() -> Value {
     json!({
         "type": "object",
@@ -141,6 +151,11 @@ pub fn translate_json_schema() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn episode_schema_asks_for_the_body_the_template_promises() {
+        assert_eq!(episode_json_schema()["required"], json!(["body"]));
+    }
 
     #[test]
     fn digest_schema_requires_only_structured_sections_and_positive_refs() {

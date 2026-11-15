@@ -363,6 +363,17 @@ const DEFS: &[Def] = &[
         }),
     },
     Def {
+        id: crate::ai_language::SETTING,
+        domain: SettingDomain::Model,
+        level: SettingLevel::L0,
+        kind: Kind::Enum(crate::ai_language::OPTIONS),
+        default: crate::ai_language::FOLLOW_UI,
+        apply: SettingApply::Immediate,
+        // I3b 起 Pi 对话看不出提问语言时用它兜底，届时改为影响 Pi。
+        affects_pi: false,
+        write: None,
+    },
+    Def {
         id: "ui_debug_mode",
         domain: SettingDomain::Reader,
         level: SettingLevel::L2,

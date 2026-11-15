@@ -243,10 +243,10 @@ pub fn build_input(
         let n = out.len() + 1;
         let time = clock(card.published_at);
         let mut block = format!(
-            "〈{n}〉{} · {}\n标题：{}",
+            "〈{n}〉{} · {}\nTitle: {}",
             short_source_name(&card.feed_title),
             if time.is_empty() {
-                "时间未知"
+                "time unknown"
             } else {
                 &time
             },
@@ -261,7 +261,7 @@ pub fn build_input(
                 per_item,
             );
             if !excerpt.trim().is_empty() {
-                block.push_str(&format!("\n正文摘录：\n{}", excerpt.trim()));
+                block.push_str(&format!("\nBody excerpt:\n{}", excerpt.trim()));
             }
         }
         blocks.push(block);
@@ -280,7 +280,7 @@ pub fn build_input(
         String::new()
     } else {
         format!(
-            "同一事件的 {} 篇报道（来自 {} 个来源）。〈序号〉只填在 ref / refs 里，正文提到某篇时写它的来源名。\n\n{}",
+            "{} reports of the same event (from {} sources). Put 〈n〉 numbers only in ref / refs; in the text, refer to a report by its source name.\n\n{}",
             out.len(),
             feeds.len(),
             blocks.join("\n\n---\n\n")
@@ -644,7 +644,7 @@ mod tests {
         assert!(
             input
                 .prompt
-                .starts_with("同一事件的 3 篇报道（来自 2 个来源）")
+                .starts_with("3 reports of the same event (from 2 sources)")
         );
         assert!(input.prompt.contains("〈1〉甲报"));
         assert!(input.prompt.contains("过渡期 90 天"));
@@ -653,7 +653,7 @@ mod tests {
         assert!(
             input
                 .prompt
-                .contains("正文摘录：\n多家厂商表示现有订单照常交付")
+                .contains("Body excerpt:\n多家厂商表示现有订单照常交付")
         );
         assert_eq!(input.members[1].one_liner, "");
         assert_eq!(input.members[0].one_liner, "新规今日公布");
@@ -664,7 +664,11 @@ mod tests {
     fn text_names_sources_instead_of_input_numbers() {
         let (_dir, conn) = seeded();
         let input = build_input(&conn, &members(&conn), InputTier::Medium).unwrap();
-        assert!(input.prompt.contains("正文提到某篇时写它的来源名"));
+        assert!(
+            input
+                .prompt
+                .contains("refer to a report by its source name")
+        );
         let parsed = parse_output(
             &json!({
                 "overview": "〈1〉与[2]都报道了新规。",

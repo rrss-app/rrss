@@ -731,6 +731,7 @@ mod tests {
                 "sections": [{"title": "失效", "items": [{"text": "<b>不支持</b>", "refs": [1]}]}]
             }),
             &[],
+            ai_store::OutputLanguage::ZhCn,
         );
         assert!(result.is_err());
         let after = ai_store::digest_by_id(&conn, id).unwrap().unwrap();
@@ -799,6 +800,7 @@ mod tests {
                 {"text":"Ocean report 的新进展", "refs":[2]}
             ]}]}),
             &numbered,
+            ai_store::OutputLanguage::ZhCn,
         )
         .unwrap();
         ai_store::insert_digest(&conn, "daily", 1, &draft.body, &draft.items_json).unwrap();

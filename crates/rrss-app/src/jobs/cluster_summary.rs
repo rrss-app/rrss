@@ -19,7 +19,7 @@ pub async fn run_cluster_summaries(db_path: &Path, client: &reqwest::Client) -> 
         if limit == 0 {
             return Ok(Vec::new());
         }
-        let task = ai_store::resolve_task(conn, TASK_CLUSTER_SUMMARY)?;
+        let task = crate::ai_language::resolve_task(conn, TASK_CLUSTER_SUMMARY)?;
         if task.provider.base_url.trim().is_empty() {
             return Err(rrss_core::Error::ProviderNotFound);
         }

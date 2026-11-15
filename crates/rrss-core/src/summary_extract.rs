@@ -446,7 +446,8 @@ fn cut_at_sentence(text: &str, max: usize) -> String {
     format!("{} …", head.trim_end())
 }
 
-const LINK_STUB_NOTE: &str = "【无正文】馈源只有标题与外链，没有文章内容。只能写标题里已有的事实，禁止补充未见原文的技术细节（如驱动、电源、基准分数、价格、兼容列表）。";
+/// 只有标题与外链的条目在模型输入里的说明（摘要与简报共用）。
+pub const LINK_STUB_NOTE: &str = "[No body text] The feed only gives a title and an outbound link, with no article content. Write only facts already in the title; do not add technical details that are not in the original (such as drivers, power, benchmark scores, prices or compatibility lists).";
 
 fn link_stub_payload(title: &str) -> String {
     let title = title.trim();
@@ -810,10 +811,10 @@ mod tests {
              <p>Points: 81</p><p># Comments: 8</p>";
         let title = "Asahi Linux Progress Report: Linux 7.2";
         let deep = extract_body_excerpt(None, Some(html), 3_000);
-        assert!(deep.starts_with("【无正文】"), "{deep}");
+        assert!(deep.starts_with("[No body text]"), "{deep}");
         assert!(!deep.to_lowercase().contains("points:"), "{deep}");
         let summary = extract_summary_payload(title, None, Some(html), false, InputTier::Medium);
-        assert!(summary.contains("【无正文】"), "{summary}");
+        assert!(summary.contains("[No body text]"), "{summary}");
         assert!(summary.contains("Linux 7.2"), "{summary}");
         assert!(
             !summary.to_lowercase().contains("comments url"),

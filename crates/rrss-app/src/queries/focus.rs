@@ -75,7 +75,7 @@ pub fn cluster_summary(
     let cards = summary::visible_members(conn, cluster_id, scope)?;
     let input = summary::build_input(conn, &cards, ai_store::input_tier(conn)?)?;
     let icons = super::feeds::feed_icon_hrefs(conn)?;
-    let resolved = ai_store::resolve_task(conn, ai_store::TASK_CLUSTER_SUMMARY).ok();
+    let resolved = crate::ai_language::resolve_task(conn, ai_store::TASK_CLUSTER_SUMMARY).ok();
     let template_chars = resolved
         .as_ref()
         .map_or(0, |task| task.template.body.chars().count());

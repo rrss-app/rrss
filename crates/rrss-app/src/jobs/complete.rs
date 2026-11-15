@@ -37,7 +37,7 @@ pub(crate) fn task_is_current(
     conn: &rusqlite::Connection,
     snapshot: &ResolvedTask,
 ) -> rrss_core::Result<bool> {
-    match ai_store::resolve_task(conn, &snapshot.task) {
+    match crate::ai_language::resolve_task(conn, &snapshot.task) {
         Ok(current) => Ok(same_task(snapshot, &current)),
         Err(
             CoreError::ProviderNotFound
@@ -119,7 +119,7 @@ pub(crate) async fn complete_task_checked<T>(
         if auto {
             ai_store::ensure_auto_job_budget(conn, ai_store::BudgetKind::Generation)?;
         }
-        let resolved = ai_store::resolve_task(conn, &task_owned)?;
+        let resolved = crate::ai_language::resolve_task(conn, &task_owned)?;
         prepare_resolved(conn, resolved, &user_owned, auto)
     })
     .await?;
@@ -425,7 +425,7 @@ mod tests {
             let conn = db::open_at(&path).unwrap();
             let pid = crate::test_net::fake_provider(&conn, "mock", server.uri());
             ai_store::set_task_binding(&conn, task, Some(pid), Some("m")).unwrap();
-            let resolved = ai_store::resolve_task(&conn, task).unwrap();
+            let resolved = crate::ai_language::resolve_task(&conn, task).unwrap();
             prepare_resolved(&conn, resolved, "input", false)
                 .unwrap()
                 .cache_key

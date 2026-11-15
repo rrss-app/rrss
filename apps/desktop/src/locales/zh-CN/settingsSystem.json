@@ -707,6 +707,15 @@
         "en": "English"
       }
     },
+    "ai_output_language": {
+      "label": "AI 输出语言",
+      "hint": "摘要、简报、相近报道综述和记忆用这种语言写。只影响之后生成的内容，已有的不会重写，需要时可以对单篇重新生成。",
+      "options": {
+        "ui": "跟随界面（{{current}}）",
+        "zh-CN": "简体中文",
+        "en": "English"
+      }
+    },
     "close_action": {
       "label": "关闭窗口时",
       "hint": "隐藏到托盘后，RRSS 在后台继续按计划更新订阅，点托盘图标或再次打开 RRSS 就能回来。",

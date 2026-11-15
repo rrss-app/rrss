@@ -416,6 +416,7 @@
     "useModel": "{{title}}的模型",
     "collapse": "收起细分",
     "expand_other": "细分（{{count}}）",
-    "addFirst": "先添加模型，再给每件事选模型。"
+    "addFirst": "先添加模型，再给每件事选模型。",
+    "outputLanguage": "AI 输出语言"
   }
 }

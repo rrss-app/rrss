@@ -92,6 +92,7 @@ export const REGISTRY = {
   pi_auto_update: { hint: true, control: true, on: true, off: true },
   close_action: { hint: true, options: ["ask", "tray", "quit"] },
   ui_language: { options: ["system", "zh-CN", "en"] },
+  ai_output_language: { hint: true, options: ["ui", "zh-CN", "en"] },
   pi_cache_warming: { hint: true, options: ["off", "streaming", "idle"], optionHints: ["streaming", "idle"] },
 } satisfies Record<SettingId, RegistryShape>;
 
@@ -110,8 +111,15 @@ export function registryEntry(id: string): RegistryEntry | undefined {
     on: shape.on ? text(id, "on") : undefined,
     off: shape.off ? text(id, "off") : undefined,
     optionHints: shape.optionHints && Object.fromEntries(shape.optionHints.map((value) => [value, optionHint(id, value)])),
-    options: shape.options && Object.fromEntries(shape.options.map((value) => [value, text(id, `options.${value}`)])),
+    options: shape.options && Object.fromEntries(shape.options.map((value) => [value, optionLabel(id, value)])),
   };
+}
+
+/** 选项文字；「AI 输出语言」的「跟随界面」带上当前界面语言的名字（语言名用各自的语言写）。 */
+function optionLabel(id: string, value: string): string {
+  if (id !== "ai_output_language" || value !== "ui") return text(id, `options.${value}`);
+  const current = locale().startsWith("zh") ? "zh-CN" : "en";
+  return i18n.t("registry.ai_output_language.options.ui", { ns: "settingsSystem", current: text("ui_language", `options.${current}`) });
 }
 
 /** 零点起的分钟数 ↔ `HH:MM`。 */
