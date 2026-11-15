@@ -47,6 +47,12 @@ fn run_inner(args: &[String]) -> Result<String> {
     run_with_connection(args, &conn, QUERY_EMBED_TIMEOUT)
 }
 
+/// 在已打开的库上执行一个工具，返回与命令行相同的输出（离线提示词评测用，不走子进程）。
+/// `args` 与命令行一致：`["rrss", "tool", <工具名>, "--flag", <值>, …]`。
+pub fn run_on(conn: &rusqlite::Connection, args: &[String]) -> Result<String> {
+    run_with_connection(args, conn, Duration::ZERO)
+}
+
 fn run_with_connection(
     args: &[String],
     conn: &rusqlite::Connection,

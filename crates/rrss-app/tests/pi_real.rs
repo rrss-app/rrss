@@ -407,7 +407,7 @@ async fn real_pi_runs_rrss_turns_through_the_managed_config() {
     assert!(
         requests
             .iter()
-            .any(|r| String::from_utf8_lossy(&r.body).contains("用户拒绝"))
+            .any(|r| String::from_utf8_lossy(&r.body).contains("The user declined."))
     );
     assert!(
         threads::list_messages(&conn, write_thread)

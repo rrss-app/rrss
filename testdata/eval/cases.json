@@ -1,19 +1,64 @@
 {
   "feeds": [
-    { "key": "harbor", "title": "Harbor Tech Daily", "url": "https://harbor.example/feed.xml" },
-    { "key": "ledger", "title": "Ledger Wire", "url": "https://ledger-wire.example/rss" },
-    { "key": "fernhill", "title": "Fernhill Dev Notes", "url": "https://fernhill.example/atom.xml" },
-    { "key": "metro", "title": "Metro Ledger", "url": "https://metro-ledger.example/rss" },
-    { "key": "qingliu", "title": "青柳科技", "url": "https://qingliu.example/rss" },
-    { "key": "liwood", "title": "栎木开源周刊", "url": "https://liwood.example/feed" },
-    { "key": "binjiang", "title": "滨江晨报", "url": "https://binjiang-morning.example/rss" },
-    { "key": "riverside", "title": "江畔观察", "url": "https://riverside-watch.example/rss" },
-    { "key": "foothill", "title": "山麓科研", "url": "https://foothill-science.example/feed" }
+    {
+      "key": "harbor",
+      "title": "Harbor Tech Daily",
+      "url": "https://harbor.example/feed.xml"
+    },
+    {
+      "key": "ledger",
+      "title": "Ledger Wire",
+      "url": "https://ledger-wire.example/rss"
+    },
+    {
+      "key": "fernhill",
+      "title": "Fernhill Dev Notes",
+      "url": "https://fernhill.example/atom.xml"
+    },
+    {
+      "key": "metro",
+      "title": "Metro Ledger",
+      "url": "https://metro-ledger.example/rss"
+    },
+    {
+      "key": "qingliu",
+      "title": "青柳科技",
+      "url": "https://qingliu.example/rss"
+    },
+    {
+      "key": "liwood",
+      "title": "栎木开源周刊",
+      "url": "https://liwood.example/feed"
+    },
+    {
+      "key": "binjiang",
+      "title": "滨江晨报",
+      "url": "https://binjiang-morning.example/rss"
+    },
+    {
+      "key": "riverside",
+      "title": "江畔观察",
+      "url": "https://riverside-watch.example/rss"
+    },
+    {
+      "key": "foothill",
+      "title": "山麓科研",
+      "url": "https://foothill-science.example/feed"
+    }
   ],
   "clusters": [
-    { "id": 901, "label": "Kestrel 3" },
-    { "id": 902, "label": "Larchdb 2.0" },
-    { "id": 903, "label": "滨江电池新规" }
+    {
+      "id": 901,
+      "label": "Kestrel 3"
+    },
+    {
+      "id": 902,
+      "label": "Larchdb 2.0"
+    },
+    {
+      "id": 903,
+      "label": "滨江电池新规"
+    }
   ],
   "articles": [
     {
@@ -129,14 +174,28 @@
       "pick_max": 12,
       "pick_min": 6,
       "articles": [
-        "kestrel-en", "kestrel-zh", "kestrel-ledger",
-        "larch-en", "larch-zh",
-        "binjiang-long", "binjiang-short", "binjiang-en",
-        "glacier-zh", "wren-en", "quillpad-en", "huichuan-zh",
-        "real:hnrss-frontpage.xml#0", "real:hnrss-frontpage.xml#1", "real:hnrss-frontpage.xml#2",
-        "real:solidot.xml#0", "real:solidot.xml#1", "real:solidot.xml#2",
-        "real:lwn.xml#0", "real:lwn.xml#1",
-        "real:sspai.xml#0", "real:sspai.xml#1"
+        "kestrel-en",
+        "kestrel-zh",
+        "kestrel-ledger",
+        "larch-en",
+        "larch-zh",
+        "binjiang-long",
+        "binjiang-short",
+        "binjiang-en",
+        "glacier-zh",
+        "wren-en",
+        "quillpad-en",
+        "huichuan-zh",
+        "real:hnrss-frontpage.xml#0",
+        "real:hnrss-frontpage.xml#1",
+        "real:hnrss-frontpage.xml#2",
+        "real:solidot.xml#0",
+        "real:solidot.xml#1",
+        "real:solidot.xml#2",
+        "real:lwn.xml#0",
+        "real:lwn.xml#1",
+        "real:sspai.xml#0",
+        "real:sspai.xml#1"
       ]
     },
     {
@@ -144,17 +203,30 @@
       "pick_max": 10,
       "pick_min": 5,
       "articles": [
-        "real:hnrss-frontpage.xml#3", "real:hnrss-frontpage.xml#4", "real:hnrss-frontpage.xml#5",
-        "real:solidot.xml#3", "real:solidot.xml#4", "real:solidot.xml#5",
-        "real:lwn.xml#2", "real:lwn.xml#3",
-        "real:sspai.xml#2", "real:sspai.xml#3",
-        "real:ruanyifeng-atom.xml#0", "real:jsonfeed-org.json#0",
-        "real:v2ex-atom.xml#0", "real:v2ex-atom.xml#1",
-        "wren-en", "huichuan-zh"
+        "real:hnrss-frontpage.xml#3",
+        "real:hnrss-frontpage.xml#4",
+        "real:hnrss-frontpage.xml#5",
+        "real:solidot.xml#3",
+        "real:solidot.xml#4",
+        "real:solidot.xml#5",
+        "real:lwn.xml#2",
+        "real:lwn.xml#3",
+        "real:sspai.xml#2",
+        "real:sspai.xml#3",
+        "real:ruanyifeng-atom.xml#0",
+        "real:jsonfeed-org.json#0",
+        "real:v2ex-atom.xml#0",
+        "real:v2ex-atom.xml#1",
+        "wren-en",
+        "huichuan-zh"
       ]
     }
   ],
-  "clusters_to_summarize": [901, 902, 903],
+  "clusters_to_summarize": [
+    901,
+    902,
+    903
+  ],
   "memory": [
     {
       "name": "Preferences in Chinese",
@@ -163,6 +235,75 @@
     {
       "name": "News only, in English",
       "transcript": "user: What does the Wren 12 memory limit actually do when a tab goes over?\nassistant: When a tab exceeds the limit you set for that site, Wren pauses the page's background scripts instead of reloading it. In the team's test with 40 tabs, total memory use fell by about 25 percent.\nuser: And the old extension format is gone in 12?\nassistant: Yes, version 12 removes support for the old extension format, which was deprecated two years ago."
+    }
+  ],
+  "citations": [
+    {
+      "name": "Chinese question about a selection",
+      "article": "kestrel-zh",
+      "excerpt": "双指夹爪",
+      "paragraph": true,
+      "question": "这是什么？",
+      "expect": "zh-CN"
+    },
+    {
+      "name": "Selection only, no question",
+      "article": "glacier-zh",
+      "excerpt": "冰碛坝",
+      "paragraph": true,
+      "question": "",
+      "expect": "fallback"
+    },
+    {
+      "name": "English question about a Chinese article",
+      "article": "binjiang-long",
+      "excerpt": "以旧换新补贴",
+      "paragraph": true,
+      "question": "What does this subsidy cover?",
+      "expect": "en"
+    },
+    {
+      "name": "English question about an English selection",
+      "article": "larch-en",
+      "excerpt": "multi-version concurrency control",
+      "paragraph": true,
+      "question": "Why does this matter here?",
+      "expect": "en"
+    },
+    {
+      "name": "Chinese question about an English article",
+      "article": "wren-en",
+      "excerpt": "cap how much memory a single site may use",
+      "paragraph": true,
+      "question": "这个功能怎么用？",
+      "expect": "zh-CN"
+    },
+    {
+      "name": "Whole article",
+      "article": "kestrel-en",
+      "question": "这篇讲了什么？",
+      "expect": "zh-CN"
+    },
+    {
+      "name": "Digest excerpt to verify",
+      "article": "larch-zh",
+      "kind": "digest",
+      "excerpt": "Larchdb 2.0 换用 Strata 存储引擎，写入吞吐提升约三倍，并改为 TOML 配置",
+      "question": "帮我核对一下这条",
+      "expect": "zh-CN"
+    },
+    {
+      "name": "Asks for another language",
+      "article": "glacier-zh",
+      "excerpt": "跨境流域",
+      "paragraph": true,
+      "question": "用英文解释一下这个词",
+      "expect": "en"
+    },
+    {
+      "name": "Only a link",
+      "question": "https://harbor.example/kestrel-en",
+      "expect": "fallback"
     }
   ]
 }

@@ -87,7 +87,7 @@ export default function (pi: ExtensionAPI) {
   // Pi 只补发变化的小节，提示缓存前缀得以保留。没有 sections 的旧版 Pi 退回追加到提示末尾。
   pi.on("before_agent_start", async (event) => {
     const memory = await memoryPreview(pi);
-    const body = memory ? `以下是用户的长期记忆，回答时参考：\n${memory}` : "";
+    const body = memory ? `The user's long-term memory; take it into account when answering:\n${memory}` : "";
     const sections = (event as { systemPromptOptions?: { sections?: Record<string, string> } })
       .systemPromptOptions?.sections;
     if (sections) {
@@ -113,10 +113,11 @@ export default function (pi: ExtensionAPI) {
       async execute(_id, params, signal, _onUpdate, ctx) {
         if (t.confirm) {
           // 超时由 Pi 按拒绝处理，宿主不用计时，也不会因为没人回应卡住整轮。
-          const ok = await ctx.ui.confirm(t.label, `执行 ${t.name}？`, { timeout: CONFIRM_TIMEOUT_MS });
+          // 标题只传工具名、正文留空：确认框的文字由界面按语言包显示。
+          const ok = await ctx.ui.confirm(t.name, "", { timeout: CONFIRM_TIMEOUT_MS });
           if (!ok) {
             return {
-              content: [{ type: "text" as const, text: `用户取消了 ${t.name}。` }],
+              content: [{ type: "text" as const, text: `The user declined ${t.name}.` }],
               details: {},
             };
           }

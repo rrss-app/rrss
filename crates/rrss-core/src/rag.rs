@@ -667,7 +667,7 @@ pub fn format_rag_context(hits: &[SearchHit]) -> String {
         return String::new();
     }
     let mut out =
-        String::from("可能相关的本地文章（按问题自动检索，只有标题和摘要，不一定相关）：\n");
+        String::from("Possibly related local articles (found automatically from the question; titles and summaries only, may not be relevant):\n");
     for hit in hits {
         let line = format!(
             "- id={} title={} source={}\n  {}\n",
@@ -678,7 +678,7 @@ pub fn format_rag_context(hits: &[SearchHit]) -> String {
         }
         out.push_str(&line);
     }
-    out.push_str("用得上再用；要看全文用 get_article。");
+    out.push_str("Use them only if they help; call get_article for the full text.");
     out
 }
 

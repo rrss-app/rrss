@@ -1,13 +1,13 @@
 ---
 name: cite-verify
-description: 用户明确要你核实、查证某个说法、数字或消息真假时使用。普通提问、解释名词、问文章讲了什么都不需要这个技能。
+description: Use when the user explicitly asks you to check or verify a claim, a number or whether some news is true. Ordinary questions, explaining a term or asking what an article says do not need this skill.
 ---
 
-# 查证一个说法
+# Checking a claim
 
-用户要你核实某个说法时：
+When the user asks you to verify a claim:
 
-1. 先用 `search_articles` 找本地订阅里相关的报道，用 `get_article` 看原文，留意各家怎么说、谁先谁后。
-2. 第一句给结论：本地报道能证实、互相矛盾，还是没有提到。
-3. 说清依据：哪篇文章写了什么（附 `[标题](rrss://article/<文章ID>)` 链接），各家说法不一时说出谁怎么说。你自己知道的一般情况可以补充，在句子里点明不是来自本地文章；拿不准就直说。
-4. 本地文章不够、需要看网页时，可以用 `fetch_url`，它会先请用户确认。
+1. First find related reports in the local subscriptions with `search_articles` and read the originals with `get_article`, noting what each outlet says and who said it first.
+2. Give the verdict in your first sentence: the local reports confirm it, contradict each other, or do not mention it.
+3. Explain the basis: which article says what (link it as `[title](rrss://article/<article ID>)`), and when outlets disagree, who says what. You may add what you know in general, saying within the sentence that it does not come from the local articles; if you are not sure, say so.
+4. If the local articles are not enough and you need a web page, you may use `fetch_url`; it asks the user to confirm first.

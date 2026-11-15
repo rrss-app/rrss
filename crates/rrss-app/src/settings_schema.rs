@@ -369,8 +369,8 @@ const DEFS: &[Def] = &[
         kind: Kind::Enum(crate::ai_language::OPTIONS),
         default: crate::ai_language::FOLLOW_UI,
         apply: SettingApply::Immediate,
-        // I3b 起 Pi 对话看不出提问语言时用它兜底，届时改为影响 Pi。
-        affects_pi: false,
+        // Pi 对话看不出提问语言时用它兜底，写在托管系统提示里。
+        affects_pi: true,
         write: None,
     },
     Def {

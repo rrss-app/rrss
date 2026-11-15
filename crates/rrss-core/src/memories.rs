@@ -220,7 +220,7 @@ pub fn inject_prefix(conn: &Connection) -> Result<String> {
          ORDER BY pinned DESC, COALESCE(last_used_at, 0) DESC, id DESC",
     )?;
     let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
-    let mut out = String::from("用户记忆（已确认）：\n");
+    let mut out = String::from("User memory (confirmed):\n");
     for row in rows {
         let line = format!("- {}\n", row?);
         if out.len() + line.len() > INJECT_CHARS {
@@ -228,7 +228,7 @@ pub fn inject_prefix(conn: &Connection) -> Result<String> {
         }
         out.push_str(&line);
     }
-    if out.trim() == "用户记忆（已确认）：" {
+    if out.trim() == "User memory (confirmed):" {
         return Ok(String::new());
     }
     Ok(truncate_chars(&out, INJECT_CHARS))

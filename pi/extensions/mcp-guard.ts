@@ -21,8 +21,9 @@ function summary(input: Record<string, unknown>): string {
     return chars.length > 100 ? chars.slice(0, 100).join("") + "…" : text;
   });
   if (entries.length > 4 || lines.some(line => line.endsWith("…"))) {
-    if (lines.length === 4) lines[3] = lines[3].slice(0, 70) + `…（共 ${count} 字）`;
-    else lines.push(`（共 ${count} 字）`);
+    // 截断标记不用文字，界面语言与这里无关。
+    if (lines.length === 4) lines[3] = lines[3].slice(0, 70) + `… (${count})`;
+    else lines.push(`… (${count})`);
   }
   return lines.join("\n");
 }
@@ -51,12 +52,12 @@ export function installMcpGuard(pi: ExtensionAPI) {
     if (!event.toolName.startsWith("mcp__")) return;
     const info = pi.getAllTools().find(tool => tool.name === event.toolName);
     const match = /^mcp__(.+?)__(.+)$/.exec(event.toolName);
-    const name = names.get(event.toolName) ?? { server: info?.namespace?.description || match?.[1] || "外部工具", tool: match?.[2] || event.toolName };
+    const name = names.get(event.toolName) ?? { server: info?.namespace?.description || match?.[1] || "MCP", tool: match?.[2] || event.toolName };
     ctx.ui.notify("RRSS_MCP_STEP:" + JSON.stringify({ id: event.toolCallId, name: event.toolName, ...name }));
     if (!writes(name.tool, info?.annotations) || remembered.has(event.toolName)) return;
     const request = JSON.stringify({ server: name.server, tool: name.tool, args: summary(event.input), can_remember: true });
     const answer = await ctx.ui.select("RRSS_MCP_CONFIRM:" + request, ["allow", "remember", "deny"], { timeout: 300_000, signal: ctx.signal });
     if (answer === "remember") remembered.add(event.toolName);
-    if (answer !== "allow" && answer !== "remember") return { block: true, reason: "用户拒绝", terminate: false };
+    if (answer !== "allow" && answer !== "remember") return { block: true, reason: "The user declined.", terminate: false };
   });
 }

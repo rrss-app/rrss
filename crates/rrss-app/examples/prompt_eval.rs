@@ -13,7 +13,12 @@
 //!   cargo run -p rrss-app --example prompt_eval
 //! ```
 //!
-//! Options: `--variants baseline,en-zh,en-en`, `--only summaries,digests,clusters,memory`,
+//! The citation section asks the chat assistant's system prompt (the one shipped before English
+//! prompts for `baseline`; the current one with Chinese or English as the default reply language
+//! for `en-zh` / `en-en`) about cited articles. The model gets the read-only article and memory
+//! tools, run against the eval database, and the reply language and style are checked.
+//!
+//! Options: `--variants baseline,en-zh,en-en`, `--only summaries,digests,clusters,memory,citations`,
 //! `--concurrency 4`, `--out <dir>` (default `test-results/prompt-eval`). The report is
 //! `report.html` in the output directory, with the raw results in `results.json`.
 
@@ -44,6 +49,26 @@ struct Cases {
     digests: Vec<DigestCase>,
     clusters_to_summarize: Vec<i64>,
     memory: Vec<MemoryCase>,
+    #[serde(default)]
+    citations: Vec<CitationCase>,
+}
+
+/// A chat question with a citation, asked with the chat assistant's system prompt and no tools.
+#[derive(Deserialize, Clone)]
+struct CitationCase {
+    name: String,
+    #[serde(default)]
+    article: Option<String>,
+    #[serde(default)]
+    kind: Option<String>,
+    #[serde(default)]
+    excerpt: String,
+    /// Attach the paragraph around the selection, as the app does.
+    #[serde(default)]
+    paragraph: bool,
+    question: String,
+    /// `zh-CN`, `en`, or `fallback` (the variant's default reply language).
+    expect: String,
 }
 
 #[derive(Deserialize)]
@@ -88,6 +113,24 @@ struct MemoryCase {
 struct Baseline {
     templates: HashMap<String, String>,
     input: BaselineInput,
+    #[serde(default)]
+    pi_system: String,
+    #[serde(default)]
+    citation: Option<BaselineCitation>,
+}
+
+/// The citation format the baseline chat prompt was written for.
+#[derive(Deserialize)]
+struct BaselineCitation {
+    no_question: String,
+    header: String,
+    untitled: String,
+    line: String,
+    whole: String,
+    digest_label: String,
+    selected: String,
+    excerpt: String,
+    paragraph: String,
 }
 
 #[derive(Deserialize)]
@@ -263,9 +306,96 @@ struct Call {
     prompt_tokens: u32,
     completion_tokens: u32,
     ms: u128,
+    /// Article ids the chat tools returned, which the reply may link to.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tool_ids: Vec<i64>,
 }
 
 impl Model {
+    /// A plain-text chat completion with the chat assistant's read-only tools, run against the eval
+    /// database for up to four rounds, as the assistant would in the app.
+    async fn chat(&self, tag: &'static str, system: String, user: String, conn: &rusqlite::Connection) -> Call {
+        let _permit = self.gate.acquire().await.expect("semaphore");
+        let started = Instant::now();
+        let base = self.base_url.trim_end_matches('/');
+        let url = if base.ends_with("/v1") {
+            format!("{base}/chat/completions")
+        } else {
+            format!("{base}/v1/chat/completions")
+        };
+        let mut messages = vec![json!({"role": "system", "content": system}), json!({"role": "user", "content": user})];
+        let mut call = Call {
+            system,
+            user,
+            ..Call::default()
+        };
+        let mut used = Vec::new();
+        for round in 0..4 {
+            let mut body = json!({ "model": self.model, "messages": messages });
+            // The last round withholds tools so the model has to answer.
+            if round < 3 {
+                body["tools"] = chat_tools();
+            }
+            let mut request = self.client.post(&url).json(&body);
+            if let Some(key) = &self.api_key {
+                request = request.bearer_auth(key);
+            }
+            let response = async {
+                let response = request.send().await?.error_for_status()?;
+                response.json::<Value>().await
+            }
+            .await;
+            let value = match response {
+                Ok(value) => value,
+                Err(error) => {
+                    call.error = Some(error.without_url().to_string());
+                    break;
+                }
+            };
+            call.prompt_tokens += value["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32;
+            call.completion_tokens += value["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32;
+            let message = value["choices"][0]["message"].clone();
+            let calls = message["tool_calls"].as_array().cloned().unwrap_or_default();
+            if calls.is_empty() {
+                let text = message["content"].as_str().unwrap_or("");
+                call.content = rrss_ai::strip_thinking(text).trim().to_string();
+                if call.content.is_empty() {
+                    call.error = Some("empty reply".into());
+                }
+                break;
+            }
+            messages.push(json!({"role": "assistant", "content": message["content"].clone(), "tool_calls": calls}));
+            for tool_call in &calls {
+                let name = tool_call["function"]["name"].as_str().unwrap_or("");
+                let arguments: Value = serde_json::from_str(tool_call["function"]["arguments"].as_str().unwrap_or("{}")).unwrap_or(json!({}));
+                used.push(format!("{name}({arguments})"));
+                let mut args = vec!["rrss".to_string(), "tool".into(), name.to_string()];
+                if let Some(object) = arguments.as_object() {
+                    for (key, value) in object {
+                        args.push(format!("--{key}"));
+                        args.push(value.as_str().map_or_else(|| value.to_string(), str::to_string));
+                    }
+                }
+                let output = rrss_app::tool::run_on(conn, &args).unwrap_or_else(|error| format!("error: {error}"));
+                if let Ok(parsed) = serde_json::from_str::<Value>(&output) {
+                    let rows = parsed.as_array().cloned().unwrap_or_else(|| vec![parsed.clone()]);
+                    call.tool_ids.extend(rows.iter().filter_map(|row| row["id"].as_i64()));
+                }
+                messages.push(json!({"role": "tool", "tool_call_id": tool_call["id"].clone(), "content": output}));
+            }
+        }
+        if !used.is_empty() {
+            call.system.push_str(&format!("\n\nTOOLS CALLED\n{}", used.join("\n")));
+        }
+        call.ms = started.elapsed().as_millis();
+        let mut usage = self.usage.lock().expect("usage");
+        let entry = usage.entry(tag).or_default();
+        entry.0 += u64::from(call.prompt_tokens);
+        entry.1 += u64::from(call.completion_tokens);
+        entry.2 += 1;
+        call
+    }
+
     async fn call(&self, tag: &'static str, system: String, user: String, schema: Value) -> Call {
         let _permit = self.gate.acquire().await.expect("semaphore");
         let started = Instant::now();
@@ -576,7 +706,11 @@ async fn run_variant(
 
     // Summaries: every article a later stage needs, so the digest and overviews read this
     // variant's own summaries, as they would in the app.
-    let mut keys: Vec<String> = cases.summaries.clone();
+    let mut keys: Vec<String> = if options.sections.contains("summaries") {
+        cases.summaries.clone()
+    } else {
+        Vec::new()
+    };
     if options.sections.contains("digests") || options.sections.contains("clusters") {
         for key in cases.digests.iter().flat_map(|d| d.articles.iter()) {
             if !keys.contains(key) {
@@ -675,7 +809,185 @@ async fn run_variant(
             });
         }
     }
+
+    if options.sections.contains("citations") {
+        let system = if variant == Variant::Baseline {
+            prompts.baseline.pi_system.clone()
+        } else {
+            rrss_app::pi::workspace::system_prompt("", language)
+        };
+        for case in &cases.citations {
+            eprintln!("[{}] citation: {}", variant.id(), case.name);
+            let (snaps, passage) = citation_input(&seeded.conn, case, &id)?;
+            let user = match (&prompts.baseline.citation, variant) {
+                (Some(map), Variant::Baseline) => baseline_citation(map, &case.question, &snaps, passage.as_deref()),
+                _ => rrss_core::cite::expand_user_prompt(&case.question, &snaps, |_| passage.clone()),
+            };
+            let call = model.chat(variant.id(), system.clone(), user.clone(), &seeded.conn).await;
+            let expect = match case.expect.as_str() {
+                "fallback" => language,
+                tag => OutputLanguage::from_tag(tag),
+            };
+            let cited: Vec<i64> = snaps.iter().map(|s| s.article_id).collect();
+            out.push(Case {
+                section: "citations",
+                key: case.name.clone(),
+                title: case.name.clone(),
+                input: user,
+                outputs: BTreeMap::from([(variant.id(), citation_output(call, expect, &cited))]),
+            });
+        }
+    }
     Ok(out)
+}
+
+/// The chat assistant's read-only tools, from the same definitions the app gives Pi.
+fn chat_tools() -> Value {
+    let tools: Vec<Value> = rrss_core::pi_store::DEFAULT_TOOLS
+        .iter()
+        .filter(|tool| matches!(tool.name, "search_articles" | "get_article" | "search_memory"))
+        .map(|tool| {
+            let properties: serde_json::Map<String, Value> = tool
+                .parameters
+                .iter()
+                .map(|(name, kind, description)| ((*name).to_string(), json!({"type": kind, "description": description})))
+                .collect();
+            let required: Vec<&str> = tool.parameters.iter().map(|(name, _, _)| *name).collect();
+            json!({"type": "function", "function": {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": {"type": "object", "properties": properties, "required": required},
+            }})
+        })
+        .collect();
+    Value::Array(tools)
+}
+
+/// The citation snapshot the app would attach, and the paragraph around the selection.
+fn citation_input(
+    conn: &rusqlite::Connection,
+    case: &CitationCase,
+    id: &impl Fn(&str) -> Result<i64>,
+) -> Result<(Vec<rrss_core::CitationSnap>, Option<String>)> {
+    let Some(key) = &case.article else {
+        return Ok((Vec::new(), None));
+    };
+    let article_id = id(key)?;
+    let (title, feed, html): (String, String, Option<String>) = conn.query_row(
+        "SELECT a.title, COALESCE(f.title, ''), a.content_html FROM articles a JOIN feeds f ON f.id = a.feed_id WHERE a.id = ?1",
+        [article_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
+    let passage = if case.paragraph {
+        html.unwrap_or_default()
+            .split("</p>")
+            .map(plain_text)
+            .find(|paragraph| paragraph.contains(&case.excerpt))
+            .and_then(|paragraph| rrss_core::cite::passage_around(&paragraph, &case.excerpt, 600))
+    } else {
+        None
+    };
+    let snap = rrss_core::CitationSnap {
+        kind: case.kind.clone().unwrap_or_else(|| if case.excerpt.is_empty() { "article".into() } else { "span".into() }),
+        article_id,
+        title,
+        feed_title: feed,
+        excerpt: case.excerpt.clone(),
+        block_id: if case.kind.as_deref() == Some("digest") { -1 } else { 1 },
+        ..rrss_core::CitationSnap::default()
+    };
+    Ok((vec![snap], passage))
+}
+
+fn plain_text(html: &str) -> String {
+    let mut out = String::new();
+    let mut tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => tag = true,
+            '>' => tag = false,
+            _ if !tag => out.push(ch),
+            _ => {}
+        }
+    }
+    out.trim().to_string()
+}
+
+/// The citation message in the format used before English prompts.
+fn baseline_citation(map: &BaselineCitation, question: &str, snaps: &[rrss_core::CitationSnap], passage: Option<&str>) -> String {
+    let question = question.trim();
+    if snaps.is_empty() {
+        return question.to_string();
+    }
+    let mut out = if question.is_empty() { map.no_question.clone() } else { question.to_string() };
+    out.push_str("\n\n");
+    out.push_str(&map.header);
+    for (i, c) in snaps.iter().enumerate() {
+        let title = if c.title.trim().is_empty() { map.untitled.as_str() } else { c.title.trim() };
+        let source = if c.feed_title.trim().is_empty() { String::new() } else { format!(" — {}", c.feed_title.trim()) };
+        let whole = if c.excerpt.trim().is_empty() { map.whole.as_str() } else { "" };
+        let n = (i + 1).to_string();
+        let id = c.article_id.to_string();
+        out.push('\n');
+        out.push_str(&fill(&map.line, &[&n, title, &source, &id, whole]));
+        if c.excerpt.trim().is_empty() {
+            continue;
+        }
+        let label = if c.kind == "digest" { map.digest_label.as_str() } else { map.selected.as_str() };
+        out.push('\n');
+        out.push_str(&fill(&map.excerpt, &[label, c.excerpt.trim()]));
+        if let Some(paragraph) = passage.filter(|p| !p.trim().is_empty()) {
+            out.push('\n');
+            out.push_str(&fill(&map.paragraph, &[paragraph.trim()]));
+        }
+    }
+    out
+}
+
+/// Phrases that point out what the article leaves out, which the chat prompt asks the model not to list.
+const LEAVES_OUT: &[&str] = &["文章没有", "文中没有", "没有提到", "未提及", "没有说明", "doesn't say", "does not say", "doesn't mention", "does not mention", "not mentioned"];
+/// Openings that restate the question or the passage instead of answering it.
+/// Tool calls written out as text instead of made through the API.
+const FAKE_TOOL_CALLS: &[&str] = &["<tool_call", "<tool_use", "get_article(", "\"name\": \"get_article\""];
+const RESTATES: &[&str] = &["这段", "这个片段", "这段片段", "你问的", "您问的", "The passage", "This passage", "You asked", "In this passage"];
+
+fn citation_output(call: Call, expect: OutputLanguage, cited: &[i64]) -> Output {
+    if let Some(failed) = call_failed(&call) {
+        return failed;
+    }
+    let text = call.content.clone();
+    let headings = text.lines().filter(|line| line.trim_start().starts_with('#')).count();
+    let links: Vec<i64> = text
+        .match_indices("rrss://article/")
+        .filter_map(|(at, m)| {
+            text[at + m.len()..].chars().take_while(char::is_ascii_digit).collect::<String>().parse().ok()
+        })
+        .collect();
+    let invented: Vec<String> = links
+        .iter()
+        .filter(|id| !cited.contains(id) && !call.tool_ids.contains(id))
+        .map(|id| id.to_string())
+        .collect();
+    let leaves_out: Vec<&str> = LEAVES_OUT.iter().copied().filter(|p| text.contains(p)).collect();
+    let opening = text.chars().take(20).collect::<String>();
+    let restates: Vec<&str> = RESTATES.iter().copied().filter(|p| opening.starts_with(p)).collect();
+    let length = match expect {
+        OutputLanguage::ZhCn => format!("{} characters", text.chars().filter(|c| !c.is_whitespace()).count()),
+        OutputLanguage::En => format!("{} words", text.split_whitespace().count()),
+    };
+    Output {
+        checks: vec![
+            language_check(&text, expect),
+            check("no headings", headings == 0, length),
+            check("answers first", restates.is_empty(), restates.join(", ")),
+            check("no missing-info remarks", leaves_out.is_empty(), leaves_out.join(", ")),
+            check("only known IDs", invented.is_empty(), invented.join(", ")),
+            check("no tool calls in text", !FAKE_TOOL_CALLS.iter().any(|p| text.contains(p)), ""),
+            leak_check(&text),
+        ],
+        shown: text,
+        calls: vec![call],
+    }
 }
 
 async fn run_digest(
@@ -889,6 +1201,7 @@ fn render(cases: &[Case], variants: &[Variant], model: &str, totals: &BTreeMap<&
         ("digests", "Daily digests"),
         ("clusters", "Related coverage overviews"),
         ("memory", "Memory candidates"),
+        ("citations", "Citation Q&A (chat assistant prompt with read-only tools)"),
     ] {
         let rows: Vec<&Case> = cases.iter().filter(|c| c.section == section).collect();
         if rows.is_empty() {
@@ -960,7 +1273,7 @@ async fn main() -> Result<()> {
         None => Variant::ALL.to_vec(),
     };
     let sections: BTreeSet<String> = arg(&args, "--only")
-        .unwrap_or_else(|| "summaries,digests,clusters,memory".into())
+        .unwrap_or_else(|| "summaries,digests,clusters,memory,citations".into())
         .split(',')
         .map(|s| s.trim().to_string())
         .collect();

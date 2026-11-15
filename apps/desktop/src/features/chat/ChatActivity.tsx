@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, useSyncExternalStore } from "react";
 import { api, type ChatConfirmEvent } from "../../lib/api";
 import { formatNotice } from "../../lib/notice";
-import { Trans, useTranslation } from "../../i18n";
+import { i18n, Trans, useTranslation } from "../../i18n";
 
 /** 一轮对话里的过程信息：一行进度、需要看见的提示、等待回应的确认。只存最新一份，不按线程保留历史。 */
 /** 文字可以给函数：显示时才取译文，切换界面语言后跟着变。 */
@@ -80,6 +80,11 @@ function ConfirmCard({ confirm, store }: { confirm: ChatConfirmEvent; store: Act
   const [error, setError] = useState("");
   const messageId = useId();
   const external = !!confirm.server;
+  // RRSS 自己的工具只给工具名（`mark_read`），文字按语言包显示；其他来源的确认照宿主给的文字。
+  const toolKey = `assistant.tools.labels.${confirm.title}` as "assistant.tools.labels.mark_read";
+  const ownTool = !external && i18n.exists(toolKey, { ns: "settingsAssistant" });
+  const title = ownTool ? String(i18n.t(toolKey, { ns: "settingsAssistant" })) : confirm.title;
+  const message = ownTool && !confirm.message ? t("activity.confirmTool") : confirm.message;
   const answer = async (ok: boolean) => {
     if (answering) return;
     setAnswering(true);
@@ -95,13 +100,13 @@ function ConfirmCard({ confirm, store }: { confirm: ChatConfirmEvent; store: Act
     }
   };
   return (
-    <div className="chat-confirm" role="alertdialog" aria-label={external ? t("activity.allowUse", { server: confirm.server, tool: confirm.tool }) : confirm.title}
+    <div className="chat-confirm" role="alertdialog" aria-label={external ? t("activity.allowUse", { server: confirm.server, tool: confirm.tool }) : title}
       aria-describedby={messageId}>
       <div>
         {external
           ? <strong><Trans t={t} i18nKey="activity.allowUseRich" values={{ server: confirm.server, tool: confirm.tool }} components={{ srv: <span className="chat-srv" /> }} /></strong>
-          : <strong>{confirm.title}</strong>}
-        <p id={messageId}>{external ? (confirm.args ? t("activity.mutatesWithArgs") : t("activity.mutates")) : confirm.message}</p>
+          : <strong>{title}</strong>}
+        <p id={messageId}>{external ? (confirm.args ? t("activity.mutatesWithArgs") : t("activity.mutates")) : message}</p>
         {external && confirm.args ? <pre className="chat-confirm-args">{confirm.args}</pre> : null}
         {external && confirm.can_remember ? (
           <label className="chat-confirm-remember">

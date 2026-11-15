@@ -316,6 +316,7 @@ impl PiProfile {
             runtime: workspace::runtime_digest(),
             system_prompt: workspace::system_prompt(
                 &pi_store::assistant_note(conn).map_err(db_err)?,
+                crate::ai_language::current(conn).map_err(db_err)?,
             ),
             settings_override: pi_store::pi_override(conn, pi_store::PI_SETTINGS_OVERRIDE_KEY)
                 .map_err(db_err)?,

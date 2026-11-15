@@ -14,12 +14,16 @@ pub const BUNDLED_SKILLS: &[(&str, &str)] = &[("cite-verify", SKILL_CITE_VERIFY)
 /// 固定系统提示模板（带版本注释），写成 `project/.pi/SYSTEM.md`，替换 Pi 默认的编程助手提示。
 pub const SYSTEM_TEMPLATE: &str = include_str!("../../../../pi/SYSTEM.md");
 
-/// 模板加上用户的助手说明。说明只追加在后面，不能替换模板。
-pub fn system_prompt(note: &str) -> String {
+/// 模板、看不出提问语言时的兜底语言（AI 输出语言），再加上用户的助手说明。说明只追加在后面，不能替换模板。
+pub fn system_prompt(note: &str, language: rrss_core::ai_store::OutputLanguage) -> String {
     let mut out = SYSTEM_TEMPLATE.trim_end().to_string();
+    out.push_str(&format!(
+        "\n\n## Default reply language\n\nWhen you cannot tell which language the user writes in, reply in {}.",
+        language.english_name()
+    ));
     let note = note.trim();
     if !note.is_empty() {
-        out.push_str("\n\n## 用户补充说明\n\n以下是用户写给你的说明，与上面的规则冲突时以上面的规则为准。\n\n");
+        out.push_str("\n\n## User's notes\n\nThe user wrote the notes below for you. Where they conflict with the rules above, the rules above win.\n\n");
         out.push_str(note);
     }
     out.push('\n');

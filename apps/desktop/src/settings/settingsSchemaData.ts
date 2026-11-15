@@ -36,7 +36,7 @@ export const SETTING_SPECS: SettingSpec[] = [
   {"id":"fetch_url_enabled","domain":"assistant","level":"l1","kind":{"type":"bool"},"default":"0","apply":"immediate","affects_pi":true},
   {"id":"close_action","domain":"reader","level":"l1","kind":{"type":"enum","options":[{"id":"ask"},{"id":"tray"},{"id":"quit"}]},"default":"ask","apply":"immediate","affects_pi":false},
   {"id":"ui_language","domain":"reader","level":"l0","kind":{"type":"enum","options":[{"id":"system"},{"id":"zh-CN"},{"id":"en"}]},"default":"system","apply":"immediate","affects_pi":false},
-  {"id":"ai_output_language","domain":"model","level":"l0","kind":{"type":"enum","options":[{"id":"ui"},{"id":"zh-CN"},{"id":"en"}]},"default":"ui","apply":"immediate","affects_pi":false},
+  {"id":"ai_output_language","domain":"model","level":"l0","kind":{"type":"enum","options":[{"id":"ui"},{"id":"zh-CN"},{"id":"en"}]},"default":"ui","apply":"immediate","affects_pi":true},
   {"id":"ui_debug_mode","domain":"reader","level":"l2","kind":{"type":"bool"},"default":"0","apply":"immediate","affects_pi":false},
   {"id":"focus_auto_summary","domain":"model","level":"l1","kind":{"type":"bool"},"default":"0","apply":"immediate","affects_pi":false},
   {"id":"cluster_auto_summary","domain":"model","level":"l1","kind":{"type":"bool"},"default":"0","apply":"immediate","affects_pi":false},

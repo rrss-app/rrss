@@ -6,6 +6,7 @@
     "allowUseRich": "允许使用 <srv>{{server}}</srv> 的 {{tool}}？",
     "mutatesWithArgs": "这个工具会修改内容，具体参数如下：",
     "mutates": "这个工具会修改内容。",
+    "confirmTool": "这一步要你确认后才会执行。",
     "remember": "本次对话里不再问 {{tool}}",
     "timeout_other": "{{count}} 分钟内不处理会自动拒绝",
     "allow": "允许",

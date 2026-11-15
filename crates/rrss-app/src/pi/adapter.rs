@@ -549,7 +549,7 @@ mod tests {
             .find(|f| f.path == Path::new("project/.pi/SYSTEM.md"))
             .expect("SYSTEM.md generated");
         let system = String::from_utf8_lossy(&system.contents);
-        assert!(system.starts_with("<!-- rrss-system v") && !system.contains("用户补充说明"));
+        assert!(system.starts_with("<!-- rrss-system v") && !system.contains("## User's notes"));
         pi_store::set_assistant_note(&k.conn, "说话简短").unwrap();
         let noted = render(&k);
         let noted = noted
@@ -557,7 +557,7 @@ mod tests {
             .iter()
             .find(|f| f.path == Path::new("project/.pi/SYSTEM.md"))
             .unwrap();
-        assert!(String::from_utf8_lossy(&noted.contents).ends_with("## 用户补充说明\n\n以下是用户写给你的说明，与上面的规则冲突时以上面的规则为准。\n\n说话简短\n"));
+        assert!(String::from_utf8_lossy(&noted.contents).ends_with("## User's notes\n\nThe user wrote the notes below for you. Where they conflict with the rules above, the rules above win.\n\n说话简短\n"));
         assert_eq!(spec.expected_model.as_deref(), Some("rrss-1/m1"));
         let env: HashMap<_, _> = spec.env.iter().cloned().collect();
         assert_eq!(env["PI_CODING_AGENT_DIR"], ws.agent.display().to_string());

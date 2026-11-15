@@ -6,6 +6,7 @@
     "allowUseRich": "Allow {{tool}} from <srv>{{server}}</srv>?",
     "mutatesWithArgs": "This tool changes content. Here are the arguments:",
     "mutates": "This tool changes content.",
+    "confirmTool": "This step runs only after you confirm.",
     "remember": "Don’t ask about {{tool}} again in this chat",
     "timeout_one": "Denied automatically if no answer within 1 minute",
     "timeout_other": "Denied automatically if no answer within {{count}} minutes",

@@ -146,3 +146,17 @@ test("hovering local sources previews the article; external links show only thei
   await preview.getByRole("button", { name: /^打开/ }).click();
   await expect(page.locator(".drawer.reader")).toBeVisible();
 });
+
+test("a confirmation for an RRSS tool shows the tool's name in the interface language", async ({ page }) => {
+  await installMockHost(page, { holdSend: true, systemLanguage: "en" });
+  await page.goto("/");
+  await page.getByRole("button", { name: MOCK_THREADS[0].title, exact: true }).click();
+  await page.getByRole("textbox", { name: "Chat message" }).fill("mark it read");
+  await page.getByRole("textbox", { name: "Chat message" }).press("Enter");
+  // 扩展只传工具名、正文留空。
+  await emit(page, "chat:confirm", { thread_id: 7, id: "ask-2", title: "mark_read", message: "", timeout_ms: 120000, server: "", tool: "", args: "", can_remember: false });
+  const card = page.getByRole("alertdialog", { name: "Mark as read" });
+  await expect(card).toContainText("This step runs only after you confirm.");
+  await card.getByRole("button", { name: "Deny", exact: true }).click();
+  expect(await page.evaluate(() => (window as any).__mockHost.args.confirm_fetch)).toEqual({ id: "ask-2", ok: false, remember: false });
+});

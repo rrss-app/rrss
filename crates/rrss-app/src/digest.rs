@@ -456,7 +456,7 @@ mod tests {
         assert!(
             prepared
                 .prompt
-                .contains("划选的简报摘录（简报的概括，不是原文逐字）")
+                .contains("Selected from the digest (the digest's summary, not the article's own words)")
         );
         crate::actions::insert_user_message(&conn, prepared.thread.id, &args.text, &args.citations)
             .unwrap();
