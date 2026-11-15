@@ -25,7 +25,7 @@
 <br>
 
 > [!NOTE]
-> 界面支持简体中文与英文，默认跟随系统语言，可在 设置 →「语言」切换；摘要、简报与对话等 AI 生成的内容目前仍是中文。
+> 界面支持简体中文与英文，默认跟随系统语言，可在 设置 →「语言」切换；摘要、简报与综述等 AI 生成的内容默认跟随界面语言，也可在 设置 → 模型 单独选择；对话助手按你提问的语言回答。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/images/focus-dark.webp">

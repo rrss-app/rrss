@@ -25,11 +25,11 @@ Articles, the full-text index, vectors and conversations all stay on your own co
 <br>
 
 > [!NOTE]
-> The interface is available in English and Simplified Chinese: it follows your system language, and you can switch under Settings → Language. AI-generated text (summaries, digests and chat replies) is still written in Chinese for now, and the developer docs are in Chinese; the screenshots below show the Chinese interface. Feeds and articles in any language work as usual, and the built-in translation renders articles side by side in your language.
+> The interface is available in English and Simplified Chinese: it follows your system language, and you can switch under Settings → Language. AI-generated text (summaries, digests and overviews) follows the interface language by default or the language you pick under Settings → Models, and the chat assistant replies in the language you write in. The developer docs are in Chinese. Feeds and articles in any language work as usual, and the built-in translation renders articles side by side in your language.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="doc/images/focus-dark.webp">
-  <img src="doc/images/focus-light.webp" alt="Today's Focus: the daily digest at the top, then a card stream ranked by rules and interests, with reports of the same event grouped together">
+  <source media="(prefers-color-scheme: dark)" srcset="doc/images/en/focus-dark.webp">
+  <img src="doc/images/en/focus-light.webp" alt="Today's Focus: the daily digest at the top, then a card stream ranked by rules and interests, with reports of the same event grouped together">
 </picture>
 
 ## Why RRSS
@@ -61,14 +61,14 @@ You open the app to a ranked card stream, not a mountain of unread counts.
 - **Related coverage, grouped**: reports of the same event from several sources merge into one group. One click writes an overview of what they agree on, what each adds and where they disagree, with every point attributed.
 - **Focus columns**: turn a folder into a column to read by topic.
 
-<img src="doc/images/cluster.webp" alt="Related coverage: reports from three sources grouped, with an overview of consensus, additions and disagreements">
+<img src="doc/images/en/cluster.webp" alt="Related coverage: reports from three sources grouped, with an overview of consensus, additions and disagreements">
 
 ### Reading and conversation
 
 <table>
   <tr>
-    <td width="50%"><img src="doc/images/reader.webp" alt="Reader: AI summary, the reason it was recommended, and the cleaned-up article"></td>
-    <td width="50%"><img src="doc/images/chat.webp" alt="Conversation: ask about a whole article or a selected passage; answers link back to the source"></td>
+    <td width="50%"><img src="doc/images/en/reader.webp" alt="Reader: AI summary, the reason it was recommended, and the cleaned-up article"></td>
+    <td width="50%"><img src="doc/images/en/chat.webp" alt="Conversation: ask about a whole article or a selected passage; answers link back to the source"></td>
   </tr>
   <tr>
     <td valign="top"><b>Reader</b>: articles are cleaned up and typeset, with an AI summary and "Recommended because…" at the top. Full side-by-side translation and translate-on-selection (LLM / DeepL / DeepLX). The original page opens in an isolated webview inside the reading area.</td>
@@ -80,8 +80,8 @@ You open the app to a ranked card stream, not a mountain of unread counts.
 
 <table>
   <tr>
-    <td width="50%"><img src="doc/images/digest.webp" alt="Digest: three threads of the daily digest, each followed by source numbers, with follow-up questions below"></td>
-    <td width="50%"><img src="doc/images/search.webp" alt="Search: local full-text search with a preview of the matching passage"></td>
+    <td width="50%"><img src="doc/images/en/digest.webp" alt="Digest: three threads of the daily digest, each followed by source numbers, with follow-up questions below"></td>
+    <td width="50%"><img src="doc/images/en/search.webp" alt="Search: local full-text search with a preview of the matching passage"></td>
   </tr>
   <tr>
     <td valign="top"><b>Digests</b>: daily and weekly digests are generated for you. Every point carries source numbers that open the original; ask follow-up questions right below.</td>
@@ -93,8 +93,8 @@ You open the app to a ranked card stream, not a mountain of unread counts.
 
 <table>
   <tr>
-    <td width="50%"><img src="doc/images/feeds.webp" alt="Feeds: folder tree on the left, articles in time order on the right"></td>
-    <td width="50%"><img src="doc/images/rules.webp" alt="Rule settings: new rule, suggested rules awaiting confirmation, and existing rules"></td>
+    <td width="50%"><img src="doc/images/en/feeds.webp" alt="Feeds: folder tree on the left, articles in time order on the right"></td>
+    <td width="50%"><img src="doc/images/en/rules.webp" alt="Rule settings: new rule, suggested rules awaiting confirmation, and existing rules"></td>
   </tr>
   <tr>
     <td valign="top"><b>Feeds</b>: folder tree with drag-and-drop, OPML import and export. Sources that have gone quiet, keep failing or are mostly noise get flagged.</td>
