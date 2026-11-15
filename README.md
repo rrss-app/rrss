@@ -24,6 +24,9 @@
 
 <br>
 
+> [!NOTE]
+> 界面支持简体中文与英文，默认跟随系统语言，可在 设置 →「语言」切换；摘要、简报与对话等 AI 生成的内容目前仍是中文。
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/images/focus-dark.webp">
   <img src="doc/images/focus-light.webp" alt="今日焦点：顶部是今日简报，下面是按规则与兴趣排好的卡片流，同一事件的多家报道自动成组">

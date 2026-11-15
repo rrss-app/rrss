@@ -106,7 +106,7 @@ cargo test --locked -p rrss-core --lib -- score:: # 只验证改动模块
 ## 提交
 
 - 一个 PR 做一件事，说明改了什么行为、怎么验证的。
-- 用户能感知的变化（新功能、行为变化、修复）在 [CHANGELOG.md](CHANGELOG.md) 的「未发布」下加一条，写给用户看，不写实现细节；纯重构、测试与文档改动不用写。
+- 用户能感知的变化（新功能、行为变化、修复）在 [CHANGELOG.md](CHANGELOG.md) 的 `[Unreleased]` 下用英文加一条，写给用户看，不写实现细节；纯重构、测试与文档改动不用写。
 - 界面有明显变化时附截图。README 的演示截图可用 `RRSS_README_SHOTS=1 pnpm --dir apps/desktop test:e2e e2e/readme-shots.spec.ts` 重新生成。
 - 安全问题不要开公开 issue，按 [SECURITY.md](SECURITY.md) 私下报告。
 - 这个仓库由上游开发仓库同步生成，上游每合并一项改动，这里就多一个对应的提交，提交说明写给外部读者。PR 照常在这里提：评审通过后，维护者把改动并入上游，同步时这里的提交会把你的 PR 提交作为父提交合进来，PR 随之显示为已合并，你的原始提交留在历史里，同步提交也用 `Co-authored-by` 署上你的名字。评审期间可以继续往 PR 推修改；导入之后再改的话，维护者会重新导入。

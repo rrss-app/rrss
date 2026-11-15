@@ -23,7 +23,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   const notes = releaseNotes(readFileSync(path, "utf8"), version);
   if (!notes) {
-    console.error(`${path} 里没有 ${version} 的说明：发版前先把「未发布」一段改成这个版本号与日期。`);
+    console.error(`${path} 里没有 ${version} 的说明：发版前先把 [Unreleased] 一段改成这个版本号与日期。`);
     process.exit(1);
   }
   process.stdout.write(`${notes}\n`);

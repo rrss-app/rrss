@@ -56,7 +56,8 @@
   border-color: transparent;
 }
 .sidebar-search:hover { border-color: transparent; color: var(--text); background: var(--tint-press); }
-.sidebar-search > span { flex: 1; min-width: 0; }
+/* 译文比中文长，窄窗口里不折行，超出省略（按钮自带完整说明的 title）。 */
+.sidebar-search > span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-item {
   display: flex;
@@ -166,6 +167,9 @@
 }
 .sidebar-foot button {
   flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
   justify-content: center;
   gap: 6px;
   min-height: 34px;

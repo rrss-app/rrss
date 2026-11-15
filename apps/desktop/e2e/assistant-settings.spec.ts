@@ -1,6 +1,6 @@
 import { mcpFixture } from "../src/test/fixtures/settings";
 import { expect, test, type Locator, type Page } from "./fixtures";
-import { installMockHost, settingsTab } from "./mockHost";
+import { installMockHost, MOCK_PI, settingsTab } from "./mockHost";
 import { shot } from "./shots";
 
 // 复用共享模拟宿主：状态经 `__mockHost.state` 调整，事件经 `__mockHost.emit` 推送。
@@ -323,9 +323,10 @@ test("JSON import previews metadata, skips duplicates, and starts disabled", asy
 });
 
 test("restored MCP services name missing variables and accept replacements", async ({ page }) => {
-  await installMockHost(page);
+  // 加载前就给出缺值的变量：页面加载后再改模拟数据，会和启动后的设置页预取竞争。
+  const [first, ...rest] = MOCK_PI.mcp_servers;
+  await installMockHost(page, { pi: { ...MOCK_PI, mcp_servers: [{ ...first, env: [{ name: "TOKEN", has_value: false }] }, ...rest] } });
   await page.goto("/");
-  await page.evaluate(() => { (window as any).__mockHost.state.pi.mcp_servers[0].env = [{ name: "TOKEN", has_value: false }]; });
   const settings = await openAssistant(page);
   if (await fold(settings, "外部工具").getAttribute("aria-expanded") !== "true") await fold(settings, "外部工具").click();
   await expect(settings.getByText("需要重新填写：TOKEN", { exact: true })).toBeVisible();

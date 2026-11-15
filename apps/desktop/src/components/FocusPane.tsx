@@ -416,7 +416,7 @@ export function FocusPane({
       <div className="toolbar" data-tauri-drag-region="deep">
         <Segmented className="toolbar-group segmented" role="group" aria-label={t("pane.filterLabel")}>
           {FILTERS.map((f) => (
-            <button key={f.id} type="button" className="tab" data-on={page?.filter === f.id ? "1" : "0"} onClick={() => onFilter(f.id)}>
+            <button key={f.id} type="button" className="tab" title={t(`pane.filter.${f.id}`)} data-on={page?.filter === f.id ? "1" : "0"} onClick={() => onFilter(f.id)}>
               {t(`pane.filter.${f.id}`)}
             </button>
           ))}

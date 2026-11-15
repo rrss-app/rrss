@@ -555,6 +555,8 @@ export type MockHostOptions = {
   clearWebDataError?: UiError | string;
   webLinks?: Record<string, OpenWebLinkView | FulltextError>;
   linkSafety?: Record<string, LinkSafety>;
+  /** 助手页数据；要在页面加载前就改的场景用它，加载后再改会和设置页预取竞争。 */
+  pi?: PiPage;
   /** 跟随系统时宿主解析出的界面语言；默认中文，英文界面用例给 `en`。 */
   systemLanguage?: string;
   digests?: DigestView[];
@@ -1867,7 +1869,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
       presets: MOCK_PRESETS,
       rules: options.rules ?? MOCK_RULES,
       memory: MOCK_MEMORY,
-      pi: MOCK_PI,
+      pi: options.pi ?? MOCK_PI,
       probe: MOCK_PI_PROBE,
       piConfig: piConfigFixture(),
       networkProxy: options.networkProxy ?? networkProxyFixture(),

@@ -1,5 +1,6 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
+import { PSEUDO_LANGUAGE, pseudoTree } from "./pseudo";
 import chat from "../locales/zh-CN/chat.json" with { type: "json" };
 import common from "../locales/zh-CN/common.json" with { type: "json" };
 import digest from "../locales/zh-CN/digest.json" with { type: "json" };
@@ -84,9 +85,15 @@ let languageSetting = "system";
 /** 设置里的原值（`system` / `zh-CN` / `en`），给语言切换控件显示当前选择。 */
 export const uiLanguageSetting = (): string => languageSetting;
 
-/** 切到解析出的语言；还没有语言包的语言先留在源语言。 */
+/** 切到解析出的语言；还没有语言包的语言先留在源语言。伪本地化 `en-XA` 第一次用到时才从英文包生成。 */
 export function applyLanguage(language: string, setting = languageSetting): Promise<unknown> {
   languageSetting = setting;
+  if (language === PSEUDO_LANGUAGE) {
+    if (!i18n.hasResourceBundle(PSEUDO_LANGUAGE, "common")) {
+      for (const [ns, bundle] of Object.entries(resources.en)) i18n.addResourceBundle(PSEUDO_LANGUAGE, ns, pseudoTree(bundle));
+    }
+    return i18n.changeLanguage(PSEUDO_LANGUAGE);
+  }
   return i18n.changeLanguage(LANGUAGES.includes(language) ? language : SOURCE_LANGUAGE);
 }
 
@@ -95,3 +102,4 @@ export const locale = (): string => i18n.language;
 
 export { Trans, useTranslation } from "react-i18next";
 export { i18n };
+export { PSEUDO_LANGUAGE } from "./pseudo";

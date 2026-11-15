@@ -1,33 +1,33 @@
-# 更新日志
+# Changelog
 
-这里记录每个版本里用户能感知到的变化。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。发版时，对应版本的这一段会直接用作 GitHub Release 的说明。
+User-visible changes in each version. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/). When a version is released, its section is used as the GitHub Release notes. Entries for 0.3.1 and earlier are in Chinese.
 
-## [未发布]
+## [Unreleased]
 
-### 新增
+### Added
 
-- 后台驻留：关闭窗口时可以隐藏到系统托盘，RRSS 在后台继续按计划更新订阅；第一次关闭时会询问，可记住选择，之后在 设置 → 高级 →「关闭窗口时」修改。托盘菜单可打开窗口、立即刷新或退出；从托盘回来时焦点列表直接显示最新内容。再次启动 RRSS 会唤出已在运行的窗口。
-- 阅读器文末「相关阅读」：在「下一篇」之后列出最多 3 篇标题与摘要相近的文章（需要已配置嵌入模型）；点开后可按 Esc 或「上一篇」回到原文，上下篇仍按原来的列表走。
-- 代码块按语言上色：阅读器、对话与简报里的代码按原文标注的语言高亮，没有标注时只在能可靠认出语言时上色；复制与引用的内容不变。
-- 英文界面：设置导航底部新增「语言」（跟随系统 / 简体中文 / English），切换后立即生效、不用重启；默认跟随系统语言，系统是中文时显示中文，其他语言显示英文。
-- 对话助手可以查看自己当前的配置（助手说明、已启用的工具与技能、当前模型），回答「你现在能做什么」这类问题；只读，不含密钥与服务地址。
+- English interface: a Language option at the bottom of the settings navigation (System / 简体中文 / English) switches immediately without a restart. It follows the system language by default: Chinese systems get Chinese, everything else gets English. AI-generated text (summaries, digests, chat replies) is still written in Chinese for now.
+- Run in the background: closing the window can hide RRSS to the system tray, where it keeps updating feeds on schedule. The first close asks and can remember the choice; change it later under Settings → Advanced → "When closing the window". The tray menu opens the window, refreshes now or quits, and coming back from the tray shows the latest items in Today. Starting RRSS again brings up the running window.
+- "Related reading" at the end of an article: up to 3 articles with similar titles and summaries after "Next article" (requires an embedding model). Esc or "Previous" returns to the original article, and previous / next still follow the original list.
+- Syntax highlighting in code blocks: code in the reader, chats and digests is highlighted by the language the source declares; without a declaration it is only colored when the language is recognized reliably. Copied and cited text is unchanged.
+- The chat assistant can look up its own current configuration (instructions, enabled tools and skills, current model) to answer questions like "what can you do right now". Read-only, without keys or service addresses.
 
-### 变化
+### Changed
 
-- 翻译的目标语言默认改为「跟随界面语言」：中文界面照旧译成中文，英文界面译成英文；之前选过其他语言的保持不变。
-- 没有标题的订阅在各个列表里统一显示主机名（本机桥接显示路由名或地址），不再显示「未命名源」或完整地址。
-- 设置 → 高级里检测到的系统代理、生成的对话引擎配置中，带用户名和密码的代理地址改为显示成 `***@主机`。
-- 设置 → 模型的「摘要」分组不再列出「引用总结」：这项用途从未被实际调用，之前给它选的模型不会再出现。
-- 今日焦点：打开应用后还没开始浏览时，后台抓到的新文章直接出现在列表顶部，不用再点「有 N 篇新内容」；开始滚动、用键盘选文章或打开文章后，才改为顶部提示。启动时正在进行的抓取结束后，也不再把正在浏览的列表拉回顶部。
+- Translation now targets the interface language by default: a Chinese interface still translates into Chinese, an English interface into English. A target language chosen earlier is kept.
+- Feeds without a title show their host name in every list (local bridges show the route name or address) instead of "Unnamed source" or the full address.
+- Proxy addresses with a username and password are shown as `***@host` in the detected system proxy and the generated chat-engine configuration under Settings → Advanced.
+- Settings → Models no longer lists "Citation summary" under Summary: the task was never actually used, and a model chosen for it no longer appears.
+- Today: right after opening the app, before you start browsing, newly fetched articles appear at the top of the list directly instead of behind a "N new items" prompt; the prompt is used once you scroll, select an article with the keyboard or open one. A fetch that was running at startup no longer scrolls the list you are reading back to the top when it finishes.
 
-### 修复
+### Fixed
 
-- 导入偏好文件时，没导入的规则会写明原因（例如正则写法无效），不再夹杂英文说明。
-- 订阅首次抓取失败时保留简短的失败提示，超时原因显示为「订阅请求超时」。
-- 阅读器代码块显示原文标注的语言（如 Jekyll、GitHub、Hugo 等常见博客的写法），Markdown 代码块的语言名也统一了写法。只对之后新抓取的文章生效。
-- 网络代理：修改代理地址到另一台主机（协议、主机或端口不同）时，不再沿用已保存的代理认证，设置页会提示保存后清除，避免把密码发给另一台代理。
-- 网络代理：系统代理的不代理列表含 `*.example.com`、`host:8080` 等写法时，不再导致相关请求失败；能转换的按等价写法生效，无法识别的单项跳过。
-- 网络代理：对话里助手调用的本机工具（检索文章、读取网页）在「系统代理」模式下，改为使用系统的代理设置，不再误用对话助手（Pi）单独设置的代理或直连。
+- Importing a preferences file explains why a rule was skipped (for example, an invalid regular expression), without mixed-language messages.
+- When a feed fails on its first fetch, a short failure note is kept, and timeouts read "the feed request timed out".
+- Code blocks in the reader show the language declared by the source (including common blog formats such as Jekyll, GitHub and Hugo), and Markdown code block language names are normalized. Applies to articles fetched from now on.
+- Network proxy: changing the proxy to another host (different scheme, host or port) no longer reuses the saved proxy credentials, and the settings page says they will be cleared on save, so the password is not sent to a different proxy.
+- Network proxy: a system bypass list with entries such as `*.example.com` or `host:8080` no longer makes requests fail; entries that can be converted take effect as equivalents, and unrecognized ones are skipped.
+- Network proxy: in "System proxy" mode, local tools the chat assistant calls (searching articles, reading web pages) now use the system proxy settings instead of the chat assistant's (Pi's) own proxy or a direct connection.
 
 ## [0.3.1] - 2026-11-12
 

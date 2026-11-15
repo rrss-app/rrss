@@ -12,7 +12,7 @@
     "about": "About",
     "aboutTitle": "About RRSS",
     "searchTitle": "Search titles and body text (Ctrl+K)",
-    "searchLabel": "Search articles",
+    "searchLabel": "Search",
     "navLabel": "Main views",
     "unreadCount_one": "1 unread article",
     "unreadCount_other": "{{count}} unread articles",

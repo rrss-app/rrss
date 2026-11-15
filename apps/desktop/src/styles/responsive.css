@@ -4,6 +4,9 @@
   .tab.tool { padding: 6px 8px; }
   .tab.tool .tool-label { display: none; }
   .toolbar-select-wrap { max-width: 150px; }
+  /* 分段控件可以收缩：译文较长时选项省略而不是伸到窗口三键下面（选项带 title）。 */
+  .toolbar > .segmented { min-width: 0; max-width: 100%; }
+  .toolbar > .segmented > .tab { min-width: 0; padding-inline: 8px; overflow: hidden; text-overflow: ellipsis; }
   .article-source { max-width: 140px; }
 }
 @media (max-width: 640px) {

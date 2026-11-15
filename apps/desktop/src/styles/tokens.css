@@ -101,6 +101,15 @@
   --ease: cubic-bezier(0.2, 0.75, 0.2, 1);
 }
 
+/*
+ * 英文界面（含伪本地化 en-XA）西文字体在前：随包衬线字体与中文字体里的弯引号、撇号是全角字形，
+ * 排在前面会把「Today’s」撑开。中文字符照样逐字回退到后面的中文字体。
+ */
+:root:lang(en) {
+  --font-ui: "Segoe UI", system-ui, "Noto Sans", "Helvetica Neue", Arial, "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  --font-read: Georgia, "Noto Serif", "DejaVu Serif", "Times New Roman", "RRSS Serif", "Noto Serif CJK SC", "Source Han Serif SC", "Microsoft YaHei", serif;
+}
+
 :root[data-theme="dark"] {
   color-scheme: dark;
   --surface: #18191b;

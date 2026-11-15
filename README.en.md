@@ -25,7 +25,7 @@ Articles, the full-text index, vectors and conversations all stay on your own co
 <br>
 
 > [!NOTE]
-> The app's interface, the AI prompts and the developer docs are currently in Simplified Chinese. Feeds and articles in any language work as usual, and the built-in translation can render articles side by side in your language. An English interface is not available yet.
+> The interface is available in English and Simplified Chinese: it follows your system language, and you can switch under Settings → Language. AI-generated text (summaries, digests and chat replies) is still written in Chinese for now, and the developer docs are in Chinese; the screenshots below show the Chinese interface. Feeds and articles in any language work as usual, and the built-in translation renders articles side by side in your language.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/images/focus-dark.webp">
@@ -124,9 +124,9 @@ Unpack and run `rrss` (`rrss.exe` on Windows).
 
 ### Three steps
 
-1. **Add feeds**: paste a URL, or import OPML under Settings → Feeds (设置 → 订阅).
-2. **Connect a model** (optional): under Settings → Models (设置 → 模型), add OpenAI / DeepSeek / OpenRouter / Ollama or any OpenAI-compatible endpoint, then pick a model for summaries, digests, translation and conversation. Rules, reading and search work without a model.
-3. **Write a few rules**: boost or hide under Settings → Rules (设置 → 规则), and the focus stream re-ranks right away.
+1. **Add feeds**: paste a URL, or import OPML under Settings → Feeds.
+2. **Connect a model** (optional): under Settings → Models, add OpenAI / DeepSeek / OpenRouter / Ollama or any OpenAI-compatible endpoint, then pick a model for summaries, digests, translation and conversation. Rules, reading and search work without a model.
+3. **Write a few rules**: boost or hide under Settings → Rules, and the focus stream re-ranks right away.
 
 ## Product boundaries
 
