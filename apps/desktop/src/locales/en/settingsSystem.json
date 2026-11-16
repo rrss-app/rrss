@@ -348,6 +348,18 @@
         "action": "Reset failure count"
       }
     },
+    "value": {
+      "db": "{{path}} · {{size}} · schema version {{version}} · {{mode}} · full-text index {{fts}} rows",
+      "vecUnavailable": "sqlite-vec unavailable: {{reason}}",
+      "vectors": "Vectors {{embedded}}/{{total}} generated, pending {{pendingChunks}} chunks / {{pendingArticles}} articles",
+      "interests": "Interests {{embedded}}/{{total}} generated, {{memories}} memories generated",
+      "models": "Dimensions {{dims}}; models {{models}}",
+      "dims": "{{dims}}d",
+      "chunkError": "Chunk {{chunk}} ({{attempts}} attempts): {{error}}",
+      "scheduler": "Fetch queue {{queued}} ({{parked}} paused by host), downloads {{http}}/{{httpLimit}}, parsing {{parsing}}/{{parsingLimit}}, body buffer {{buffered}} / limit {{bufferLimit}}",
+      "modelQueue": "Model requests running {{active}}, interactive waiting {{interactive}}, background waiting {{background}}",
+      "ai": "Today: background {{jobs}} / budget {{budget}} tokens · cache {{cache}} rows · chat {{input}} + {{output}} tokens / ${{cost}}"
+    },
     "preview": {
       "vec": "Browser preview",
       "stats": "Sample data only; no local data loaded",

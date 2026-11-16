@@ -27,12 +27,22 @@ fn session_start_clear_exit_and_route_changes() {
     assert_eq!(session.next_label(&WebviewRoute::Direct).unwrap(), "web-2");
     let proxy = WebviewRoute::Proxy(Url::parse("http://proxy.example:8080").unwrap());
     assert!(session.next_label(&proxy).is_err());
+    // 线路变了：换新目录，旧目录交还调用方删除；同一线路不换。
+    let pinned = session.directory.clone();
+    let stale = session.switch_route(&proxy, "run-proxy").unwrap();
+    assert_eq!(stale.as_deref(), Some(pinned.as_path()));
+    assert!(pinned.exists() && session.directory.exists() && session.directory != pinned);
+    std::fs::remove_dir_all(&pinned).unwrap();
+    assert_eq!(session.next_label(&proxy).unwrap(), "web-3");
+    session.opened(proxy.clone());
+    assert!(session.switch_route(&proxy, "run-same").unwrap().is_none());
+    session.opened(WebviewRoute::Direct);
     let old = session.directory.clone();
     std::fs::write(old.join("cookies"), b"synthetic").unwrap();
     session.clear("run-two").unwrap();
     assert!(!old.exists());
     assert!(session.directory.exists());
-    assert_eq!(session.next_label(&proxy).unwrap(), "web-3");
+    assert_eq!(session.next_label(&proxy).unwrap(), "web-4");
     assert!(fresh_directory(&root, "../escape").is_err());
     session.cleanup().unwrap();
     assert!(!session.directory.exists());

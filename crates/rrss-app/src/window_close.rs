@@ -39,34 +39,58 @@ pub enum CloseDecision {
     Quit,
 }
 
-fn resolve(choice: CloseChoice, tray_available: bool) -> CloseDecision {
-    match choice {
-        CloseChoice::Tray if tray_available => CloseDecision::Hide,
-        CloseChoice::Tray => CloseDecision::Minimize,
-        CloseChoice::Quit => CloseDecision::Quit,
+/// 设置 `close_action` 的取值。宿主记住最近读到的一次：读库慢时（连接都被后台作业占着）
+/// 关闭不能干等，见 [`CloseAction::fallback`]。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloseAction {
+    Ask,
+    Tray,
+    Quit,
+}
+
+impl CloseAction {
+    /// 按这个设置处理一次关闭。
+    pub fn decision(self, tray_available: bool) -> CloseDecision {
+        match self {
+            Self::Ask => CloseDecision::Ask,
+            Self::Tray if tray_available => CloseDecision::Hide,
+            Self::Tray => CloseDecision::Minimize,
+            Self::Quit => CloseDecision::Quit,
+        }
+    }
+
+    /// 这次没读到设置、只能凭上次记下的值处理时：只照「隐藏到托盘」做，其余都问。
+    /// 记下的值可能已经过时，宁可多问一次，也不凭旧值替用户退出。
+    pub fn fallback(remembered: Option<Self>) -> Self {
+        match remembered {
+            Some(Self::Tray) => Self::Tray,
+            _ => Self::Ask,
+        }
     }
 }
 
-/// 按设置决定这次关闭怎么处理。
-pub fn decide(conn: &Connection, tray_available: bool) -> rrss_core::Result<CloseDecision> {
+impl From<CloseChoice> for CloseAction {
+    fn from(choice: CloseChoice) -> Self {
+        match choice {
+            CloseChoice::Tray => Self::Tray,
+            CloseChoice::Quit => Self::Quit,
+        }
+    }
+}
+
+/// 读当前设置。
+pub fn action(conn: &Connection) -> rrss_core::Result<CloseAction> {
     Ok(match settings_schema::current(conn, SETTING)?.as_str() {
-        "tray" => resolve(CloseChoice::Tray, tray_available),
-        "quit" => CloseDecision::Quit,
-        _ => CloseDecision::Ask,
+        "tray" => CloseAction::Tray,
+        "quit" => CloseAction::Quit,
+        _ => CloseAction::Ask,
     })
 }
 
-/// 关闭询问的结果：勾了「记住」就写进设置，以后不再询问。
-pub fn choose(
-    conn: &Connection,
-    choice: CloseChoice,
-    remember: bool,
-    tray_available: bool,
-) -> rrss_core::Result<CloseDecision> {
-    if remember {
-        settings_schema::set(conn, SETTING, choice.setting())?;
-    }
-    Ok(resolve(choice, tray_available))
+/// 关闭询问里勾了「记住」：写进设置，以后不再询问。
+pub fn remember(conn: &Connection, choice: CloseChoice) -> rrss_core::Result<()> {
+    settings_schema::set(conn, SETTING, choice.setting())?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -82,28 +106,43 @@ mod tests {
     #[test]
     fn asks_by_default_and_follows_the_setting() {
         let (_dir, conn) = conn();
-        assert_eq!(decide(&conn, true).unwrap(), CloseDecision::Ask);
+        assert_eq!(action(&conn).unwrap(), CloseAction::Ask);
+        assert_eq!(action(&conn).unwrap().decision(true), CloseDecision::Ask);
         settings_schema::set(&conn, SETTING, "tray").unwrap();
-        assert_eq!(decide(&conn, true).unwrap(), CloseDecision::Hide);
-        assert_eq!(decide(&conn, false).unwrap(), CloseDecision::Minimize);
+        assert_eq!(action(&conn).unwrap().decision(true), CloseDecision::Hide);
+        assert_eq!(
+            action(&conn).unwrap().decision(false),
+            CloseDecision::Minimize
+        );
         settings_schema::set(&conn, SETTING, "quit").unwrap();
-        assert_eq!(decide(&conn, true).unwrap(), CloseDecision::Quit);
+        assert_eq!(action(&conn).unwrap().decision(true), CloseDecision::Quit);
         assert!(settings_schema::set(&conn, SETTING, "hide").is_err());
     }
 
     #[test]
-    fn remembers_only_when_asked() {
+    fn remembers_the_choice() {
         let (_dir, conn) = conn();
-        assert_eq!(
-            choose(&conn, CloseChoice::Quit, false, true).unwrap(),
-            CloseDecision::Quit
-        );
-        assert_eq!(decide(&conn, true).unwrap(), CloseDecision::Ask);
-        assert_eq!(
-            choose(&conn, CloseChoice::Tray, true, false).unwrap(),
-            CloseDecision::Minimize
-        );
+        remember(&conn, CloseChoice::Tray).unwrap();
         assert_eq!(settings_schema::current(&conn, SETTING).unwrap(), "tray");
-        assert_eq!(decide(&conn, true).unwrap(), CloseDecision::Hide);
+        assert_eq!(action(&conn).unwrap(), CloseAction::Tray);
+        remember(&conn, CloseChoice::Quit).unwrap();
+        assert_eq!(action(&conn).unwrap(), CloseAction::Quit);
+    }
+
+    #[test]
+    fn falls_back_to_asking_unless_the_last_setting_was_tray() {
+        assert_eq!(CloseAction::fallback(None), CloseAction::Ask);
+        assert_eq!(
+            CloseAction::fallback(Some(CloseAction::Ask)),
+            CloseAction::Ask
+        );
+        assert_eq!(
+            CloseAction::fallback(Some(CloseAction::Quit)),
+            CloseAction::Ask
+        );
+        assert_eq!(
+            CloseAction::fallback(Some(CloseAction::Tray)),
+            CloseAction::Tray
+        );
     }
 }

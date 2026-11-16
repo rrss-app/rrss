@@ -37,7 +37,6 @@ export function DigestScreen({ active, topmost = true, chat, drafts, onContext, 
   const [digest, setDigest] = useState<DigestView | null>(null);
   const [discussion, setDiscussion] = useState({ digestId: 0, threadId: 0, loading: false, error: "" });
   const [retry, setRetry] = useState(0);
-  const [scroll, setScroll] = useState(0);
   const [citing, setCiting] = useState(false);
   const citingRef = useRef(false);
   const generation = useRef(0);
@@ -143,7 +142,6 @@ export function DigestScreen({ active, topmost = true, chat, drafts, onContext, 
       if (latest.current.digest?.id === sentDigestId) {
         ++generation.current;
         setDiscussion({ digestId: sentDigestId, threadId: id, loading: false, error: "" });
-        setScroll((value) => value + 1);
       }
       return true;
     } catch (err) { notify({ message: formatNotice(i18n.t("send.failed", { ns: "digest" }), err) }); return false; }
@@ -160,7 +158,7 @@ export function DigestScreen({ active, topmost = true, chat, drafts, onContext, 
           </div>
         </section>
       ) : ready ? <DigestDiscussion store={chat.store} turns={chat.turns} threadId={threadId} context={`digest:${digestId}`} busy={chat.busyThreadId !== null && chat.busyThreadId === threadId}
-        scrollRequest={scroll} onLoadOlder={chat.loadOlder} onOpenUrl={onOpenUrl} onOpenArticle={onOpenArticle} onFix={onFixChat} /> : null}
+        onLoadOlder={chat.loadOlder} onOpenUrl={onOpenUrl} onOpenArticle={onOpenArticle} onFix={onFixChat} /> : null}
     </DigestPane>
     <Composer drafts={drafts} context={`digest:${digestId}`} ariaLabel={t("composer.aria")} placeholder={t("composer.placeholder")}
       contextLabel={!digest ? t("composer.noDigest") : discussion.error && discussion.digestId === digestId

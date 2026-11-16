@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApiStub, type ApiStub } from "../test/api";
 import { createReactHarness } from "../test/react";
 import type { TestClock } from "../test/clock";
-import type { UiError } from "../bindings";
+import type { DiagnosticsPage, UiError } from "../bindings";
 import { DiagPane } from "./DiagPane";
 import { diagnosticsKeys, diagnosticsQueryOptions, prefetchDiagnostics } from "./diagnosticsQuery";
 import { memoryKeys } from "./memoryQuery";
@@ -15,7 +15,13 @@ vi.mock("../lib/api", async () => {
   return { api: createApiProxy(() => box.stub) };
 });
 const harness = createReactHarness();
-const page = { vec: "可用", stats: "10 篇", db: "ok", ai: "0", log: null, scheduler: null };
+const diag = (path: string): DiagnosticsPage => ({
+  scheduler: null, log: null, vectors: null,
+  db: { path, size_bytes: 0, user_version: 43, journal_mode: "wal", fts_rows: 0 },
+  vec: { available: true, version: "v0.1.9", reason: null },
+  ai: { job_tokens: 0, budget_tokens: 0, cache_rows: 0, chat_input_tokens: 0, chat_output_tokens: 0, chat_cost: 0 },
+});
+const page = diag("/fixture/rrss.db");
 let client: QueryClient;
 let clock: TestClock;
 function mount(props: Partial<ComponentProps<typeof DiagPane>> = {}) { return harness.mount(<QueryClientProvider client={client}><DiagPane onAsk={() => {}} {...props} /></QueryClientProvider>); }
@@ -77,13 +83,13 @@ describe("diagnostics queries and maintenance", () => {
     const callsAtUnmount = editState.mock.calls.length;
     const second = mount(); await flush();
     expect(button(second.host, "处理一批").disabled).toBe(true);
-    box.stub!.handle("diagnostics", () => ({ ...page, stats: "处理后统计" }));
+    box.stub!.handle("diagnostics", () => diag("/fixture/after.db"));
     pending.resolve(undefined); await flush();
-    late.resolve({ ...page, stats: "过时统计" }); await lateRead; await flush();
+    late.resolve(diag("/fixture/stale.db")); await lateRead; await flush();
     expect(box.stub!.callCount("embedNow")).toBe(1);
     expect(box.stub!.callCount("diagnostics")).toBe(2);
-    expect(second.host.textContent).toContain("处理后统计");
-    expect(second.host.textContent).not.toContain("过时统计");
+    expect(second.host.textContent).toContain("/fixture/after.db");
+    expect(second.host.textContent).not.toContain("/fixture/stale.db");
     expect(changed).toHaveBeenCalledTimes(1);
     expect(client.getQueryState(memoryKeys.page(""))?.isInvalidated).toBe(true);
     expect(editState.mock.calls).toHaveLength(callsAtUnmount);

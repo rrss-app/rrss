@@ -258,10 +258,12 @@ button.jump-latest[data-new]:not(:disabled):is(:hover, :active) { background: va
 .composer[data-dock] {
   --dock-open: 430ms; --dock-close: 300ms; --dock-in: cubic-bezier(.2, .9, .25, 1); --dock-out: cubic-bezier(.4, 0, .6, 1);
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; background: none; pointer-events: none;
+  container: dock / inline-size;
 }
+/* 底色铺满整个输入区（上下文行、过程条、引用也在上面），上沿再往上淡出 40px：输入区长高时正文不会透出来和文字叠在一起。 */
 .composer[data-dock]::before {
-  content: ""; position: absolute; inset: auto 0 0 0; height: 112px; pointer-events: none;
-  background: linear-gradient(to top, var(--surface) 40%, color-mix(in srgb, var(--surface) 0%, transparent));
+  content: ""; position: absolute; inset: -40px 0 0 0; pointer-events: none;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--surface) 0%, transparent), var(--surface) 40px);
   opacity: 0; transition: opacity var(--dock-close) var(--dock-out);
 }
 .composer[data-dock="open"]::before { opacity: 1; transition: opacity var(--dock-open) var(--dock-in); }
@@ -305,6 +307,12 @@ button.jump-latest[data-new]:not(:disabled):is(:hover, :active) { background: va
 /* 模型按钮原来按输入行的 45% 限宽；放进会伸缩的格子后改按自身限宽，免得名字被挤掉。 */
 .composer .composer-grow > .model-picker[data-variant="chip"] { max-width: none; }
 .composer-grow:last-child { --grow-delay: 230ms; }
+/* 台子里的模型名限宽：长名字（含版本号）截断，不挤输入框；窄时再收，思考档位只在菜单里看。 */
+.composer[data-dock] .model-picker[data-variant="chip"] .model-picker-text { max-width: 120px; font-size: 12px; }
+@container dock (width < 640px) {
+  .composer[data-dock] .model-picker[data-variant="chip"] .model-picker-text { max-width: 72px; }
+  .composer[data-dock] .chat-model-level { display: none; }
+}
 .composer[data-dock="closed"] .composer-grow {
   max-width: 0; margin-inline: -2px; overflow: hidden; opacity: 0; transform: translateY(4px) scale(.9);
   transition: max-width var(--dock-close) var(--dock-out), margin var(--dock-close) var(--dock-out), opacity 120ms var(--dock-out), transform 190ms var(--dock-out);

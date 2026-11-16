@@ -693,7 +693,8 @@ def run_smoke(config: argparse.Namespace) -> None:
         log(f"focus_stream OK（{len(focus.get('articles') or [])} 条可见文章）")
 
         diag = tauri_invoke(driver, "diagnostics", {})
-        db_line = diag.get("db") if isinstance(diag, dict) else None
+        db_info = diag.get("db") if isinstance(diag, dict) else None
+        db_line = db_info.get("path") if isinstance(db_info, dict) else None
         if not isinstance(db_line, str) or str(db_path) not in db_line:
             raise SmokeError(
                 f"diagnostics 未指向隔离库。\n  期望包含: {db_path}\n  实际 db 字段: {db_line!r}"

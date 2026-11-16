@@ -427,10 +427,14 @@ export const MOCK_PI_PROBE: PiProbe = piProbeFixture({ binary_source: MOCK_PI.bi
 export const MOCK_SETTINGS: SettingsSchema = createSettingsSchema({ ai_daily_budget_tokens: "1000" });
 
 export const MOCK_DIAG: DiagnosticsPage = {
-  vec: "sqlite-vec v0.1.6",
-  stats: "向量 3812/3900 已嵌入，待嵌入 chunk 88 / 文章 12。兴趣 2/3，记忆已嵌入 2。维度 [768d×3812] 模型 [nomic-embed-text:3812]",
-  db: "库 /home/user/.local/share/rrss/rrss.db · 96,468,992 字节 · user_version 13 · wal · FTS 4,120 行",
-  ai: "今日 token 18,204 / 200,000 · 摘要 41 · 简报 1",
+  db: { path: "/home/user/.local/share/rrss/rrss.db", size_bytes: 96468992, user_version: 43, journal_mode: "wal", fts_rows: 4120 },
+  vec: { available: true, version: "v0.1.6", reason: null },
+  vectors: {
+    chunks_embedded: 3812, chunks_total: 3900, chunks_pending: 88, articles_pending: 12,
+    interests_embedded: 2, interests_total: 3, memories_embedded: 2,
+    dims: [{ label: "768", count: 3812 }], models: [{ label: "embedding.example", count: 3812 }], recent_errors: [],
+  },
+  ai: { job_tokens: 18204, budget_tokens: 200000, cache_rows: 41, chat_input_tokens: 0, chat_output_tokens: 0, chat_cost: 0 },
   log: {
     directory: "/home/user/.local/share/rrss/logs", file: "/home/user/.local/share/rrss/logs/rrss.log",
     unavailable: null, current_size: "2.4 MB", total_size: "7.8 MB", total_bytes: 8178892,

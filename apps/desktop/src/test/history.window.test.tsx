@@ -268,7 +268,6 @@ describe("digest follow-up history", () => {
         threadId={9}
         context="digest:1"
         busy={false}
-        scrollRequest={0}
         onLoadOlder={async (id) => {
           const page = await box.stub!.api.messages(id, store.get(id).messages[0]?.id ?? null);
           store.update(id, (current) => ({ ...current, messages: [...page.messages, ...current.messages], hasMore: page.has_more }));

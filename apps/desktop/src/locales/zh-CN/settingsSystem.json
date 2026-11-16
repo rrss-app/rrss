@@ -335,6 +335,18 @@
         "action": "重置失败计数"
       }
     },
+    "value": {
+      "db": "{{path}} · {{size}} · 结构版本 {{version}} · {{mode}} · 全文索引 {{fts}} 行",
+      "vecUnavailable": "sqlite-vec 不可用：{{reason}}",
+      "vectors": "向量 {{embedded}}/{{total}} 已生成，待处理 {{pendingChunks}} 段 / {{pendingArticles}} 篇",
+      "interests": "兴趣 {{embedded}}/{{total}} 已生成，记忆已生成 {{memories}} 条",
+      "models": "维度 {{dims}}；模型 {{models}}",
+      "dims": "{{dims}} 维",
+      "chunkError": "第 {{chunk}} 段（已试 {{attempts}} 次）：{{error}}",
+      "scheduler": "抓取排队 {{queued}}（按主机暂停 {{parked}}），下载 {{http}}/{{httpLimit}}，解析 {{parsing}}/{{parsingLimit}}，正文缓冲 {{buffered}} / 上限 {{bufferLimit}}",
+      "modelQueue": "模型请求进行中 {{active}}，交互排队 {{interactive}}，后台排队 {{background}}",
+      "ai": "今日后台 {{jobs}} / 预算 {{budget}} token · 缓存 {{cache}} 条 · 对话 {{input}} + {{output}} token / ${{cost}}"
+    },
     "preview": {
       "vec": "浏览器预览",
       "stats": "仅展示样例，未读取本机数据",

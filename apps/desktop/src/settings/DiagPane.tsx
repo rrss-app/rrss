@@ -7,9 +7,11 @@ import { DiagLogSection } from "./DiagLogSection";
 import type { Ask } from "./SettingsPanel";
 import type { SettingsEditState } from "./editState";
 import { useDiagnosticsSettings } from "./useDiagnosticsSettings";
+import { diagnosticsLines, type DiagRow } from "./diagnosticsText";
+import { isTauri } from "../lib/preview";
 
 // 存储页只给用户看的数据位置；库文件、版本、日志模式等技术细节在这里（冒烟脚本也读 `db` 核对连的是哪个库）。
-const ROWS: Array<"db" | "vec" | "stats" | "ai"> = ["db", "vec", "stats", "ai"];
+const ROWS: DiagRow[] = ["db", "vec", "stats", "ai"];
 
 export function DiagPane({ onAsk, onEditStateChange, onChanged }: {
   onAsk: Ask;
@@ -19,6 +21,8 @@ export function DiagPane({ onAsk, onEditStateChange, onChanged }: {
   const { t } = useTranslation("settingsSystem");
   const { query, busy, pending, status, maintain, refresh } = useDiagnosticsSettings(onEditStateChange, onChanged);
   const data = query.data;
+  // 浏览器预览没有本机数据，各行只给一句说明。
+  const lines = data ? isTauri() ? diagnosticsLines(data) : null : null;
   const refreshing = query.isFetching;
   const error = status?.tone === "err" ? status.text : query.isError ? t("diag.loadFailed", { message: formatError(query.error) }) : "";
   return (
@@ -40,7 +44,8 @@ export function DiagPane({ onAsk, onEditStateChange, onChanged }: {
           <dl className="diag-list">
             {ROWS.map((key) => (
               <div key={key} className="diag-row">
-                <dt>{t(`diag.rows.${key}`)}</dt><dd>{data ? data[key] || "—" : query.isError ? t("diag.status.failed") : t("diag.status.loading")}</dd>
+                <dt>{t(`diag.rows.${key}`)}</dt><dd>{lines ? lines[key].map((line, i) => <span key={i} className="diag-line">{line}</span>)
+                  : data ? t(`diag.preview.${key}`) : query.isError ? t("diag.status.failed") : t("diag.status.loading")}</dd>
               </div>
             ))}
           </dl>

@@ -2343,15 +2343,75 @@ pub struct TrayLabels {
     pub quit: String,
 }
 
+// 诊断页只给数与名，句子由前端按界面语言拼。
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct DiagnosticsPage {
     pub scheduler: Option<SchedulerDiagnostics>,
-    pub vec: String,
-    pub stats: String,
-    pub db: String,
-    pub ai: String,
+    pub db: DbDiagnostics,
+    pub vec: VecDiagnostics,
+    // 读向量统计失败时为空。
+    pub vectors: Option<VectorDiagnostics>,
+    pub ai: AiUsageDiagnostics,
     // 没有初始化文件日志（测试、工具进程）时为空。
     pub log: Option<LogStatusView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct DbDiagnostics {
+    // 库文件路径（冒烟脚本按它核对连的是哪个库）。
+    pub path: String,
+    pub size_bytes: i64,
+    pub user_version: i64,
+    pub journal_mode: String,
+    pub fts_rows: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct VecDiagnostics {
+    pub available: bool,
+    pub version: Option<String>,
+    // 不可用时 SQLite 的原始报错（英文，诊断用）。
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct VectorDiagnostics {
+    pub chunks_embedded: i64,
+    pub chunks_total: i64,
+    pub chunks_pending: i64,
+    pub articles_pending: i64,
+    pub interests_embedded: i64,
+    pub interests_total: i64,
+    pub memories_embedded: i64,
+    // 各维度的向量数，如 768 → 1809。
+    pub dims: Vec<DiagnosticCount>,
+    // 各嵌入模型的向量数。
+    pub models: Vec<DiagnosticCount>,
+    // 最近的嵌入失败：块号、尝试次数与原始报错（英文，诊断用）。
+    pub recent_errors: Vec<DiagnosticChunkError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct DiagnosticCount {
+    pub label: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct DiagnosticChunkError {
+    pub chunk_id: i64,
+    pub attempts: i64,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct AiUsageDiagnostics {
+    pub job_tokens: i64,
+    pub budget_tokens: i64,
+    pub cache_rows: i64,
+    pub chat_input_tokens: i64,
+    pub chat_output_tokens: i64,
+    pub chat_cost: f64,
 }
 
 // 文件日志写不进去的原因；界面按原因给出处理办法。

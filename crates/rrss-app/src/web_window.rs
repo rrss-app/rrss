@@ -105,7 +105,24 @@ impl WebSession {
         })
     }
 
+    /// 代理线路变了就换一个新的数据目录：WebView2 环境与 WebKitGTK context 都按数据目录固定代理，
+    /// 同一目录不能换线路。返回旧目录，由调用方在后台删除（删不掉的留给下次启动清理）。
+    /// 调用前必须已关闭全部原网页；这一轮运行里原网页的登录与 Cookie 随旧目录一起丢掉。
+    pub fn switch_route(
+        &mut self,
+        route: &WebviewRoute,
+        run_id: &str,
+    ) -> std::io::Result<Option<PathBuf>> {
+        if self.route.as_ref().is_none_or(|old| old == route) {
+            return Ok(None);
+        }
+        let next = fresh_directory(&self.root, run_id)?;
+        self.route = None;
+        Ok(Some(std::mem::replace(&mut self.directory, next)))
+    }
+
     pub fn next_label(&mut self, route: &WebviewRoute) -> Result<String, UiError> {
+        // `switch_route` 之后不会再走到这里；保留为防线，绝不混用环境参数。
         if self.route.as_ref().is_some_and(|old| old != route) {
             return Err(WebError::ProxyRouteChanged.into());
         }

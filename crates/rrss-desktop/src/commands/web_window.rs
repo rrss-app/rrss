@@ -152,6 +152,22 @@ pub async fn open_web_view(
     .await?;
     // One original page at a time: fully close the previous child before creating another.
     close_current(&app, &windows, &mut inner).await?;
+    // Proxy settings changed since the first page of this run: the browser environment is
+    // pinned to its data directory, so move to a fresh one instead of asking the user to clear.
+    let stale = inner
+        .session
+        .as_mut()
+        .map_err(|_| UiError::from(WebError::SessionUnavailable))?
+        .switch_route(&plan.route, &uuid::Uuid::new_v4().to_string())
+        .map_err(|_| UiError::from(WebError::SessionUnavailable))?;
+    if let Some(old) = stale {
+        tracing::info!("original-page proxy route changed; using a fresh browser data directory");
+        tauri::async_runtime::spawn(rrss_app::execution::blocking(move || {
+            if let Err(error) = platform::remove_web_session(&old) {
+                tracing::warn!(error_kind = ?error.kind(), "previous original-page directory retained for next startup");
+            }
+        }));
+    }
     // No absent proxy setting may silently turn a direct route into system proxying.
     let direct_args = if plan.route == WebviewRoute::Direct {
         Some(platform::webview_direct_args(platform::Os::current()).map_err(UiError::from)?)

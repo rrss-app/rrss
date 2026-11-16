@@ -66,7 +66,12 @@ it("keeps digest as a main view through Escape, settings and source reader navig
 });
 
 it("keeps theme on the settings chrome when navigating diagnostics and models", async () => {
-  const diagnostics: DiagnosticsPage = { vec: "就绪", stats: "测试数据", db: "临时库", ai: "未使用", log: null, scheduler: null };
+  const diagnostics: DiagnosticsPage = {
+    scheduler: null, log: null, vectors: null,
+    db: { path: "/tmp/rrss-test.db", size_bytes: 0, user_version: 43, journal_mode: "wal", fts_rows: 0 },
+    vec: { available: true, version: "v0.1.9", reason: null },
+    ai: { job_tokens: 0, budget_tokens: 0, cache_rows: 0, chat_input_tokens: 0, chat_output_tokens: 0, chat_cost: 0 },
+  };
   vi.spyOn(api, "diagnostics").mockResolvedValue(diagnostics);
   vi.spyOn(api, "ai").mockResolvedValue(aiPageFixture());
   vi.spyOn(api, "modelBindings").mockResolvedValue(bindingsFixture());

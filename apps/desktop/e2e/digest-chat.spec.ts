@@ -48,6 +48,14 @@ test.beforeEach(async ({ page }) => {
     const msg = (role: string, text: string, document: unknown = null, citations: CitationView[] = []): Message => ({ id: ++messageId, role, text, document, citations, streaming: false, cite_article_id: 0, cite_title: "" });
     const harness = {
       sent: [] as Array<{ threadId: number; digestId: number; text: string }>,
+      /** 这一期已有若干轮追问，页面够长、要滚动。 */
+      seed(digestId: number, turns: number) {
+        const id = digestId + 200;
+        threads.set(digestId, id);
+        const rows: Message[] = [];
+        for (let i = 1; i <= turns; i++) rows.push(msg("user", `Question ${i}`), msg("assistant", `Answer ${i}. `.repeat(40)));
+        messages.set(id, rows);
+      },
       finish(digestId: number) {
         const id = threads.get(digestId)!;
         const text = "第二条讨论阅读器按需加载。请查看原文核对具体实现。";
@@ -168,4 +176,28 @@ test("Digest selection keeps scoped drafts, follows up in place and opens source
   await page.getByRole("button", { name: "发送", exact: true }).click();
   expect(await page.evaluate(() => (window as any).__digestTest.sent[1])).toMatchObject({ threadId: 301, digestId: 101 });
   await page.evaluate(() => (window as any).__digestTest.finish(101));
+});
+
+test("Sending a follow-up scrolls the digest to the newest message and follows the reply", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.goto("/");
+  await page.evaluate(() => (window as any).__digestTest.seed(101, 4));
+  await page.getByRole("button", { name: "简报", exact: true }).click();
+  await expect(page.locator(".digest-discussion .assistant")).toHaveCount(4);
+  const scroller = page.locator(".digest .scroll");
+  const fromBottom = () => scroller.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop);
+  await scroller.evaluate((el) => { el.scrollTop = 0; });
+  expect(await fromBottom()).toBeGreaterThan(200);
+  const input = page.locator(".composer textarea");
+  await input.focus();
+  await input.fill("follow-up");
+  await input.press("Enter");
+  await expect(page.locator(".digest-discussion .user").last()).toBeInViewport();
+  await expect.poll(fromBottom).toBeLessThan(4);
+  // 输入区长高（过程条出现、展开）会加大底部留白，跟随时也要贴住底部。
+  await scroller.evaluate((el) => el.style.setProperty("--composer-h", "220px"));
+  await expect.poll(fromBottom).toBeLessThan(4);
+  await page.evaluate(() => (window as any).__digestTest.finish(101));
+  await expect(page.locator(".digest-discussion .assistant")).toHaveCount(5);
+  await expect.poll(fromBottom).toBeLessThan(4);
 });

@@ -192,6 +192,7 @@
 .diag-row:last-child { border-bottom: 0; }
 .diag-row dt { color: var(--text-muted); font-size: 12px; padding-top: 1px; }
 .diag-row dd { margin: 0; overflow-wrap: anywhere; line-height: 1.6; }
+.diag-line { display: block; }
 /* 存储页：明细与构成条共享墨色层次。 */
 .storage-scan { display: flex; align-items: center; gap: 12px; }
 .storage-scan .hint { margin: 0; }

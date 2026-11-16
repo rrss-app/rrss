@@ -325,7 +325,7 @@ try {
       if (${process.env.RRSS_EXPECT_DEV === "1"} && !document.querySelector('script[src*="/@vite/client"]')) throw new Error('Vite development client missing');
       const diag = await window.__TAURI_INTERNALS__.invoke('diagnostics', {});
       const expected = ${JSON.stringify(expectedDb)};
-      if (expected && !diag.db.includes(expected)) throw new Error('MCP connected to the wrong database');
+      if (expected && !String(diag.db?.path ?? '').includes(expected)) throw new Error('MCP connected to the wrong database');
       return 'rrss-mcp-probe-ok';
     })()` });
     if (!JSON.stringify(inspected.content).includes("rrss-mcp-probe-ok")) {
