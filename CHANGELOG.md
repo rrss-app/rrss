@@ -4,6 +4,8 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-18
+
 ### Fixed
 
 - Cache eviction and cleanup errors no longer make successfully saved images, audio/video, feed icons, or web snapshots appear to fail.
