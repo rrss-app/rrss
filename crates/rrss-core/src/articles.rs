@@ -889,27 +889,31 @@ pub(crate) fn collect_existing_article(conn: &Connection, id: i64) -> Result<usi
 }
 
 pub fn set_read(conn: &Connection, id: i64, read: bool) -> Result<()> {
-    let n = conn.execute(
-        "UPDATE articles SET read = ?1 WHERE id = ?2",
-        params![i64::from(read), id],
-    )?;
-    if n == 0 {
-        Err(Error::ArticleNotFound)
-    } else {
-        Ok(())
-    }
+    crate::db::atomic_write(conn, |conn| {
+        let n = conn.execute(
+            "UPDATE articles SET read = ?1 WHERE id = ?2",
+            params![i64::from(read), id],
+        )?;
+        if n == 0 {
+            Err(Error::ArticleNotFound)
+        } else {
+            Ok(())
+        }
+    })
 }
 
 pub fn set_starred(conn: &Connection, id: i64, starred: bool) -> Result<()> {
-    let n = conn.execute(
-        "UPDATE articles SET starred = ?1 WHERE id = ?2",
-        params![i64::from(starred), id],
-    )?;
-    if n == 0 {
-        Err(Error::ArticleNotFound)
-    } else {
-        Ok(())
-    }
+    crate::db::atomic_write(conn, |conn| {
+        let n = conn.execute(
+            "UPDATE articles SET starred = ?1 WHERE id = ?2",
+            params![i64::from(starred), id],
+        )?;
+        if n == 0 {
+            Err(Error::ArticleNotFound)
+        } else {
+            Ok(())
+        }
+    })
 }
 
 pub fn set_blocks_json(conn: &Connection, id: i64, json: &str) -> Result<()> {

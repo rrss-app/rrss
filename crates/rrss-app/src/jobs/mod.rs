@@ -44,6 +44,8 @@ pub(crate) async fn run_housekeeping(db_path: &Path) -> Result<()> {
     let now = rrss_core::feeds::now_ms();
     let cutoff = now - AI_CACHE_KEEP_MS;
     let n = spawn_db(db_path.to_path_buf(), move |conn| {
+        rrss_core::media::flush_accesses(conn)?;
+        rrss_core::media::flush_removed_files(conn)?;
         rrss_core::storage::prune_ai_cache(conn, cutoff)
     })
     .await?;
@@ -102,6 +104,18 @@ where
     let capacity = crate::scheduler::model_capacity::Capacity::for_database(&path);
     let settling = capacity.work();
     let queued = std::time::Instant::now();
+    let admission = db::pool::metrics(&path).map(|m| {
+        db::latency::scope(std::any::type_name::<F>(), || {
+            m.activity.start("background_admission")
+        })
+    });
+    let permit = capacity.database.clone().acquire_owned().await?;
+    drop(admission);
+    let worker_queue = db::pool::metrics(&path).map(|m| {
+        db::latency::scope(std::any::type_name::<F>(), || {
+            m.activity.start("worker_queue")
+        })
+    });
     // 已有 job / feed / pi_turn / command 链路继续沿用，独立数据库作业才建根 span。
     let current = tracing::Span::current();
     let span = if current.is_none() {
@@ -110,11 +124,15 @@ where
         current
     };
     crate::execution::blocking(move || {
-        let _settling = settling;
-        capacity.metrics.db_queue.record(queued.elapsed());
-        let conn = db::open_at(&path)?;
-        let _timing = capacity.metrics.db_work.start();
-        f(&conn)
+        db::latency::scope(std::any::type_name::<F>(), || {
+            let _settling = settling;
+            let _permit = permit;
+            drop(worker_queue);
+            capacity.metrics.db_queue.record(queued.elapsed());
+            let conn = db::open_at(&path)?;
+            let _timing = capacity.metrics.db_work.start();
+            f(&conn)
+        })
     })
     .instrument(span)
     .await
@@ -125,6 +143,53 @@ where
 #[cfg(test)]
 mod skip_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn background_admission_leaves_connections_for_foreground_and_cancel_releases_waiter() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("admission.db");
+        drop(db::open_at(&path).unwrap());
+        let capacity = crate::scheduler::model_capacity::Capacity::for_database(&path);
+        let (started, mut ready) = tokio::sync::mpsc::unbounded_channel();
+        let mut releases = Vec::new();
+        let mut workers = Vec::new();
+        for _ in 0..db::pool::BACKGROUND_CONNECTIONS {
+            let (release, resume) = std::sync::mpsc::channel();
+            releases.push(release);
+            let started = started.clone();
+            workers.push(tokio::spawn(spawn_db(path.clone(), move |_| {
+                started.send(()).unwrap();
+                resume
+                    .recv_timeout(std::time::Duration::from_secs(5))
+                    .unwrap();
+                Ok(())
+            })));
+        }
+        for _ in 0..db::pool::BACKGROUND_CONNECTIONS {
+            ready.recv().await.unwrap();
+        }
+        let waiting = tokio::spawn(spawn_db(path.clone(), |_| Ok(())));
+        tokio::task::yield_now().await;
+        assert!(!waiting.is_finished());
+        crate::execution::core_db(path, |conn| {
+            db::get_setting(conn, "close_action").map(|_| ())
+        })
+        .await
+        .unwrap();
+        waiting.abort();
+        waiting.await.unwrap_err();
+        for release in releases {
+            release.send(()).unwrap();
+        }
+        for worker in workers {
+            worker.await.unwrap().unwrap();
+        }
+        assert_eq!(
+            capacity.database.available_permits(),
+            db::pool::BACKGROUND_CONNECTIONS
+        );
+        assert_eq!(*capacity.active_work.borrow(), 0);
+    }
 
     async fn assert_skip_from_db(error: CoreError) {
         let dir = tempfile::tempdir().unwrap();

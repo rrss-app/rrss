@@ -16,6 +16,8 @@ use crate::rank::reasons::{ReasonMessage, ReasonPrefix, StoredReason};
 
 pub const INTEREST_DIST: f32 = 0.35;
 pub const DEFAULT_WEIGHT: i64 = 2;
+mod prepare;
+
 const INTEREST_BOOST_SIG_KEY: &str = "interest_boost_sig";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -180,6 +182,9 @@ pub fn insert_interest(conn: &Connection, label: &str, source: &str) -> Result<i
 }
 
 pub fn set_enabled(conn: &Connection, id: i64, enabled: bool) -> Result<()> {
+    if conn.is_autocommit() {
+        return prepare::run(conn, Some(prepare::Change::Enabled(id, enabled))).map(|_| ());
+    }
     db::atomic_write(conn, |conn| {
         let n = conn.execute(
             "UPDATE interests SET enabled = ?1 WHERE id = ?2",
@@ -194,6 +199,9 @@ pub fn set_enabled(conn: &Connection, id: i64, enabled: bool) -> Result<()> {
 }
 
 pub fn set_weight(conn: &Connection, id: i64, weight: i64) -> Result<()> {
+    if conn.is_autocommit() {
+        return prepare::run(conn, Some(prepare::Change::Weight(id, weight.max(1)))).map(|_| ());
+    }
     let weight = weight.max(1);
     db::atomic_write(conn, |conn| {
         let n = conn.execute(
@@ -209,6 +217,9 @@ pub fn set_weight(conn: &Connection, id: i64, weight: i64) -> Result<()> {
 }
 
 pub fn delete_interest(conn: &Connection, id: i64) -> Result<()> {
+    if conn.is_autocommit() {
+        return prepare::run(conn, Some(prepare::Change::Delete(id))).map(|_| ());
+    }
     db::atomic_write(conn, |conn| {
         let n = conn.execute("DELETE FROM interests WHERE id = ?1", [id])?;
         if n == 0 {
@@ -227,11 +238,8 @@ pub fn parse_interest_reasons(json: Option<&str>) -> Vec<InterestReason> {
 }
 
 pub fn recompute_interest_boost(conn: &Connection) -> Result<u32> {
-    // 常态下签名未变（或早已清空）：读向量和算签名都在读快照里做，不拿写锁。
-    // 有变化时在写锁里按原流程完整重算，结果与一直持锁时相同。
-    if conn.is_autocommit() && db::read_snapshot(conn, boost_up_to_date)? {
-        tracing::debug!("interest boost unchanged; skip");
-        return Ok(0);
+    if conn.is_autocommit() {
+        return prepare::run(conn, None);
     }
     db::atomic_write(conn, recompute_interest_boost_inner)
 }
@@ -422,6 +430,22 @@ fn write_boost(
     prototypes: &[Prototype],
 ) -> Result<bool> {
     let (boost, reasons) = calculate_boost(vec, prototypes);
+    let json = reasons_json(&reasons);
+    conn.execute(
+        "UPDATE articles SET interest_boost = ?1, interest_reasons_json = ?2 WHERE id = ?3",
+        params![boost, json, article_id],
+    )?;
+    for reason in &reasons {
+        conn.execute(
+            "INSERT OR REPLACE INTO article_interests (article_id, interest_id, weight)
+             VALUES (?1, ?2, ?3)",
+            params![article_id, reason.interest_id, reason.weight],
+        )?;
+    }
+    Ok(boost > 0)
+}
+
+fn reasons_json(reasons: &[InterestReason]) -> Option<String> {
     #[derive(Serialize)]
     struct StoredInterest<'a> {
         #[serde(flatten)]
@@ -446,18 +470,7 @@ fn write_boost(
             .collect();
         Some(serde_json::to_string(&stored).unwrap_or_else(|_| "[]".into()))
     };
-    conn.execute(
-        "UPDATE articles SET interest_boost = ?1, interest_reasons_json = ?2 WHERE id = ?3",
-        params![boost, json, article_id],
-    )?;
-    for reason in &reasons {
-        conn.execute(
-            "INSERT OR REPLACE INTO article_interests (article_id, interest_id, weight)
-             VALUES (?1, ?2, ?3)",
-            params![article_id, reason.interest_id, reason.weight],
-        )?;
-    }
-    Ok(boost > 0)
+    json
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -504,6 +517,235 @@ fn map_interest(row: &rusqlite::Row<'_>) -> rusqlite::Result<Interest> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[ignore = "explicit offline 300-article foreground conflict latency probe"]
+    fn foreground_edit_latency_during_embedding_batches() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("latency.db");
+        let conn = open_at(&path).unwrap();
+        crate::vector_space::seed_active(&conn, "fixture", 1024);
+        let space = crate::vector_space::active(&conn).unwrap().unwrap();
+        let vector = crate::rag::f32s_to_le(&vec![1.0 / 32.0; 1024]);
+        conn.execute(
+            "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://interest.example/feed',0)",
+            [],
+        )
+        .unwrap();
+        let tx = db::write_transaction(&conn).unwrap();
+        for id in 1..=300 {
+            tx.execute(
+                "INSERT INTO articles(id,feed_id,title,created_at) VALUES(?1,1,'fixture',0)",
+                [id],
+            )
+            .unwrap();
+            tx.execute("INSERT INTO chunks(article_id,ordinal,kind,text,embedding,space_id) VALUES(?1,0,'title_summary','fixture',?2,?3)", params![id,vector,space.id]).unwrap();
+        }
+        tx.execute("INSERT INTO interests(id,label,weight,source,enabled,embedding,space_id,created_at) VALUES(1,'fixture',2,'manual',1,?1,?2,0)", params![vector,space.id]).unwrap();
+        tx.commit().unwrap();
+        let other = open_at(&path).unwrap();
+        recompute_interest_boost(&conn).unwrap();
+        let mut totals = Vec::new();
+        let mut holds = Vec::new();
+        for sample in 0..20 {
+            let started = std::time::Instant::now();
+            let round = std::cell::Cell::new(0);
+            let prior_hold = db::pool::metrics(&path)
+                .unwrap()
+                .write_hold
+                .snapshot()
+                .total_ms;
+            super::prepare::run_with(
+                &conn,
+                Some(super::prepare::Change::Weight(1, 3 + sample % 2)),
+                || {
+                    round.set(round.get() + 1);
+                    let mut changed = vec![1.0 / 32.0; 1024];
+                    changed[0] += (sample * 3 + round.get()) as f32 / 10000.0;
+                    other.execute(
+                        "UPDATE chunks SET embedding=?1 WHERE article_id<=30",
+                        [crate::rag::f32s_to_le(&changed)],
+                    )?;
+                    Ok(())
+                },
+            )
+            .unwrap();
+            assert_eq!(round.get(), 1);
+            totals.push(started.elapsed().as_secs_f64() * 1000.0);
+            holds.push(
+                db::pool::metrics(&path)
+                    .unwrap()
+                    .write_hold
+                    .snapshot()
+                    .total_ms
+                    - prior_hold,
+            );
+            let boost = article_boost(&conn, 1);
+            recompute_interest_boost(&conn).unwrap();
+            assert_eq!(article_boost(&conn, 1), boost);
+        }
+        eprintln!(
+            "foreground conflict probe: samples={}, max_total_ms={:.2}, over_100ms={}, max_sum_write_transactions_ms={:.2}",
+            totals.len(),
+            totals.iter().copied().fold(0.0, f64::max),
+            totals.iter().filter(|ms| **ms > 100.0).count(),
+            holds.iter().copied().fold(0.0, f64::max)
+        );
+    }
+
+    #[test]
+    fn foreground_edits_converge_during_continuous_vector_writes() {
+        for operation in 0..3 {
+            let (dir, conn) = open_temp();
+            let (article, interest) =
+                seed_matching(&conn, "subject", "https://interest.example/item");
+            recompute_interest_boost(&conn).unwrap();
+            let other = crate::db::open_at(&dir.path().join("rrss.db")).unwrap();
+            let rounds = std::cell::Cell::new(0);
+            let change = match operation {
+                0 => super::prepare::Change::Weight(interest, 5),
+                1 => super::prepare::Change::Enabled(interest, false),
+                _ => super::prepare::Change::Delete(interest),
+            };
+            super::prepare::run_with(&conn, Some(change), || {
+                let round = rounds.get() + 1;
+                rounds.set(round);
+                set_chunk_embedding(
+                    &other,
+                    title_chunk_id(&other, article),
+                    "test-embed",
+                    &[1.0, round as f32 / 100.0, 0.0],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(rounds.get(), 1);
+            let before = article_boost(&conn, article);
+            assert_eq!(before, if operation == 0 { 5 } else { 0 });
+            recompute_interest_boost(&conn).unwrap();
+            assert_eq!(article_boost(&conn, article), before);
+        }
+    }
+
+    #[test]
+    fn foreground_rebase_does_not_publish_after_configuration_conflicts() {
+        let (dir, conn) = open_temp();
+        let (article, interest) =
+            seed_matching(&conn, "subject", "https://interest.example/conflict");
+        recompute_interest_boost(&conn).unwrap();
+        let before = article_boost(&conn, article);
+        let other = crate::db::open_at(&dir.path().join("rrss.db")).unwrap();
+        let result = super::prepare::run_with(
+            &conn,
+            Some(super::prepare::Change::Weight(interest, 9)),
+            || {
+                other.execute(
+                    "UPDATE interests SET label=label||'x' WHERE id=?1",
+                    [interest],
+                )?;
+                Ok(())
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(article_boost(&conn, article), before);
+        assert_eq!(
+            conn.query_row(
+                "SELECT weight FROM interests WHERE id=?1",
+                [interest],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            DEFAULT_WEIGHT
+        );
+    }
+
+    #[test]
+    fn foreground_rebase_includes_new_vectors_and_clears_removed_ones() {
+        let (dir, conn) = open_temp();
+        let (removed, interest) =
+            seed_matching(&conn, "subject", "https://interest.example/removed");
+        let added = seed_article(&conn, "subject", "https://interest.example/added", false);
+        recompute_interest_boost(&conn).unwrap();
+        let other = open_at(&dir.path().join("rrss.db")).unwrap();
+        super::prepare::run_with(
+            &conn,
+            Some(super::prepare::Change::Weight(interest, 5)),
+            || {
+                other.execute("DELETE FROM chunks WHERE article_id=?1", [removed])?;
+                put_title_vec(&other, added, &[1.0, 0.0, 0.0]);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(article_boost(&conn, removed), 0);
+        assert_eq!(article_boost(&conn, added), 5);
+        assert_eq!(
+            conn.query_row("SELECT article_id FROM article_interests", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            added
+        );
+    }
+
+    #[test]
+    fn foreground_rebase_budget_does_not_allow_partial_results() {
+        let (dir, conn) = open_temp();
+        let (article, interest) =
+            seed_matching(&conn, "subject", "https://interest.example/budget");
+        recompute_interest_boost(&conn).unwrap();
+        let other = open_at(&dir.path().join("rrss.db")).unwrap();
+        let result = super::prepare::run_with(
+            &conn,
+            Some(super::prepare::Change::Weight(interest, 9)),
+            || {
+                // Even one exceptionally large vector must not trigger unbounded
+                // work while the writer is held; every failed attempt rolls back.
+                other.execute(
+                    "UPDATE chunks SET embedding=randomblob(1048576) WHERE article_id=?1",
+                    [article],
+                )?;
+                Ok(())
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(article_boost(&conn, article), DEFAULT_WEIGHT);
+        assert_eq!(
+            conn.query_row(
+                "SELECT weight FROM interests WHERE id=?1",
+                [interest],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            DEFAULT_WEIGHT
+        );
+    }
+
+    #[test]
+    fn planned_boost_retries_relevant_changes_but_ignores_unrelated_writes() {
+        let (dir, conn) = open_temp();
+        let (article, interest) =
+            seed_matching(&conn, "matching subject", "https://latency.example/story");
+        let other = crate::db::open_at(&dir.path().join("rrss.db")).unwrap();
+        let rounds = std::cell::Cell::new(0);
+        super::prepare::run_with(
+            &conn,
+            Some(super::prepare::Change::Weight(interest, 5)),
+            || {
+                let round = rounds.get();
+                rounds.set(round + 1);
+                other.busy_timeout(std::time::Duration::ZERO)?;
+                if round == 0 {
+                    other.execute("UPDATE interests SET enabled=0 WHERE id=?1", [interest])?;
+                } else {
+                    crate::db::set_setting(&other, "close_action", "ask")?;
+                }
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(rounds.get(), 2);
+        assert_eq!(article_boost(&conn, article), 0);
+    }
+
     use super::*;
     use crate::db::{HIDE_THRESHOLD_KEY, PooledConnection, get_setting, open_at, set_setting};
     use crate::feeds::{SubscribeRequest, subscribe};

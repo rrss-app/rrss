@@ -51,12 +51,14 @@ pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
 }
 
 pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
-    conn.execute(
-        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+    super::atomic_write(conn, |conn| {
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        rusqlite::params![key, value],
-    )?;
-    Ok(())
+            rusqlite::params![key, value],
+        )?;
+        Ok(())
+    })
 }
 
 pub fn setting_enabled(conn: &Connection, key: &str, default: bool) -> Result<bool> {

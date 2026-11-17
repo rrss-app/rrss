@@ -6,7 +6,6 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::scheduler::model_capacity::{Capacity, Priority};
 use reqwest::header::{HeaderValue, REFERER, USER_AGENT};
-use rrss_core::db;
 
 pub const IMAGE_UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
@@ -109,7 +108,7 @@ pub(crate) async fn fetch_and_store_with_priority(
     referer: &str,
     priority: Priority,
 ) -> Result<PathBuf, FetchFail> {
-    if let Some(path) = cached_on_disk(db_path, article_id, url) {
+    if let Some(path) = cached_on_disk(db_path, article_id, url, priority).await {
         clear_failures(data_dir, url);
         return Ok(path);
     }
@@ -122,12 +121,12 @@ pub(crate) async fn fetch_and_store_with_priority(
             if let Some(fail) = remembered(data_dir, url) {
                 return Err(fail);
             }
-            if let Some(path) = cached_on_disk(db_path, article_id, url) {
+            if let Some(path) = cached_on_disk(db_path, article_id, url, priority).await {
                 clear_failures(data_dir, url);
                 return Ok(path);
             }
         }
-        if let Some(path) = cached_on_disk(db_path, article_id, url) {
+        if let Some(path) = cached_on_disk(db_path, article_id, url, priority).await {
             clear_failures(data_dir, url);
             return Ok(path);
         }
@@ -215,11 +214,35 @@ fn remembered(data_dir: &Path, url: &str) -> Option<FetchFail> {
     Some(fail)
 }
 
-fn cached_on_disk(db_path: &Path, article_id: i64, url: &str) -> Option<PathBuf> {
-    let conn = db::open_at(db_path).ok()?;
-    rrss_core::media::cached_path(&conn, article_id, url)
-        .ok()
-        .flatten()
+async fn cached_on_disk(
+    db_path: &Path,
+    article_id: i64,
+    url: &str,
+    priority: Priority,
+) -> Option<PathBuf> {
+    let url = url.to_owned();
+    media_db(db_path.to_owned(), priority, move |conn| {
+        rrss_core::media::cached_path(conn, article_id, &url)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+// Route background image reads and writes through the same admission as other jobs.
+async fn media_db<T: Send + 'static>(
+    path: PathBuf,
+    priority: Priority,
+    work: impl FnOnce(&rusqlite::Connection) -> rrss_core::Result<T> + Send + 'static,
+) -> rrss_core::Result<T> {
+    match priority {
+        Priority::Interactive => crate::execution::core_db(path, move |conn| work(conn)).await,
+        Priority::Background => crate::jobs::spawn_db(path, work).await.map_err(|error| {
+            error
+                .downcast::<rrss_core::Error>()
+                .unwrap_or_else(|error| rrss_core::Error::Io(std::io::Error::other(error)))
+        }),
+    }
 }
 
 fn in_flight() -> &'static Mutex<HashSet<String>> {
@@ -260,9 +283,30 @@ async fn fetch_and_store_inner(
     drop(permit);
     match bytes {
         Ok((bytes, _)) => {
-            let stored = db::open_at(db_path).and_then(|conn| {
-                rrss_core::media::store_image(&conn, data_dir, article_id, url, &bytes)
-            });
+            let staged_dir = data_dir.to_owned();
+            let image_url = url.to_owned();
+            let prepared = crate::execution::blocking(move || {
+                rrss_core::media::prepare_image(&staged_dir, &image_url, &bytes)
+            })
+            .await
+            .map_err(|_| FetchFail::Store)?;
+            let stored = match prepared {
+                Ok(mut prepared) => {
+                    let data_dir = data_dir.to_owned();
+                    let image_url = url.to_owned();
+                    media_db(db_path.to_owned(), priority, move |conn| {
+                        rrss_core::media::store_prepared_image(
+                            conn,
+                            &data_dir,
+                            article_id,
+                            &image_url,
+                            &mut prepared,
+                        )
+                    })
+                    .await
+                }
+                Err(error) => Err(error),
+            };
             match stored {
                 Ok(path) => Ok(path),
                 Err(rrss_core::Error::UnsupportedImage) => Err(FetchFail::Decode),
@@ -317,6 +361,41 @@ impl std::fmt::Display for FetchFail {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn background_cache_lookup_obeys_admission_without_blocking_foreground() {
+        use super::{Capacity, Priority, cached_on_disk};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("admission.db");
+        drop(rrss_core::db::open_at(&path).unwrap());
+        let capacity = Capacity::for_database(&path);
+        let permits = capacity
+            .database
+            .clone()
+            .acquire_many_owned(rrss_core::db::pool::BACKGROUND_CONNECTIONS as u32)
+            .await
+            .unwrap();
+        let task_path = path.clone();
+        let background = tokio::spawn(async move {
+            cached_on_disk(
+                &task_path,
+                1,
+                "https://image.example/a",
+                Priority::Background,
+            )
+            .await
+        });
+        tokio::task::yield_now().await;
+        assert!(!background.is_finished());
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            cached_on_disk(&path, 1, "https://image.example/a", Priority::Interactive),
+        )
+        .await;
+        drop(permits);
+        assert!(result.unwrap().is_none());
+        assert!(background.await.unwrap().is_none());
+    }
+
     use super::{FetchFail, fetch_image_bytes};
     use wiremock::matchers::{header_exists, method};
     use wiremock::{Mock, MockServer, ResponseTemplate};

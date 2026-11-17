@@ -132,8 +132,21 @@ db_task!(settings_schema() -> SettingsSchema => rrss_app::settings_schema::schem
 // 首帧前取一次界面语言（设置原值与解析结果），跟随系统时由 `rrss_core::platform` 读系统语言。
 db_task!(ui_language() -> rrss_app::ui_language::UiLanguageView => rrss_app::ui_language::current);
 
-db_task!(set_setting(id: String, value: String) -> SettingValue =>
-    |conn| rrss_app::actions::set_setting(conn, &id, &value));
+#[tauri::command]
+pub async fn set_setting(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    value: String,
+) -> Result<SettingValue, UiError> {
+    if id == rrss_app::window_close::SETTING {
+        return crate::tray::save_close_setting(&app, state.db_path.clone(), value).await;
+    }
+    with_db("set_setting", state.db_path.clone(), move |conn| {
+        rrss_app::actions::set_setting(conn, &id, &value).map_err(UiError::from)
+    })
+    .await
+}
 
 db_task!(digest(id: i64) -> DigestView => |conn| queries::digest(conn, id));
 

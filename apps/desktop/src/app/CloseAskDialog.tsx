@@ -1,4 +1,5 @@
-import { useState, type CSSProperties, type Ref } from "react";
+import { measureClosePaint } from "../lib/closeTiming";
+import { useEffect, useState, type CSSProperties, type Ref } from "react";
 import type { CloseChoice, TrayLabels } from "../lib/api";
 import { Icon } from "../components/Icon";
 import { i18n, useTranslation } from "../i18n";
@@ -23,6 +24,11 @@ export function CloseAskDialog({ rootRef, inert = false, style, onChoose, onCanc
 }) {
   const { t } = useTranslation("shell");
   const [remember, setRemember] = useState(false);
+  useEffect(() => {
+    let next = 0;
+    const first = requestAnimationFrame(() => { next = requestAnimationFrame(measureClosePaint); });
+    return () => { cancelAnimationFrame(first); cancelAnimationFrame(next); };
+  }, []);
   return (
     <div className="overlay center" style={style} inert={inert}>
       <button type="button" className="overlay-dismiss" aria-label={t("closeAsk.cancel")} onClick={onCancel} />

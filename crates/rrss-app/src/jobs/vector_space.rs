@@ -5,7 +5,9 @@ use super::{
 };
 use crate::{network::NetworkClients, views::VectorSpaceStatusView};
 use anyhow::Result;
-use rrss_core::{ai_store, network::NetworkScope, rag, vector_space as spaces};
+#[cfg(test)]
+use rrss_core::rag;
+use rrss_core::{ai_store, network::NetworkScope, vector_space as spaces};
 use std::{path::Path, sync::OnceLock};
 type Notifier = Box<dyn Fn(&VectorSpaceStatusView) + Send + Sync>;
 static NOTIFY: OnceLock<Notifier> = OnceLock::new();
@@ -95,6 +97,7 @@ pub async fn check(db: &Path, client: &reqwest::Client, force: bool) -> Result<b
     }
     Ok(result.unwrap_or(false))
 }
+#[cfg(test)]
 fn sync_chunks(conn: &rusqlite::Connection) -> rrss_core::Result<()> {
     for article in rag::rebuild_articles(conn)? {
         rag::sync_article_chunks(conn, &article, article.tier)?;
@@ -105,8 +108,22 @@ pub async fn rebuild(db: &Path, client: &reqwest::Client) -> Result<()> {
     // One finite step; the scheduler resumes remaining staging work later.
     const REBUILD_BATCH: usize = super::embeddings::EMBED_INPUTS_MAX;
     let capacity = crate::scheduler::model_capacity::Capacity::for_database(db);
+    let prepared = spawn_db(db.to_path_buf(), |conn| {
+        let Some(space) = spaces::write_space(conn)?.filter(|s| s.rebuild_from.is_some()) else {
+            return Ok(false);
+        };
+        rrss_core::rag_prepare::prepare_page(conn, space.id)?;
+        Ok(!rrss_core::rag_prepare::pending(conn)?)
+    })
+    .await?;
+    if !prepared {
+        return Ok(());
+    }
     let plan = spawn_db(db.to_path_buf(), move |conn| {
-        rrss_core::db::atomic_write(conn, |conn| {
+        rrss_core::db::read_snapshot(conn, |conn| {
+            if rrss_core::rag_prepare::pending(conn)? {
+                return Ok(None);
+            }
             let Some(space) = spaces::write_space(conn)?.filter(|s| s.rebuild_from.is_some())
             else {
                 return Ok(None);
@@ -114,7 +131,6 @@ pub async fn rebuild(db: &Path, client: &reqwest::Client) -> Result<()> {
             let Some(ep) = spaces::endpoint(conn, &space)? else {
                 return Ok(None);
             };
-            sync_chunks(conn)?;
             let context = ai_store::hash_input(
                 &serde_json::json!([space.id, ep.base_url, ep.model, ep.api_key]).to_string(),
             );
@@ -184,7 +200,9 @@ pub async fn rebuild(db: &Path, client: &reqwest::Client) -> Result<()> {
             if spaces::write_space(conn)?.is_none_or(|space| space.id != id) {
                 return Ok(false);
             }
-            sync_chunks(conn)?;
+            if rrss_core::rag_prepare::pending(conn)? {
+                return Ok(false);
+            }
             spaces::finish_rebuild(conn, id)
         })
     })
@@ -392,6 +410,14 @@ mod tests {
         let status = crate::actions::set_vector_dims(&conn, "2048").unwrap();
         let building = status.building.unwrap().space.id;
         fixture.embed().await;
+        assert!(
+            rrss_core::rag_prepare::pending(&conn).unwrap(),
+            "preparation must yield before scanning all articles"
+        );
+        assert_eq!(integer(&conn, "SELECT COUNT(*) FROM vector_staging", []), 0);
+        while rrss_core::rag_prepare::pending(&conn).unwrap() {
+            fixture.embed().await;
+        }
         let (written, total) = spaces::rebuild_progress(&conn, building).unwrap();
         assert!(
             written > 0 && written < total,

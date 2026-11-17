@@ -6,6 +6,8 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ### Fixed
 
+- Interest edits handle overlapping small batches of embedding updates, cluster merges avoid loading old article vectors, and failed media registration or rolled-back web snapshots clean up newly written cache files.
+- Background refreshes, clustering, interest updates, and vector preparation use shorter database writes so reading actions stay responsive. Cached images no longer write access timestamps while loading, file cleanup runs after commit, and diagnostics capture database waits and delayed close prompts.
 - Closing the window responds right away: the "close RRSS" prompt (or hiding to the tray) no longer waits while background updates are busy, and the choice in the prompt takes effect immediately.
 - Digest follow-ups: sending a question now scrolls to it and keeps following the reply, instead of jumping to the start of the follow-up section; the input no longer overlaps the digest text behind it when it grows taller, and long model names are shortened so they do not crowd the input.
 - Original web pages open again after you change the proxy settings, without having to clear the original-page data first. Pages opened with the old proxy lose their sign-ins for the rest of the session.

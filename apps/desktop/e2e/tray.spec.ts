@@ -19,6 +19,7 @@ test("closing asks once, remembers hiding to the tray, and restoring adopts the 
   const dialog = page.getByRole("alertdialog");
   await closeKey.click();
   await expect(dialog).toBeVisible();
+  await expect.poll(() => page.evaluate(() => performance.getEntriesByName("rrss.close.click_to_paint").length)).toBe(1);
   await expect(dialog.locator("[data-close-tray]")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);

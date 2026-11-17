@@ -379,6 +379,124 @@ fn v33_upgrade_matches_fresh_database() {
 }
 
 #[test]
+fn v43_upgrade_preserves_data_and_seeds_only_required_preparation() {
+    let fresh = Connection::open_in_memory().unwrap();
+    fresh.execute_batch(CURRENT).unwrap();
+    let conn = Connection::open_in_memory().unwrap();
+    conn.pragma_update(None, "foreign_keys", true).unwrap();
+    let v43 = CURRENT
+        .split("-- Durable work is invalidated")
+        .next()
+        .unwrap();
+    conn.execute_batch(v43).unwrap();
+    conn.execute_batch("INSERT INTO feeds(id,url,created_at) VALUES(1,'https://upgrade.example/feed',0);
+        INSERT INTO articles(id,feed_id,title,read,created_at) VALUES(1,1,'preserved',1,0);
+        INSERT INTO media(id,url,local_path,created_at) VALUES(1,'https://upgrade.example/image','fixture-cache-path',0);
+        PRAGMA user_version=43;").unwrap();
+    migrate(&conn).unwrap();
+    assert!(differences(&snapshot(&fresh).unwrap(), &snapshot(&conn).unwrap()).is_empty());
+    assert_eq!(
+        conn.query_row("SELECT title FROM articles WHERE id=1", [], |r| r
+            .get::<_, String>(0))
+            .unwrap(),
+        "preserved"
+    );
+    let initial: Vec<u8> = conn
+        .query_row(
+            "SELECT revision FROM chunk_preparation WHERE article_id=1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    conn.execute("UPDATE articles SET starred=1 WHERE id=1", [])
+        .unwrap();
+    let updated: Vec<u8> = conn
+        .query_row(
+            "SELECT revision FROM chunk_preparation WHERE article_id=1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_ne!(initial, updated);
+    conn.execute("DELETE FROM media WHERE id=1", []).unwrap();
+    assert_eq!(
+        conn.query_row("SELECT local_path FROM media_cleanup", [], |r| r
+            .get::<_, String>(0))
+            .unwrap(),
+        "fixture-cache-path"
+    );
+}
+
+#[test]
+fn v44_upgrade_replaces_original_triggers_and_preserves_pending_work() {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(CURRENT).unwrap();
+    conn.execute_batch("DROP TRIGGER chunk_preparation_ai;
+        CREATE TRIGGER chunk_preparation_ai AFTER INSERT ON articles BEGIN
+            INSERT INTO chunk_preparation(article_id) VALUES(new.id);
+        END;
+        DROP TRIGGER revisions_articles_insert;
+        CREATE TRIGGER revisions_articles_insert AFTER INSERT ON articles BEGIN
+            UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('cluster','interest','rank');
+        END;
+        INSERT INTO feeds(id,url,created_at) VALUES(1,'https://migration.example/feed',0);
+        INSERT INTO articles(id,feed_id,title,created_at) VALUES(1,1,'fixture',0);
+        PRAGMA user_version=44;").unwrap();
+    let revision: Vec<u8> = conn
+        .query_row(
+            "SELECT revision FROM chunk_preparation WHERE article_id=1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    migrate(&conn).unwrap();
+    assert_eq!(
+        conn.query_row(
+            "SELECT revision FROM chunk_preparation WHERE article_id=1",
+            [],
+            |r| r.get::<_, Vec<u8>>(0)
+        )
+        .unwrap(),
+        revision
+    );
+    let fresh = Connection::open_in_memory().unwrap();
+    fresh.execute_batch(CURRENT).unwrap();
+    assert!(differences(&snapshot(&fresh).unwrap(), &snapshot(&conn).unwrap()).is_empty());
+    conn.pragma_update(None, "foreign_keys", false).unwrap();
+    conn.execute("DELETE FROM articles WHERE id=1", []).unwrap();
+    let interest_revision: i64 = conn
+        .query_row(
+            "SELECT revision FROM computation_revisions WHERE domain='interest'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    conn.execute(
+        "INSERT INTO articles(id,feed_id,title,created_at) VALUES(1,1,'replacement',0)",
+        [],
+    )
+    .unwrap();
+    assert_ne!(
+        conn.query_row(
+            "SELECT revision FROM chunk_preparation WHERE article_id=1",
+            [],
+            |r| r.get::<_, Vec<u8>>(0)
+        )
+        .unwrap(),
+        revision
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT revision FROM computation_revisions WHERE domain='interest'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        interest_revision
+    );
+}
+
+#[test]
 fn schema_older_than_minimum_is_rejected() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("old.db");

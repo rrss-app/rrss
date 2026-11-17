@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use rrss_core::db::{self, PooledConnection};
+pub mod monitor;
 
 /// 普通文件 / 数据库工作与作业适配共用；关闭收尾、队列计时等资源由闭包持有。
 pub async fn blocking<T, F>(work: F) -> Result<T>
@@ -13,8 +14,20 @@ where
 {
     let span = tracing::Span::current();
     let dispatch = tracing::dispatcher::get_default(Clone::clone);
+    let queued = std::time::Instant::now();
     tokio::task::spawn_blocking(move || {
-        tracing::dispatcher::with_default(&dispatch, || span.in_scope(work))
+        tracing::dispatcher::with_default(&dispatch, || {
+            span.in_scope(|| {
+                if queued.elapsed() >= db::latency::SLOW {
+                    tracing::warn!(
+                        error_kind = "slow_queue",
+                        elapsed_ms = queued.elapsed().as_secs_f64() * 1000.0,
+                        "slow blocking worker queue"
+                    );
+                }
+                db::latency::scope(std::any::type_name::<F>(), work)
+            })
+        })
     })
     .await
     .context("blocking worker join")
@@ -27,8 +40,10 @@ where
     F: FnOnce(&PooledConnection) -> Result<T> + Send + 'static,
 {
     blocking(move || {
-        let conn = db::open_at(&path)?;
-        work(&conn)
+        db::latency::scope(std::any::type_name::<F>(), || {
+            let conn = db::open_at(&path)?;
+            work(&conn)
+        })
     })
     .await?
 }
@@ -40,8 +55,10 @@ where
     F: FnOnce(&PooledConnection) -> rrss_core::Result<T> + Send + 'static,
 {
     blocking(move || {
-        let conn = db::open_at(&path)?;
-        work(&conn)
+        db::latency::scope(std::any::type_name::<F>(), || {
+            let conn = db::open_at(&path)?;
+            work(&conn)
+        })
     })
     .await
     .map_err(std::io::Error::other)?

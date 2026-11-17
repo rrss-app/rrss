@@ -1,10 +1,20 @@
 //! SQLite：WAL、外键、一次性 schema 与版本迁移。
 
+pub mod latency;
 pub mod metrics;
 pub mod migrations;
 pub mod pool;
 pub mod settings;
 pub mod site_rules;
+mod write_gate;
+
+pub(crate) fn input_revision(conn: &rusqlite::Connection, domain: &str) -> crate::Result<i64> {
+    Ok(conn.query_row(
+        "SELECT revision FROM computation_revisions WHERE domain=?1",
+        [domain],
+        |r| r.get(0),
+    )?)
+}
 
 pub use migrations::{MIN_UPGRADE_VERSION, SCHEMA_VERSION};
 pub use pool::{PooledConnection, atomic_write, open, open_at, read_snapshot, write_transaction};
@@ -15,6 +25,46 @@ mod tests {
     use super::*;
     use rusqlite::Connection;
     use tempfile::tempdir;
+
+    #[test]
+    fn reused_article_id_replaces_stale_preparation_from_external_delete() {
+        let (_dir, conn) = open_temp();
+        conn.execute_batch(
+            "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://queue.example/feed',0);
+            INSERT INTO articles(id,feed_id,title,created_at) VALUES(1,1,'first',0);",
+        )
+        .unwrap();
+        let old: Vec<u8> = conn
+            .query_row(
+                "SELECT revision FROM chunk_preparation WHERE article_id=1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        conn.execute("INSERT INTO chunks(article_id,ordinal,text,embedding) VALUES(1,0,'fixture',X'0000803F')", []).unwrap();
+        conn.pragma_update(None, "foreign_keys", false).unwrap();
+        conn.execute("DELETE FROM articles WHERE id=1", []).unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        let interest_before = input_revision(&conn, "interest").unwrap();
+        conn.execute(
+            "INSERT INTO articles(feed_id,title,created_at) VALUES(1,'second',0)",
+            [],
+        )
+        .unwrap();
+        assert_eq!(conn.last_insert_rowid(), 1);
+        let new: Vec<u8> = conn
+            .query_row(
+                "SELECT revision FROM chunk_preparation WHERE article_id=1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_ne!(old, new);
+        assert_eq!(
+            input_revision(&conn, "interest").unwrap(),
+            interest_before + 1
+        );
+    }
 
     const CORE_TABLES: &[&str] = &[
         "settings",

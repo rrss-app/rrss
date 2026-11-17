@@ -11,6 +11,8 @@ use crate::error::{Error, Result};
 
 /// 进程内按路径复用的连接池上限（WAL 下多连接可并发读）。
 const POOL_MAX_SIZE: usize = 8;
+/// Leave two physical connections available to foreground commands/media reads.
+pub const BACKGROUND_CONNECTIONS: usize = POOL_MAX_SIZE - 2;
 
 struct PoolInner {
     path: PathBuf,
@@ -28,6 +30,7 @@ struct DbPool {
 pub struct PooledConnection {
     conn: Option<Connection>,
     pool: Arc<DbPool>,
+    _held: super::latency::Guard,
 }
 
 impl Deref for PooledConnection {
@@ -69,23 +72,62 @@ pub fn open_at(path: &Path) -> Result<PooledConnection> {
 pub fn write_transaction(conn: &Connection) -> Result<WriteTransaction<'_>> {
     let metrics = super::metrics::for_connection(conn);
     let start = Instant::now();
-    let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate);
+    let timeout =
+        std::time::Duration::from_millis(
+            conn.pragma_query_value(None, "busy_timeout", |row| row.get::<_, u64>(0))?,
+        );
+    let waiting = metrics
+        .as_ref()
+        .map(|m| m.activity.start("writer_admission"));
+    // Admission and SQLite share the original busy budget; do not double the deadline.
+    let permit = if conn.is_autocommit() {
+        metrics
+            .as_ref()
+            .map(|metrics| metrics.writer.acquire(timeout))
+            .transpose()
+    } else {
+        Ok(None)
+    };
+    drop(waiting);
+    let result = (|| -> rusqlite::Result<_> {
+        let permit = permit?;
+        if permit.is_some() {
+            conn.busy_timeout(timeout.saturating_sub(start.elapsed()))?;
+        }
+        let waiting = metrics
+            .as_ref()
+            .map(|m| m.activity.start("sqlite_write_wait"));
+        let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate);
+        drop(waiting);
+        if permit.is_some() {
+            conn.busy_timeout(timeout)?;
+        }
+        Ok((tx?, permit))
+    })();
     if let Some(metrics) = &metrics {
         metrics.write_wait.record(start.elapsed());
     }
+    let (tx, permit) = result?;
     Ok(WriteTransaction {
-        tx: Some(tx?),
+        tx: Some(tx),
+        _held: metrics
+            .as_ref()
+            .map(|m| m.activity.start("write_transaction")),
         metrics,
         acquired: Instant::now(),
+        _permit: permit,
     })
 }
 
-/// Same transaction semantics, with wait and hold measured separately. Drop
+/// Same transaction semantics, with wait and lifetime measured separately. The
+/// lifetime includes COMMIT's post-write-lock WAL checkpoint work. Drop
 /// records rollback and cancellation too; nested savepoints are not double-counted.
 pub struct WriteTransaction<'a> {
     tx: Option<Transaction<'a>>,
     metrics: Option<Arc<super::metrics::DatabaseMetrics>>,
     acquired: Instant,
+    _permit: Option<super::write_gate::Permit>,
+    _held: Option<super::latency::Guard>,
 }
 impl<'a> Deref for WriteTransaction<'a> {
     type Target = Transaction<'a>;
@@ -95,6 +137,13 @@ impl<'a> Deref for WriteTransaction<'a> {
 }
 impl WriteTransaction<'_> {
     pub fn commit(mut self) -> rusqlite::Result<()> {
+        let _timing = self.metrics.as_ref().map(|m| m.commit.start());
+        let _activity = self.metrics.as_ref().map(|m| m.activity.start("commit"));
+        // Admit the next writer before COMMIT: SQLite retains its own write lock
+        // until the transaction is durable enough to proceed. Its automatic WAL
+        // checkpoint can continue after releasing that lock; do not serialize
+        // unrelated writers behind the checkpoint with our application permit.
+        drop(self._permit.take());
         self.tx.take().expect("active transaction").commit()
     }
     pub fn rollback(mut self) -> rusqlite::Result<()> {
@@ -238,26 +287,33 @@ impl DbPool {
 
     fn acquire(self: &Arc<Self>) -> Result<PooledConnection> {
         let _timing = self.metrics.connection_wait.start();
+        let _activity = self.metrics.activity.start("connection_wait");
         let mut inner = self.inner.lock().unwrap_or_else(|err| err.into_inner());
         loop {
             if let Some(conn) = inner.idle.pop() {
                 return Ok(PooledConnection {
                     conn: Some(conn),
                     pool: Arc::clone(self),
+                    _held: self.metrics.activity.start("connection_held"),
                 });
             }
             if inner.open_count < POOL_MAX_SIZE {
                 let path = inner.path.clone();
                 inner.open_count += 1;
+                // Opening/configuring a physical connection must not prevent returns.
+                drop(inner);
                 match open_pool_connection(&path, self.metrics.clone()) {
                     Ok(conn) => {
                         return Ok(PooledConnection {
                             conn: Some(conn),
                             pool: Arc::clone(self),
+                            _held: self.metrics.activity.start("connection_held"),
                         });
                     }
                     Err(err) => {
+                        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
                         inner.open_count -= 1;
+                        self.condvar.notify_all();
                         return Err(err);
                     }
                 }
@@ -312,4 +368,82 @@ fn configure(conn: &Connection) -> Result<()> {
     // 备份与恢复另开连接，仍是默认的 FULL。
     conn.pragma_update(None, "synchronous", "NORMAL")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    #[test]
+    fn post_commit_wal_work_does_not_hold_writer_admission() {
+        // SQLite invokes the WAL hook after releasing the writer lock, where its
+        // automatic checkpoint normally runs. Hold that callback deterministically.
+        struct Hook {
+            committed: mpsc::Sender<()>,
+            resume: mpsc::Receiver<()>,
+        }
+        unsafe extern "C" fn hold_checkpoint(
+            context: *mut std::ffi::c_void,
+            _: *mut rusqlite::ffi::sqlite3,
+            _: *const std::ffi::c_char,
+            _: std::ffi::c_int,
+        ) -> std::ffi::c_int {
+            // SAFETY: the hook's boxed state lives until registration is removed.
+            let hook = unsafe { &*context.cast::<Hook>() };
+            let _ = hook.committed.send(());
+            let _ = hook.resume.recv_timeout(Duration::from_secs(5));
+            rusqlite::ffi::SQLITE_OK
+        }
+        struct Registration<'a>(&'a Connection, Box<Hook>);
+        impl Drop for Registration<'_> {
+            fn drop(&mut self) {
+                // SAFETY: remove the callback before its state or pooled connection
+                // is released, including when the test unwinds.
+                unsafe {
+                    rusqlite::ffi::sqlite3_wal_hook(self.0.handle(), None, std::ptr::null_mut());
+                }
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("checkpoint.db");
+        drop(open_at(&path).unwrap());
+        let (committed, ready) = mpsc::channel();
+        let (resume, release) = mpsc::channel();
+        let writer_path = path.clone();
+        let writer = std::thread::spawn(move || {
+            let conn = open_at(&writer_path).unwrap();
+            let mut hook = Registration(
+                &conn,
+                Box::new(Hook {
+                    committed,
+                    resume: release,
+                }),
+            );
+            // SAFETY: only this thread accesses conn; Registration owns callback state.
+            unsafe {
+                rusqlite::ffi::sqlite3_wal_hook(
+                    conn.handle(),
+                    Some(hold_checkpoint),
+                    (&mut *hook.1 as *mut Hook).cast(),
+                );
+            }
+            super::super::set_setting(&conn, "checkpoint_fixture", "committed").unwrap();
+        });
+        ready.recv_timeout(Duration::from_secs(5)).unwrap();
+        let (finished, result) = mpsc::channel();
+        let next = std::thread::spawn(move || {
+            let conn = open_at(&path).unwrap();
+            let outcome = super::super::set_setting(&conn, "next_fixture", "committed");
+            let _ = finished.send(outcome);
+        });
+        let outcome = result.recv_timeout(Duration::from_secs(2));
+        resume.send(()).unwrap();
+        writer.join().unwrap();
+        next.join().unwrap();
+        outcome
+            .expect("post-commit WAL work blocked another writer")
+            .unwrap();
+    }
 }

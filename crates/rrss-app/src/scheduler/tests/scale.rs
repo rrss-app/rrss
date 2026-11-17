@@ -97,7 +97,7 @@ fn distribution(samples: &[f64]) -> serde_json::Value {
             .unwrap_or(0.0)
     };
     json!({"samples":values.len(), "p50_ms":percentile(50), "p95_ms":percentile(95),
-        "p99_ms":percentile(99), "max_ms":values.last().copied().unwrap_or(0.0)})
+        "p99_ms":percentile(99), "over_100ms":values.iter().filter(|&&v| v >= 100.0).count(), "max_ms":values.last().copied().unwrap_or(0.0)})
 }
 
 #[derive(Default)]
@@ -109,7 +109,7 @@ struct Interactions {
 impl Interactions {
     async fn sample(&mut self, path: &std::path::Path, index: usize) {
         let start = Instant::now();
-        crate::jobs::spawn_db(path.to_owned(), |conn| {
+        crate::execution::core_db(path.to_owned(), |conn| {
             crate::queries::focus_page(
                 conn,
                 None,
@@ -124,7 +124,7 @@ impl Interactions {
         self.list.push(start.elapsed().as_secs_f64() * 1000.0);
         let article = 1 + (index % 5000) as i64;
         let start = Instant::now();
-        let view = crate::jobs::spawn_db(path.to_owned(), move |conn| {
+        let view = crate::execution::core_db(path.to_owned(), move |conn| {
             crate::queries::reader_view(conn, article)
         })
         .await
@@ -132,7 +132,7 @@ impl Interactions {
         assert_eq!(view.id, article);
         self.reader.push(start.elapsed().as_secs_f64() * 1000.0);
         let start = Instant::now();
-        crate::jobs::spawn_db(path.to_owned(), move |conn| {
+        crate::execution::core_db(path.to_owned(), move |conn| {
             crate::actions::mark_read(conn, article, index.is_multiple_of(2))
         })
         .await
@@ -320,7 +320,8 @@ async fn mixed_sources(cluster_upgrade: bool) {
         "runtime_workers":4,"available_parallelism":std::thread::available_parallelism().map(|n|n.get()).unwrap_or(1),
         "debug_build":cfg!(debug_assertions),"elapsed_s":elapsed,"sources_per_s":SOURCES as f64 / elapsed,
         "articles_per_s":result.inserted as f64 / elapsed,"command_ack_ms":acknowledgment_ms,
-        "idle_interactions":baseline.report(),"loaded_interactions":loaded.report(),"diagnostics":snapshot})
+        "idle_interactions":baseline.report(),"loaded_interactions":loaded.report(),"diagnostics":snapshot,
+        "database_activity":db::pool::metrics(&path).map(|m| m.activity.snapshot())})
     );
     assert!(scheduler.shutdown().await);
     assert_eq!(scheduler.diagnostics().feeds.buffered_bytes, 0);

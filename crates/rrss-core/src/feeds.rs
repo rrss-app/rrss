@@ -946,8 +946,8 @@ mod tests {
         )
         .unwrap();
 
-        // 共享图片 (feed A 与 feed B 均引用)
-        let path_shared = crate::media::store_image(
+        // 同一图片地址被 feed A 与 feed B 引用：每篇文章各自缓存一份
+        let path_shared_a = crate::media::store_image(
             &conn,
             data,
             art_a,
@@ -955,7 +955,7 @@ mod tests {
             &png,
         )
         .unwrap();
-        let _ = crate::media::store_image(
+        let path_shared_b = crate::media::store_image(
             &conn,
             data,
             art_b,
@@ -975,7 +975,8 @@ mod tests {
         .unwrap();
 
         assert!(path_a_only.exists());
-        assert!(path_shared.exists());
+        assert!(path_shared_a.exists());
+        assert!(path_shared_b.exists());
         assert!(path_b_only.exists());
 
         // 退订 feed A
@@ -983,8 +984,9 @@ mod tests {
 
         // feed A 独占图片物理文件应被删除
         assert!(!path_a_only.exists(), "独占图片应被清理");
-        // 共享图片物理文件依然存在（因为 feed B 仍然引用）
-        assert!(path_shared.exists(), "共享图片应被保留");
+        // 同一地址的图片：feed A 的副本被清理，feed B 的副本保留
+        assert!(!path_shared_a.exists(), "feed A 的副本应被清理");
+        assert!(path_shared_b.exists(), "feed B 的副本应被保留");
         // feed B 独占图片物理文件依然存在
         assert!(path_b_only.exists(), "feed B 图片应被保留");
 

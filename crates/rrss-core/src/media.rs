@@ -113,6 +113,10 @@ pub fn cache_key(url: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+pub fn unique_cache_path(data_dir: &Path) -> PathBuf {
+    cache_dir(data_dir).join(uuid::Uuid::new_v4().to_string())
+}
+
 pub fn cache_path(data_dir: &Path, url: &str) -> PathBuf {
     cache_dir(data_dir).join(cache_key(url))
 }
@@ -205,6 +209,56 @@ pub fn store_image(
     url: &str,
     bytes: &[u8],
 ) -> Result<PathBuf> {
+    // An outer transaction must retain its prepared file until commit/rollback.
+    if !conn.is_autocommit() {
+        return Err(rusqlite::Error::InvalidQuery.into());
+    }
+    let mut prepared = prepare_image(data_dir, url, bytes)?;
+    store_prepared_image(conn, data_dir, article_id, url, &mut prepared)
+}
+
+/// Own a newly created, uniquely named file until its database record commits.
+/// Never wrap an existing shared file. Keep this guard outside an outer
+/// transaction, then call `committed` only after that transaction succeeds.
+pub struct PendingCacheFile {
+    path: PathBuf,
+    registered: bool,
+}
+impl PendingCacheFile {
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            registered: false,
+        }
+    }
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+    pub fn committed(&mut self) {
+        self.registered = true;
+    }
+}
+impl Drop for PendingCacheFile {
+    fn drop(&mut self) {
+        if !self.registered {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+/// File preparation owns no database connection or writer lock.
+pub struct PreparedImage {
+    file: PendingCacheFile,
+    mime: Option<&'static str>,
+    bytes: usize,
+}
+impl PreparedImage {
+    pub fn committed(&mut self) {
+        self.file.committed();
+    }
+}
+
+pub fn prepare_image(data_dir: &Path, url: &str, bytes: &[u8]) -> Result<PreparedImage> {
     if !allowed_url(url) {
         return Err(Error::InvalidUrl(crate::url_norm::InvalidUrlReason::Media));
     }
@@ -217,32 +271,32 @@ pub fn store_image(
     let ext = sniff_image_ext(bytes)
         .or_else(|| is_svg(bytes).then_some("svg"))
         .ok_or(Error::UnsupportedImage)?;
-    let mime = mime_for_ext(ext);
     let dir = cache_dir(data_dir);
     std::fs::create_dir_all(&dir)?;
-    let mut path = cache_path(data_dir, url);
-    path.set_extension(ext);
-    std::fs::write(&path, bytes)?;
-    let local = path.to_string_lossy().into_owned();
-    let now = now_ms();
-    if let Some(existing) = lookup(conn, article_id, url)? {
-        conn.execute(
-            "UPDATE media SET local_path = ?1, mime = ?2, bytes = ?3, accessed_at = ?4 WHERE id = ?5",
-            params![local, mime, bytes.len() as i64, now, existing.id],
-        )?;
-    } else {
-        conn.execute(
-            "INSERT INTO media (article_id, url, local_path, mime, kind, bytes, created_at, accessed_at)
-             VALUES (?1, ?2, ?3, ?4, 'image', ?5, ?6, ?6)",
-            params![article_id, url, local, mime, bytes.len() as i64, now],
-        )?;
+    let file = PendingCacheFile::new(dir.join(format!("{}.{ext}", uuid::Uuid::new_v4())));
+    std::fs::write(file.path(), bytes)?;
+    Ok(PreparedImage {
+        file,
+        mime: mime_for_ext(ext),
+        bytes: bytes.len(),
+    })
+}
+
+pub fn store_prepared_image(
+    conn: &Connection,
+    data_dir: &Path,
+    article_id: i64,
+    url: &str,
+    prepared: &mut PreparedImage,
+) -> Result<PathBuf> {
+    let (path, mime, bytes) = (prepared.file.path(), prepared.mime, prepared.bytes);
+    record_row(conn, article_id, url, path, mime, "image", bytes as u64)?;
+    if conn.is_autocommit() {
+        prepared.committed();
+        evict_lru(conn, data_dir)?;
     }
-    let evicted = evict_lru(conn, data_dir)?;
-    if evicted > 0 {
-        tracing::debug!(evicted, "evicted lru media cache entries");
-    }
-    tracing::debug!(article_id, host = %crate::logsafe::host_str(url), bytes = bytes.len(), "stored image");
-    Ok(path)
+    tracing::debug!(article_id, host = %crate::logsafe::host_str(url), bytes, "stored image");
+    Ok(prepared.file.path.clone())
 }
 
 /// 登记已经写到磁盘的直链文件。不读入内存，也不计入配图 LRU。
@@ -251,7 +305,7 @@ pub fn store_direct(
     data_dir: &Path,
     article_id: i64,
     url: &str,
-    path: &Path,
+    file: &mut PendingCacheFile,
     mime: Option<&str>,
     bytes: u64,
 ) -> Result<PathBuf> {
@@ -264,7 +318,12 @@ pub fn store_direct(
             max_bytes: MAX_DIRECT_BYTES as u64,
         });
     }
-    record_cached(conn, data_dir, article_id, url, path, mime, "video", bytes)
+    record_row(conn, article_id, url, file.path(), mime, "video", bytes)?;
+    if conn.is_autocommit() {
+        file.committed();
+        evict_direct_lru(conn, data_dir)?;
+    }
+    Ok(file.path.clone())
 }
 
 /// 封面元数据等小文件。不参与配图或直链淘汰。
@@ -273,37 +332,18 @@ pub fn store_sidecar(
     _data_dir: &Path,
     article_id: i64,
     url: &str,
-    path: &Path,
+    file: &mut PendingCacheFile,
     mime: Option<&str>,
     bytes: u64,
 ) -> Result<PathBuf> {
     if !allowed_url(url) {
         return Err(Error::InvalidUrl(crate::url_norm::InvalidUrlReason::Media));
     }
-    record_row(conn, article_id, url, path, mime, "other", bytes)?;
-    Ok(path.to_path_buf())
-}
-
-fn record_cached(
-    conn: &Connection,
-    data_dir: &Path,
-    article_id: i64,
-    url: &str,
-    path: &Path,
-    mime: Option<&str>,
-    kind: &str,
-    bytes: u64,
-) -> Result<PathBuf> {
-    record_row(conn, article_id, url, path, mime, kind, bytes)?;
-    let evicted = if kind == "video" {
-        evict_direct_lru(conn, data_dir)?
-    } else {
-        0
-    };
-    if evicted > 0 {
-        tracing::debug!(evicted, kind, "evicted lru media cache entries");
+    record_row(conn, article_id, url, file.path(), mime, "other", bytes)?;
+    if conn.is_autocommit() {
+        file.committed();
     }
-    Ok(path.to_path_buf())
+    Ok(file.path.clone())
 }
 
 fn record_row(
@@ -315,22 +355,24 @@ fn record_row(
     kind: &str,
     bytes: u64,
 ) -> Result<()> {
-    let local = path.to_string_lossy().into_owned();
-    let now = now_ms();
-    let nbytes = i64::try_from(bytes).unwrap_or(i64::MAX);
-    if let Some(existing) = lookup(conn, article_id, url)? {
-        conn.execute(
+    crate::db::atomic_write(conn, |conn| {
+        let local = path.to_string_lossy().into_owned();
+        let now = now_ms();
+        let nbytes = i64::try_from(bytes).unwrap_or(i64::MAX);
+        if let Some(existing) = lookup(conn, article_id, url)? {
+            conn.execute(
             "UPDATE media SET local_path = ?1, mime = ?2, kind = ?3, bytes = ?4, accessed_at = ?5 WHERE id = ?6",
             params![local, mime, kind, nbytes, now, existing.id],
         )?;
-    } else {
-        conn.execute(
+        } else {
+            conn.execute(
             "INSERT INTO media (article_id, url, local_path, mime, kind, bytes, created_at, accessed_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
             params![article_id, url, local, mime, kind, nbytes, now],
         )?;
-    }
-    Ok(())
+        }
+        Ok(())
+    })
 }
 
 pub fn get(conn: &Connection, id: i64) -> Result<Option<MediaRow>> {
@@ -344,12 +386,56 @@ pub fn get(conn: &Connection, id: i64) -> Result<Option<MediaRow>> {
     .map_err(Into::into)
 }
 
-/// 协议读图或缓存命中时刷新 LRU 时间戳。
+/// Record cache access in memory; reading media must never wait for SQLite's writer.
+/// Pending timestamps are merged before eviction and by scheduled housekeeping.
 pub fn touch(conn: &Connection, id: i64) -> Result<()> {
-    conn.execute(
-        "UPDATE media SET accessed_at = ?1 WHERE id = ?2",
-        params![now_ms(), id],
-    )?;
+    if let Some(metrics) = crate::db::metrics::for_connection(conn) {
+        let mut pending = metrics
+            .media_access
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if pending.len() < 4096 || pending.contains_key(&id) {
+            pending.insert(id, now_ms());
+        }
+        return Ok(());
+    }
+    // Standalone connections have no application cache-access collector.
+    Ok(())
+}
+
+pub fn flush_accesses(conn: &Connection) -> Result<()> {
+    // Only acknowledge timestamps after the outer commit has succeeded.
+    if !conn.is_autocommit() {
+        return Ok(());
+    }
+    let Some(metrics) = crate::db::metrics::for_connection(conn) else {
+        return Ok(());
+    };
+    let pending = metrics
+        .media_access
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    if pending.is_empty() {
+        return Ok(());
+    }
+    crate::db::atomic_write(conn, |conn| {
+        let mut statement = conn
+            .prepare_cached("UPDATE media SET accessed_at = MAX(accessed_at, ?1) WHERE id = ?2")?;
+        for (id, at) in &pending {
+            statement.execute(params![at, id])?;
+        }
+        Ok(())
+    })?;
+    let mut current = metrics
+        .media_access
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    for (id, at) in pending {
+        if current.get(&id) == Some(&at) {
+            current.remove(&id);
+        }
+    }
     Ok(())
 }
 
@@ -369,6 +455,12 @@ fn evict_lru_until(
     max_bytes: i64,
     kind: &str,
 ) -> Result<usize> {
+    // The caller runs eviction after its outer commit. Until then pending
+    // access timestamps cannot be acknowledged and rollback must retain files.
+    if !conn.is_autocommit() {
+        return Ok(0);
+    }
+    flush_accesses(conn)?;
     let mut evicted = 0usize;
     loop {
         let total = cached_bytes(conn, kind)?;
@@ -381,6 +473,7 @@ fn evict_lru_until(
         remove_cached(conn, id, &local_path)?;
         evicted += 1;
     }
+    flush_removed_files(conn)?;
     Ok(evicted)
 }
 
@@ -416,14 +509,56 @@ pub fn path_refcount(conn: &Connection, local_path: &str, exclude_id: i64) -> Re
     .map_err(Into::into)
 }
 
-pub fn remove_cached(conn: &Connection, id: i64, local_path: &str) -> Result<()> {
-    let refs = path_refcount(conn, local_path, id)?;
-    conn.execute("DELETE FROM media WHERE id = ?1", [id])?;
-    let path = PathBuf::from(local_path);
-    if refs == 0 && in_cache_dir(&path) && path.is_file() {
-        let _ = std::fs::remove_file(path);
-    }
+pub fn remove_cached(conn: &Connection, id: i64, _local_path: &str) -> Result<()> {
+    crate::db::atomic_write(conn, |conn| {
+        conn.execute("DELETE FROM media WHERE id = ?1", [id])?;
+        Ok(())
+    })?;
+    flush_removed_files(conn)?;
     Ok(())
+}
+
+/// Deletions are durable database work; filesystem operations happen only after commit.
+/// New production cache files have unique names, so removed paths cannot be reused
+/// by an in-flight download between the reference check and the unlink.
+pub fn flush_removed_files(conn: &Connection) -> Result<usize> {
+    if !conn.is_autocommit() {
+        return Ok(0);
+    }
+    let paths = conn
+        .prepare("SELECT local_path FROM media_cleanup LIMIT 128")?
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut completed = Vec::new();
+    for local_path in paths {
+        let referenced: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM media WHERE local_path=?1)",
+            [&local_path],
+            |r| r.get(0),
+        )?;
+        let path = Path::new(&local_path);
+        if referenced || !in_cache_dir(path) {
+            completed.push(local_path);
+            continue;
+        }
+        match std::fs::remove_file(path) {
+            Ok(()) => completed.push(local_path),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                completed.push(local_path)
+            }
+            Err(error) => tracing::debug!(kind = ?error.kind(), "media cleanup deferred"),
+        }
+    }
+    if !completed.is_empty() {
+        crate::db::atomic_write(conn, |conn| {
+            let mut stmt = conn.prepare_cached("DELETE FROM media_cleanup WHERE local_path=?1")?;
+            for path in &completed {
+                stmt.execute([path])?;
+            }
+            Ok(())
+        })?;
+    }
+    Ok(completed.len())
 }
 
 /// 库里的路径不一定可信（例如恢复了别处来的备份），只删直接放在 `cache/media/` 下的文件。
@@ -591,6 +726,116 @@ fn media_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MediaRow> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn prepared_files_follow_outer_commit_and_rollback() {
+        let (data, conn, article) = seeded();
+        let png = sample_png(32);
+        let url = "https://media.example/prepared.png";
+        let mut prepared = prepare_image(data.path(), url, &png).unwrap();
+        let path = prepared.file.path.clone();
+        let tx = crate::db::write_transaction(&conn).unwrap();
+        store_prepared_image(&tx, data.path(), article, url, &mut prepared).unwrap();
+        assert!(path.is_file());
+        tx.rollback().unwrap();
+        drop(prepared);
+        assert!(!path.exists());
+        assert!(lookup(&conn, article, url).unwrap().is_none());
+
+        let mut prepared = prepare_image(data.path(), url, &png).unwrap();
+        let path = prepared.file.path.clone();
+        let tx = crate::db::write_transaction(&conn).unwrap();
+        store_prepared_image(&tx, data.path(), article, url, &mut prepared).unwrap();
+        tx.commit().unwrap();
+        prepared.committed();
+        drop(prepared);
+        assert!(path.is_file());
+        assert_eq!(cached_path(&conn, article, url).unwrap(), Some(path));
+    }
+
+    #[test]
+    fn committed_file_survives_post_registration_eviction_failure() {
+        let (data, conn, article) = seeded();
+        let url = "https://media.example/committed.png";
+        conn.execute_batch("CREATE TRIGGER reject_eviction BEFORE DELETE ON media BEGIN SELECT RAISE(ABORT,'fixture'); END;").unwrap();
+        let mut prepared = prepare_image(data.path(), url, &sample_png(32)).unwrap();
+        prepared.bytes = MAX_CACHE_BYTES as usize + 1;
+        let path = prepared.file.path.clone();
+        assert!(store_prepared_image(&conn, data.path(), article, url, &mut prepared).is_err());
+        drop(prepared);
+        assert!(path.is_file());
+        assert!(lookup(&conn, article, url).unwrap().is_some());
+    }
+
+    #[test]
+    fn eviction_after_outer_commit_uses_pending_accesses() {
+        let (data, conn, article) = seeded();
+        let png = sample_png(32);
+        for url in [
+            "https://media.example/recent.png",
+            "https://media.example/old.png",
+        ] {
+            store_image(&conn, data.path(), article, url, &png).unwrap();
+        }
+        conn.execute(
+            "UPDATE media SET accessed_at=id,bytes=?1",
+            [MAX_CACHE_BYTES as i64 / 2],
+        )
+        .unwrap();
+        let recent = lookup(&conn, article, "https://media.example/recent.png")
+            .unwrap()
+            .unwrap();
+        touch(&conn, recent.id).unwrap();
+        let url = "https://media.example/new.png";
+        let mut prepared = prepare_image(data.path(), url, &png).unwrap();
+        let tx = crate::db::write_transaction(&conn).unwrap();
+        store_prepared_image(&tx, data.path(), article, url, &mut prepared).unwrap();
+        assert_eq!(
+            tx.query_row("SELECT COUNT(*) FROM media", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            3
+        );
+        tx.commit().unwrap();
+        prepared.committed();
+        evict_lru(&conn, data.path()).unwrap();
+        assert!(
+            lookup(&conn, article, "https://media.example/recent.png")
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            lookup(&conn, article, "https://media.example/old.png")
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn rollback_preserves_files_and_committed_cleanup_respects_shared_references() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = crate::db::open_at(&dir.path().join("cleanup.db")).unwrap();
+        std::fs::create_dir_all(cache_dir(dir.path())).unwrap();
+        let path = unique_cache_path(dir.path());
+        std::fs::write(&path, b"fixture").unwrap();
+        for id in [1, 2] {
+            conn.execute("INSERT INTO media(id,url,local_path,created_at) VALUES(?1,'https://cleanup.example/image',?2,0)",
+                params![id,path.to_string_lossy()]).unwrap();
+        }
+        let tx = crate::db::write_transaction(&conn).unwrap();
+        remove_cached(&tx, 1, &path.to_string_lossy()).unwrap();
+        assert!(path.exists());
+        tx.rollback().unwrap();
+        assert_eq!(flush_removed_files(&conn).unwrap(), 0);
+        assert!(path.exists());
+        remove_cached(&conn, 1, &path.to_string_lossy()).unwrap();
+        assert!(path.exists());
+        let tx = crate::db::write_transaction(&conn).unwrap();
+        remove_cached(&tx, 2, &path.to_string_lossy()).unwrap();
+        assert!(path.exists());
+        tx.commit().unwrap();
+        flush_removed_files(&conn).unwrap();
+        assert!(!path.exists());
+    }
+
     use super::*;
     use crate::db::open_at;
     use crate::feeds::{SubscribeRequest, subscribe};
@@ -772,8 +1017,10 @@ mod tests {
             &sample_png(16),
         )
         .unwrap();
-        assert_eq!(path, again);
-        assert_eq!(std::fs::read(&path).unwrap(), sample_png(16));
+        assert_ne!(path, again);
+        assert!(!path.exists());
+        assert!(again.exists());
+        assert_eq!(std::fs::read(&again).unwrap(), sample_png(16));
         assert_eq!(path.extension().unwrap(), "png");
         let n: i64 = conn
             .query_row("SELECT COUNT(*) FROM media", [], |row| row.get(0))
@@ -795,7 +1042,7 @@ mod tests {
             .is_err()
         );
         let cached = cached_path(&conn, article_id, "https://cdn.example.com/a.png").unwrap();
-        assert_eq!(cached.as_deref(), Some(path.as_path()));
+        assert_eq!(cached.as_deref(), Some(again.as_path()));
         assert_eq!(
             cached_path(&conn, article_id, "https://cdn.example.com/missing.png").unwrap(),
             None
@@ -1050,7 +1297,17 @@ mod tests {
         let id: i64 = conn
             .query_row("SELECT id FROM media LIMIT 1", [], |row| row.get(0))
             .unwrap();
+        let other = open_at(&data.join("rrss.db")).unwrap();
+        let held = crate::db::write_transaction(&other).unwrap();
         touch(&conn, id).unwrap();
+        assert_eq!(
+            conn.query_row("SELECT accessed_at FROM media WHERE id=?1", [id], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        held.rollback().unwrap();
+        flush_accesses(&conn).unwrap();
         let accessed: i64 = conn
             .query_row("SELECT accessed_at FROM media WHERE id = ?1", [id], |row| {
                 row.get(0)
@@ -1103,7 +1360,7 @@ mod tests {
             data.path(),
             article_id,
             "https://cdn.example.com/clip.mp4",
-            &path,
+            &mut PendingCacheFile::new(path.clone()),
             Some("video/mp4"),
             MAX_DIRECT_BYTES as u64 + 1,
         );
@@ -1134,7 +1391,7 @@ mod tests {
             data.path(),
             article_id,
             "https://cdn.example.com/big.mp4",
-            &video,
+            &mut PendingCacheFile::new(video.clone()),
             Some("video/mp4"),
             4,
         )
@@ -1161,7 +1418,7 @@ mod tests {
             data.path(),
             article_id,
             "https://cdn.example.com/old.mp4",
-            &older,
+            &mut PendingCacheFile::new(older.clone()),
             Some("video/mp4"),
             4,
         )

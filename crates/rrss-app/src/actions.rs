@@ -1258,8 +1258,7 @@ pub fn run_retention(
         }
         total += retention::prune_articles(&tx, &ids, now_ms)?;
         tx.commit()?;
-        // 批与批之间让一下写锁：等锁的刷新按退避间隔重试，紧接着开下一个事务它很难插进来。
-        std::thread::sleep(std::time::Duration::from_millis(120));
+        rrss_core::media::flush_removed_files(conn)?;
     }
     db::set_setting(conn, RETENTION_LAST_RUN, &now_ms.to_string())?;
     Ok((total, backed_up))

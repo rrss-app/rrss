@@ -79,8 +79,14 @@ pub struct DatabaseMetrics {
     pub connection_wait: Timing,
     pub write_wait: Timing,
     pub write_hold: Timing,
+    pub commit: Timing,
+    pub activity: Arc<super::latency::Activity>,
+    pub rank_fallbacks: std::sync::atomic::AtomicU64,
+    pub runtime_stall_max_ms: std::sync::atomic::AtomicU64,
     pub feed_parse: Timing,
     pub feed_ingest: Timing,
+    pub(crate) media_access: Mutex<std::collections::BTreeMap<i64, i64>>,
+    pub(super) writer: Arc<super::write_gate::WriteGate>,
 }
 
 // The workspace uses bundled SQLite (client data is supported since 3.44).

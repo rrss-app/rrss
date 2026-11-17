@@ -3,7 +3,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
-use rrss_core::{articles, db, media};
+#[cfg(test)]
+use rrss_core::db;
+use rrss_core::{articles, media};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
@@ -17,27 +19,33 @@ pub async fn prefetch_images(
     article_id: i64,
     emit: impl Fn(MediaReadyEvent) + Send + Sync + 'static,
 ) -> Result<Vec<MediaRef>> {
-    let conn = db::open_at(db_path)?;
-    let mut pending = Vec::new();
-    for (url, referer) in queries::pending_images(&conn, article_id) {
-        if media::cached_path(&conn, article_id, &url)
-            .ok()
-            .flatten()
-            .is_some()
-        {
-            if let Some(row) = media::lookup(&conn, article_id, &url)? {
-                emit(MediaReadyEvent {
-                    article_id,
-                    media: queries::cached_media_ref(&row, &url),
-                });
+    let (pending, cached) = crate::execution::core_db(db_path.to_owned(), move |conn| {
+        let mut cached = Vec::new();
+        let mut pending = Vec::new();
+        for (url, referer) in queries::pending_images(&conn, article_id) {
+            if media::cached_path(&conn, article_id, &url)
+                .ok()
+                .flatten()
+                .is_some()
+            {
+                if let Some(row) = media::lookup(&conn, article_id, &url)? {
+                    cached.push(MediaReadyEvent {
+                        article_id,
+                        media: queries::cached_media_ref(&row, &url),
+                    });
+                }
+            } else {
+                pending.push((url, referer));
             }
-        } else {
-            pending.push((url, referer));
         }
+        Ok((pending, cached))
+    })
+    .await?;
+    for event in cached {
+        emit(event);
     }
-    drop(conn);
     if pending.is_empty() {
-        return article_media(db_path, data_dir, article_id);
+        return article_media(db_path, data_dir, article_id).await;
     }
     let client = network
         .client(rrss_core::network::NetworkScope::Content)
@@ -63,13 +71,16 @@ pub async fn prefetch_images(
             .await;
             let media = match fetched {
                 Ok(_) => {
-                    let Ok(conn) = db::open_at(&db_path) else {
+                    let image_url = url.clone();
+                    let row = crate::execution::core_db(db_path.clone(), move |conn| {
+                        Ok(media::lookup(conn, article_id, &image_url)?
+                            .map(|row| queries::cached_media_ref(&row, &image_url)))
+                    })
+                    .await;
+                    let Ok(Some(media)) = row else {
                         return false;
                     };
-                    let Ok(Some(row)) = media::lookup(&conn, article_id, &url) else {
-                        return false;
-                    };
-                    queries::cached_media_ref(&row, &url)
+                    media
                 }
                 Err(fail) => queries::failed_media_ref(&url, fail.label()),
             };
@@ -79,13 +90,15 @@ pub async fn prefetch_images(
         });
     }
     log_prefetch(&mut set, article_id, "images", count, started).await;
-    article_media(db_path, data_dir, article_id)
+    article_media(db_path, data_dir, article_id).await
 }
 
 /// 文章配图的当前状态；没缓存下来的带上本次运行里记下的失败原因。
-fn article_media(db_path: &Path, data_dir: &Path, article_id: i64) -> Result<Vec<MediaRef>> {
-    let conn = db::open_at(db_path)?;
-    let mut refs = queries::article_media(&conn, article_id)?;
+async fn article_media(db_path: &Path, data_dir: &Path, article_id: i64) -> Result<Vec<MediaRef>> {
+    let mut refs = crate::execution::core_db(db_path.to_owned(), move |conn| {
+        queries::article_media(conn, article_id)
+    })
+    .await?;
     for item in refs.iter_mut().filter(|item| item.href.is_empty()) {
         item.error = image_fetch::failure_label(data_dir, &item.src);
     }
@@ -103,25 +116,30 @@ pub async fn retry_image(
     let client = network
         .client(rrss_core::network::NetworkScope::Content)
         .await?;
-    let referer = article_referer(db_path, article_id);
+    let referer = article_referer(db_path, article_id).await;
     match image_fetch::fetch_and_store(&client, db_path, data_dir, article_id, url, &referer).await
     {
         Ok(_) => {
-            let conn = db::open_at(db_path)?;
-            let row = media::lookup(&conn, article_id, url)?
-                .ok_or_else(|| anyhow::anyhow!("stored image has no media row"))?;
-            Ok(queries::cached_media_ref(&row, url))
+            let url = url.to_owned();
+            crate::execution::with_db(db_path.to_owned(), move |conn| {
+                let row = media::lookup(conn, article_id, &url)?
+                    .ok_or_else(|| anyhow::anyhow!("stored image has no media row"))?;
+                Ok(queries::cached_media_ref(&row, &url))
+            })
+            .await
         }
         Err(fail) => Ok(queries::failed_media_ref(url, fail.label())),
     }
 }
 
-fn article_referer(db_path: &Path, article_id: i64) -> String {
-    db::open_at(db_path)
-        .ok()
-        .and_then(|conn| articles::get_article(&conn, article_id).ok())
-        .and_then(|article| article.canonical_url)
-        .unwrap_or_default()
+async fn article_referer(db_path: &Path, article_id: i64) -> String {
+    crate::execution::core_db(db_path.to_owned(), move |conn| {
+        articles::get_article(conn, article_id)
+    })
+    .await
+    .ok()
+    .and_then(|article| article.canonical_url)
+    .unwrap_or_default()
 }
 
 pub async fn prefetch_embed_covers(
@@ -131,24 +149,30 @@ pub async fn prefetch_embed_covers(
     article_id: i64,
     emit: impl Fn(EmbedCoverEvent) + Send + Sync + 'static,
 ) -> Result<()> {
-    let conn = db::open_at(db_path)?;
-    let article = articles::get_article(&conn, article_id)?;
-    let mut doc = document::load_document(&article);
-    embed_fetch::present_document(&mut doc);
-    let targets = embed_fetch::official_open_urls(&doc);
-    let mut pending = Vec::new();
-    let cached = embed_fetch::cached_covers(&conn, article_id, &doc);
-    for open_url in targets {
-        if let Some(cover) = cached.iter().find(|cover| cover.open_url == open_url) {
-            emit(EmbedCoverEvent {
-                article_id,
-                cover: cover.clone(),
-            });
-        } else {
-            pending.push(open_url);
+    let (pending, events) = crate::execution::core_db(db_path.to_owned(), move |conn| {
+        let article = articles::get_article(&conn, article_id)?;
+        let mut doc = document::load_document(&article);
+        embed_fetch::present_document(&mut doc);
+        let targets = embed_fetch::official_open_urls(&doc);
+        let mut pending = Vec::new();
+        let mut events = Vec::new();
+        let cached = embed_fetch::cached_covers(&conn, article_id, &doc);
+        for open_url in targets {
+            if let Some(cover) = cached.iter().find(|cover| cover.open_url == open_url) {
+                events.push(EmbedCoverEvent {
+                    article_id,
+                    cover: cover.clone(),
+                });
+            } else {
+                pending.push(open_url);
+            }
         }
+        Ok((pending, events))
+    })
+    .await?;
+    for event in events {
+        emit(event);
     }
-    drop(conn);
     if pending.is_empty() {
         return Ok(());
     }
@@ -474,7 +498,7 @@ mod tests {
             dir.path(),
             1,
             youtube,
-            &meta_path,
+            &mut media::PendingCacheFile::new(meta_path),
             Some("application/json"),
             1,
         )

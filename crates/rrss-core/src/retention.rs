@@ -180,6 +180,7 @@ pub fn delete_expired(conn: &Connection, now_ms: i64) -> Result<i64> {
             )? as i64;
         }
         tx.commit()?;
+        crate::media::flush_removed_files(conn)?;
     }
     Ok(total)
 }

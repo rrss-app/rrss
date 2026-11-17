@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Ref } from "react";
+import { markCloseReceived } from "./lib/closeTiming";
 import { i18n, useTranslation } from "./i18n";
 import { useFeedUpdates } from "./app/useFeedUpdates";
 import { readingMinutes } from "./lib/readingTime";
@@ -297,7 +298,7 @@ function DesktopShell() {
       .then((stop) => { if (disposed) stop(); else stops.push(stop); })
       // 没有宿主（预览、组件测试）时订阅不到窗口事件，忽略即可。
       .catch(() => {});
-    keep(onWindowCloseRequested(() => openOverlay.current("close-ask")));
+    keep(onWindowCloseRequested((hostReceivedAt) => { markCloseReceived(hostReceivedAt); openOverlay.current("close-ask"); }));
     keep(onWindowRestored(() => { void focus.adoptLatest(); void column.adoptLatest(); }));
     return () => { disposed = true; i18n.off("languageChanged", installTray); stops.forEach((stop) => stop()); };
   }, [focus, column]);

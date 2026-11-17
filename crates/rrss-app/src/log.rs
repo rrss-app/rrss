@@ -322,6 +322,9 @@ pub fn export_diagnostics(db_path: &Path, dest: &Path) -> io::Result<()> {
             "previous_unclean": log.previous_unclean,
         })),
         "scheduler": crate::scheduler::Scheduler::diagnostics_for(db_path),
+        "database_activity": rrss_core::db::pool::metrics(db_path).map(|metrics| metrics.activity.snapshot()),
+        "rank_fallbacks": rrss_core::db::pool::metrics(db_path).map(|metrics| metrics.rank_fallbacks.load(std::sync::atomic::Ordering::Relaxed)),
+        "async_stall_max_ms": rrss_core::db::pool::metrics(db_path).map(|metrics| metrics.runtime_stall_max_ms.load(std::sync::atomic::Ordering::Relaxed)),
     });
     handle.export(dest, &diagnostics)
 }

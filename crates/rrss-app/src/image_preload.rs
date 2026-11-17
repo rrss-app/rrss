@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tracing::{Instrument, instrument::WithSubscriber};
 
 use rrss_core::articles::{self, ArticleRow};
-use rrss_core::{db, media};
+use rrss_core::media;
 use rrss_render::Block;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
@@ -25,15 +25,10 @@ pub async fn run(db_path: &Path, data_dir: &Path, network: &crate::network::Netw
 
     let db_path = db_path.to_path_buf();
     let data_dir = data_dir.to_path_buf();
-    let jobs = match crate::execution::blocking({
-        let db_path = db_path.clone();
-        move || collect_jobs(&db_path)
-    })
-    .await
-    {
+    let jobs = match crate::jobs::spawn_db(db_path.clone(), |conn| Ok(collect_jobs(conn))).await {
         Ok(jobs) => jobs,
         Err(err) => {
-            tracing::warn!(error = %err, "image preload collect join");
+            tracing::warn!(error = %crate::log::error(err.as_ref()), "image preload collection failed");
             return;
         }
     };
@@ -81,10 +76,7 @@ pub async fn run(db_path: &Path, data_dir: &Path, network: &crate::network::Netw
     while set.join_next().await.is_some() {}
 }
 
-fn collect_jobs(db_path: &Path) -> Vec<Job> {
-    let Ok(conn) = db::open_at(db_path) else {
-        return Vec::new();
-    };
+fn collect_jobs(conn: &rusqlite::Connection) -> Vec<Job> {
     let Ok(ids) = articles::list_preload_article_ids(&conn) else {
         return Vec::new();
     };

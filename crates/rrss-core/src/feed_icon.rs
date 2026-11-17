@@ -136,8 +136,24 @@ pub fn store(
     if !media::allowed_url(url) {
         return Err(Error::InvalidUrl(crate::url_norm::InvalidUrlReason::Media));
     }
+    let path = media::cache_dir(data_dir).join(format!(
+        "feed-icon-{feed_id}-{:x}-{}",
+        Sha256::digest(bytes),
+        uuid::Uuid::new_v4()
+    ));
+    struct Uncommitted(Option<std::path::PathBuf>);
+    impl Drop for Uncommitted {
+        fn drop(&mut self) {
+            if let Some(path) = &self.0 {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+    let mut staged = Uncommitted(Some(path.clone()));
+    std::fs::create_dir_all(media::cache_dir(data_dir))?;
+    std::fs::write(&path, bytes)?;
     let tx = db::write_transaction(conn)?;
-    // 关闭设置或退订期间到达的下载结果不再落盘。
+    // A stale response must not register the staged file; its guard removes it.
     let exists: bool = tx.query_row(
         "SELECT EXISTS(SELECT 1 FROM feeds WHERE id=?1)",
         [feed_id],
@@ -150,14 +166,11 @@ pub fn store(
         .prepare("SELECT id, local_path FROM media WHERE feed_id=?1")?
         .query_map([feed_id], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<rusqlite::Result<_>>()?;
-    let path =
-        media::cache_dir(data_dir).join(format!("feed-icon-{feed_id}-{:x}", Sha256::digest(bytes)));
-    std::fs::create_dir_all(media::cache_dir(data_dir))?;
-    std::fs::write(&path, bytes)?;
     tx.execute("DELETE FROM media WHERE feed_id=?1", [feed_id])?;
     let now = crate::feeds::now_ms();
     tx.execute("INSERT INTO media(feed_id, url, local_path, mime, kind, bytes, created_at, accessed_at) VALUES (?1, ?2, ?3, ?4, 'image', ?5, ?6, ?6)", params![feed_id, url, path.to_string_lossy(), mime, bytes.len() as i64, now])?;
     tx.commit()?;
+    staged.0 = None;
     for (id, old_path) in old {
         media::remove_cached(conn, id, &old_path)?;
     }

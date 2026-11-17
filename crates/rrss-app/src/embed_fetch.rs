@@ -183,7 +183,7 @@ pub async fn fetch_official_cover(
     article_id: i64,
     open_url: &str,
 ) -> Result<EmbedCoverView, FetchFail> {
-    if let Some(view) = cached_on(db_path, article_id, open_url) {
+    if let Some(view) = cached_on(db_path, article_id, open_url).await {
         return Ok(view);
     }
     let class = rrss_render::classify_for_read(open_url, EmbedKind::Iframe);
@@ -217,7 +217,9 @@ pub async fn fetch_official_cover(
         parse_youtube_oembed(&body, &open_url)
     }
     .ok_or(FetchFail::Decode)?;
-    write_meta(db_path, data_dir, article_id, &meta).map_err(|_| FetchFail::Store)?;
+    write_meta(db_path, data_dir, article_id, &meta)
+        .await
+        .map_err(|_| FetchFail::Store)?;
     let thumb_referer = if meta.site == "bilibili" {
         "https://www.bilibili.com/"
     } else {
@@ -232,7 +234,9 @@ pub async fn fetch_official_cover(
         thumb_referer,
     )
     .await?;
-    cached_on(db_path, article_id, &meta.open_url).ok_or(FetchFail::Store)
+    cached_on(db_path, article_id, &meta.open_url)
+        .await
+        .ok_or(FetchFail::Store)
 }
 
 pub async fn download_direct(
@@ -243,7 +247,9 @@ pub async fn download_direct(
     url: &str,
     referer: &str,
 ) -> Result<MediaRef, DirectFail> {
-    let doc = load_doc(db_path, article_id).map_err(|err| DirectFail::Network(err))?;
+    let doc = load_doc(db_path, article_id)
+        .await
+        .map_err(|err| DirectFail::Network(err))?;
     let Some(media_kind) = direct_in_document(&doc, url) else {
         return Err(DirectFail::NotDirect);
     };
@@ -256,7 +262,7 @@ pub async fn download_direct(
         "",
     );
     let url = presented.url;
-    if let Some(href) = cached_direct(db_path, article_id, &url) {
+    if let Some(href) = cached_direct(db_path, article_id, &url).await {
         return Ok(href);
     }
     if !media::allowed_url(&url) {
@@ -295,12 +301,14 @@ pub async fn download_direct(
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.split(';').next().unwrap_or(s).trim().to_string());
-    let dest = media::cache_path(data_dir, &url);
+    let dest = media::unique_cache_path(data_dir);
     if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent)
+        tokio::fs::create_dir_all(parent)
+            .await
             .map_err(|err| DirectFail::Network(crate::UiError::from(rrss_core::Error::Io(err))))?;
     }
     let tmp = dest.with_extension("part");
+    let pending = media::PendingCacheFile::new(dest.clone());
     // 网络中断或取消时同样清理半成品，不把失败下载留在缓存目录。
     struct PartialFile(PathBuf);
     impl Drop for PartialFile {
@@ -309,7 +317,8 @@ pub async fn download_direct(
         }
     }
     let _partial = PartialFile(tmp.clone());
-    let mut file = std::fs::File::create(&tmp)
+    let mut file = tokio::fs::File::create(&tmp)
+        .await
         .map_err(|err| DirectFail::Network(crate::UiError::from(rrss_core::Error::Io(err))))?;
     let mut got = 0u64;
     loop {
@@ -325,21 +334,43 @@ pub async fn download_direct(
             let _ = std::fs::remove_file(&tmp);
             return Err(DirectFail::TooLarge);
         }
-        std::io::Write::write_all(&mut file, &chunk)
+        tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
+            .await
             .map_err(|err| DirectFail::Network(crate::UiError::from(rrss_core::Error::Io(err))))?;
     }
+    tokio::io::AsyncWriteExt::flush(&mut file)
+        .await
+        .map_err(|_| DirectFail::Store)?;
     drop(file);
     drop(permit);
-    if std::fs::rename(&tmp, &dest).is_err() {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(DirectFail::Store);
-    }
+    // The blocking operation owns the guard until rename actually finishes,
+    // even if its async waiter is cancelled in the meantime.
+    let mut pending = crate::execution::blocking(move || -> std::io::Result<_> {
+        std::fs::rename(&tmp, pending.path())?;
+        Ok(pending)
+    })
+    .await
+    .map_err(|_| DirectFail::Store)?
+    .map_err(|_| DirectFail::Store)?;
     let mime = mime_for_direct(&url, mime.as_deref());
-    let conn = rrss_core::db::open_at(db_path)
-        .map_err(|err| DirectFail::Network(crate::UiError::from(err)))?;
-    media::store_direct(&conn, data_dir, article_id, &url, &dest, Some(&mime), got)
-        .map_err(|_| DirectFail::Store)?;
-    cached_direct(db_path, article_id, &url).ok_or(DirectFail::Store)
+    let store_url = url.clone();
+    let store_dir = data_dir.to_owned();
+    crate::execution::core_db(db_path.to_owned(), move |conn| {
+        media::store_direct(
+            conn,
+            &store_dir,
+            article_id,
+            &store_url,
+            &mut pending,
+            Some(&mime),
+            got,
+        )
+    })
+    .await
+    .map_err(|_| DirectFail::Store)?;
+    cached_direct(db_path, article_id, &url)
+        .await
+        .ok_or(DirectFail::Store)
 }
 
 fn mime_for_direct(url: &str, header: Option<&str>) -> String {
@@ -418,65 +449,85 @@ fn read_cached(
     })
 }
 
-fn cached_on(db_path: &Path, article_id: i64, open_url: &str) -> Option<EmbedCoverView> {
-    let conn = rrss_core::db::open_at(db_path).ok()?;
-    read_cached(&conn, article_id, open_url)
+async fn cached_on(db_path: &Path, article_id: i64, open_url: &str) -> Option<EmbedCoverView> {
+    let open_url = open_url.to_owned();
+    crate::execution::core_db(db_path.to_owned(), move |conn| {
+        Ok(read_cached(conn, article_id, &open_url))
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
-fn cached_direct(db_path: &Path, article_id: i64, url: &str) -> Option<MediaRef> {
-    let conn = rrss_core::db::open_at(db_path).ok()?;
-    let row = media::lookup(&conn, article_id, url).ok().flatten()?;
-    if row.kind != "video" {
-        return None;
-    }
-    let cached = row
-        .local_path
-        .as_deref()
-        .is_some_and(|p| !p.is_empty() && Path::new(p).exists());
-    cached.then(|| cached_media_ref(&row, url))
+async fn cached_direct(db_path: &Path, article_id: i64, url: &str) -> Option<MediaRef> {
+    let url = url.to_owned();
+    crate::execution::core_db(db_path.to_owned(), move |conn| {
+        let Some(row) = media::lookup(conn, article_id, &url)? else {
+            return Ok(None);
+        };
+        let cached = row.kind == "video"
+            && row
+                .local_path
+                .as_deref()
+                .is_some_and(|p| !p.is_empty() && Path::new(p).exists());
+        if cached {
+            media::touch(conn, row.id)?;
+        }
+        Ok(cached.then(|| cached_media_ref(&row, &url)))
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
-fn write_meta(
+async fn write_meta(
     db_path: &Path,
     data_dir: &Path,
     article_id: i64,
     meta: &CoverMeta,
 ) -> rrss_core::Result<PathBuf> {
-    let dir = media::cache_dir(data_dir);
-    std::fs::create_dir_all(&dir)?;
-    let path = dir.join(format!("meta-{}", cache_key(&meta.open_url)));
-    let file = MetaFile {
-        site: meta.site.to_string(),
-        title: meta.title.clone(),
-        author: meta.author.clone(),
-        duration_secs: meta.duration_secs,
-        open_url: meta.open_url.clone(),
-        thumbnail_url: meta.thumbnail_url.clone(),
-    };
-    let bytes = serde_json::to_vec(&file).map_err(|err| rrss_core::Error::Http {
-        status: 0,
-        message: err.to_string(),
-    })?;
-    std::fs::write(&path, &bytes)?;
-    let conn = rrss_core::db::open_at(db_path)?;
-    media::store_sidecar(
-        &conn,
-        data_dir,
-        article_id,
-        &meta.open_url,
-        &path,
-        Some("application/json"),
-        bytes.len() as u64,
-    )
+    let data_dir = data_dir.to_owned();
+    let meta = meta.clone();
+    crate::execution::core_db(db_path.to_owned(), move |conn| {
+        let dir = media::cache_dir(&data_dir);
+        std::fs::create_dir_all(&dir)?;
+        let mut pending = media::PendingCacheFile::new(media::unique_cache_path(&data_dir));
+        let file = MetaFile {
+            site: meta.site.to_string(),
+            title: meta.title.clone(),
+            author: meta.author.clone(),
+            duration_secs: meta.duration_secs,
+            open_url: meta.open_url.clone(),
+            thumbnail_url: meta.thumbnail_url.clone(),
+        };
+        let bytes = serde_json::to_vec(&file).map_err(|err| rrss_core::Error::Http {
+            status: 0,
+            message: err.to_string(),
+        })?;
+        std::fs::write(pending.path(), &bytes)?;
+
+        media::store_sidecar(
+            conn,
+            &data_dir,
+            article_id,
+            &meta.open_url,
+            &mut pending,
+            Some("application/json"),
+            bytes.len() as u64,
+        )
+    })
+    .await
 }
 
-fn load_doc(db_path: &Path, article_id: i64) -> Result<Document, crate::UiError> {
-    let conn = rrss_core::db::open_at(db_path).map_err(crate::UiError::from)?;
-    let article =
-        rrss_core::articles::get_article(&conn, article_id).map_err(crate::UiError::from)?;
-    let mut doc = crate::document::load_document(&article);
-    present_document(&mut doc);
-    Ok(doc)
+async fn load_doc(db_path: &Path, article_id: i64) -> Result<Document, crate::UiError> {
+    crate::execution::core_db(db_path.to_owned(), move |conn| {
+        let article = rrss_core::articles::get_article(conn, article_id)?;
+        let mut doc = crate::document::load_document(&article);
+        present_document(&mut doc);
+        Ok(doc)
+    })
+    .await
+    .map_err(crate::UiError::from)
 }
 
 async fn get_text(client: &reqwest::Client, url: &str, referer: &str) -> Result<String, FetchFail> {

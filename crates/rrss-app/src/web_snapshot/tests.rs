@@ -232,16 +232,18 @@ fn subscription_articles_are_reused_without_rewriting_content_or_metadata() {
     let feed = conn.last_insert_rowid();
     conn.execute("INSERT INTO articles(feed_id,canonical_url,title,fulltext_md,created_at) VALUES(?1,?2,'Subscription','Original',0)", params![feed, PAGE]).unwrap();
     let id = conn.last_insert_rowid();
-    let result = store_snapshot(
-        &path,
-        dir.path(),
-        PAGE,
-        &archive(&article("Snapshot", "/image.png"), None),
-    )
-    .unwrap();
-    assert_eq!(result.article_id, id);
-    assert!(!result.temporary);
-    assert_eq!(result.web_extracted_at, None);
+    for image in [None, Some(("/image.png", b"not an image".as_slice()))] {
+        let result = store_snapshot(
+            &path,
+            dir.path(),
+            PAGE,
+            &archive(&article("Snapshot", "/image.png"), image),
+        )
+        .unwrap();
+        assert_eq!(result.article_id, id);
+        assert!(!result.temporary);
+        assert_eq!(result.web_extracted_at, None);
+    }
     let stored = articles::get_article(&conn, id).unwrap();
     assert_eq!(stored.title, "Subscription");
     assert_eq!(stored.fulltext_md.as_deref(), Some("Original"));
@@ -263,6 +265,39 @@ fn shield_suspicion_and_bad_images_do_not_commit_articles() {
         assert_eq!(
             conn.query_row("SELECT count(*) FROM articles", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
+            0
+        );
+    }
+}
+
+#[test]
+fn failed_image_registration_and_outer_commit_remove_new_files() {
+    for commit_failure in [false, true] {
+        let (dir, path) = setup();
+        let conn = db::open_at(&path).unwrap();
+        if commit_failure {
+            conn.execute_batch("CREATE TABLE deferred_failure(id INTEGER REFERENCES articles(id) DEFERRABLE INITIALLY DEFERRED);
+                CREATE TRIGGER fail_commit AFTER INSERT ON media BEGIN INSERT INTO deferred_failure VALUES(-1); END;").unwrap();
+        } else {
+            conn.execute_batch("CREATE TRIGGER fail_registration BEFORE INSERT ON media BEGIN SELECT RAISE(ABORT,'fixture'); END;").unwrap();
+        }
+        let raw = archive(
+            &article("Rollback fixture", "/image.png"),
+            Some((
+                "/image.png",
+                include_bytes!("../../../../testdata/render/cover.png"),
+            )),
+        );
+        assert!(store_snapshot(&path, dir.path(), PAGE, &raw).is_err());
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM articles", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            std::fs::read_dir(media::cache_dir(dir.path()))
+                .unwrap()
+                .count(),
             0
         );
     }

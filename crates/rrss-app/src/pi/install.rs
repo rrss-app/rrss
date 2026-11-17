@@ -36,8 +36,8 @@ const GITHUB: ReleaseSource<'static> = ReleaseSource {
 };
 
 /// 同一时刻只有一个安装在跑：启动预载、对话前补装和设置页手动下载共用暂存目录，不能交叠。
-static INSTALL_LOCK: LazyLock<tokio::sync::Mutex<()>> =
-    LazyLock::new(|| tokio::sync::Mutex::new(()));
+static INSTALL_LOCK: LazyLock<std::sync::Arc<tokio::sync::Mutex<()>>> =
+    LazyLock::new(|| std::sync::Arc::new(tokio::sync::Mutex::new(())));
 static STATUS: LazyLock<Mutex<PiInstallView>> = LazyLock::new(|| {
     Mutex::new(PiInstallView {
         state: "idle".into(),
@@ -175,8 +175,8 @@ async fn ensure_from(
     force: bool,
     source: &ReleaseSource<'_>,
 ) -> Result<EnsureReport> {
-    let _guard = INSTALL_LOCK.lock().await;
-    let result = ensure_locked(db_path, data_dir, force, source)
+    let lease = std::sync::Arc::new(INSTALL_LOCK.clone().lock_owned().await);
+    let result = ensure_locked(db_path, data_dir, force, source, lease.clone())
         .await
         .map_err(|error| {
             let ui = PiUiError::project_ref(&error);
@@ -225,30 +225,43 @@ async fn ensure_locked(
     data_dir: &Path,
     force: bool,
     source: &ReleaseSource<'_>,
+    lease: std::sync::Arc<tokio::sync::OwnedMutexGuard<()>>,
 ) -> Result<EnsureReport> {
-    let conn = db::open_at(db_path)?;
-    if uses_custom_pi_binary(&conn, data_dir) {
+    let check_dir = data_dir.to_owned();
+    let (custom, auto_download, auto_update) =
+        crate::execution::core_db(db_path.to_owned(), move |conn| {
+            Ok((
+                uses_custom_pi_binary(conn, &check_dir),
+                pi_store::pi_auto_download(conn)?,
+                pi_store::pi_auto_update(conn)?,
+            ))
+        })
+        .await?;
+    if custom {
         return Ok(EnsureReport::SkippedCustomPath);
     }
 
-    let auto_download = pi_store::pi_auto_download(&conn)?;
-    let auto_update = pi_store::pi_auto_update(&conn)?;
-
     let managed = managed_executable(data_dir);
-    let has_managed = managed.is_file() && is_standalone_binary(&managed);
+    let check_managed = managed.clone();
+    let has_managed = crate::execution::blocking(move || {
+        check_managed.is_file() && is_standalone_binary(&check_managed)
+    })
+    .await?;
     let tested = compat().tested;
 
     if !has_managed {
         if !auto_download && !force {
             return Ok(EnsureReport::MissingDisabled);
         }
-        let client = install_client(&conn)?;
-        let version = install_version(data_dir, &client, tested, source).await?;
-        pi_store::set_pi_managed_version(&conn, &version)?;
+        let client =
+            crate::execution::with_db(db_path.to_owned(), |conn| install_client(conn)).await?;
+        let version = install_version(data_dir, &client, tested, source, lease.clone()).await?;
+        save_managed_version(db_path, &version, lease.clone()).await?;
         return Ok(EnsureReport::Downloaded { version });
     }
 
-    let current = read_pi_version(&managed)
+    let current = read_pi_version_async(managed.clone())
+        .await
         .ok()
         .and_then(|raw| PiVersion::parse(&raw));
     let current_label = current.map(|v| v.to_string()).unwrap_or_default();
@@ -260,9 +273,10 @@ async fn ensure_locked(
                 version: current_label,
             });
         }
-        let client = install_client(&conn)?;
-        let version = install_version(data_dir, &client, tested, source).await?;
-        pi_store::set_pi_managed_version(&conn, &version)?;
+        let client =
+            crate::execution::with_db(db_path.to_owned(), |conn| install_client(conn)).await?;
+        let version = install_version(data_dir, &client, tested, source, lease.clone()).await?;
+        save_managed_version(db_path, &version, lease.clone()).await?;
         return Ok(EnsureReport::Updated {
             from: current_label,
             to: version,
@@ -274,7 +288,7 @@ async fn ensure_locked(
             version: current_label,
         });
     }
-    let client = install_client(&conn)?;
+    let client = crate::execution::with_db(db_path.to_owned(), |conn| install_client(conn)).await?;
     let latest = match fetch_latest_in_line(&client, source).await {
         Ok(latest) => latest,
         Err(err) => {
@@ -289,8 +303,8 @@ async fn ensure_locked(
             version: current_label,
         });
     }
-    let version = install_version(data_dir, &client, latest, source).await?;
-    pi_store::set_pi_managed_version(&conn, &version)?;
+    let version = install_version(data_dir, &client, latest, source, lease.clone()).await?;
+    save_managed_version(db_path, &version, lease.clone()).await?;
     Ok(EnsureReport::Updated {
         from: current_label,
         to: version,
@@ -313,9 +327,17 @@ async fn install_version(
     client: &reqwest::Client,
     version: PiVersion,
     source: &ReleaseSource<'_>,
+    lease: std::sync::Arc<tokio::sync::OwnedMutexGuard<()>>,
 ) -> Result<String> {
-    install_release(data_dir, client, &format!("v{version}"), source).await?;
-    read_pi_version(&managed_executable(data_dir))
+    install_release(
+        data_dir,
+        client,
+        &format!("v{version}"),
+        source,
+        Some(lease),
+    )
+    .await?;
+    read_pi_version_async(managed_executable(data_dir)).await
 }
 
 pub fn format_report(report: &EnsureReport) -> UiError {
@@ -384,6 +406,7 @@ async fn install_release(
     client: &reqwest::Client,
     tag: &str,
     source: &ReleaseSource<'_>,
+    lease: Option<std::sync::Arc<tokio::sync::OwnedMutexGuard<()>>>,
 ) -> Result<()> {
     let (asset, exe_name) = platform_asset()?;
     let base = format!(
@@ -433,21 +456,27 @@ async fn install_release(
 
     verify_sha256(client, tag, asset, &bytes, source).await?;
 
-    let staging = data_dir.join("pi-pkg.staging");
-    if staging.exists() {
-        fs::remove_dir_all(&staging)
-            .map_err(|error| PiUiError::StagingCleanup.failure(error.to_string()))?;
-    }
-    fs::create_dir_all(&staging)
-        .map_err(|error| PiUiError::StagingCreate.failure(error.to_string()))?;
-    // 失败时不把上百 MB 的半成品留在数据目录里。
-    let installed = unpack_and_promote(&bytes, asset, exe_name, &staging, data_dir);
-    if installed.is_err() {
-        fs::remove_dir_all(&staging).ok();
-    }
-    installed?;
-    link_managed_executable(data_dir)?;
-    Ok(())
+    let data_dir = data_dir.to_owned();
+    // The install owner outlives blocking extraction even when its caller is cancelled.
+    crate::execution::blocking(move || {
+        let _lease = lease;
+        let staging = data_dir.join("pi-pkg.staging");
+        if staging.exists() {
+            fs::remove_dir_all(&staging)
+                .map_err(|error| PiUiError::StagingCleanup.failure(error.to_string()))?;
+        }
+        fs::create_dir_all(&staging)
+            .map_err(|error| PiUiError::StagingCreate.failure(error.to_string()))?;
+        // 失败时不把上百 MB 的半成品留在数据目录里。
+        let installed = unpack_and_promote(&bytes, asset, exe_name, &staging, &data_dir);
+        if installed.is_err() {
+            fs::remove_dir_all(&staging).ok();
+        }
+        installed?;
+        link_managed_executable(&data_dir)?;
+        Ok(())
+    })
+    .await?
 }
 
 fn unpack_and_promote(
@@ -612,18 +641,36 @@ fn link_managed_executable(data_dir: &Path) -> Result<()> {
     platform::symlink(&program, &entry).context("symlink managed pi")
 }
 
-fn read_pi_version(path: &Path) -> Result<String> {
-    let output = platform::hide_console_window(std::process::Command::new(path).arg("--version"))
-        .output()
-        .with_context(|| format!("run {}", path.display()))?;
+async fn save_managed_version(
+    db_path: &Path,
+    version: &str,
+    lease: std::sync::Arc<tokio::sync::OwnedMutexGuard<()>>,
+) -> Result<()> {
+    let version = version.to_owned();
+    crate::execution::core_db(db_path.to_owned(), move |conn| {
+        let _lease = lease;
+        pi_store::set_pi_managed_version(conn, &version)
+    })
+    .await?;
+    Ok(())
+}
+
+async fn read_pi_version_async(path: PathBuf) -> Result<String> {
+    let mut command = tokio::process::Command::new(&path);
+    command.arg("--version");
+    platform::hide_console_window_async(&mut command);
+    command.kill_on_drop(true);
+    let output = tokio::time::timeout(std::time::Duration::from_secs(5), command.output())
+        .await
+        .context("pi version probe timed out")??;
     if !output.status.success() {
         bail!("pi --version failed");
     }
-    let v = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if v.is_empty() {
+    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if version.is_empty() {
         bail!("empty pi version");
     }
-    Ok(v)
+    Ok(version)
 }
 
 /// 本平台的发布包名与其中程序的文件名（见 `platform::Os::pi_release`）。
@@ -665,6 +712,52 @@ mod tests {
             error.chain().all(|source| !source.is::<reqwest::Error>()),
             "raw reqwest source retained: {displayed}"
         );
+    }
+
+    #[tokio::test]
+    async fn download_wait_does_not_occupy_a_database_connection() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(500).set_delay(Duration::from_secs(1)))
+            .mount(&server)
+            .await;
+        let (dir, db_path, conn) = install_fixture();
+        drop(conn);
+        let task_path = db_path.clone();
+        let task_dir = dir.path().to_owned();
+        let uri = server.uri();
+        let install = tokio::spawn(async move {
+            ensure_from(
+                &task_path,
+                &task_dir,
+                true,
+                &ReleaseSource {
+                    api: &uri,
+                    downloads: &uri,
+                },
+            )
+            .await
+        });
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while server.received_requests().await.unwrap().is_empty() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        // Seven reserved connections leave one for a foreground read only if download released its connection.
+        let held = (0..7)
+            .map(|_| db::open_at(&db_path).unwrap())
+            .collect::<Vec<_>>();
+        let read = tokio::time::timeout(
+            Duration::from_millis(250),
+            crate::execution::core_db(db_path, |conn| db::get_setting(conn, "close_action")),
+        )
+        .await;
+        drop(held);
+        assert!(install.await.unwrap().is_err());
+        read.expect("network wait retained a pooled connection")
+            .unwrap();
     }
 
     #[tokio::test]
@@ -837,7 +930,7 @@ mod tests {
                 "releases status" | "releases json" => {
                     fetch_latest_in_line(&client, &source).await.unwrap_err()
                 }
-                "asset status" => install_release(dir.path(), &client, &tag, &source)
+                "asset status" => install_release(dir.path(), &client, &tag, &source, None)
                     .await
                     .unwrap_err(),
                 _ => verify_sha256(&client, &tag, asset, b"", &source)
@@ -883,7 +976,7 @@ mod tests {
         let tag = format!("v{}", compat().tested);
         for error in [
             fetch_latest_in_line(&client, &source).await.unwrap_err(),
-            install_release(dir.path(), &client, &tag, &source)
+            install_release(dir.path(), &client, &tag, &source, None)
                 .await
                 .unwrap_err(),
             verify_sha256(&client, &tag, asset, b"", &source)
@@ -938,7 +1031,7 @@ mod tests {
             let client = install_client(&conn).unwrap();
             let error = tokio::time::timeout(Duration::from_secs(5), async {
                 if stage == "asset" {
-                    install_release(dir.path(), &client, &tag, &source)
+                    install_release(dir.path(), &client, &tag, &source, None)
                         .await
                         .unwrap_err()
                 } else {

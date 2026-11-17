@@ -4,11 +4,11 @@
 //! 写回前核对开关与整表刷新标记：其间有整表刷新或开关变化就丢掉结果重算；
 //! 其余输入（行为、新文章）的滞后与原先一样，由防抖 / 每小时整表刷新收敛。
 
-use crate::error::settings::SettingProblem;
 use super::{
     combine::{ALGO_VERSION, Switches},
     model::Model,
 };
+use crate::error::settings::SettingProblem;
 use crate::{Result, db};
 use rusqlite::{Connection, params};
 
@@ -42,7 +42,9 @@ fn set_switch_with(
     between: impl Fn() -> Result<()>,
 ) -> Result<()> {
     if !conn.is_autocommit() {
-        return Err(crate::Error::InvalidSetting(SettingProblem::RankTransactionRequired));
+        return Err(crate::Error::InvalidSetting(
+            SettingProblem::RankTransactionRequired,
+        ));
     }
     for _ in 0..SNAPSHOT_ATTEMPTS {
         let change = db::read_snapshot(conn, |snapshot| {
@@ -53,6 +55,16 @@ fn set_switch_with(
             return Ok(());
         }
     }
+    if let Some(metrics) = crate::db::metrics::for_connection(conn) {
+        metrics
+            .rank_fallbacks
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    tracing::warn!(
+        error_kind = "lock_fallback",
+        operation = "rank_switch",
+        "ranking inputs repeatedly changed; computing under writer lock"
+    );
     // 后台持续入库时快照总会失效；与后台整表刷新一样在写锁内算一次，保证用户的设置能保存。
     // 命令已在阻塞线程执行，持锁只让其他写入稍等，不占界面线程。
     db::atomic_write(conn, |tx| {
@@ -63,16 +75,13 @@ fn set_switch_with(
 struct SwitchChange<'a> {
     key: &'a str,
     enabled: bool,
-    // data_version 覆盖其他连接提交；total_changes 覆盖同一连接的本地写入。
-    version: (i64, u64),
+    // Database triggers version ranking inputs across all connections.
+    version: i64,
     plan: Plan,
 }
 
-fn input_version(conn: &Connection) -> Result<(i64, u64)> {
-    Ok((
-        conn.query_row("PRAGMA data_version", [], |row| row.get(0))?,
-        conn.total_changes(),
-    ))
+fn input_version(conn: &Connection) -> Result<i64> {
+    db::input_revision(conn, "rank")
 }
 
 impl<'a> SwitchChange<'a> {
@@ -87,7 +96,11 @@ impl<'a> SwitchChange<'a> {
             db::RANK_COVERAGE_ENABLED_KEY => &mut switches.coverage,
             db::RANK_FRESHNESS_ENABLED_KEY => &mut switches.freshness,
             db::RANK_AFFINITY_ENABLED_KEY => &mut switches.affinity,
-            _ => return Err(crate::Error::InvalidSetting(SettingProblem::RankSwitchUnknown)),
+            _ => {
+                return Err(crate::Error::InvalidSetting(
+                    SettingProblem::RankSwitchUnknown,
+                ));
+            }
         };
         *selected = enabled;
         Ok(Self {
@@ -148,6 +161,16 @@ pub fn refresh(
             }
         }
     }
+    if let Some(metrics) = crate::db::metrics::for_connection(conn) {
+        metrics
+            .rank_fallbacks
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    tracing::warn!(
+        error_kind = "lock_fallback",
+        operation = "rank_refresh",
+        "ranking calculation uses writer lock"
+    );
     db::atomic_write(conn, |tx| {
         let n = plan(tx, ids, now)?.write(tx)?;
         after(tx)?;
@@ -249,6 +272,31 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn unrelated_setting_and_media_writes_do_not_invalidate_a_switch_plan() {
+        let (dir, conn) = fixture();
+        let other = db::open_at(&dir.path().join("rank.db")).unwrap();
+        let rounds = std::cell::Cell::new(0);
+        set_switch_with(&conn, db::RANK_FRESHNESS_ENABLED_KEY, false, || {
+            rounds.set(rounds.get() + 1);
+            db::set_setting(&other, "close_action", "ask")?;
+            other.execute(
+                "INSERT INTO media(url,created_at) VALUES('https://rank.example/image',0)",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(rounds.get(), 1);
+        assert_eq!(
+            db::pool::metrics(&dir.path().join("rank.db"))
+                .unwrap()
+                .rank_fallbacks
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
+    }
+
     use super::*;
 
     fn fixture() -> (tempfile::TempDir, db::PooledConnection) {

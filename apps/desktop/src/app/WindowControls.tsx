@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { WindowControlsStyle } from "../bindings";
 import { api, windowControls } from "../lib/api";
+import { markCloseClick } from "../lib/closeTiming";
 import { useTranslation } from "../i18n";
 
 /** 10px 细线图标：Windows 用 1px 直角线，GNOME 用 1.6px 圆头线（样式里区分）。 */
@@ -59,7 +60,7 @@ export function WindowControls() {
     <button type="button" tabIndex={-1} aria-label={sizeLabel} title={sizeLabel} onClick={() => run(windowControls.toggleMaximize)}>
       <svg viewBox="0 0 10 10" aria-hidden="true"><path d={maximized ? glyph.restore : glyph.maximize} /></svg>
     </button>
-    <button type="button" tabIndex={-1} className="window-close" aria-label={t("window.closeWindow")} title={t("window.close")} onClick={() => run(windowControls.close)}>
+    <button type="button" tabIndex={-1} className="window-close" aria-label={t("window.closeWindow")} title={t("window.close")} onClick={() => { markCloseClick(); run(windowControls.close); }}>
       <svg viewBox="0 0 10 10" aria-hidden="true"><path d={glyph.close} /></svg>
     </button>
   </div>;

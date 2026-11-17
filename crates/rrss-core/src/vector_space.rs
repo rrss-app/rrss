@@ -389,7 +389,7 @@ pub fn finish_rebuild(conn: &Connection, id: i64) -> Result<bool> {
         else {
             return Ok(false);
         };
-        if !binding_matches(conn, &space.fingerprint())? {
+        if !binding_matches(conn, &space.fingerprint())? || crate::rag_prepare::pending(conn)? {
             return Ok(false);
         }
         let (written, total) = rebuild_progress(conn, id)?;

@@ -81,6 +81,9 @@ pub(crate) fn pending_inputs(
 ) -> rrss_core::Result<bool> {
     let retries = capacity.retries.lock().unwrap().clone();
     if let Some(space) = rrss_core::vector_space::building(conn)? {
+        if rrss_core::rag_prepare::pending(conn)? {
+            return Ok(true);
+        }
         let inputs =
             rrss_core::vector_space::pending_rebuild_batch(conn, space.id, 1, |kind, id, text| {
                 retries.retryable(Kind::rebuild(kind), id, &ai_store::hash_input(text))

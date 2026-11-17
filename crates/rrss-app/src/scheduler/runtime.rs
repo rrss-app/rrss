@@ -620,7 +620,8 @@ impl Shared {
         }
         let entries = Arc::new(entries);
         let snapshot = entries.clone();
-        let marked = super::write_db(self.path.clone(), move |conn| {
+        let needs_write = entries.iter().any(|entry| entry.deferred.until.is_some());
+        let record = move |conn: &rusqlite::Connection| {
             let records = snapshot
                 .iter()
                 .map(|entry| entry.deferred.record())
@@ -631,8 +632,14 @@ impl Shared {
                 .map(|(entry, record)| (&entry.feed, entry.deferred.until, record.as_str()))
                 .collect::<Vec<_>>();
             rrss_core::ingest::record_fetch_deferred_batch(conn, &requests)
-        })
-        .await;
+        };
+        let marked = if needs_write {
+            super::write_db(self.path.clone(), record).await
+        } else {
+            // Local admission/cooldown persistence waits only inspect source identity.
+            // They must complete while the writer they describe is still blocked.
+            crate::jobs::spawn_db(self.path.clone(), record).await
+        };
         match marked {
             Ok(results) => {
                 for (entry, result) in entries.iter().zip(results) {

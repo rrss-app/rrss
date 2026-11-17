@@ -24,6 +24,8 @@ pub const TITLE_MIN_SHARED: usize = 2;
 pub const TITLE_MIN_OVERLAP: f32 = 0.5;
 pub const CLUSTER_WINDOW_DAYS: i64 = 14;
 pub const BACKFILL_BATCH: i64 = 200;
+mod prepare;
+
 const LABEL_CHARS: usize = 48;
 const MS_PER_DAY: i64 = 86_400_000;
 
@@ -46,25 +48,11 @@ pub fn rebuild_if_needed(conn: &Connection) -> Result<bool> {
     {
         return Ok(false);
     }
+    if conn.is_autocommit() {
+        return prepare::run(conn, true).map(|_| true);
+    }
     let window = now_ms() - CLUSTER_WINDOW_DAYS * MS_PER_DAY;
-    // 指纹只取决于标题与正文：先在读快照里算好，锁内核对两者未变后直接使用。
-    // 只留内容摘要，不在内存里多存一份正文。
-    let precomputed: HashMap<i64, (u64, i64)> = if conn.is_autocommit() {
-        crate::db::read_snapshot(conn, |snapshot| {
-            let mut stmt = snapshot.prepare(WINDOW_ROWS_SQL)?;
-            let mut rows = stmt.query([window])?;
-            let mut out = HashMap::new();
-            while let Some(row) = rows.next()? {
-                let (id, title, html): (i64, String, Option<String>) =
-                    (row.get(0)?, row.get(2)?, row.get(3)?);
-                let fp = fingerprint_article(&title, html.as_deref());
-                out.insert(id, (content_key(&title, html.as_deref()), fp));
-            }
-            Ok(out)
-        })?
-    } else {
-        HashMap::new()
-    };
+    // Nested callers already own the transaction; preserve their atomic boundary.
     crate::db::atomic_write(conn, |conn| {
         if crate::db::get_setting(conn, ALGORITHM_VERSION_KEY)?.as_deref()
             == Some(ALGORITHM_VERSION)
@@ -91,10 +79,7 @@ pub fn rebuild_if_needed(conn: &Connection) -> Result<bool> {
             }
         }
         for (id, _, title, html) in &rows {
-            let fp = match precomputed.get(id) {
-                Some((key, fp)) if *key == content_key(title, html.as_deref()) => *fp,
-                _ => fingerprint_article(title, html.as_deref()),
-            };
+            let fp = fingerprint_article(title, html.as_deref());
             conn.execute(
                 "UPDATE articles SET simhash=?1 WHERE id=?2",
                 params![fp, id],
@@ -120,14 +105,6 @@ fn window_rows(conn: &Connection, window: i64) -> Result<Vec<WindowRow>> {
             Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?)
-}
-
-/// 同一进程内比较标题与正文是否变化。
-fn content_key(title: &str, html: Option<&str>) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::hash::DefaultHasher::new();
-    (title, html).hash(&mut hasher);
-    hasher.finish()
 }
 
 /// Random articles give a bounded random-pair background distribution (at most 8128 pairs).
@@ -413,8 +390,8 @@ pub fn assign_article(conn: &Connection, article_id: i64) -> Result<i64> {
 /// 窗口内代表标题向量相近的簇两两合并。合并在一个写事务里（已在事务内则用 SAVEPOINT）。
 ///
 /// 先在读快照里找有没有满足条件的簇对：多数轮次一对都没有，不必拿写锁。
-/// 找到后在写锁里按原算法完整重做，结果与一直持锁时相同；快照之后才出现的
-/// 簇对留给下一轮。
+/// 找到候选后在快照上准备完整合并计划，短写事务校验输入版本并提交差异。
+/// 已处于调用方事务中时沿用原子边界。
 pub fn merge_close_clusters(conn: &Connection) -> Result<u32> {
     if conn.is_autocommit() {
         let (found, calibration) = crate::db::read_snapshot(conn, |snapshot| {
@@ -433,7 +410,11 @@ pub fn merge_close_clusters(conn: &Connection) -> Result<u32> {
             return Ok(0);
         }
     }
-    crate::db::atomic_write(conn, merge_close_clusters_inner)
+    if conn.is_autocommit() {
+        prepare::run(conn, false)
+    } else {
+        crate::db::atomic_write(conn, merge_close_clusters_inner)
+    }
 }
 
 type Representative = (i64, Vec<f32>, ArticleFinger);
@@ -780,6 +761,93 @@ pub fn cluster_members(conn: &Connection, cluster_id: i64) -> Result<Vec<i64>> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn planned_upgrade_matches_existing_url_fingerprint_and_source_rules() {
+        let (_dir, planned) = open_temp();
+        let (_other_dir, reference) = open_temp();
+        let now = now_ms();
+        for conn in [&*planned, &*reference] {
+            seed_similar_clusters(conn, &[2, 1, 3, 1]);
+            conn.execute("UPDATE articles SET content_html='<p>A substantial synthetic report about a public library opening and its reading rooms.</p>',
+                title='library opening event',published_at=?1,created_at=?1", [now]).unwrap();
+            conn.execute("UPDATE articles SET canonical_url='https://cluster.example/shared' WHERE id IN (1001,1003)", []).unwrap();
+            conn.execute("UPDATE articles SET feed_id=(SELECT feed_id FROM articles WHERE id=1001),canonical_url='https://cluster.example/different' WHERE id=1004", []).unwrap();
+            conn.execute(
+                "UPDATE articles SET published_at=?1,created_at=?1 WHERE id=1002",
+                [now - 20 * MS_PER_DAY],
+            )
+            .unwrap();
+        }
+        rebuild_if_needed(&planned).unwrap();
+        crate::db::atomic_write(&reference, rebuild_if_needed).unwrap();
+        let rows = |conn: &Connection| {
+            conn.prepare("SELECT id,simhash,cluster_id FROM articles ORDER BY id")
+                .unwrap()
+                .query_map([], |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, Option<i64>>(1)?,
+                        r.get::<_, Option<i64>>(2)?,
+                    ))
+                })
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap()
+        };
+        assert_eq!(rows(&planned), rows(&reference));
+        let groups = |conn: &Connection| {
+            conn.prepare("SELECT id,label,representative_id,member_count,first_published_at,last_published_at FROM clusters ORDER BY id").unwrap()
+            .query_map([], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,Option<i64>>(2)?,r.get::<_,i64>(3)?,r.get::<_,Option<i64>>(4)?,r.get::<_,Option<i64>>(5)?))).unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>().unwrap()
+        };
+        assert_eq!(groups(&planned), groups(&reference));
+    }
+
+    #[test]
+    fn planned_merge_matches_transaction_algorithm_and_rechecks_inputs() {
+        let (dir, planned) = open_temp();
+        let (_other_dir, reference) = open_temp();
+        for conn in [&*planned, &*reference] {
+            seed_similar_clusters(conn, &[1, 2, 1]);
+        }
+        let other = crate::db::open_at(&dir.path().join("rrss.db")).unwrap();
+        let rounds = std::cell::Cell::new(0);
+        super::prepare::run_with(&planned, false, || {
+            let round = rounds.get();
+            rounds.set(round + 1);
+            other.busy_timeout(std::time::Duration::ZERO)?;
+            if round == 0 {
+                other.execute(
+                    "UPDATE articles SET title='unrelated subject' WHERE id=1001",
+                    [],
+                )?;
+            } else {
+                crate::db::set_setting(&other, "close_action", "ask")?;
+            }
+            Ok(())
+        })
+        .unwrap();
+        reference
+            .execute(
+                "UPDATE articles SET title='unrelated subject' WHERE id=1001",
+                [],
+            )
+            .unwrap();
+        crate::db::atomic_write(&reference, merge_close_clusters_inner).unwrap();
+        let snapshot = |conn: &Connection| {
+            conn.prepare("SELECT id,cluster_id FROM articles ORDER BY id")
+                .unwrap()
+                .query_map([], |r| {
+                    Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?))
+                })
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap()
+        };
+        assert_eq!(snapshot(&planned), snapshot(&reference));
+        assert_eq!(rounds.get(), 2);
+    }
+
     use super::*;
     use crate::db::{PooledConnection, open_at};
     use crate::feeds::{SubscribeRequest, subscribe};

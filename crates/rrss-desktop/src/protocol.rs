@@ -21,6 +21,7 @@ pub fn media_payload(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "not found".to_string())?;
     let _ = media::touch(&conn, id);
+    drop(conn);
     let path = row.local_path.filter(|p| !p.is_empty()).ok_or("no file")?;
     let path = Path::new(&path);
     use std::io::Read;

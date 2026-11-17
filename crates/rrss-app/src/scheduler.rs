@@ -24,11 +24,8 @@ pub use runtime::{FetchTicket, Scheduler};
 const DB_WRITE_ATTEMPTS: u32 = 4;
 
 fn is_sqlite_busy(err: &rrss_core::Error) -> bool {
-    let lower = err.to_string().to_ascii_lowercase();
-    lower.contains("database is locked")
-        || lower.contains("database lock")
-        || lower.contains("sqlite_busy")
-        || lower.contains("code: 5")
+    matches!(err, rrss_core::Error::Sqlite(rusqlite::Error::SqliteFailure(code, _))
+        if code.code == rusqlite::ErrorCode::DatabaseBusy)
 }
 
 /// 刷新的写操作。写事务在库内等待；仍遇到锁定时再试几次，避免把忙等记成源错误。
@@ -43,30 +40,25 @@ where
     for attempt in 0..DB_WRITE_ATTEMPTS {
         let path = path.clone();
         let f = Arc::clone(&f);
-        let work = capacity.work();
-        let metrics = capacity.clone();
-        let queued = std::time::Instant::now();
-        // 阻塞线程不继承调用方的 span；显式带过去，写库里的日志仍属于这个源。
-        let span = tracing::Span::current();
-        match tokio::task::spawn_blocking(move || {
-            let _work = work;
-            metrics.metrics.db_queue.record(queued.elapsed());
-            span.in_scope(|| {
-                let conn = db::open_at(&path)?;
-                let _timing = metrics.metrics.db_work.start();
-                f(&conn)
-            })
+        let turn = capacity.feed_writes.clone().lock_owned().await;
+        match crate::jobs::spawn_db(path, move |conn| {
+            let _turn = turn;
+            f(conn)
         })
         .await
         {
-            Ok(Ok(value)) => return Ok(value),
-            Ok(Err(err)) if is_sqlite_busy(&err) && attempt + 1 < DB_WRITE_ATTEMPTS => {
-                tracing::warn!(attempt, error = %crate::log::error(&err), "refresh write busy; retrying");
+            Ok(value) => return Ok(value),
+            Err(err)
+                if err
+                    .downcast_ref::<rrss_core::Error>()
+                    .is_some_and(is_sqlite_busy)
+                    && attempt + 1 < DB_WRITE_ATTEMPTS =>
+            {
+                tracing::warn!(attempt, error = %crate::log::error(err.as_ref()), "refresh write busy; retrying");
                 last = Some(err);
                 tokio::time::sleep(Duration::from_millis(200 * u64::from(attempt + 1))).await;
             }
-            Ok(Err(err)) => return Err(err.into()),
-            Err(err) => return Err(err.into()),
+            Err(err) => return Err(err),
         }
     }
     Err(last

@@ -292,6 +292,7 @@ impl runtime::Shared {
                 named("db_connection_wait", &db.connection_wait),
                 named("db_write_wait", &db.write_wait),
                 named("db_write_hold", &db.write_hold),
+                named("db_commit", &db.commit),
                 named("feed_parse", &db.feed_parse),
                 named("feed_ingest", &db.feed_ingest),
             ]);

@@ -29,7 +29,10 @@ pub fn run() -> anyhow::Result<()> {
         tracing::info!(ok = result.ok, message = %result.message, "pending restore handled");
     }
     rrss_core::backup::before_upgrade(&db_path, &data_dir, rrss_app::actions::APP_VERSION)?;
-    let _ = db::open_at(&db_path)?;
+    let close_action = {
+        let conn = db::open_at(&db_path)?;
+        rrss_app::window_close::action(&conn)?
+    };
     let network = NetworkClients::new(&db_path);
 
     let web_windows = WebWindows::new(rrss_app::web_window::WebSession::initialize(
@@ -44,7 +47,7 @@ pub fn run() -> anyhow::Result<()> {
         })),
     )
     .manage(web_windows)
-    .manage(tray::Tray::default())
+    .manage(tray::Tray::new(close_action))
     .on_window_event(|window, event| {
         if window.label() != "main" {
             return;
@@ -80,7 +83,12 @@ pub fn run() -> anyhow::Result<()> {
                     .map(str::to_string);
                 let id = queries::media_id_from_path(&path);
                 let result = match id {
-                    Some(id) => media_payload(id, &db_path, range.as_deref()),
+                    Some(id) => rrss_app::execution::blocking(move || {
+                        media_payload(id, &db_path, range.as_deref())
+                    })
+                    .await
+                    .map_err(|error| error.to_string())
+                    .and_then(|result| result),
                     None => Err(format!("bad path: {path}")),
                 };
                 match result {
@@ -119,6 +127,14 @@ pub fn run() -> anyhow::Result<()> {
         });
     })
     .setup(move |app| {
+        match tauri::async_runtime::block_on(async {
+            rrss_app::execution::monitor::start(&db_path)
+        }) {
+            Ok(monitor) => {
+                app.manage(monitor);
+            }
+            Err(error) => tracing::warn!(error = %error, "latency observer unavailable"),
+        }
         // 对话运行时要在 tokio 运行时里建（它会起事件泵与空闲回收任务）。
         let chat = tauri::async_runtime::block_on({
             let cfg = rrss_app::pi::SupervisorConfig {

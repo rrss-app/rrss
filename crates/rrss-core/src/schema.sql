@@ -579,3 +579,197 @@ CREATE TABLE site_rules (
     enabled INTEGER NOT NULL DEFAULT 1,
     updated_at INTEGER NOT NULL
 );
+
+-- Before dropping referenced columns or rebuilding tables, drop their dependent
+-- preparation/revision triggers and recreate them with the migrated schema.
+-- Durable work is invalidated with the article update, including external writers.
+CREATE TABLE chunk_preparation (
+    article_id INTEGER PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE,
+    revision BLOB NOT NULL DEFAULT (randomblob(16))
+);
+CREATE TRIGGER chunk_preparation_ai AFTER INSERT ON articles BEGIN
+    INSERT INTO chunk_preparation(article_id) VALUES(new.id)
+    ON CONFLICT(article_id) DO UPDATE SET revision=randomblob(16);
+END;
+CREATE TRIGGER chunk_preparation_au AFTER UPDATE OF title, summary, blocks_json, content_html,
+    read, starred, embed_tier, pruned_at, expires_at ON articles
+WHEN old.title IS NOT new.title OR old.summary IS NOT new.summary
+    OR old.blocks_json IS NOT new.blocks_json OR old.content_html IS NOT new.content_html
+    OR old.read IS NOT new.read OR old.starred IS NOT new.starred
+    OR old.embed_tier IS NOT new.embed_tier OR old.pruned_at IS NOT new.pruned_at
+    OR old.expires_at IS NOT new.expires_at
+BEGIN
+    INSERT INTO chunk_preparation(article_id) VALUES(new.id)
+    ON CONFLICT(article_id) DO UPDATE SET revision=randomblob(16);
+END;
+
+CREATE TABLE media_cleanup (local_path TEXT PRIMARY KEY);
+CREATE INDEX IF NOT EXISTS idx_media_local_path ON media(local_path);
+CREATE TRIGGER media_cleanup_ad AFTER DELETE ON media
+WHEN old.local_path IS NOT NULL AND old.local_path!='' BEGIN
+    INSERT OR IGNORE INTO media_cleanup VALUES(old.local_path);
+END;
+CREATE TRIGGER media_cleanup_au AFTER UPDATE OF local_path ON media
+WHEN old.local_path IS NOT NULL AND old.local_path!='' AND old.local_path IS NOT new.local_path BEGIN
+    INSERT OR IGNORE INTO media_cleanup VALUES(old.local_path);
+END;
+
+CREATE TABLE computation_revisions (domain TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0);
+INSERT INTO computation_revisions(domain) VALUES('cluster'),('interest'),('rank');
+CREATE TRIGGER revisions_articles_insert AFTER INSERT ON articles BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('cluster','rank');
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='interest'
+        AND EXISTS(SELECT 1 FROM chunks WHERE article_id=new.id AND embedding IS NOT NULL);
+END;
+CREATE TRIGGER revisions_articles_delete AFTER DELETE ON articles BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('cluster','interest','rank');
+END;
+CREATE TRIGGER revisions_articles_cluster_update AFTER UPDATE OF feed_id,title,canonical_url,simhash,published_at,created_at,score,cluster_id,content_html,expires_at ON articles
+WHEN old.feed_id IS NOT new.feed_id OR old.title IS NOT new.title OR old.canonical_url IS NOT new.canonical_url OR old.simhash IS NOT new.simhash OR old.published_at IS NOT new.published_at OR old.created_at IS NOT new.created_at OR old.score IS NOT new.score OR old.cluster_id IS NOT new.cluster_id OR old.content_html IS NOT new.content_html OR old.expires_at IS NOT new.expires_at BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='cluster';
+END;
+CREATE TRIGGER revisions_articles_interest_update AFTER UPDATE OF score,expires_at ON articles
+WHEN old.score IS NOT new.score OR old.expires_at IS NOT new.expires_at BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='interest';
+END;
+CREATE TRIGGER revisions_articles_rank_update AFTER UPDATE OF feed_id,author,title,canonical_url,published_at,created_at,cluster_id,expires_at,read,starred ON articles
+WHEN old.feed_id IS NOT new.feed_id OR old.author IS NOT new.author OR old.title IS NOT new.title OR old.canonical_url IS NOT new.canonical_url OR old.published_at IS NOT new.published_at OR old.created_at IS NOT new.created_at OR old.cluster_id IS NOT new.cluster_id OR old.expires_at IS NOT new.expires_at OR old.read IS NOT new.read OR old.starred IS NOT new.starred BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='rank';
+END;
+CREATE TRIGGER revisions_chunks_insert AFTER INSERT ON chunks BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('cluster','interest','rank');
+END;
+CREATE TRIGGER revisions_chunks_delete AFTER DELETE ON chunks BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('cluster','interest','rank');
+END;
+CREATE TRIGGER revisions_chunks_cluster_update AFTER UPDATE OF article_id,ordinal,kind,embedding,space_id ON chunks
+WHEN old.article_id IS NOT new.article_id OR old.ordinal IS NOT new.ordinal OR old.kind IS NOT new.kind OR old.embedding IS NOT new.embedding OR old.space_id IS NOT new.space_id BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='cluster';
+END;
+CREATE TRIGGER revisions_chunks_interest_update AFTER UPDATE OF article_id,ordinal,kind,embedding,space_id ON chunks
+WHEN old.article_id IS NOT new.article_id OR old.ordinal IS NOT new.ordinal OR old.kind IS NOT new.kind OR old.embedding IS NOT new.embedding OR old.space_id IS NOT new.space_id BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='interest';
+END;
+CREATE TRIGGER revisions_chunks_rank_update AFTER UPDATE OF article_id,ordinal,kind,embedding,space_id ON chunks
+WHEN old.article_id IS NOT new.article_id OR old.ordinal IS NOT new.ordinal OR old.kind IS NOT new.kind OR old.embedding IS NOT new.embedding OR old.space_id IS NOT new.space_id BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='rank';
+END;
+CREATE TRIGGER revisions_clusters_insert AFTER INSERT ON clusters BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('cluster');
+END;
+CREATE TRIGGER revisions_clusters_delete AFTER DELETE ON clusters BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('cluster');
+END;
+CREATE TRIGGER revisions_clusters_cluster_update AFTER UPDATE OF label,representative_id,member_count,first_published_at,last_published_at,created_at ON clusters
+WHEN old.label IS NOT new.label OR old.representative_id IS NOT new.representative_id OR old.member_count IS NOT new.member_count OR old.first_published_at IS NOT new.first_published_at OR old.last_published_at IS NOT new.last_published_at OR old.created_at IS NOT new.created_at BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='cluster';
+END;
+CREATE TRIGGER revisions_interests_insert AFTER INSERT ON interests BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('interest');
+END;
+CREATE TRIGGER revisions_interests_delete AFTER DELETE ON interests BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('interest');
+END;
+CREATE TRIGGER revisions_interests_interest_update AFTER UPDATE OF label,weight,enabled,embedding,space_id ON interests
+WHEN old.label IS NOT new.label OR old.weight IS NOT new.weight OR old.enabled IS NOT new.enabled OR old.embedding IS NOT new.embedding OR old.space_id IS NOT new.space_id BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='interest';
+END;
+CREATE TRIGGER revisions_vector_spaces_insert AFTER INSERT ON vector_spaces BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('cluster','interest','rank');
+END;
+CREATE TRIGGER revisions_vector_spaces_delete AFTER DELETE ON vector_spaces BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('cluster','interest','rank');
+END;
+CREATE TRIGGER revisions_vector_spaces_cluster_update AFTER UPDATE OF state,dims,source_dims ON vector_spaces
+WHEN old.state IS NOT new.state OR old.dims IS NOT new.dims OR old.source_dims IS NOT new.source_dims BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='cluster';
+END;
+CREATE TRIGGER revisions_vector_spaces_interest_update AFTER UPDATE OF state,dims,source_dims ON vector_spaces
+WHEN old.state IS NOT new.state OR old.dims IS NOT new.dims OR old.source_dims IS NOT new.source_dims BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='interest';
+END;
+CREATE TRIGGER revisions_vector_spaces_rank_update AFTER UPDATE OF state,dims,source_dims ON vector_spaces
+WHEN old.state IS NOT new.state OR old.dims IS NOT new.dims OR old.source_dims IS NOT new.source_dims BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='rank';
+END;
+CREATE TRIGGER revisions_feedback_insert AFTER INSERT ON feedback BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('rank');
+END;
+CREATE TRIGGER revisions_feedback_delete AFTER DELETE ON feedback BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('rank');
+END;
+CREATE TRIGGER revisions_feedback_rank_update AFTER UPDATE ON feedback BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='rank';
+END;
+CREATE TRIGGER revisions_article_events_insert AFTER INSERT ON article_events BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('rank');
+END;
+CREATE TRIGGER revisions_article_events_delete AFTER DELETE ON article_events BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('rank');
+END;
+CREATE TRIGGER revisions_article_events_rank_update AFTER UPDATE ON article_events BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='rank';
+END;
+CREATE TRIGGER revisions_read_sessions_insert AFTER INSERT ON read_sessions BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('rank');
+END;
+CREATE TRIGGER revisions_read_sessions_delete AFTER DELETE ON read_sessions BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('rank');
+END;
+CREATE TRIGGER revisions_read_sessions_rank_update AFTER UPDATE ON read_sessions BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='rank';
+END;
+CREATE TRIGGER revisions_exposures_insert AFTER INSERT ON exposures BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('rank');
+END;
+CREATE TRIGGER revisions_exposures_delete AFTER DELETE ON exposures BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('rank');
+END;
+CREATE TRIGGER revisions_exposures_rank_update AFTER UPDATE ON exposures BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='rank';
+END;
+CREATE TRIGGER revisions_article_tags_insert AFTER INSERT ON article_tags BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('rank');
+END;
+CREATE TRIGGER revisions_article_tags_delete AFTER DELETE ON article_tags BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain IN ('rank');
+END;
+CREATE TRIGGER revisions_article_tags_rank_update AFTER UPDATE ON article_tags BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='rank';
+END;
+CREATE TRIGGER revisions_settings_interest_insert AFTER INSERT ON settings
+WHEN new.key IN ('hide_threshold','interest_boost_enabled') BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='interest';
+END;
+CREATE TRIGGER revisions_settings_interest_update AFTER UPDATE ON settings
+WHEN new.key IN ('hide_threshold','interest_boost_enabled') AND old.value IS NOT new.value BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='interest';
+END;
+CREATE TRIGGER revisions_settings_interest_delete AFTER DELETE ON settings
+WHEN old.key IN ('hide_threshold','interest_boost_enabled') BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='interest';
+END;
+CREATE TRIGGER revisions_settings_cluster_insert AFTER INSERT ON settings
+WHEN new.key IN ('cluster_algorithm_version') BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='cluster';
+END;
+CREATE TRIGGER revisions_settings_cluster_update AFTER UPDATE ON settings
+WHEN new.key IN ('cluster_algorithm_version') AND old.value IS NOT new.value BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='cluster';
+END;
+CREATE TRIGGER revisions_settings_cluster_delete AFTER DELETE ON settings
+WHEN old.key IN ('cluster_algorithm_version') BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='cluster';
+END;
+CREATE TRIGGER revisions_settings_rank_insert AFTER INSERT ON settings
+WHEN new.key IN ('rank_features_enabled','rank_source_enabled','rank_coverage_enabled','rank_freshness_enabled','rank_affinity_enabled') BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='rank';
+END;
+CREATE TRIGGER revisions_settings_rank_update AFTER UPDATE ON settings
+WHEN new.key IN ('rank_features_enabled','rank_source_enabled','rank_coverage_enabled','rank_freshness_enabled','rank_affinity_enabled') AND old.value IS NOT new.value BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='rank';
+END;
+CREATE TRIGGER revisions_settings_rank_delete AFTER DELETE ON settings
+WHEN old.key IN ('rank_features_enabled','rank_source_enabled','rank_coverage_enabled','rank_freshness_enabled','rank_affinity_enabled') BEGIN
+    UPDATE computation_revisions SET revision=revision+1 WHERE domain='rank';
+END;

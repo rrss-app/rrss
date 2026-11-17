@@ -42,7 +42,7 @@ pub struct DueEmbedArticle {
 }
 
 impl DueEmbedArticle {
-    fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+    pub(crate) fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
         Ok(Self {
             id: row.get(0)?,
             title: row.get(1)?,
@@ -143,21 +143,38 @@ pub fn sync_article_chunks(
     }
     let tier = tier.clamp(1, 2);
     let drafts = article.drafts(tier);
-    for draft in &drafts {
-        upsert_chunk(conn, article.id, draft)?;
+    crate::db::atomic_write(conn, |conn| {
+        apply_chunk_drafts(conn, article.id, tier, &drafts)?;
+        conn.execute("DELETE FROM chunk_preparation WHERE article_id=?1 AND EXISTS(
+            SELECT 1 FROM articles WHERE id=?1 AND title IS ?2 AND summary IS ?3
+            AND blocks_json IS ?4 AND content_html IS ?5 AND pruned_at IS NULL AND expires_at IS NULL
+            AND MAX(embed_tier,CASE WHEN read=1 OR starred=1 THEN 2 ELSE 1 END)<=?6)",
+            params![article.id,article.title,article.summary,article.blocks_json,article.content_html,tier])?;
+        pending_chunks(conn, article.id, tier)
+    })
+}
+
+pub(crate) fn apply_chunk_drafts(
+    conn: &Connection,
+    article_id: i64,
+    tier: i64,
+    drafts: &[ChunkDraft],
+) -> Result<()> {
+    for draft in drafts {
+        upsert_chunk(conn, article_id, draft)?;
     }
     if tier >= 2 {
         conn.execute(
             "DELETE FROM chunks WHERE article_id = ?1 AND (ordinal < 0 OR ordinal > ?2 OR (ordinal = 0 AND ?3))",
-            params![article.id, drafts.last().map_or(-1, |d| d.ordinal),
+            params![article_id, drafts.last().map_or(-1, |d| d.ordinal),
                 drafts.first().is_none_or(|d| d.ordinal != 0)],
         )?;
     }
     conn.execute(
         "UPDATE articles SET embed_tier = MAX(embed_tier, ?1) WHERE id = ?2",
-        params![tier, article.id],
+        params![tier, article_id],
     )?;
-    pending_chunks(conn, article.id, tier)
+    Ok(())
 }
 
 /// 重建包含历史已同步的正文层；状态预估也使用这份文章集合。
@@ -183,7 +200,8 @@ fn upsert_chunk(conn: &Connection, article_id: i64, draft: &ChunkDraft) -> Resul
            space_id = CASE WHEN chunks.source_hash = excluded.source_hash THEN chunks.space_id ELSE NULL END,
            model = CASE WHEN chunks.source_hash = excluded.source_hash THEN chunks.model ELSE NULL END,
            attempts = CASE WHEN chunks.source_hash = excluded.source_hash THEN chunks.attempts ELSE 0 END,
-           last_error = CASE WHEN chunks.source_hash = excluded.source_hash THEN chunks.last_error ELSE NULL END",
+           last_error = CASE WHEN chunks.source_hash = excluded.source_hash THEN chunks.last_error ELSE NULL END
+         WHERE chunks.source_hash IS NOT excluded.source_hash OR chunks.text IS NOT excluded.text OR chunks.kind IS NOT excluded.kind",
         params![
             article_id,
             draft.ordinal,
@@ -666,8 +684,9 @@ pub fn format_rag_context(hits: &[SearchHit]) -> String {
     if hits.is_empty() {
         return String::new();
     }
-    let mut out =
-        String::from("Possibly related local articles (found automatically from the question; titles and summaries only, may not be relevant):\n");
+    let mut out = String::from(
+        "Possibly related local articles (found automatically from the question; titles and summaries only, may not be relevant):\n",
+    );
     for hit in hits {
         let line = format!(
             "- id={} title={} source={}\n  {}\n",
@@ -727,7 +746,7 @@ pub(crate) struct SelectedArticle {
 }
 
 /// 标题向量优先，否则首个正文向量；损坏的标题向量也不退回正文。
-const SELECTED_CHUNK_SQL: &str = "(
+pub(crate) const SELECTED_CHUNK_SQL: &str = "(
     SELECT c2.id FROM chunks c2
     WHERE c2.article_id = a.id AND c2.embedding IS NOT NULL AND c2.space_id = ?2
     ORDER BY CASE WHEN c2.kind = 'title_summary' THEN 0 ELSE 1 END, c2.ordinal
@@ -738,16 +757,29 @@ pub(crate) fn load_selected_article_vectors(
     conn: &Connection,
     threshold: i64,
 ) -> Result<Vec<SelectedArticle>> {
+    load_selected_article_vectors_since(conn, threshold, i64::MIN)
+}
+
+pub(crate) fn load_selected_article_vectors_since(
+    conn: &Connection,
+    threshold: i64,
+    since: i64,
+) -> Result<Vec<SelectedArticle>> {
     let sql = format!(
         "SELECT a.id, c.embedding
          FROM articles a
          JOIN chunks c ON c.id = {SELECTED_CHUNK_SQL}
          WHERE a.expires_at IS NULL AND a.score > ?1
+           AND COALESCE(a.published_at,a.created_at)>=?3
          ORDER BY a.id",
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(
-        params![threshold, crate::vector_space::active(conn)?.map(|s| s.id)],
+        params![
+            threshold,
+            crate::vector_space::active(conn)?.map(|s| s.id),
+            since
+        ],
         |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?)),
     )?;
     let mut out = Vec::new();

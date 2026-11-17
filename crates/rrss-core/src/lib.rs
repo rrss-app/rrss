@@ -38,6 +38,7 @@ pub mod platform;
 pub mod prefs;
 pub mod presets;
 pub mod rag;
+pub mod rag_prepare;
 pub mod rank;
 pub mod retention;
 pub mod rule_stats;
@@ -62,9 +63,8 @@ mod test_log;
 pub use ai_store::{
     AI_DAILY_BUDGET_TOKENS_KEY, ALL_TASKS, AiProvider, DEVELOPER_TOOLS_KEY, EmbedEndpoint,
     FETCH_URL_ENABLED_KEY, PI_BINARY_KEY, ResolvedTask, TASK_ARTICLE_SUMMARY,
-    TASK_ARTICLE_TRANSLATE, TASK_CHAT, TASK_CLUSTER_SUMMARY,
-    TASK_DIGEST_DAILY, TASK_DIGEST_WEEKLY, TASK_EMBED, TASK_EPISODE_COMPRESS, TASK_FOCUS_SUMMARY,
-    TASK_MEMORY_CANDIDATE,
+    TASK_ARTICLE_TRANSLATE, TASK_CHAT, TASK_CLUSTER_SUMMARY, TASK_DIGEST_DAILY, TASK_DIGEST_WEEKLY,
+    TASK_EMBED, TASK_EPISODE_COMPRESS, TASK_FOCUS_SUMMARY, TASK_MEMORY_CANDIDATE,
 };
 pub use articles::{
     ArticleCard, ArticleRow, FOCUS_PAGE_SIZE, FocusFilter, get_article, list_focus,
@@ -95,8 +95,8 @@ pub use features::{FeatureChip, extract_features};
 pub use feedback::{FeedbackKind, RateResult, feedback_for_article, rate_article};
 pub use feeds::{
     FeedRow, FolderRow, FolderView, SubscribeRequest, create_folder, delete_folder, display_title,
-    list_folder_views, list_folders, rename_feed, rename_folder,
-    set_folder, subscribe, unsubscribe, update_feed_url,
+    list_folder_views, list_folders, rename_feed, rename_folder, set_folder, subscribe,
+    unsubscribe, update_feed_url,
 };
 pub use ingest::{
     FetchRequest, FetchResponse, HttpFetcher, RefreshResult, RefreshStatus, apply_fetch, due_feeds,

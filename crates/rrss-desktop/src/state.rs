@@ -25,16 +25,18 @@ where
     crate::commands::logged(command, async move {
         // 只有开库和工作线程失败记 warn；业务错误照常返回，由 CommandLog 记一条 info（Release 只写 warn）。
         rrss_app::execution::blocking(move || {
-            let conn = rrss_core::db::open_at(&db_path).map_err(|error| {
-                let error = UiError::from(error);
-                tracing::warn!(
-                    command = rrss_core::logsafe::unless_in_span("command", command),
-                    code = error.code(), detail = %error.log_detail(),
-                    "command database open failed"
-                );
-                error
-            })?;
-            f(&conn)
+            rrss_core::db::latency::scope(command, || {
+                let conn = rrss_core::db::open_at(&db_path).map_err(|error| {
+                    let error = UiError::from(error);
+                    tracing::warn!(
+                        command = rrss_core::logsafe::unless_in_span("command", command),
+                        code = error.code(), detail = %error.log_detail(),
+                        "command database open failed"
+                    );
+                    error
+                })?;
+                f(&conn)
+            })
         })
         .await
         .map_err(|error| {

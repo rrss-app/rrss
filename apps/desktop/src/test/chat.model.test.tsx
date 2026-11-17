@@ -29,6 +29,10 @@ describe("model choice inside a conversation", () => {
     box.stub = createApiStub();
     box.events = createEventStub();
     handleShellReads(box.stub);
+    // 启动 800ms 后根壳预载各设置分类；测试跑得慢时会落在测试期间，返回空载荷即可。
+    for (const name of ["siteRulesPage", "rules", "memory", "translatePage", "diagnostics", "retentionPage", "backupPage"] as const) {
+      box.stub.handle(name, (() => ({})) as never);
+    }
     box.stub.handle("threadList", () => ({ folders: [], threads: [threadFixture({ id: 1, title: "线程一", chat_model: { provider_id: 2, model: "qwen/qwen3-8b" } })], archived_count: 0 }));
     box.stub.handle("messages", () => ({ messages: [], has_more: false }));
     box.stub.handle("ai", () => aiPageFixture({ providers: [providerFixture({ id: 1, name: "本机" }), providerFixture({ id: 2, name: "云端" })] }));

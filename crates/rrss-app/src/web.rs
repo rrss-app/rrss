@@ -79,6 +79,17 @@ pub(crate) fn store_page(
     let layer = WebLinkLayer::from_extraction(extracted.layer, rule.user_rule);
     let final_canonical = rrss_core::url_norm::canonical_article_url(actual_url.as_str(), None)
         .unwrap_or_else(|| canonical.to_owned());
+    let mut prepared_images = snapshot
+        .map(|(data_dir, images)| {
+            images
+                .iter()
+                .map(|image| {
+                    rrss_core::media::prepare_image(data_dir, &image.url, &image.bytes)
+                        .map(|prepared| (image.url.as_str(), prepared))
+                })
+                .collect::<rrss_core::Result<Vec<_>>>()
+        })
+        .transpose();
     let tx = db::write_transaction(&conn).map_err(FulltextError::network)?;
     let existing: Option<(i64, bool)> = tx
         .query_row(
@@ -150,15 +161,27 @@ pub(crate) fn store_page(
          web_extracted_at=?6,embed_tier=0 WHERE id=?1",
         params![id, extracted.title, extracted.byline, published, now + TEMP_LIFETIME_MS, web_extracted_at],
     ).map_err(FulltextError::network)?;
-        if let Some((data_dir, images)) = snapshot {
-            for image in images {
-                rrss_core::media::store_image(&tx, data_dir, id, &image.url, &image.bytes)
+        let images = prepared_images.as_mut().map_err(FulltextError::network)?;
+        if let (Some((data_dir, _)), Some(images)) = (snapshot, images.as_mut()) {
+            for (url, image) in images {
+                rrss_core::media::store_prepared_image(&tx, data_dir, id, url, image)
                     .map_err(FulltextError::network)?;
             }
         }
     }
     let temporary = manual && articles::is_temporary(&tx, id).map_err(FulltextError::network)?;
     tx.commit().map_err(FulltextError::network)?;
+    if manual {
+        if let Ok(Some(images)) = prepared_images.as_mut() {
+            for (_, image) in images {
+                image.committed();
+            }
+        }
+        if let Some((data_dir, _)) = snapshot {
+            rrss_core::media::evict_lru(&conn, data_dir).map_err(FulltextError::network)?;
+        }
+    }
+    rrss_core::media::flush_removed_files(&conn).map_err(FulltextError::network)?;
     Ok(OpenWebLinkView {
         article_id: id,
         web_extracted_at,

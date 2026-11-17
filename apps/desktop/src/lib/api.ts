@@ -690,8 +690,8 @@ export function onWebDownloadBlocked(cb: (event: WebDownloadBlocked) => void): P
 }
 
 /** 设置为「每次询问」时，宿主拦下关闭后请前端弹关闭询问。 */
-export function onWindowCloseRequested(cb: () => void): Promise<UnlistenFn> {
-  return onWebEvent<null>("window:close-requested", () => cb());
+export function onWindowCloseRequested(cb: (hostReceivedAt: number | null) => void): Promise<UnlistenFn> {
+  return onWebEvent<number | null>("window:close-requested", cb);
 }
 
 /** 窗口从托盘唤回（托盘图标、托盘菜单或再次启动）；最小化后恢复不算。 */
