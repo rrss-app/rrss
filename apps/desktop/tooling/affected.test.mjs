@@ -89,6 +89,28 @@ test("rust changes test only the changed modules and integration files; dependen
   assert.deepEqual(plan(["apps/desktop/e2e/old.spec.ts"], { exists: () => false }), [["前端检查", "pnpm run check:frontend"]]);
 });
 
+test("subscription moves select consumer tests and view changes check generated bindings", () => {
+  const filters = (steps) => steps.find((s) => s.cmd?.[0] === "cargo").cmd.slice(7);
+  const consumers = [
+    "actions::feeds::", "queries::feeds::",
+    "scheduler::tests::add_returns_before_fetch_and_duplicate_never_requests_and_failure_keeps_feed",
+    "scheduler::tests::import_larger_than_pending_limit_is_fully_admitted_in_due_pages",
+  ];
+  for (const file of ["actions/feeds.rs", "actions/feeds/tests.rs", "queries/feeds.rs", "views/feeds.rs"]) {
+    // Moved/deleted files must still select the owning behavior, not disappear.
+    const steps = planAffected({ changed: [`crates/rrss-app/src/${file}`], coverage, crates, exists: () => false });
+    const selected = filters(steps);
+    for (const consumer of consumers) assert.ok(selected.includes(consumer), `${file}: ${consumer}`);
+    assert.ok(!selected.includes("views::feeds::"));
+    if (file.startsWith("views/")) {
+      assert.ok(selected.includes("export_ts::bindings_are_current"));
+      assert.ok(steps.some((step) => step.name === "前端检查"));
+    }
+  }
+  const root = planAffected({ changed: ["crates/rrss-app/src/views.rs"], coverage, crates });
+  assert.ok(filters(root).includes("export_ts::bindings_are_current"));
+});
+
 test("a style change still runs the other checks, then fails on the unverified e2e", () => {
   const steps = planAffected({ changed: ["apps/desktop/src/styles/app.css"], coverage, crates });
   const ran = [];

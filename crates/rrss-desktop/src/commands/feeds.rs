@@ -3,7 +3,7 @@ use tauri::State;
 use rrss_app::queries;
 use rrss_app::views::*;
 
-use crate::state::{AppState, with_db};
+use crate::state::AppState;
 
 db_task!(feed_tree() -> FeedTree => queries::feed_tree);
 
@@ -59,22 +59,8 @@ db_task!(rename_folder(id: i64, name: String) -> () =>
 
 db_task!(delete_folder(id: i64) -> () => |conn| rrss_app::actions::delete_folder(conn, id));
 
-#[tauri::command]
-pub async fn import_opml(
-    state: State<'_, AppState>,
-    xml: String,
-) -> Result<rrss_app::views::OpmlImportView, UiError> {
-    let path = state.db_path.clone();
-    with_db("import_opml", path, move |conn| {
-        let report = rrss_app::actions::import_opml(conn, &xml).map_err(UiError::from)?;
-        Ok(rrss_app::views::OpmlImportView {
-            imported: report.imported as i64,
-            skipped_same_url: report.skipped_same_url as i64,
-            folders: report.folders as i64,
-        })
-    })
-    .await
-}
+db_task!(import_opml(xml: String) -> OpmlImportView =>
+    |conn| rrss_app::actions::import_opml(conn, &xml).map(Into::into));
 
 db_task!(export_opml() -> String => rrss_app::actions::export_opml);
 

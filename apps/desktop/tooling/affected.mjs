@@ -19,6 +19,7 @@ const E2E_GLOBAL = [
 ];
 /** 只有类型、不会在浏览器里执行的文件，交给类型检查。 */
 const TYPES_ONLY = [/^src\/bindings\.ts$/, /\.d\.ts$/];
+const APP_VIEW_SOURCE = /^crates\/rrss-app\/src\/views(?:\.rs|\/.*\.rs)$/;
 const isUnitTest = (file) => /\.test\.tsx?$/.test(file) || file.startsWith("src/test/");
 
 /**
@@ -40,7 +41,7 @@ export function planAffected({ changed, coverage, crates, exists = () => true, f
   if (!code.length && !e2eSpecs.length) return steps;
 
   // 类型、hooks、依赖与 IPC 契约：前端或桌面命令一改就跑，几秒钟。
-  if (desktop.length || changed.some((f) => /^crates\/(rrss-app\/src\/views\.rs|rrss-desktop\/)/.test(f))) {
+  if (desktop.length || changed.some((f) => APP_VIEW_SOURCE.test(f) || f.startsWith("crates/rrss-desktop/"))) {
     steps.push({ name: "前端检查", cmd: ["pnpm", "run", "check:frontend"], cwd: DESKTOP });
   }
   if (desktop.some((f) => f.startsWith("tooling/"))) steps.push({ name: "工具测试", cmd: ["pnpm", "run", "test:tooling"], cwd: DESKTOP });
@@ -97,6 +98,18 @@ function rustSteps(changed, crates) {
     for (const file of files) {
       const integration = /^tests\/([^/]+)\.rs$/.exec(file);
       if (integration) { tests.add(integration[1]); continue; }
+      if (name === "rrss-app" && APP_VIEW_SOURCE.test(prefix + file)) {
+        filters.add("export_ts::bindings_are_current");
+      }
+      // Subscription contracts are exercised by their actions and query consumers.
+      // Selecting views::feeds alone would run no tests after moving these types.
+      if (name === "rrss-app" && /^(src\/(actions|views)\/feeds(?:\.rs$|\/)|src\/queries\/feeds\.rs$)/.test(file)) {
+        filters.add("actions::feeds::");
+        filters.add("queries::feeds::");
+        filters.add("scheduler::tests::add_returns_before_fetch_and_duplicate_never_requests_and_failure_keeps_feed");
+        filters.add("scheduler::tests::import_larger_than_pending_limit_is_fully_admitted_in_due_pages");
+        if (file.startsWith("src/views/")) continue;
+      }
       const parts = (/^src\/(.+)\.rs$/.exec(file)?.[1].split("/") ?? []).filter((part) => part !== "mod");
       if (parts.at(-1) === "tests") parts.pop();
       if (!parts.length || parts[0] === "bin" || (parts.length === 1 && ["lib", "main"].includes(parts[0]))) whole = true;
