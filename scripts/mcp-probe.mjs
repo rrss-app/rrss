@@ -480,7 +480,7 @@ try {
         if (latest.messages[0].id !== 6 || latest.messages[39].id !== 45) throw new Error('Latest page is not the newest ids');
         const older = await invoke('messages', { threadId: 95, beforeId: latest.messages[0].id, limit: null });
         if (older.has_more !== false || older.messages.map(row => row.id).join(',') !== '1,2,3,4,5') throw new Error('Older page is not contiguous');
-        const titled = (await invoke('threads', {})).find(row => row.id === 95);
+        const titled = (await invoke('thread_list', {})).threads.find(row => row.id === 95);
         if (!titled || titled.title !== 'm01') throw new Error('Thread title did not come from the first message');
 
         const summaries = await invoke('digest_list', { period: 'daily' });
@@ -537,7 +537,7 @@ try {
           const restored = await invoke('digest_thread', { digestId: 71 });
           const other = await invoke('digest_thread', { digestId: 72 });
           if (restored.thread_id !== threadId || other.thread_id !== 0) throw new Error('Digest thread leaked across issues');
-          if ((await invoke('threads', {})).length) throw new Error('Digest follow-up leaked into deep chat list');
+          if ((await invoke('thread_list', {})).threads.length) throw new Error('Digest follow-up leaked into deep chat list');
           if (!snapshots.length || snapshots.some((s) => s.thread_id !== threadId || !s.document)) throw new Error('Stream lacks thread identity or block IR');
           const reader = await invoke('article_reader', { id: 72 });
           if (reader.title !== '第二条测试文章') throw new Error('Wrong source article');

@@ -5,8 +5,6 @@ use rrss_app::{actions, queries};
 
 use crate::state::AppState;
 
-db_task!(threads() -> Vec<ThreadView> => queries::threads);
-
 db_task!(search_threads(query: String, limit: i64) -> Vec<ThreadSearchHitView> => |conn| queries::search_threads(conn, &query, limit));
 db_task!(thread_list() -> ThreadListView => queries::thread_list);
 db_task!(archived_threads() -> Vec<ThreadView> => queries::archived_threads);
@@ -41,8 +39,6 @@ db_task!(messages(thread_id: i64, before_id: Option<i64>, limit: Option<i64>) ->
 
 db_task!(digest_thread(digest_id: i64) -> DigestThreadView =>
     |conn| queries::digest_thread(conn, digest_id));
-
-db_task!(new_thread() -> i64 => |conn| rrss_app::actions::new_thread(conn, None));
 
 db_task!(article_previews(ids: Vec<i64>) -> Vec<ArticlePreviewView> =>
     |conn| queries::article_previews(conn, &ids));
@@ -108,7 +104,6 @@ pub async fn confirm_fetch(
 }
 
 command_handler![
-    threads,
     thread_list,
     search_threads,
     archived_threads,
@@ -124,7 +119,6 @@ command_handler![
     reorder_thread_folders,
     set_thread_folder_collapsed,
     messages,
-    new_thread,
     article_previews,
     send_message,
     digest_thread,

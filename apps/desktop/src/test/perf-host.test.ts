@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { generateScene } from "../../perf/generate";
 import { createPerfHostFactory, sceneToHostPayload, summarizeIpc } from "../../perf/host";
-import type { ArticleView, ChatContextEvent, ThreadView, ChatStreamEvent, MessagesPage } from "../bindings";
+import type { ArticleView, ChatContextEvent, ThreadListView, ChatStreamEvent, MessagesPage } from "../bindings";
 import { installFakeClock } from "./clock";
 
 describe("strict perf host", () => {
@@ -27,17 +27,17 @@ describe("strict perf host", () => {
       await host.invoke("plugin:event|listen",{event:"chat:context",handler});
       await host.invoke("plugin:event|listen",{event:"chat:done",handler});
       const id = await host.invoke("send_message",{args:{threadId:0,text:"test",citations:[],thinking:"high"}}) as number;
-      expect((await host.invoke("threads" ) as ThreadView[]).find(t=>t.id===id)?.chat_thinking).toBe("high");
+      expect((await host.invoke("thread_list") as ThreadListView).threads.find(t=>t.id===id)?.chat_thinking).toBe("high");
       for(let i=0;i<scene.spec.streamSnapshotCount;i++) await clock.advance(scene.spec.streamIntervalMs);
       expect(events).toEqual(["chat:context","chat:done"]);
       expect(contexts[0]).toMatchObject({thread_id:id,context:{window:32000}});
       expect(contexts[0]!.context.used).toBeGreaterThan(0);
-      expect((await host.invoke("threads") as ThreadView[]).find(t=>t.id===id)?.context).toEqual(contexts[0]!.context);
+      expect((await host.invoke("thread_list") as ThreadListView).threads.find(t=>t.id===id)?.context).toEqual(contexts[0]!.context);
       await host.invoke("send_message",{args:{threadId:id,text:"keep",citations:[]}});
-      expect((await host.invoke("threads") as ThreadView[]).find(t=>t.id===id)?.chat_thinking).toBe("high");
+      expect((await host.invoke("thread_list") as ThreadListView).threads.find(t=>t.id===id)?.chat_thinking).toBe("high");
       for(let i=0;i<scene.spec.streamSnapshotCount;i++) await clock.advance(scene.spec.streamIntervalMs);
       await host.invoke("send_message",{args:{threadId:id,text:"clear",citations:[],thinking:""}});
-      expect((await host.invoke("threads") as ThreadView[]).find(t=>t.id===id)?.chat_thinking).toBeNull();
+      expect((await host.invoke("thread_list") as ThreadListView).threads.find(t=>t.id===id)?.chat_thinking).toBeNull();
     } finally {host.dispose();clock.restore();}
   });
 

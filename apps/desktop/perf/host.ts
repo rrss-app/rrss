@@ -454,8 +454,6 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
         payload.feeds = applyFeedTreeOrder(payload.feeds, "restore", { layout: rawArgs.layout }).tree;
         return null;
       }
-      case "threads":
-        return clone(state.threads);
       case "thread_list":
         return clone({ folders: [], threads: state.threads, archived_count: 0 });
       case "archived_threads":
@@ -472,12 +470,6 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
         const all = (state.messages[String(threadId)] ?? []).filter((m) => before === null || m.id < before);
         const window = all.slice(Math.max(0, all.length - limit));
         return { messages: clone(window), has_more: all.length > limit };
-      }
-      case "new_thread": {
-        const id = state.nextThreadId++;
-        state.threads = [{ id, title: "新对话", chat_model: null, chat_thinking: null, context: null, folder_id: null, pinned: false, updated_at: 0, archived_at: null }, ...state.threads];
-        state.messages[String(id)] = [];
-        return id;
       }
       case "send_message": {
         const envelope = asRecord(rawArgs.args ?? rawArgs);

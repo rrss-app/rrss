@@ -80,6 +80,18 @@ function pickSpecs(desktop, coverage, present) {
 /** 没有单测、check 又依赖 WebKitGTK 的 crate：本地不跑，交给 CI。 */
 const RUST_CHECK_ONLY = new Set(["rrss-desktop"]);
 
+// Contracts without their own tests follow the domain's behavior consumers.
+const APP_DOMAIN_TESTS = [
+  {
+    source: /^src\/(actions|views|queries)\/feeds(?:\.rs$|\/)/,
+    filters: ["actions::feeds::", "queries::feeds::", "scheduler::tests::"],
+  },
+  {
+    source: /^src\/(?:(?:actions|views)\/threads|queries\/chat|chat)(?:\.rs$|\/)/,
+    filters: ["actions::threads::", "queries::chat::", "chat::tests::"],
+  },
+];
+
 /**
  * 只测改到的模块：`src/a/b.rs`、`src/a/b/mod.rs`、`src/a/b/tests.rs` → 库测试过滤 `a::b::`；`tests/x.rs` → `--test x`。
  * 入口、`Cargo.toml` 与非 `.rs` 文件（SQL、数据）看不出范围，跑整个库测试。依赖它的 crate 和其余集成测试留给 CI。
@@ -92,32 +104,34 @@ function rustSteps(changed, crates) {
     const files = changed.filter((f) => f.startsWith(prefix)).map((f) => f.slice(prefix.length));
     if (!files.length) continue;
     if (RUST_CHECK_ONLY.has(name)) { steps.push({ name: `Rust ${name} 只有 check，留给 CI`, note: true }); continue; }
-    const filters = new Set();
+    const requiredFilters = new Set();
+    const pathFilters = new Set();
     const tests = new Set();
     let whole = false;
     for (const file of files) {
       const integration = /^tests\/([^/]+)\.rs$/.exec(file);
       if (integration) { tests.add(integration[1]); continue; }
       if (name === "rrss-app" && APP_VIEW_SOURCE.test(prefix + file)) {
-        filters.add("export_ts::bindings_are_current");
+        requiredFilters.add("export_ts::bindings_are_current");
       }
-      // Subscription contracts are exercised by their actions and query consumers.
-      // Selecting views::feeds alone would run no tests after moving these types.
-      if (name === "rrss-app" && /^(src\/(actions|views)\/feeds(?:\.rs$|\/)|src\/queries\/feeds\.rs$)/.test(file)) {
-        filters.add("actions::feeds::");
-        filters.add("queries::feeds::");
-        filters.add("scheduler::tests::add_returns_before_fetch_and_duplicate_never_requests_and_failure_keeps_feed");
-        filters.add("scheduler::tests::import_larger_than_pending_limit_is_fully_admitted_in_due_pages");
+      const domain = name === "rrss-app" && APP_DOMAIN_TESTS.find(({ source }) => source.test(file));
+      if (domain) {
+        for (const filter of domain.filters) requiredFilters.add(filter);
         if (file.startsWith("src/views/")) continue;
       }
       const parts = (/^src\/(.+)\.rs$/.exec(file)?.[1].split("/") ?? []).filter((part) => part !== "mod");
       if (parts.at(-1) === "tests") parts.pop();
       if (!parts.length || parts[0] === "bin" || (parts.length === 1 && ["lib", "main"].includes(parts[0]))) whole = true;
-      else filters.add(`${parts.join("::")}::`);
+      else pathFilters.add(`${parts.join("::")}::`);
     }
-    if (whole || filters.size) {
-      const filter = whole ? [] : ["--", ...[...filters].sort()];
-      steps.push({ name: `Rust ${name}（${whole ? "整个库测试" : "改动模块"}）`, cmd: ["cargo", "test", "--locked", "-p", name, "--lib", ...filter], cwd: ".", env });
+    const filters = [...new Set([...requiredFilters, ...pathFilters])].sort();
+    if (whole || filters.length) {
+      const filter = whole ? [] : ["--", ...filters];
+      const rustFilters = {
+        required: [...requiredFilters].sort(),
+        path: whole ? [] : [...pathFilters].filter((filter) => !requiredFilters.has(filter)).sort(),
+      };
+      steps.push({ name: `Rust ${name}（${whole ? "整个库测试" : "改动模块"}）`, cmd: ["cargo", "test", "--locked", "-p", name, "--lib", ...filter], cwd: ".", env, rustFilters });
     }
     for (const test of [...tests].sort()) {
       steps.push({ name: `Rust ${name}（tests/${test}.rs）`, cmd: ["cargo", "test", "--locked", "-p", name, "--test", test], cwd: ".", env });
@@ -191,7 +205,28 @@ export function runSteps(steps, { dry = false, spawn = spawnSync, stdout = proce
     if (step.note) { stdout.write(`\n· ${step.name}\n`); continue; }
     stdout.write(`\n▶ ${step.name}：${step.cmd.join(" ")}\n`);
     if (dry) continue;
-    const result = spawn(step.cmd[0], step.cmd.slice(1), { cwd: path.join(REPO, step.cwd), stdio: "inherit", env: { ...process.env, ...step.env } });
+    const options = { cwd: path.join(REPO, step.cwd), stdio: "inherit", env: { ...process.env, ...step.env } };
+    let cmd = step.cmd;
+    if (step.cmd[0] === "cargo" && step.cmd[1] === "test") {
+      const separator = step.cmd.indexOf("--");
+      const target = separator < 0 ? step.cmd : step.cmd.slice(0, separator);
+      const args = [...target.slice(1), "--", "--list"];
+      const listing = spawn("cargo", args, { ...options, stdio: ["inherit", "pipe", "inherit"], encoding: "utf8" });
+      if (listing.status !== 0) { stderr.write(`\n✗ ${step.name} 测试清单获取失败\n`); return listing.status ?? 1; }
+      const tests = String(listing.stdout ?? "").split(/\r?\n/).map((line) => /^(.*): test$/.exec(line)?.[1]).filter(Boolean);
+      const unmatchedRequired = (step.rustFilters?.required ?? []).filter((filter) => !tests.some((test) => test.includes(filter)));
+      if (unmatchedRequired.length) {
+        stderr.write(`\n✗ ${step.name} 匹配零条测试：${unmatchedRequired.join(", ")}\n`);
+        return 1;
+      }
+      if (!tests.length) { stderr.write(`\n✗ ${step.name} 匹配零条测试：(entire target)\n`); return 1; }
+      const unmatchedPath = (step.rustFilters?.path ?? []).filter((filter) => !tests.some((test) => test.includes(filter)));
+      if (unmatchedPath.length) {
+        stdout.write(`\n· ${step.name}: no tests match ${unmatchedPath.join(", ")}; running entire library tests: ${target.join(" ")}\n`);
+        cmd = target;
+      }
+    }
+    const result = spawn(cmd[0], cmd.slice(1), options);
     if (result.status !== 0) { stderr.write(`\n✗ ${step.name} 失败\n`); return result.status ?? 1; }
   }
   const blocked = steps.filter((step) => step.blocked);

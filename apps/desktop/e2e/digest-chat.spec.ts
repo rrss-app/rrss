@@ -83,7 +83,7 @@ test.beforeEach(async ({ page }) => {
             case "plugin:event|unlisten": return;
             case "focus_stream": return focus;
             case "feed_tree": return feeds;
-            case "threads": return [];
+            case "thread_list": return { folders: [], threads: [], archived_count: 0 };
             case "digest_list": return digests.filter((d) => d.period === args.period).map((d) => ({ id: d.id, period: d.period, period_start: d.period_start }));
             case "digest": {
               const row = digests.find((d) => d.id === args.id);

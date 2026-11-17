@@ -92,23 +92,137 @@ test("rust changes test only the changed modules and integration files; dependen
 test("subscription moves select consumer tests and view changes check generated bindings", () => {
   const filters = (steps) => steps.find((s) => s.cmd?.[0] === "cargo").cmd.slice(7);
   const consumers = [
-    "actions::feeds::", "queries::feeds::",
-    "scheduler::tests::add_returns_before_fetch_and_duplicate_never_requests_and_failure_keeps_feed",
-    "scheduler::tests::import_larger_than_pending_limit_is_fully_admitted_in_due_pages",
+    "actions::feeds::", "queries::feeds::", "scheduler::tests::",
   ];
   for (const file of ["actions/feeds.rs", "actions/feeds/tests.rs", "queries/feeds.rs", "views/feeds.rs"]) {
     // Moved/deleted files must still select the owning behavior, not disappear.
     const steps = planAffected({ changed: [`crates/rrss-app/src/${file}`], coverage, crates, exists: () => false });
     const selected = filters(steps);
-    for (const consumer of consumers) assert.ok(selected.includes(consumer), `${file}: ${consumer}`);
+    const source = steps.find((step) => step.cmd?.[0] === "cargo").rustFilters;
+    for (const consumer of consumers) {
+      assert.ok(selected.includes(consumer), `${file}: ${consumer}`);
+      assert.ok(source.required.includes(consumer), `${file}: ${consumer} must match`);
+    }
     assert.ok(!selected.includes("views::feeds::"));
     if (file.startsWith("views/")) {
       assert.ok(selected.includes("export_ts::bindings_are_current"));
+      assert.ok(source.required.includes("export_ts::bindings_are_current"));
       assert.ok(steps.some((step) => step.name === "前端检查"));
     }
   }
   const root = planAffected({ changed: ["crates/rrss-app/src/views.rs"], coverage, crates });
   assert.ok(filters(root).includes("export_ts::bindings_are_current"));
+});
+
+test("thread moves select actions, history queries and send-preparation consumers", () => {
+  for (const file of ["actions/threads.rs", "actions/threads/tests.rs", "views/threads.rs", "queries/chat.rs", "chat.rs"]) {
+    const steps = planAffected({ changed: [`crates/rrss-app/src/${file}`], coverage, crates, exists: () => false });
+    const rust = steps.find((step) => step.cmd?.[0] === "cargo");
+    const filters = rust.cmd.slice(7);
+    for (const filter of ["actions::threads::", "queries::chat::", "chat::tests::"]) {
+      assert.ok(filters.includes(filter), `${file}: ${filter}`);
+      assert.ok(rust.rustFilters.required.includes(filter), `${file}: ${filter} must match`);
+    }
+    assert.ok(!filters.includes("views::threads::"));
+    if (file.startsWith("views/")) {
+      assert.ok(filters.includes("export_ts::bindings_are_current"));
+      assert.ok(rust.rustFilters.required.includes("export_ts::bindings_are_current"));
+      assert.ok(steps.some((step) => step.name === "前端检查"));
+    }
+  }
+});
+
+test("subscription consumer filters still match after scheduler tests are renamed", () => {
+  const steps = planAffected({ changed: ["crates/rrss-app/src/views/feeds.rs"], coverage, crates });
+  const rust = steps.filter((step) => step.cmd?.[0] === "cargo");
+  const listing = [
+    "actions::feeds::tests::folder_moves_can_be_undone: test",
+    "queries::feeds::tests::feed_tree: test",
+    "scheduler::tests::renamed_add_regression: test",
+    "scheduler::tests::renamed_import_regression: test",
+    "export_ts::bindings_are_current: test",
+    "5 tests, 0 benchmarks",
+  ].join("\r\n");
+  const ran = [];
+  let output = "";
+  const sink = { write: (text) => { output += text; } };
+  const spawn = (cmd, args) => { ran.push([cmd, ...args]); return { status: 0, stdout: listing }; };
+  assert.equal(runSteps(rust, { spawn, stdout: sink, stderr: sink }), 0);
+  assert.equal(ran.length, 2);
+  assert.deepEqual(ran[0], [...rust[0].cmd.slice(0, rust[0].cmd.indexOf("--")), "--", "--list"]);
+  assert.deepEqual(ran[1], rust[0].cmd);
+  assert.ok(output.includes("✓"));
+  ran.length = 0;
+  assert.equal(runSteps(rust, { dry: true, spawn, stdout: sink, stderr: sink }), 0);
+  assert.equal(ran.length, 0);
+});
+
+test("zero matching required Rust filters fail even when another filter matches", () => {
+  const step = { name: "Rust rrss-app", cmd: ["cargo", "test", "-p", "rrss-app", "--lib", "--", "actions::feeds::", "scheduler::tests::"], cwd: ".",
+    rustFilters: { required: ["actions::feeds::", "scheduler::tests::"], path: [] } };
+  for (const listing of ["", "actions::feeds::tests::folder_move: test\n1 test, 0 benchmarks\n"]) {
+    const ran = [];
+    let output = "";
+    const sink = { write: (text) => { output += text; } };
+    const spawn = (cmd, args) => { ran.push([cmd, ...args]); return { status: 0, stdout: listing }; };
+    assert.equal(runSteps([step], { spawn, stdout: sink, stderr: sink }), 1);
+    assert.equal(ran.length, 1, "tests must not run with an unmatched filter");
+    assert.ok(output.includes("Rust rrss-app"));
+    assert.ok(output.includes("scheduler::tests::"));
+    assert.ok(!output.includes("✓"));
+  }
+});
+
+test("unmatched path filters fall back to the entire library with one discovery call", () => {
+  for (const [crate, source, filter] of [
+    ["rrss-render", "sanitize.rs", "sanitize::"],
+    ["rrss-core", "interests/prepare.rs", "interests::prepare::"],
+  ]) {
+    const steps = planAffected({ changed: [`crates/${crate}/src/${source}`], coverage, crates });
+    const rust = steps.find((step) => step.cmd?.[0] === "cargo");
+    assert.deepEqual(rust.rustFilters, { required: [], path: [filter] });
+    const target = ["cargo", "test", "--locked", "-p", crate, "--lib"];
+    const ran = [];
+    let output = "";
+    const sink = { write: (text) => { output += text; } };
+    const spawn = (cmd, args) => { ran.push([cmd, ...args]); return { status: 0, stdout: "tests::public_behavior: test\n1 test, 0 benchmarks\n" }; };
+    assert.equal(runSteps([rust], { spawn, stdout: sink, stderr: sink }), 0);
+    assert.deepEqual(ran, [[...target, "--", "--list"], target]);
+    assert.ok(output.includes(filter));
+    assert.ok(output.includes(`running entire library tests: ${target.join(" ")}`));
+    ran.length = 0;
+    assert.equal(runSteps([rust], { dry: true, spawn, stdout: sink, stderr: sink }), 0);
+    assert.equal(ran.length, 0);
+  }
+});
+
+test("a missing required binding check fails despite a matching path filter", () => {
+  const steps = planAffected({ changed: ["crates/rrss-app/src/views.rs"], coverage, crates });
+  const rust = steps.find((step) => step.cmd?.[0] === "cargo");
+  assert.deepEqual(rust.rustFilters, { required: ["export_ts::bindings_are_current"], path: ["views::"] });
+  const ran = [];
+  let output = "";
+  const sink = { write: (text) => { output += text; } };
+  const spawn = (cmd, args) => { ran.push([cmd, ...args]); return { status: 0, stdout: "views::tests::excerpt: test\n1 test, 0 benchmarks\n" }; };
+  assert.equal(runSteps([rust], { spawn, stdout: sink, stderr: sink }), 1);
+  assert.equal(ran.length, 1, "a missing required filter must prevent test execution");
+  assert.ok(output.includes(rust.name));
+  assert.ok(output.includes("export_ts::bindings_are_current"));
+  assert.ok(!output.includes("✓"));
+  assert.ok(!output.includes("running entire library tests"));
+});
+
+test("empty Rust targets and failed test discovery cannot report success", () => {
+  const step = { name: "Rust rrss-app", cmd: ["cargo", "test", "-p", "rrss-app", "--test", "consumer"], cwd: "." };
+  for (const result of [{ status: 0, stdout: "0 tests, 0 benchmarks\n" }, { status: 3 }, { status: null }]) {
+    const ran = [];
+    let output = "";
+    const sink = { write: (text) => { output += text; } };
+    const spawn = (cmd, args) => { ran.push([cmd, ...args]); return result; };
+    assert.equal(runSteps([step], { spawn, stdout: sink, stderr: sink }), result.status || 1);
+    assert.deepEqual(ran, [[...step.cmd, "--", "--list"]]);
+    assert.ok(!output.includes("✓"));
+  }
 });
 
 test("a style change still runs the other checks, then fails on the unverified e2e", () => {

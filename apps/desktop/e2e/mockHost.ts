@@ -1008,8 +1008,6 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 const icon = (feed: typeof feeds.uncategorized[number]) => ({ ...feed, icon_href: iconsOn ? feedIconHrefs[feed.id] ?? feed.icon_href : "" });
                 return { ...state.feeds, folders: state.feeds.folders.map(folder => ({ ...folder, feeds: folder.feeds.map(icon) })), uncategorized: state.feeds.uncategorized.map(icon) };
               }
-              case "threads":
-                return structuredClone(state.threads.filter(t => t.archived_at == null));
               // 会话文件夹与归档：只保留命令契约与写后可读，排序、标题回退与删除锁在后端测试。
               case "thread_list": {
                 const live = state.threads.filter(t => t.archived_at == null)
@@ -1826,7 +1824,6 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               case "delete_skill":
               case "reset_failed_embeds":
               case "embed_now":
-              case "new_thread":
               case "abort_generation":
               case "stop_pi":
               case "confirm_fetch":
