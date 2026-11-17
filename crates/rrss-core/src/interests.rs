@@ -181,53 +181,19 @@ pub fn insert_interest(conn: &Connection, label: &str, source: &str) -> Result<i
     Ok(conn.last_insert_rowid())
 }
 
+/// Update an interest and its boosts; requires autocommit mode.
 pub fn set_enabled(conn: &Connection, id: i64, enabled: bool) -> Result<()> {
-    if conn.is_autocommit() {
-        return prepare::run(conn, Some(prepare::Change::Enabled(id, enabled))).map(|_| ());
-    }
-    db::atomic_write(conn, |conn| {
-        let n = conn.execute(
-            "UPDATE interests SET enabled = ?1 WHERE id = ?2",
-            params![i64::from(enabled), id],
-        )?;
-        if n == 0 {
-            return Err(Error::InterestNotFound);
-        }
-        recompute_interest_boost_inner(conn)?;
-        Ok(())
-    })
+    prepare::run(conn, Some(prepare::Change::Enabled(id, enabled))).map(|_| ())
 }
 
+/// Update an interest and its boosts; requires autocommit mode.
 pub fn set_weight(conn: &Connection, id: i64, weight: i64) -> Result<()> {
-    if conn.is_autocommit() {
-        return prepare::run(conn, Some(prepare::Change::Weight(id, weight.max(1)))).map(|_| ());
-    }
-    let weight = weight.max(1);
-    db::atomic_write(conn, |conn| {
-        let n = conn.execute(
-            "UPDATE interests SET weight = ?1 WHERE id = ?2",
-            params![weight, id],
-        )?;
-        if n == 0 {
-            return Err(Error::InterestNotFound);
-        }
-        recompute_interest_boost_inner(conn)?;
-        Ok(())
-    })
+    prepare::run(conn, Some(prepare::Change::Weight(id, weight.max(1)))).map(|_| ())
 }
 
+/// Delete an interest and update its boosts; requires autocommit mode.
 pub fn delete_interest(conn: &Connection, id: i64) -> Result<()> {
-    if conn.is_autocommit() {
-        return prepare::run(conn, Some(prepare::Change::Delete(id))).map(|_| ());
-    }
-    db::atomic_write(conn, |conn| {
-        let n = conn.execute("DELETE FROM interests WHERE id = ?1", [id])?;
-        if n == 0 {
-            return Err(Error::InterestNotFound);
-        }
-        recompute_interest_boost_inner(conn)?;
-        Ok(())
-    })
+    prepare::run(conn, Some(prepare::Change::Delete(id))).map(|_| ())
 }
 
 pub fn parse_interest_reasons(json: Option<&str>) -> Vec<InterestReason> {
@@ -237,11 +203,9 @@ pub fn parse_interest_reasons(json: Option<&str>) -> Vec<InterestReason> {
     serde_json::from_str(json).unwrap_or_default()
 }
 
+/// Recompute in a read snapshot and publish atomically; requires autocommit mode.
 pub fn recompute_interest_boost(conn: &Connection) -> Result<u32> {
-    if conn.is_autocommit() {
-        return prepare::run(conn, None);
-    }
-    db::atomic_write(conn, recompute_interest_boost_inner)
+    prepare::run(conn, None)
 }
 
 fn boost_up_to_date(conn: &Connection) -> Result<bool> {
@@ -264,46 +228,6 @@ fn boost_up_to_date(conn: &Connection) -> Result<bool> {
     let threshold = crate::articles::hide_threshold(conn)?;
     let selected = load_selected_article_vectors(conn, threshold)?;
     Ok(stored.as_deref() == Some(boost_signature(&prototypes, threshold, &selected).as_str()))
-}
-
-fn recompute_interest_boost_inner(conn: &Connection) -> Result<u32> {
-    if !boost_enabled(conn)? {
-        return clear_boosts(conn);
-    }
-    let prototypes = load_prototypes(conn)?;
-    if prototypes.is_empty() {
-        return clear_boosts(conn);
-    }
-    let threshold = crate::articles::hide_threshold(conn)?;
-    let selected = load_selected_article_vectors(conn, threshold)?;
-    let sig = boost_signature(&prototypes, threshold, &selected);
-    if db::get_setting(conn, INTEREST_BOOST_SIG_KEY)?.as_deref() == Some(sig.as_str()) {
-        tracing::debug!("interest boost unchanged; skip");
-        return Ok(0);
-    }
-
-    conn.execute("DELETE FROM article_interests", [])?;
-    let mut n = 0u32;
-    for item in &selected {
-        let vec = item.vector.as_deref().unwrap_or(&[]);
-        if write_boost(conn, item.article_id, vec, &prototypes)? {
-            n += 1;
-        }
-    }
-    conn.execute(
-        "UPDATE articles SET interest_boost = 0, interest_reasons_json = NULL
-         WHERE score <= ?1 OR id NOT IN (
-           SELECT DISTINCT article_id FROM chunks WHERE embedding IS NOT NULL AND space_id = ?2
-         )",
-        params![threshold, crate::vector_space::active(conn)?.map(|s| s.id)],
-    )?;
-    db::set_setting(conn, INTEREST_BOOST_SIG_KEY, &sig)?;
-    tracing::info!(
-        articles = n,
-        interests = prototypes.len(),
-        "recomputed interest boost"
-    );
-    Ok(n)
 }
 
 fn clear_boosts(conn: &Connection) -> Result<u32> {
@@ -421,28 +345,6 @@ pub(crate) fn calculate_boost(vec: &[f32], prototypes: &[Prototype]) -> (i64, Ve
     }
     boost = boost.max(0);
     (boost, reasons)
-}
-
-fn write_boost(
-    conn: &Connection,
-    article_id: i64,
-    vec: &[f32],
-    prototypes: &[Prototype],
-) -> Result<bool> {
-    let (boost, reasons) = calculate_boost(vec, prototypes);
-    let json = reasons_json(&reasons);
-    conn.execute(
-        "UPDATE articles SET interest_boost = ?1, interest_reasons_json = ?2 WHERE id = ?3",
-        params![boost, json, article_id],
-    )?;
-    for reason in &reasons {
-        conn.execute(
-            "INSERT OR REPLACE INTO article_interests (article_id, interest_id, weight)
-             VALUES (?1, ?2, ?3)",
-            params![article_id, reason.interest_id, reason.weight],
-        )?;
-    }
-    Ok(boost > 0)
 }
 
 fn reasons_json(reasons: &[InterestReason]) -> Option<String> {
@@ -716,6 +618,75 @@ mod tests {
             )
             .unwrap(),
             DEFAULT_WEIGHT
+        );
+    }
+
+    fn interest_snapshot(conn: &Connection) -> serde_json::Value {
+        let mut rows = Vec::new();
+        for sql in [
+            "SELECT json_array('interest',id,label,weight,enabled) FROM interests ORDER BY id",
+            "SELECT json_array('article',id,interest_boost,json(interest_reasons_json)) FROM articles ORDER BY id",
+            "SELECT json_array('hit',article_id,interest_id,weight) FROM article_interests ORDER BY article_id,interest_id",
+        ] {
+            let mut stmt = conn.prepare(sql).unwrap();
+            rows.extend(
+                stmt.query_map([], |r| r.get::<_, String>(0))
+                    .unwrap()
+                    .map(|r| serde_json::from_str::<serde_json::Value>(&r.unwrap()).unwrap()),
+            );
+        }
+        rows.into()
+    }
+
+    #[test]
+    fn interest_edits_match_legacy_baseline() {
+        let (_dir, conn) = open_temp();
+        let (article, interest) =
+            seed_matching(&conn, "subject", "https://interest.example/matched");
+        let other = seed_article(&conn, "other", "https://interest.example/other", false);
+        put_title_vec(&conn, other, &[0.0, 1.0, 0.0]);
+        assert_eq!((article, other, interest), (1, 2, 1));
+        // Captured using the transaction-only implementation at dccf69af,
+        // before deletion, with this same fixture. Includes stored reason JSON.
+        assert_eq!(recompute_interest_boost(&conn).unwrap(), 1);
+        assert_eq!(
+            interest_snapshot(&conn),
+            serde_json::json!([
+                ["interest", 1, "Rust async", 2, 1],
+                ["article", 1, 2, [{
+                    "code": "interest_match", "component": "interest", "interest_id": 1,
+                    "label": "Rust async", "params": {"pattern": "Rust async"}, "points": 2
+                }]],
+                ["article", 2, 0, null],
+                ["hit", 1, 1, 2]
+            ])
+        );
+        set_weight(&conn, interest, 5).unwrap();
+        let weighted = serde_json::json!([
+            ["interest", 1, "Rust async", 5, 1],
+            ["article", 1, 5, [{
+                "code": "interest_match", "component": "interest", "interest_id": 1,
+                "label": "Rust async", "params": {"pattern": "Rust async"}, "points": 5
+            }]],
+            ["article", 2, 0, null],
+            ["hit", 1, 1, 5]
+        ]);
+        assert_eq!(interest_snapshot(&conn), weighted);
+        set_enabled(&conn, interest, false).unwrap();
+        assert_eq!(
+            interest_snapshot(&conn),
+            serde_json::json!([
+                ["interest", 1, "Rust async", 5, 0],
+                ["article", 1, 0, null],
+                ["article", 2, 0, null]
+            ])
+        );
+        set_enabled(&conn, interest, true).unwrap();
+        assert_eq!(interest_snapshot(&conn), weighted);
+        delete_interest(&conn, interest).unwrap();
+        assert_eq!(
+            interest_snapshot(&conn),
+            serde_json::json!([["article", 1, 0, null], ["article", 2, 0, null]])
         );
     }
 
@@ -1303,38 +1274,54 @@ mod tests {
     }
 
     #[test]
-    fn recompute_nested_transaction_uses_savepoint() {
+    fn interest_changes_reject_outer_transactions_without_changes() {
         let (_dir, conn) = open_temp();
-        let (focus, _) =
-            seed_matching(&conn, "rust async runtime", "https://lab.example/savepoint");
-        assert!(recompute_interest_boost(&conn).unwrap() >= 1);
-        let original = article_boost(&conn, focus);
-        assert!(original > 0);
-
-        let tx = crate::db::write_transaction(&conn).unwrap();
-        set_chunk_embedding(
-            &tx,
-            title_chunk_id(&tx, focus),
-            "test-embed",
-            &[0.0, 1.0, 0.0],
-        )
-        .unwrap();
-        assert_eq!(recompute_interest_boost(&tx).unwrap(), 0);
-        assert_eq!(article_boost(&tx, focus), 0);
-        tx.rollback().unwrap();
-        assert_eq!(article_boost(&conn, focus), original);
-
-        let tx = crate::db::write_transaction(&conn).unwrap();
-        set_chunk_embedding(
-            &tx,
-            title_chunk_id(&tx, focus),
-            "test-embed",
-            &[0.0, 1.0, 0.0],
-        )
-        .unwrap();
-        assert_eq!(recompute_interest_boost(&tx).unwrap(), 0);
-        tx.commit().unwrap();
-        assert_eq!(article_boost(&conn, focus), 0);
+        let (article, interest) =
+            seed_matching(&conn, "subject", "https://interest.example/transaction");
+        recompute_interest_boost(&conn).unwrap();
+        let before = interest_snapshot(&conn);
+        let sig_before = stored_sig(&conn);
+        for commit in [false, true] {
+            let tx = db::write_transaction(&conn).unwrap();
+            set_chunk_embedding(
+                &tx,
+                title_chunk_id(&tx, article),
+                "test-embed",
+                &[0.0, 1.0, 0.0],
+            )
+            .unwrap();
+            db::set_setting(&tx, "outer_marker", "kept").unwrap();
+            let changes = tx.total_changes();
+            for result in [
+                recompute_interest_boost(&tx).map(|_| ()),
+                set_enabled(&tx, interest, false),
+                set_weight(&tx, interest, 9),
+                delete_interest(&tx, interest),
+            ] {
+                assert!(
+                    matches!(result, Err(Error::Sqlite(rusqlite::Error::SqliteFailure(error, Some(message))))
+                    if error.extended_code == rusqlite::ffi::SQLITE_MISUSE && message.contains("requires autocommit"))
+                );
+            }
+            assert_eq!(tx.total_changes(), changes);
+            assert_eq!(interest_snapshot(&tx), before);
+            assert_eq!(stored_sig(&tx), sig_before);
+            assert!(!tx.is_autocommit());
+            if commit {
+                tx.commit().unwrap();
+                assert_eq!(
+                    db::get_setting(&conn, "outer_marker").unwrap().as_deref(),
+                    Some("kept")
+                );
+                assert_eq!(recompute_interest_boost(&conn).unwrap(), 0);
+                assert_eq!(article_boost(&conn, article), 0);
+            } else {
+                tx.rollback().unwrap();
+                assert_eq!(db::get_setting(&conn, "outer_marker").unwrap(), None);
+                assert_eq!(interest_snapshot(&conn), before);
+                assert_eq!(recompute_interest_boost(&conn).unwrap(), 0);
+            }
+        }
     }
 
     #[test]

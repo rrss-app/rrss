@@ -8,6 +8,22 @@ pub mod settings;
 pub mod site_rules;
 mod write_gate;
 
+/// These operations own both their read snapshot and their write transaction.
+/// Violations are caller bugs, reported through the existing SQLite error type.
+pub(crate) fn require_autocommit(
+    conn: &rusqlite::Connection,
+    operation: &'static str,
+) -> crate::Result<()> {
+    if conn.is_autocommit() {
+        return Ok(());
+    }
+    Err(rusqlite::Error::SqliteFailure(
+        rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_MISUSE),
+        Some(format!("{operation} requires autocommit")),
+    )
+    .into())
+}
+
 pub(crate) fn input_revision(conn: &rusqlite::Connection, domain: &str) -> crate::Result<i64> {
     Ok(conn.query_row(
         "SELECT revision FROM computation_revisions WHERE domain=?1",

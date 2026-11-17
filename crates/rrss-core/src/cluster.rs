@@ -1,6 +1,6 @@
 //! 跨源近重复聚类。入库不硬删。日志 target：`rrss_core::cluster`。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
@@ -39,80 +39,14 @@ struct ArticleFinger {
     cluster_id: Option<i64>,
 }
 
-/// Rebuild only recent permanent articles; article IDs and persisted source/citation snapshots stay intact.
+/// Rebuild recent permanent articles without changing persisted source/citation snapshots.
+/// Must be called in autocommit mode: planning owns its read snapshot and short write transaction.
 pub fn rebuild_if_needed(conn: &Connection) -> Result<bool> {
-    // 常态版本已一致：只读核对，不为此拿写锁；需要重建时在写事务里再核对一次。
-    if conn.is_autocommit()
-        && crate::db::get_setting(conn, ALGORITHM_VERSION_KEY)?.as_deref()
-            == Some(ALGORITHM_VERSION)
-    {
+    crate::db::require_autocommit(conn, "cluster rebuild")?;
+    if crate::db::get_setting(conn, ALGORITHM_VERSION_KEY)?.as_deref() == Some(ALGORITHM_VERSION) {
         return Ok(false);
     }
-    if conn.is_autocommit() {
-        return prepare::run(conn, true).map(|_| true);
-    }
-    let window = now_ms() - CLUSTER_WINDOW_DAYS * MS_PER_DAY;
-    // Nested callers already own the transaction; preserve their atomic boundary.
-    crate::db::atomic_write(conn, |conn| {
-        if crate::db::get_setting(conn, ALGORITHM_VERSION_KEY)?.as_deref()
-            == Some(ALGORITHM_VERSION)
-        {
-            return Ok(false);
-        }
-        let rows = window_rows(conn, window)?;
-        conn.execute(
-            "UPDATE articles SET simhash=NULL, cluster_id=NULL
-            WHERE expires_at IS NULL AND COALESCE(published_at,created_at)>=?1",
-            [window],
-        )?;
-        for cid in rows.iter().filter_map(|r| r.1).collect::<HashSet<_>>() {
-            // Keep empty IDs reserved: an already-open focus expansion must never target a new event.
-            if member_count(conn, cid)? == 0 {
-                conn.execute(
-                    "UPDATE clusters SET member_count=0, representative_id=NULL,
-                    first_published_at=NULL,last_published_at=NULL,
-                    summary_json=NULL,summary_members=NULL,summary_at=NULL WHERE id=?1",
-                    [cid],
-                )?;
-            } else {
-                refresh_cluster(conn, cid)?;
-            }
-        }
-        for (id, _, title, html) in &rows {
-            let fp = fingerprint_article(title, html.as_deref());
-            conn.execute(
-                "UPDATE articles SET simhash=?1 WHERE id=?2",
-                params![fp, id],
-            )?;
-        }
-        assign_articles_inner(conn, &rows.iter().map(|r| r.0).collect::<Vec<_>>())?;
-        merge_close_clusters_inner(conn)?;
-        crate::db::set_setting(conn, ALGORITHM_VERSION_KEY, ALGORITHM_VERSION)?;
-        Ok(true)
-    })
-}
-
-type WindowRow = (i64, Option<i64>, String, Option<String>);
-
-/// 窗口内的长期文章：ID、所属簇、标题与正文。
-const WINDOW_ROWS_SQL: &str = "SELECT id, cluster_id, title, content_html FROM articles
-    WHERE expires_at IS NULL AND COALESCE(published_at,created_at)>=?1 ORDER BY id";
-
-fn window_rows(conn: &Connection, window: i64) -> Result<Vec<WindowRow>> {
-    let mut stmt = conn.prepare(WINDOW_ROWS_SQL)?;
-    Ok(stmt
-        .query_map([window], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?)
-}
-
-/// Random articles give a bounded random-pair background distribution (at most 8128 pairs).
-/// Cache per space for one day; changed population or insufficient data invalidates it.
-fn calibrated_similarity(conn: &Connection, window: i64) -> Result<f32> {
-    let calibration = calibrate(conn, window)?;
-    calibration.persist(conn)?;
-    Ok(calibration.threshold)
+    prepare::run(conn, true).map(|_| true)
 }
 
 /// 只读当天的空间校准缓存；不检查样本规模、不重新校准或写缓存。
@@ -387,34 +321,27 @@ pub fn assign_article(conn: &Connection, article_id: i64) -> Result<i64> {
     Ok(load_finger(conn, article_id)?.cluster_id.unwrap_or(0))
 }
 
-/// 窗口内代表标题向量相近的簇两两合并。合并在一个写事务里（已在事务内则用 SAVEPOINT）。
-///
-/// 先在读快照里找有没有满足条件的簇对：多数轮次一对都没有，不必拿写锁。
-/// 找到候选后在快照上准备完整合并计划，短写事务校验输入版本并提交差异。
-/// 已处于调用方事务中时沿用原子边界。
+/// Merge nearby representative vectors. Must be called in autocommit mode.
+/// A read-only preflight skips unchanged rounds; a snapshot plan is validated
+/// and published in a short write transaction when there are candidates.
 pub fn merge_close_clusters(conn: &Connection) -> Result<u32> {
-    if conn.is_autocommit() {
-        let (found, calibration) = crate::db::read_snapshot(conn, |snapshot| {
-            let window = now_ms() - CLUSTER_WINDOW_DAYS * MS_PER_DAY;
-            let calibration = calibrate(snapshot, window)?;
-            let reps = window_representatives(snapshot, window)?;
-            Ok((
-                any_close_pair(snapshot, &reps, calibration.threshold)?,
-                calibration,
-            ))
-        })?;
-        if !found {
-            if calibration.cache.is_some() {
-                crate::db::atomic_write(conn, |tx| calibration.persist(tx))?;
-            }
-            return Ok(0);
+    crate::db::require_autocommit(conn, "cluster merge")?;
+    let (found, calibration) = crate::db::read_snapshot(conn, |snapshot| {
+        let window = now_ms() - CLUSTER_WINDOW_DAYS * MS_PER_DAY;
+        let calibration = calibrate(snapshot, window)?;
+        let reps = window_representatives(snapshot, window)?;
+        Ok((
+            any_close_pair(snapshot, &reps, calibration.threshold)?,
+            calibration,
+        ))
+    })?;
+    if !found {
+        if calibration.cache.is_some() {
+            crate::db::atomic_write(conn, |tx| calibration.persist(tx))?;
         }
+        return Ok(0);
     }
-    if conn.is_autocommit() {
-        prepare::run(conn, false)
-    } else {
-        crate::db::atomic_write(conn, merge_close_clusters_inner)
-    }
+    prepare::run(conn, false)
 }
 
 type Representative = (i64, Vec<f32>, ArticleFinger);
@@ -497,44 +424,6 @@ fn any_close_pair(conn: &Connection, reps: &[Representative], threshold: f32) ->
     Ok(false)
 }
 
-fn merge_close_clusters_inner(conn: &Connection) -> Result<u32> {
-    let window = now_ms() - CLUSTER_WINDOW_DAYS * MS_PER_DAY;
-    let threshold = calibrated_similarity(conn, window)?;
-    let mut reps = window_representatives(conn, window)?;
-    let mut merged = 0u32;
-    let mut skip = std::collections::HashSet::new();
-    for i in 0..reps.len() {
-        if skip.contains(&reps[i].0) {
-            continue;
-        }
-        for j in (i + 1)..reps.len() {
-            if skip.contains(&reps[j].0) {
-                continue;
-            }
-            if let Some(distance) = close_pair(conn, &reps[i], &reps[j], threshold)? {
-                let survivor = merge_clusters(conn, reps[i].0, reps[j].0, distance, threshold)?;
-                merged += 1;
-                let k = if survivor == reps[i].0 { i } else { j };
-                let rep_id =
-                    representative_id(conn, survivor)?.expect("merged cluster has members");
-                reps[k].2 = load_finger(conn, rep_id)?;
-                reps[k].1 = rag::title_embedding(conn, rep_id)?.unwrap_or_default();
-                if survivor == reps[i].0 {
-                    skip.insert(reps[j].0);
-                } else {
-                    // i 已并入 j，簇已删除；之后由 j 继续和后面的簇比较。
-                    skip.insert(reps[i].0);
-                    break;
-                }
-            }
-        }
-    }
-    if merged > 0 {
-        tracing::info!(count = merged, "merged clusters by title vector");
-    }
-    Ok(merged)
-}
-
 /// Compare all members, not only the representative: A -> B -> A must not bypass the rule.
 fn compatible_sources(conn: &Connection, a: i64, b: i64) -> Result<bool> {
     Ok(!conn.query_row(
@@ -601,32 +490,6 @@ fn join_cluster(
     refresh_cluster(conn, cluster_id)
 }
 
-fn merge_clusters(conn: &Connection, a: i64, b: i64, distance: f32, threshold: f32) -> Result<i64> {
-    if a == b {
-        return Ok(a);
-    }
-    let count_a = member_count(conn, a)?;
-    let count_b = member_count(conn, b)?;
-    let (survivor, loser) = if count_a >= count_b { (a, b) } else { (b, a) };
-    for article_id in cluster_members(conn, loser)? {
-        tracing::debug!(
-            article_id,
-            cluster_id = survivor,
-            step = "vector",
-            distance,
-            threshold,
-            "assigned cluster"
-        );
-    }
-    conn.execute(
-        "UPDATE articles SET cluster_id = ?1 WHERE cluster_id = ?2",
-        params![survivor, loser],
-    )?;
-    conn.execute("DELETE FROM clusters WHERE id = ?1", [loser])?;
-    refresh_cluster(conn, survivor)?;
-    Ok(survivor)
-}
-
 fn refresh_cluster(conn: &Connection, cluster_id: i64) -> Result<()> {
     let (n, first, last): (i64, Option<i64>, Option<i64>) = conn.query_row(
         "SELECT COUNT(*), MIN(published_at), MAX(published_at)
@@ -654,15 +517,6 @@ fn refresh_cluster(conn: &Connection, cluster_id: i64) -> Result<()> {
         params![label, rep_id, n, first, last, cluster_id],
     )?;
     Ok(())
-}
-
-fn member_count(conn: &Connection, cluster_id: i64) -> Result<i64> {
-    conn.query_row(
-        "SELECT COUNT(*) FROM articles WHERE cluster_id = ?1",
-        [cluster_id],
-        |row| row.get(0),
-    )
-    .map_err(Into::into)
 }
 
 fn representative_id(conn: &Connection, cluster_id: i64) -> Result<Option<i64>> {
@@ -761,58 +615,78 @@ pub fn cluster_members(conn: &Connection, cluster_id: i64) -> Result<Vec<i64>> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn planned_upgrade_matches_existing_url_fingerprint_and_source_rules() {
-        let (_dir, planned) = open_temp();
-        let (_other_dir, reference) = open_temp();
-        let now = now_ms();
-        for conn in [&*planned, &*reference] {
-            seed_similar_clusters(conn, &[2, 1, 3, 1]);
-            conn.execute("UPDATE articles SET content_html='<p>A substantial synthetic report about a public library opening and its reading rooms.</p>',
-                title='library opening event',published_at=?1,created_at=?1", [now]).unwrap();
-            conn.execute("UPDATE articles SET canonical_url='https://cluster.example/shared' WHERE id IN (1001,1003)", []).unwrap();
-            conn.execute("UPDATE articles SET feed_id=(SELECT feed_id FROM articles WHERE id=1001),canonical_url='https://cluster.example/different' WHERE id=1004", []).unwrap();
-            conn.execute(
-                "UPDATE articles SET published_at=?1,created_at=?1 WHERE id=1002",
-                [now - 20 * MS_PER_DAY],
-            )
+    fn cluster_snapshot(conn: &Connection, now: i64) -> serde_json::Value {
+        let mut stmt = conn
+            .prepare("SELECT json_array('article',id,simhash,cluster_id) FROM articles ORDER BY id")
             .unwrap();
-        }
-        rebuild_if_needed(&planned).unwrap();
-        crate::db::atomic_write(&reference, rebuild_if_needed).unwrap();
-        let rows = |conn: &Connection| {
-            conn.prepare("SELECT id,simhash,cluster_id FROM articles ORDER BY id")
+        let mut rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .map(|r| serde_json::from_str::<serde_json::Value>(&r.unwrap()).unwrap())
+            .collect::<Vec<_>>();
+        let mut stmt = conn.prepare("SELECT json_array('cluster',id,label,representative_id,member_count,first_published_at-?1,last_published_at-?1) FROM clusters ORDER BY id").unwrap();
+        rows.extend(
+            stmt.query_map([now], |r| r.get::<_, String>(0))
                 .unwrap()
-                .query_map([], |r| {
-                    Ok((
-                        r.get::<_, i64>(0)?,
-                        r.get::<_, Option<i64>>(1)?,
-                        r.get::<_, Option<i64>>(2)?,
-                    ))
-                })
-                .unwrap()
-                .collect::<rusqlite::Result<Vec<_>>>()
-                .unwrap()
-        };
-        assert_eq!(rows(&planned), rows(&reference));
-        let groups = |conn: &Connection| {
-            conn.prepare("SELECT id,label,representative_id,member_count,first_published_at,last_published_at FROM clusters ORDER BY id").unwrap()
-            .query_map([], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,Option<i64>>(2)?,r.get::<_,i64>(3)?,r.get::<_,Option<i64>>(4)?,r.get::<_,Option<i64>>(5)?))).unwrap()
-            .collect::<rusqlite::Result<Vec<_>>>().unwrap()
-        };
-        assert_eq!(groups(&planned), groups(&reference));
+                .map(|r| serde_json::from_str::<serde_json::Value>(&r.unwrap()).unwrap()),
+        );
+        rows.into()
+    }
+
+    // Captured from the transaction-only algorithms at dccf69af before their
+    // removal, using these same fixtures. Cluster timestamps are offsets from
+    // the fixture's `now`; IDs, fingerprints and all remaining fields are exact.
+    #[test]
+    fn planned_upgrade_matches_fixed_url_fingerprint_and_source_baseline() {
+        let (_dir, conn) = open_temp();
+        let now = now_ms();
+        seed_similar_clusters(&conn, &[2, 1, 3, 1]);
+        conn.execute("UPDATE articles SET content_html='<p>A substantial synthetic report about a public library opening and its reading rooms.</p>',
+            title='library opening event',published_at=?1,created_at=?1", [now]).unwrap();
+        conn.execute("UPDATE articles SET canonical_url='https://cluster.example/shared' WHERE id IN (1001,1003)", []).unwrap();
+        conn.execute("UPDATE articles SET feed_id=(SELECT feed_id FROM articles WHERE id=1001),canonical_url='https://cluster.example/different' WHERE id=1004", []).unwrap();
+        conn.execute(
+            "UPDATE articles SET published_at=?1,created_at=?1 WHERE id=1002",
+            [now - 20 * MS_PER_DAY],
+        )
+        .unwrap();
+        assert!(rebuild_if_needed(&conn).unwrap());
+        let expected = serde_json::json!([
+            ["article", 1001, 0, 104],
+            ["article", 1002, null, 100],
+            ["article", 1003, 0, 104],
+            ["article", 1004, 0, 105],
+            ["article", 1005, 0, 104],
+            ["article", 1006, 0, 104],
+            ["article", 1007, 0, 104],
+            [
+                "cluster",
+                100,
+                "library opening event",
+                1002,
+                1,
+                -1728000000,
+                -1728000000
+            ],
+            ["cluster", 101, "x", null, 0, null, null],
+            ["cluster", 102, "x", null, 0, null, null],
+            ["cluster", 103, "x", null, 0, null, null],
+            ["cluster", 104, "library opening event", 1007, 5, 0, 0],
+            ["cluster", 105, "library opening event", 1004, 1, 0, 0]
+        ]);
+        assert_eq!(cluster_snapshot(&conn, now), expected);
     }
 
     #[test]
-    fn planned_merge_matches_transaction_algorithm_and_rechecks_inputs() {
-        let (dir, planned) = open_temp();
-        let (_other_dir, reference) = open_temp();
-        for conn in [&*planned, &*reference] {
-            seed_similar_clusters(conn, &[1, 2, 1]);
-        }
+    fn planned_merge_matches_fixed_baseline_and_rechecks_inputs() {
+        let (dir, conn) = open_temp();
+        let now = now_ms();
+        seed_similar_clusters(&conn, &[1, 2, 1]);
+        conn.execute("UPDATE articles SET published_at=?1,created_at=?1", [now])
+            .unwrap();
         let other = crate::db::open_at(&dir.path().join("rrss.db")).unwrap();
         let rounds = std::cell::Cell::new(0);
-        super::prepare::run_with(&planned, false, || {
+        super::prepare::run_with(&conn, false, || {
             let round = rounds.get();
             rounds.set(round + 1);
             other.busy_timeout(std::time::Duration::ZERO)?;
@@ -827,25 +701,56 @@ mod tests {
             Ok(())
         })
         .unwrap();
-        reference
-            .execute(
-                "UPDATE articles SET title='unrelated subject' WHERE id=1001",
-                [],
-            )
-            .unwrap();
-        crate::db::atomic_write(&reference, merge_close_clusters_inner).unwrap();
-        let snapshot = |conn: &Connection| {
-            conn.prepare("SELECT id,cluster_id FROM articles ORDER BY id")
-                .unwrap()
-                .query_map([], |r| {
-                    Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?))
-                })
-                .unwrap()
-                .collect::<rusqlite::Result<Vec<_>>>()
-                .unwrap()
-        };
-        assert_eq!(snapshot(&planned), snapshot(&reference));
+        let expected = serde_json::json!([
+            ["article", 1001, null, 100],
+            ["article", 1002, null, 101],
+            ["article", 1003, null, 101],
+            ["article", 1004, null, 101],
+            ["cluster", 100, "x", 1001, 1, null, null],
+            ["cluster", 101, "library opening event", 1004, 3, 0, 0]
+        ]);
+        assert_eq!(cluster_snapshot(&conn, now), expected);
         assert_eq!(rounds.get(), 2);
+    }
+
+    #[test]
+    fn full_cluster_jobs_reject_outer_transactions_without_changes() {
+        let (_dir, conn) = open_temp();
+        seed_similar_clusters(&conn, &[1, 2, 1]);
+        let now = now_ms();
+        let before = cluster_snapshot(&conn, now);
+        for current_version in [false, true] {
+            let tx = crate::db::write_transaction(&conn).unwrap();
+            crate::db::set_setting(&tx, "outer_marker", "kept").unwrap();
+            if current_version {
+                crate::db::set_setting(&tx, ALGORITHM_VERSION_KEY, ALGORITHM_VERSION).unwrap();
+            }
+            let changes = tx.total_changes();
+            for result in [
+                rebuild_if_needed(&tx).map(|_| ()),
+                merge_close_clusters(&tx).map(|_| ()),
+            ] {
+                assert!(
+                    matches!(result, Err(crate::Error::Sqlite(rusqlite::Error::SqliteFailure(error, Some(message))))
+                    if error.extended_code == rusqlite::ffi::SQLITE_MISUSE && message.contains("requires autocommit"))
+                );
+            }
+            assert_eq!(tx.total_changes(), changes);
+            assert_eq!(cluster_snapshot(&tx, now), before);
+            assert!(!tx.is_autocommit());
+            if current_version {
+                tx.commit().unwrap();
+                assert_eq!(
+                    crate::db::get_setting(&conn, "outer_marker")
+                        .unwrap()
+                        .as_deref(),
+                    Some("kept")
+                );
+            } else {
+                tx.rollback().unwrap();
+                assert_eq!(crate::db::get_setting(&conn, "outer_marker").unwrap(), None);
+            }
+        }
     }
 
     use super::*;
@@ -1166,6 +1071,11 @@ mod tests {
 
     #[test]
     fn calibrated_threshold_tracks_space_distribution_and_rejects_high_baseline() {
+        let calibrated_similarity = |conn: &Connection, window| -> Result<f32> {
+            let calibration = calibrate(conn, window)?;
+            calibration.persist(conn)?;
+            Ok(calibration.threshold)
+        };
         let (_dir, conn) = open_temp();
         const POPULATION: usize = CALIBRATION_SAMPLE_ARTICLES + 4;
         seed_similar_clusters(&conn, &vec![1; POPULATION]);

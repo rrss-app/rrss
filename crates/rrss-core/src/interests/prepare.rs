@@ -290,6 +290,7 @@ pub(super) fn run_with(
     change: Option<Change>,
     between: impl Fn() -> Result<()>,
 ) -> Result<u32> {
+    db::require_autocommit(conn, "interest recomputation")?;
     for _ in 0..3 {
         let plan = db::read_snapshot(conn, |conn| {
             if change.is_none() && boost_up_to_date(conn)? {
