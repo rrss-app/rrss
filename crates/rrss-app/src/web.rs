@@ -178,10 +178,16 @@ pub(crate) fn store_page(
             }
         }
         if let Some((data_dir, _)) = snapshot {
-            rrss_core::media::evict_lru(&conn, data_dir).map_err(FulltextError::network)?;
+            rrss_core::media::warn_on_cleanup_error(
+                rrss_core::media::evict_lru(&conn, data_dir),
+                "media_evict",
+            );
         }
     }
-    rrss_core::media::flush_removed_files(&conn).map_err(FulltextError::network)?;
+    rrss_core::media::warn_on_cleanup_error(
+        rrss_core::media::flush_removed_files(&conn),
+        "media_cleanup",
+    );
     Ok(OpenWebLinkView {
         article_id: id,
         web_extracted_at,

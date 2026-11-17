@@ -108,7 +108,7 @@ pub use interests::{
     hide_noisy_enabled, insert_interest, interest_ready, list_interest_hits, list_interests,
     parse_interest_reasons, ranking_note, recompute_interest_boost, rerank_enabled,
     set_boost_enabled, set_cluster_group_enabled, set_enabled as set_interest_enabled,
-    set_hide_noisy_enabled, set_rerank_enabled, set_weight as set_interest_weight,
+    set_hide_noisy_enabled, set_rerank_enabled,
 };
 pub use kind::FeedKind;
 pub use media::{

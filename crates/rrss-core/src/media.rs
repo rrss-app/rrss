@@ -293,7 +293,7 @@ pub fn store_prepared_image(
     record_row(conn, article_id, url, path, mime, "image", bytes as u64)?;
     if conn.is_autocommit() {
         prepared.committed();
-        evict_lru(conn, data_dir)?;
+        warn_on_cleanup_error(evict_lru(conn, data_dir), "media_evict");
     }
     tracing::debug!(article_id, host = %crate::logsafe::host_str(url), bytes, "stored image");
     Ok(prepared.file.path.clone())
@@ -321,7 +321,7 @@ pub fn store_direct(
     record_row(conn, article_id, url, file.path(), mime, "video", bytes)?;
     if conn.is_autocommit() {
         file.committed();
-        evict_direct_lru(conn, data_dir)?;
+        warn_on_cleanup_error(evict_direct_lru(conn, data_dir), "media_evict");
     }
     Ok(file.path.clone())
 }
@@ -518,6 +518,17 @@ pub fn remove_cached(conn: &Connection, id: i64, _local_path: &str) -> Result<()
     Ok(())
 }
 
+/// Maintenance after a successful commit must not turn that store into a failure.
+pub fn warn_on_cleanup_error<T>(result: Result<T>, error_kind: &'static str) {
+    if let Err(error) = result {
+        tracing::warn!(
+            error = %crate::logsafe::error(&error),
+            error_kind,
+            "media cache cleanup failed"
+        );
+    }
+}
+
 /// Deletions are durable database work; filesystem operations happen only after commit.
 /// New production cache files have unique names, so removed paths cannot be reused
 /// by an in-flight download between the reference check and the unlink.
@@ -546,6 +557,7 @@ pub fn flush_removed_files(conn: &Connection) -> Result<usize> {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 completed.push(local_path)
             }
+            // Expected deferral (e.g. a file still open on Windows); retried on the next flush.
             Err(error) => tracing::debug!(kind = ?error.kind(), "media cleanup deferred"),
         }
     }
@@ -760,10 +772,85 @@ mod tests {
         let mut prepared = prepare_image(data.path(), url, &sample_png(32)).unwrap();
         prepared.bytes = MAX_CACHE_BYTES as usize + 1;
         let path = prepared.file.path.clone();
-        assert!(store_prepared_image(&conn, data.path(), article, url, &mut prepared).is_err());
+        let capture = crate::test_log::Capture::new();
+        assert_eq!(
+            capture
+                .run(|| store_prepared_image(&conn, data.path(), article, url, &mut prepared))
+                .unwrap(),
+            path
+        );
         drop(prepared);
         assert!(path.is_file());
         assert!(lookup(&conn, article, url).unwrap().is_some());
+        let log = capture.take();
+        assert!(log.contains("WARN") && log.contains("media_evict") && log.contains("error="));
+    }
+
+    #[test]
+    fn committed_direct_file_survives_eviction_failure() {
+        let (data, conn, article) = seeded();
+        std::fs::create_dir_all(cache_dir(data.path())).unwrap();
+        conn.execute(
+            "INSERT INTO media(url,local_path,kind,bytes,created_at) VALUES('https://media.example/old.mp4',?1,'video',?2,0)",
+            params![unique_cache_path(data.path()).to_string_lossy(), MAX_DIRECT_CACHE_BYTES as i64 + 1],
+        ).unwrap();
+        conn.execute_batch("CREATE TRIGGER reject_eviction BEFORE DELETE ON media BEGIN SELECT RAISE(ABORT,'fixture'); END;").unwrap();
+        let url = "https://media.example/committed.mp4";
+        let path = unique_cache_path(data.path());
+        std::fs::write(&path, b"fixture").unwrap();
+        let mut file = PendingCacheFile::new(path.clone());
+        let capture = crate::test_log::Capture::new();
+        assert_eq!(
+            capture
+                .run(|| store_direct(
+                    &conn,
+                    data.path(),
+                    article,
+                    url,
+                    &mut file,
+                    Some("video/mp4"),
+                    7
+                ))
+                .unwrap(),
+            path
+        );
+        drop(file);
+        assert!(path.is_file());
+        assert!(lookup(&conn, article, url).unwrap().is_some());
+        let log = capture.take();
+        assert!(log.contains("WARN") && log.contains("media_evict") && log.contains("error="));
+    }
+
+    #[test]
+    fn filesystem_cleanup_failure_is_deferred_without_failing_the_store() {
+        let (data, conn, article) = seeded();
+        // Unlinking a directory fails even when tests run as root.
+        let blocked = cache_dir(data.path()).join("blocked");
+        std::fs::create_dir_all(&blocked).unwrap();
+        conn.execute(
+            "INSERT INTO media_cleanup(local_path) VALUES(?1)",
+            [blocked.to_string_lossy()],
+        )
+        .unwrap();
+        let url = "https://media.example/committed.png";
+        let capture = crate::test_log::Capture::new();
+        let path = capture
+            .run(|| store_image(&conn, data.path(), article, url, &sample_png(32)))
+            .unwrap();
+        assert!(path.is_file());
+        assert!(lookup(&conn, article, url).unwrap().is_some());
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM media_cleanup", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        // A locked file is retried on the next flush; it must not flood the run log.
+        assert!(!capture.take().contains("WARN"));
+        std::fs::remove_dir(&blocked).unwrap();
+        std::fs::write(&blocked, b"fixture").unwrap();
+        assert_eq!(flush_removed_files(&conn).unwrap(), 1);
+        assert!(!blocked.exists());
     }
 
     #[test]

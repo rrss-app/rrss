@@ -6,6 +6,8 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ### Fixed
 
+- Cache eviction and cleanup errors no longer make successfully saved images, audio/video, feed icons, or web snapshots appear to fail.
+- Interest changes save successfully in large libraries while embeddings are updating; expensive ranking recalculation runs in the background.
 - Full-text fetches report concurrent content changes separately from network failures, and unreadable body caches are rebuilt automatically.
 - Reading, search, and feed lists avoid unnecessary icon scans and repeated body parsing. Failed settings queries report errors instead of showing defaults. Chat startup can be stopped during a slow handshake, streamed replies render off the event loop, and client setup no longer holds a shared cache lock while reading configuration or building connections.
 - Interest edits handle overlapping small batches of embedding updates, cluster merges avoid loading old article vectors, and failed media registration or rolled-back web snapshots clean up newly written cache files.

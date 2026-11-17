@@ -4,10 +4,12 @@ use super::*;
 #[derive(Clone, Copy)]
 pub(super) enum Change {
     Enabled(i64, bool),
-    Weight(i64, i64),
     Delete(i64),
 }
 type InterestInput = (i64, String, i64, bool, Option<Vec<u8>>, Option<i64>);
+
+const MAX_SCANNED_ARTICLES: usize = 2048;
+const MAX_SCANNED_BYTES: usize = 8 * 1024 * 1024;
 
 struct Inputs {
     enabled: bool,
@@ -18,13 +20,6 @@ struct Inputs {
 }
 
 impl Inputs {
-    fn load(conn: &Connection) -> Result<Self> {
-        let mut inputs = Self::configuration(conn)?;
-        if inputs.enabled {
-            inputs.selected = load_selected_article_vectors(conn, inputs.threshold)?;
-        }
-        Ok(inputs)
-    }
     fn configuration(conn: &Connection) -> Result<Self> {
         let enabled = boost_enabled(conn)?;
         let threshold = crate::articles::hide_threshold(conn)?;
@@ -54,7 +49,7 @@ impl Inputs {
     }
     fn prototypes(&self, change: Option<Change>) -> Result<Vec<Prototype>> {
         let changed_id = change.map(|c| match c {
-            Change::Enabled(id, _) | Change::Weight(id, _) | Change::Delete(id) => id,
+            Change::Enabled(id, _) | Change::Delete(id) => id,
         });
         if changed_id.is_some_and(|id| !self.interests.iter().any(|i| i.0 == id)) {
             return Err(Error::InterestNotFound);
@@ -66,10 +61,9 @@ impl Inputs {
             .interests
             .iter()
             .filter_map(|(id, label, weight, enabled, blob, space)| {
-                let (mut weight, mut enabled) = (*weight, *enabled);
+                let mut enabled = *enabled;
                 match change {
                     Some(Change::Enabled(i, value)) if i == *id => enabled = value,
-                    Some(Change::Weight(i, value)) if i == *id => weight = value,
                     Some(Change::Delete(i)) if i == *id => return None,
                     _ => {}
                 }
@@ -79,11 +73,36 @@ impl Inputs {
                 Some(Prototype {
                     id: *id,
                     label: label.clone(),
-                    weight,
+                    weight: *weight,
                     vector: le_to_f32s(blob.as_deref()?)?,
                 })
             })
             .collect())
+    }
+
+    // Read only bounded lengths before decoding or scoring a foreground corpus.
+    fn within_foreground_budget(&self, conn: &Connection) -> Result<bool> {
+        let sql = format!(
+            "SELECT length(c.embedding) FROM articles a JOIN chunks c ON c.id={}
+             WHERE a.expires_at IS NULL AND a.score>?1 LIMIT ?3",
+            crate::rag::SELECTED_CHUNK_SQL
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let mut rows = stmt.query(params![
+            self.threshold,
+            self.space,
+            MAX_SCANNED_ARTICLES + 1
+        ])?;
+        let mut count = 0;
+        let mut bytes = 0usize;
+        while let Some(row) = rows.next()? {
+            count += 1;
+            bytes = bytes.saturating_add(row.get::<_, usize>(0)?);
+            if count > MAX_SCANNED_ARTICLES || bytes > MAX_SCANNED_BYTES {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 }
 
@@ -98,18 +117,26 @@ struct Plan {
     signature: String,
     rows: Vec<Row>,
     inputs: Inputs,
+    deferred: bool,
 }
 impl Plan {
     fn prepare(conn: &Connection, change: Option<Change>) -> Result<Self> {
-        let inputs = Inputs::load(conn)?;
+        let mut inputs = Inputs::configuration(conn)?;
         let source = db::input_revision(conn, "interest")?;
         let prototypes = inputs.prototypes(change)?;
+        let deferred =
+            change.is_some() && !prototypes.is_empty() && !inputs.within_foreground_budget(conn)?;
+        if !prototypes.is_empty() && !deferred {
+            inputs.selected = load_selected_article_vectors(conn, inputs.threshold)?;
+        }
         let signature = if prototypes.is_empty() {
             String::new()
+        } else if deferred {
+            "recheck".into()
         } else {
             boost_signature(&prototypes, inputs.threshold, &inputs.selected)
         };
-        let rows = if prototypes.is_empty() {
+        let rows = if prototypes.is_empty() || deferred {
             Vec::new()
         } else {
             inputs
@@ -132,7 +159,14 @@ impl Plan {
             signature,
             rows,
             inputs,
+            deferred,
         })
+    }
+
+    fn defer(&mut self) {
+        self.deferred = true;
+        self.rows.clear();
+        self.signature = "recheck".into();
     }
 
     // A foreground edit can converge while a small embedding batch finishes.
@@ -140,8 +174,6 @@ impl Plan {
     fn rebase(&mut self, conn: &Connection, change: Option<Change>) -> Result<bool> {
         const MAX_CHANGED_ARTICLES: usize = 32;
         const MAX_VECTOR_COMPONENTS: usize = 128 * 1024;
-        const MAX_SCANNED_ARTICLES: usize = 2048;
-        const MAX_SCANNED_BYTES: usize = 8 * 1024 * 1024;
         let inputs = Inputs::configuration(conn)?;
         if inputs.enabled != self.inputs.enabled
             || inputs.threshold != self.inputs.threshold
@@ -149,6 +181,9 @@ impl Plan {
             || inputs.interests != self.inputs.interests
         {
             return Ok(false);
+        }
+        if self.deferred {
+            return Ok(true);
         }
         let prototypes = inputs.prototypes(change)?;
         if prototypes.is_empty() {
@@ -188,7 +223,8 @@ impl Plan {
                 ids.push(id);
                 scanned_bytes = scanned_bytes.saturating_add(blob.len());
                 if ids.len() > MAX_SCANNED_ARTICLES || scanned_bytes > MAX_SCANNED_BYTES {
-                    return Ok(false);
+                    self.defer();
+                    return Ok(true);
                 }
                 if old.get(&id).map(|b| b.as_slice()) == Some(blob) {
                     continue;
@@ -196,7 +232,8 @@ impl Plan {
                 components =
                     components.saturating_add((blob.len() / 4).saturating_mul(prototypes.len()));
                 if changed.len() >= MAX_CHANGED_ARTICLES || components > MAX_VECTOR_COMPONENTS {
-                    return Ok(false);
+                    self.defer();
+                    return Ok(true);
                 }
                 changed.push((id, le_to_f32s(blob)));
             }
@@ -231,16 +268,16 @@ impl Plan {
                     params![id, value],
                 )?;
             }
-            Some(Change::Weight(id, value)) => {
-                conn.execute(
-                    "UPDATE interests SET weight=?2 WHERE id=?1",
-                    params![id, value],
-                )?;
-            }
             Some(Change::Delete(id)) => {
                 conn.execute("DELETE FROM interests WHERE id=?1", [id])?;
             }
             None => {}
+        }
+        if self.deferred {
+            // The app wakes the existing local job after this configuration
+            // commits. Keep the last complete derived rows until it rebuilds.
+            db::set_setting(conn, INTEREST_BOOST_SIG_KEY, &self.signature)?;
+            return Ok(0);
         }
         if self.signature.is_empty() {
             return clear_boosts(conn);

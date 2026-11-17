@@ -125,11 +125,23 @@ pub fn unmark_read(conn: &Connection, ids: &[i64]) -> rrss_core::Result<()> {
 }
 
 pub fn set_interest_enabled(conn: &Connection, id: i64, enabled: bool) -> rrss_core::Result<()> {
-    interests::set_enabled(conn, id, enabled)
+    interests::set_enabled(conn, id, enabled)?;
+    interest_changed(conn);
+    Ok(())
 }
 
 pub fn delete_interest(conn: &Connection, id: i64) -> rrss_core::Result<()> {
-    interests::delete_interest(conn, id)
+    interests::delete_interest(conn, id)?;
+    interest_changed(conn);
+    Ok(())
+}
+
+fn interest_changed(conn: &Connection) {
+    if let Some(path) = conn.path() {
+        crate::scheduler::model_capacity::Capacity::for_database(Path::new(path))
+            .derived
+            .send_modify(|version| *version += 1);
+    }
 }
 
 pub fn add_interest(conn: &Connection, label: &str) -> rrss_core::Result<i64> {
@@ -1018,6 +1030,78 @@ mod tests {
         let path = dir.path().join("t.db");
         let conn = db::open_at(&path).unwrap();
         (dir, conn)
+    }
+
+    #[tokio::test]
+    async fn interest_edits_wake_existing_background_rebuild() {
+        use rusqlite::params;
+
+        let (dir, conn) = open_temp();
+        let path = dir.path().join("t.db");
+        let capacity = crate::scheduler::model_capacity::Capacity::for_database(&path);
+        let mut derived = capacity.derived.subscribe();
+        let vector = rag::f32s_to_le(&[1.0, 0.0, 0.0]);
+        let tx = db::write_transaction(&conn).unwrap();
+        tx.execute_batch(
+            "INSERT INTO vector_spaces(id,base_url,model,dims,prefix_version,normalized,state,created_at)
+             VALUES(1,'','fixture',3,1,0,'active',0);
+             INSERT INTO feeds(id,url,created_at) VALUES(1,'https://interest.example/feed',0);",
+        ).unwrap();
+        for id in 1..=2049 {
+            tx.execute(
+                "INSERT INTO articles(id,feed_id,title,created_at) VALUES(?1,1,'fixture',0)",
+                [id],
+            )
+            .unwrap();
+            tx.execute("INSERT INTO chunks(article_id,ordinal,kind,text,embedding,space_id) VALUES(?1,0,'title_summary','fixture',?2,1)", params![id,vector]).unwrap();
+        }
+        for id in 1..=2 {
+            tx.execute("INSERT INTO interests(id,label,source,embedding,space_id,created_at) VALUES(?1,'fixture','manual',?2,1,0)", params![id,vector]).unwrap();
+        }
+        tx.commit().unwrap();
+        crate::jobs::run_interest_boost(&path).await.unwrap();
+        set_interest_enabled(&conn, 1, false).unwrap();
+        assert!(derived.has_changed().unwrap());
+        derived.borrow_and_update();
+        assert_eq!(
+            db::get_setting(&conn, "interest_boost_sig")
+                .unwrap()
+                .as_deref(),
+            Some("recheck")
+        );
+        assert!(!interests::list_interests(&conn).unwrap()[0].enabled);
+        crate::jobs::run_interest_boost(&path).await.unwrap();
+        assert_eq!(
+            conn.query_row(
+                "SELECT interest_boost FROM articles WHERE id=2049",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            interests::DEFAULT_WEIGHT
+        );
+        set_interest_enabled(&conn, 1, true).unwrap();
+        assert!(derived.has_changed().unwrap());
+        derived.borrow_and_update();
+        delete_interest(&conn, 1).unwrap();
+        assert!(derived.has_changed().unwrap());
+        derived.borrow_and_update();
+        crate::jobs::run_interest_boost(&path).await.unwrap();
+        assert_eq!(interests::list_interests(&conn).unwrap().len(), 1);
+        assert_eq!(
+            conn.query_row(
+                "SELECT interest_boost FROM articles WHERE id=2049",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            interests::DEFAULT_WEIGHT
+        );
+        assert_eq!(
+            crate::UiError::from(set_interest_enabled(&conn, 1, true).unwrap_err()).code(),
+            "interest_not_found"
+        );
+        assert!(!derived.has_changed().unwrap());
     }
 
     #[test]

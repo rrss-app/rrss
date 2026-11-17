@@ -181,17 +181,12 @@ pub fn insert_interest(conn: &Connection, label: &str, source: &str) -> Result<i
     Ok(conn.last_insert_rowid())
 }
 
-/// Update an interest and its boosts; requires autocommit mode.
+/// Update an interest, deferring large boost rebuilds; requires autocommit mode.
 pub fn set_enabled(conn: &Connection, id: i64, enabled: bool) -> Result<()> {
     prepare::run(conn, Some(prepare::Change::Enabled(id, enabled))).map(|_| ())
 }
 
-/// Update an interest and its boosts; requires autocommit mode.
-pub fn set_weight(conn: &Connection, id: i64, weight: i64) -> Result<()> {
-    prepare::run(conn, Some(prepare::Change::Weight(id, weight.max(1)))).map(|_| ())
-}
-
-/// Delete an interest and update its boosts; requires autocommit mode.
+/// Delete an interest, deferring large boost rebuilds; requires autocommit mode.
 pub fn delete_interest(conn: &Connection, id: i64) -> Result<()> {
     prepare::run(conn, Some(prepare::Change::Delete(id))).map(|_| ())
 }
@@ -419,22 +414,17 @@ fn map_interest(row: &rusqlite::Row<'_>) -> rusqlite::Result<Interest> {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    #[ignore = "explicit offline 300-article foreground conflict latency probe"]
-    fn foreground_edit_latency_during_embedding_batches() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("latency.db");
-        let conn = open_at(&path).unwrap();
-        crate::vector_space::seed_active(&conn, "fixture", 1024);
-        let space = crate::vector_space::active(&conn).unwrap().unwrap();
-        let vector = crate::rag::f32s_to_le(&vec![1.0 / 32.0; 1024]);
+    fn seed_embedding_corpus(conn: &Connection, articles: i64, dims: usize) {
+        crate::vector_space::seed_active(conn, "fixture", dims as i64);
+        let space = crate::vector_space::active(conn).unwrap().unwrap();
+        let vector = crate::rag::f32s_to_le(&vec![1.0 / (dims as f32).sqrt(); dims]);
         conn.execute(
             "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://interest.example/feed',0)",
             [],
         )
         .unwrap();
-        let tx = db::write_transaction(&conn).unwrap();
-        for id in 1..=300 {
+        let tx = db::write_transaction(conn).unwrap();
+        for id in 1..=articles {
             tx.execute(
                 "INSERT INTO articles(id,feed_id,title,created_at) VALUES(?1,1,'fixture',0)",
                 [id],
@@ -442,56 +432,141 @@ mod tests {
             .unwrap();
             tx.execute("INSERT INTO chunks(article_id,ordinal,kind,text,embedding,space_id) VALUES(?1,0,'title_summary','fixture',?2,?3)", params![id,vector,space.id]).unwrap();
         }
-        tx.execute("INSERT INTO interests(id,label,weight,source,enabled,embedding,space_id,created_at) VALUES(1,'fixture',2,'manual',1,?1,?2,0)", params![vector,space.id]).unwrap();
+        for id in 1..=2 {
+            tx.execute("INSERT INTO interests(id,label,weight,source,enabled,embedding,space_id,created_at) VALUES(?1,'fixture',2,'manual',1,?2,?3,0)", params![id,vector,space.id]).unwrap();
+        }
         tx.commit().unwrap();
-        let other = open_at(&path).unwrap();
-        recompute_interest_boost(&conn).unwrap();
-        let mut totals = Vec::new();
-        let mut holds = Vec::new();
-        for sample in 0..20 {
-            let started = std::time::Instant::now();
-            let round = std::cell::Cell::new(0);
-            let prior_hold = db::pool::metrics(&path)
-                .unwrap()
-                .write_hold
-                .snapshot()
-                .total_ms;
-            super::prepare::run_with(
-                &conn,
-                Some(super::prepare::Change::Weight(1, 3 + sample % 2)),
-                || {
-                    round.set(round.get() + 1);
-                    let mut changed = vec![1.0 / 32.0; 1024];
-                    changed[0] += (sample * 3 + round.get()) as f32 / 10000.0;
+    }
+
+    #[test]
+    fn large_foreground_save_survives_embedding_writes() {
+        for (article_count, dims) in [(2049, 3), (1025, 2048)] {
+            for operation in 0..3 {
+                let dir = tempfile::tempdir().unwrap();
+                let path = dir.path().join("interests.db");
+                let conn = open_at(&path).unwrap();
+                seed_embedding_corpus(&conn, article_count, dims);
+                if operation == 0 {
+                    conn.execute("UPDATE interests SET enabled=0 WHERE id=1", [])
+                        .unwrap();
+                }
+                recompute_interest_boost(&conn).unwrap();
+                let before = article_boost(&conn, 1);
+                let other = open_at(&path).unwrap();
+                let rounds = std::cell::Cell::new(0);
+                let change = match operation {
+                    0 => super::prepare::Change::Enabled(1, true),
+                    1 => super::prepare::Change::Enabled(1, false),
+                    _ => super::prepare::Change::Delete(1),
+                };
+                let started = std::time::Instant::now();
+                let result = super::prepare::run_with(&conn, Some(change), || {
+                    rounds.set(rounds.get() + 1);
+                    let mut vector = vec![1.0 / (dims as f32).sqrt(); dims];
+                    vector[0] += rounds.get() as f32 / 10000.0;
                     other.execute(
-                        "UPDATE chunks SET embedding=?1 WHERE article_id<=30",
-                        [crate::rag::f32s_to_le(&changed)],
+                        "UPDATE chunks SET embedding=?1 WHERE article_id=1",
+                        [crate::rag::f32s_to_le(&vector)],
                     )?;
                     Ok(())
-                },
-            )
-            .unwrap();
-            assert_eq!(round.get(), 1);
-            totals.push(started.elapsed().as_secs_f64() * 1000.0);
-            holds.push(
-                db::pool::metrics(&path)
+                });
+                eprintln!(
+                    "large foreground save: articles={article_count}, dims={dims}, operation={operation}, rounds={}, total_ms={:.2}, result={result:?}",
+                    rounds.get(),
+                    started.elapsed().as_secs_f64() * 1000.0
+                );
+                result.unwrap();
+                assert_eq!(rounds.get(), 1);
+                if operation == 2 {
+                    assert_eq!(
+                        conn.query_row("SELECT COUNT(*) FROM interests WHERE id=1", [], |r| r
+                            .get::<_, i64>(0))
+                            .unwrap(),
+                        0
+                    );
+                } else {
+                    assert_eq!(
+                        conn.query_row("SELECT enabled FROM interests WHERE id=1", [], |r| r
+                            .get::<_, bool>(0))
+                            .unwrap(),
+                        operation == 0
+                    );
+                }
+                // No partially calculated rows are published when the writer budget is
+                // exceeded; the existing background entry point finishes the rebuild.
+                assert_eq!(article_boost(&conn, 1), before);
+                assert_eq!(stored_sig(&conn).as_deref(), Some("recheck"));
+                recompute_interest_boost(&conn).unwrap();
+                let expected = if operation == 0 {
+                    DEFAULT_WEIGHT * 2
+                } else {
+                    DEFAULT_WEIGHT
+                };
+                assert_eq!(article_boost(&conn, 1), expected);
+                assert_eq!(article_boost(&conn, article_count), expected);
+                assert_ne!(stored_sig(&conn).as_deref(), Some("recheck"));
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "explicit offline foreground conflict latency probe"]
+    fn foreground_edit_latency_during_embedding_batches() {
+        for article_count in [300, 2049] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("latency.db");
+            let conn = open_at(&path).unwrap();
+            seed_embedding_corpus(&conn, article_count, 1024);
+            let other = open_at(&path).unwrap();
+            recompute_interest_boost(&conn).unwrap();
+            let mut totals = Vec::new();
+            let mut holds = Vec::new();
+            let mut failures = 0;
+            for sample in 0..20 {
+                let started = std::time::Instant::now();
+                let round = std::cell::Cell::new(0);
+                let prior_hold = db::pool::metrics(&path)
                     .unwrap()
                     .write_hold
                     .snapshot()
-                    .total_ms
-                    - prior_hold,
+                    .total_ms;
+                let result = super::prepare::run_with(
+                    &conn,
+                    Some(super::prepare::Change::Enabled(1, sample % 2 == 0)),
+                    || {
+                        round.set(round.get() + 1);
+                        let mut changed = vec![1.0 / 32.0; 1024];
+                        changed[0] += (sample * 3 + round.get()) as f32 / 10000.0;
+                        other.execute(
+                            "UPDATE chunks SET embedding=?1 WHERE article_id<=30",
+                            [crate::rag::f32s_to_le(&changed)],
+                        )?;
+                        Ok(())
+                    },
+                );
+                if result.is_err() {
+                    failures += 1;
+                }
+                totals.push(started.elapsed().as_secs_f64() * 1000.0);
+                holds.push(
+                    db::pool::metrics(&path)
+                        .unwrap()
+                        .write_hold
+                        .snapshot()
+                        .total_ms
+                        - prior_hold,
+                );
+                recompute_interest_boost(&conn).unwrap();
+            }
+            eprintln!(
+                "foreground conflict probe: articles={article_count}, dims=1024, samples={}, failures={failures}, max_total_ms={:.2}, over_100ms={}, max_sum_write_transactions_ms={:.2}",
+                totals.len(),
+                totals.iter().copied().fold(0.0, f64::max),
+                totals.iter().filter(|ms| **ms > 100.0).count(),
+                holds.iter().copied().fold(0.0, f64::max)
             );
-            let boost = article_boost(&conn, 1);
-            recompute_interest_boost(&conn).unwrap();
-            assert_eq!(article_boost(&conn, 1), boost);
+            assert_eq!(failures, 0);
         }
-        eprintln!(
-            "foreground conflict probe: samples={}, max_total_ms={:.2}, over_100ms={}, max_sum_write_transactions_ms={:.2}",
-            totals.len(),
-            totals.iter().copied().fold(0.0, f64::max),
-            totals.iter().filter(|ms| **ms > 100.0).count(),
-            holds.iter().copied().fold(0.0, f64::max)
-        );
     }
 
     #[test]
@@ -500,11 +575,14 @@ mod tests {
             let (dir, conn) = open_temp();
             let (article, interest) =
                 seed_matching(&conn, "subject", "https://interest.example/item");
+            if operation == 0 {
+                set_enabled(&conn, interest, false).unwrap();
+            }
             recompute_interest_boost(&conn).unwrap();
             let other = crate::db::open_at(&dir.path().join("rrss.db")).unwrap();
             let rounds = std::cell::Cell::new(0);
             let change = match operation {
-                0 => super::prepare::Change::Weight(interest, 5),
+                0 => super::prepare::Change::Enabled(interest, true),
                 1 => super::prepare::Change::Enabled(interest, false),
                 _ => super::prepare::Change::Delete(interest),
             };
@@ -522,7 +600,7 @@ mod tests {
             .unwrap();
             assert_eq!(rounds.get(), 1);
             let before = article_boost(&conn, article);
-            assert_eq!(before, if operation == 0 { 5 } else { 0 });
+            assert_eq!(before, if operation == 0 { DEFAULT_WEIGHT } else { 0 });
             recompute_interest_boost(&conn).unwrap();
             assert_eq!(article_boost(&conn, article), before);
         }
@@ -538,7 +616,7 @@ mod tests {
         let other = crate::db::open_at(&dir.path().join("rrss.db")).unwrap();
         let result = super::prepare::run_with(
             &conn,
-            Some(super::prepare::Change::Weight(interest, 9)),
+            Some(super::prepare::Change::Enabled(interest, false)),
             || {
                 other.execute(
                     "UPDATE interests SET label=label||'x' WHERE id=?1",
@@ -551,12 +629,12 @@ mod tests {
         assert_eq!(article_boost(&conn, article), before);
         assert_eq!(
             conn.query_row(
-                "SELECT weight FROM interests WHERE id=?1",
+                "SELECT enabled FROM interests WHERE id=?1",
                 [interest],
                 |r| r.get::<_, i64>(0)
             )
             .unwrap(),
-            DEFAULT_WEIGHT
+            1
         );
     }
 
@@ -570,7 +648,7 @@ mod tests {
         let other = open_at(&dir.path().join("rrss.db")).unwrap();
         super::prepare::run_with(
             &conn,
-            Some(super::prepare::Change::Weight(interest, 5)),
+            Some(super::prepare::Change::Enabled(interest, true)),
             || {
                 other.execute("DELETE FROM chunks WHERE article_id=?1", [removed])?;
                 put_title_vec(&other, added, &[1.0, 0.0, 0.0]);
@@ -579,7 +657,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(article_boost(&conn, removed), 0);
-        assert_eq!(article_boost(&conn, added), 5);
+        assert_eq!(article_boost(&conn, added), DEFAULT_WEIGHT);
         assert_eq!(
             conn.query_row("SELECT article_id FROM article_interests", [], |r| r
                 .get::<_, i64>(0))
@@ -589,18 +667,19 @@ mod tests {
     }
 
     #[test]
-    fn foreground_rebase_budget_does_not_allow_partial_results() {
+    fn foreground_rebase_budget_defers_without_partial_results() {
         let (dir, conn) = open_temp();
         let (article, interest) =
             seed_matching(&conn, "subject", "https://interest.example/budget");
+        set_enabled(&conn, interest, false).unwrap();
         recompute_interest_boost(&conn).unwrap();
         let other = open_at(&dir.path().join("rrss.db")).unwrap();
         let result = super::prepare::run_with(
             &conn,
-            Some(super::prepare::Change::Weight(interest, 9)),
+            Some(super::prepare::Change::Enabled(interest, true)),
             || {
                 // Even one exceptionally large vector must not trigger unbounded
-                // work while the writer is held; every failed attempt rolls back.
+                // work while the writer is held; save only the configuration.
                 other.execute(
                     "UPDATE chunks SET embedding=randomblob(1048576) WHERE article_id=?1",
                     [article],
@@ -608,16 +687,17 @@ mod tests {
                 Ok(())
             },
         );
-        assert!(result.is_err());
-        assert_eq!(article_boost(&conn, article), DEFAULT_WEIGHT);
+        result.unwrap();
+        assert_eq!(article_boost(&conn, article), 0);
+        assert_eq!(stored_sig(&conn).as_deref(), Some("recheck"));
         assert_eq!(
             conn.query_row(
-                "SELECT weight FROM interests WHERE id=?1",
+                "SELECT enabled FROM interests WHERE id=?1",
                 [interest],
                 |r| r.get::<_, i64>(0)
             )
             .unwrap(),
-            DEFAULT_WEIGHT
+            1
         );
     }
 
@@ -661,7 +741,9 @@ mod tests {
                 ["hit", 1, 1, 2]
             ])
         );
-        set_weight(&conn, interest, 5).unwrap();
+        conn.execute("UPDATE interests SET weight=5 WHERE id=?1", [interest])
+            .unwrap();
+        recompute_interest_boost(&conn).unwrap();
         let weighted = serde_json::json!([
             ["interest", 1, "Rust async", 5, 1],
             ["article", 1, 5, [{
@@ -699,7 +781,7 @@ mod tests {
         let rounds = std::cell::Cell::new(0);
         super::prepare::run_with(
             &conn,
-            Some(super::prepare::Change::Weight(interest, 5)),
+            Some(super::prepare::Change::Enabled(interest, true)),
             || {
                 let round = rounds.get();
                 rounds.set(round + 1);
@@ -714,7 +796,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(rounds.get(), 2);
-        assert_eq!(article_boost(&conn, article), 0);
+        assert_eq!(article_boost(&conn, article), DEFAULT_WEIGHT);
     }
 
     use super::*;
@@ -1295,7 +1377,6 @@ mod tests {
             for result in [
                 recompute_interest_boost(&tx).map(|_| ()),
                 set_enabled(&tx, interest, false),
-                set_weight(&tx, interest, 9),
                 delete_interest(&tx, interest),
             ] {
                 assert!(
@@ -1357,18 +1438,15 @@ mod tests {
              END;",
         )
         .unwrap();
-        assert!(set_weight(&conn, iid, 9).is_err());
+        assert!(set_enabled(&conn, iid, false).is_err());
         conn.execute_batch("DROP TRIGGER fail_interest_boost")
             .unwrap();
-        let weight: i64 = conn
-            .query_row("SELECT weight FROM interests WHERE id = ?1", [iid], |r| {
+        let enabled: bool = conn
+            .query_row("SELECT enabled FROM interests WHERE id = ?1", [iid], |r| {
                 r.get(0)
             })
             .unwrap();
-        assert_eq!(
-            weight, DEFAULT_WEIGHT,
-            "weight change rolled back with the boost"
-        );
+        assert!(enabled, "enabled change rolled back with the boost");
         assert!(article_boost(&conn, focus) > 0);
     }
 }

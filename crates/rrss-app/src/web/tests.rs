@@ -88,6 +88,72 @@ fn page(title: &str, text: &str) -> String {
     )
 }
 
+#[test]
+fn committed_snapshot_survives_eviction_and_cleanup_failures() {
+    let (dir, path, _network) = setup();
+    let conn = db::open_at(&path).unwrap();
+    let cache = rrss_core::media::cache_dir(dir.path());
+    std::fs::create_dir_all(&cache).unwrap();
+    let pending = cache.join("pending");
+    std::fs::write(&pending, b"fixture").unwrap();
+    conn.execute(
+        "INSERT INTO media_cleanup(local_path) VALUES(?1)",
+        [pending.to_string_lossy()],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO media(url,local_path,bytes,created_at) VALUES('https://web.example/old.png',?1,?2,0)",
+        params![cache.join("old").to_string_lossy(), rrss_core::media::MAX_CACHE_BYTES as i64 + 1],
+    ).unwrap();
+    conn.execute_batch(
+        "CREATE TRIGGER reject_eviction BEFORE DELETE ON media BEGIN SELECT RAISE(ABORT,'fixture eviction'); END;
+         CREATE TRIGGER reject_cleanup BEFORE DELETE ON media_cleanup BEGIN SELECT RAISE(ABORT,'fixture cleanup'); END;",
+    ).unwrap();
+    let url = Url::parse("https://web.example/story").unwrap();
+    let html = page(
+        "Fixture",
+        "The town opened a public library with a research room. ",
+    );
+    let images = [crate::web_snapshot::SnapshotImage {
+        url: "https://web.example/image.png".into(),
+        bytes: include_bytes!("../../../../testdata/render/cover.png").to_vec(),
+    }];
+    let log_dir = dir.path().join("logs");
+    let (subscriber, _handle) = crate::log::subscriber(
+        crate::log::Mode::Desktop {
+            log_dir: log_dir.clone(),
+        },
+        "",
+    );
+    let stored = tracing::subscriber::with_default(subscriber, || {
+        store_page(
+            &path,
+            url.as_str(),
+            &html,
+            &url,
+            Some((dir.path(), &images)),
+        )
+    })
+    .unwrap();
+    assert!(stored.web_extracted_at.is_some());
+    assert!(articles::get_article(&conn, stored.article_id).is_ok());
+    let image = rrss_core::media::lookup(&conn, stored.article_id, &images[0].url)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        std::fs::read(image.local_path.unwrap()).unwrap(),
+        images[0].bytes
+    );
+    let log = std::fs::read_to_string(log_dir.join("rrss.log")).unwrap();
+    for kind in ["media_evict", "media_cleanup"] {
+        assert!(
+            log.lines().any(|line| line.contains("WARN")
+                && line.contains(kind)
+                && line.contains("error="))
+        );
+    }
+}
+
 #[tokio::test]
 async fn open_deduplicates_extends_collects_and_refreshes_reader_source() {
     let (dir, path, network) = setup();

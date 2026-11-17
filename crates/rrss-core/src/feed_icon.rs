@@ -172,15 +172,71 @@ pub fn store(
     tx.commit()?;
     staged.0 = None;
     for (id, old_path) in old {
-        media::remove_cached(conn, id, &old_path)?;
+        media::warn_on_cleanup_error(media::remove_cached(conn, id, &old_path), "media_cleanup");
     }
-    media::evict_lru(conn, data_dir)?;
+    media::warn_on_cleanup_error(media::evict_lru(conn, data_dir), "media_evict");
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn committed_icon_survives_eviction_and_old_cleanup_failures() {
+        for old_cleanup in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let conn = db::open_at(&dir.path().join("icons.db")).unwrap();
+            conn.execute(
+                "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://icon.example/feed',0)",
+                [],
+            )
+            .unwrap();
+            let png = include_bytes!("../../../testdata/render/cover.png");
+            if old_cleanup {
+                store(
+                    &conn,
+                    dir.path(),
+                    1,
+                    "https://icon.example/old.png",
+                    png,
+                    None,
+                )
+                .unwrap();
+                // The old icon is deleted in the store transaction, but its
+                // durable filesystem cleanup cannot be acknowledged afterwards.
+                conn.execute_batch("CREATE TRIGGER reject_cleanup BEFORE DELETE ON media_cleanup BEGIN SELECT RAISE(ABORT,'fixture'); END;").unwrap();
+            } else {
+                conn.execute("INSERT INTO media(url,local_path,bytes,created_at) VALUES('https://icon.example/old.png',?1,?2,0)",
+                    params![media::unique_cache_path(dir.path()).to_string_lossy(), media::MAX_CACHE_BYTES as i64 + 1]).unwrap();
+                conn.execute_batch("CREATE TRIGGER reject_eviction BEFORE DELETE ON media WHEN old.feed_id IS NULL BEGIN SELECT RAISE(ABORT,'fixture'); END;").unwrap();
+            }
+            let url = "https://icon.example/new.png";
+            let capture = crate::test_log::Capture::new();
+            capture
+                .run(|| store(&conn, dir.path(), 1, url, png, None))
+                .unwrap();
+            let (stored_url, path): (String, String) = conn
+                .query_row(
+                    "SELECT url,local_path FROM media WHERE feed_id=1",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .unwrap();
+            assert_eq!(stored_url, url);
+            assert_eq!(std::fs::read(path).unwrap(), png);
+            let log = capture.take();
+            assert!(
+                log.contains("WARN")
+                    && log.contains(if old_cleanup {
+                        "media_cleanup"
+                    } else {
+                        "media_evict"
+                    })
+                    && log.contains("error=")
+            );
+        }
+    }
+
     #[test]
     fn selects_nearest_resolves_links_and_falls_back() {
         let home = Url::parse("https://example.test/news/").unwrap();
