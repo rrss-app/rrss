@@ -8,6 +8,19 @@ pub mod settings;
 pub mod site_rules;
 mod write_gate;
 
+/// Recognize SQLite lock failures by primary code, including BUSY_RECOVERY,
+/// BUSY_SNAPSHOT, BUSY_TIMEOUT, LOCKED_SHAREDCACHE and LOCKED_VTAB.
+///
+/// Retry only a repeatable database operation after its previous transaction
+/// and statements have ended. In particular, BUSY_SNAPSHOT needs a new read
+/// snapshot; waiting inside the old transaction cannot make it writable.
+/// LOCKED can need local statements to be released, so retries remain bounded.
+/// Other SQLite codes and non-SQLite failures must be reported immediately.
+pub fn is_retryable_lock(error: &crate::Error) -> bool {
+    matches!(error, crate::Error::Sqlite(rusqlite::Error::SqliteFailure(error, _))
+        if matches!(error.code, rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked))
+}
+
 /// These operations own both their read snapshot and their write transaction.
 /// Violations are caller bugs, reported through the existing SQLite error type.
 pub(crate) fn require_autocommit(
@@ -35,6 +48,50 @@ pub(crate) fn input_revision(conn: &rusqlite::Connection, domain: &str) -> crate
 pub use migrations::{MIN_UPGRADE_VERSION, SCHEMA_VERSION};
 pub use pool::{PooledConnection, atomic_write, open, open_at, read_snapshot, write_transaction};
 pub use settings::*;
+
+#[cfg(test)]
+mod lock_tests {
+    use super::is_retryable_lock;
+    use rusqlite::ffi;
+
+    #[test]
+    fn busy_and_locked_include_each_extended_lock_code() {
+        for code in [
+            ffi::SQLITE_BUSY,
+            ffi::SQLITE_BUSY_RECOVERY,
+            ffi::SQLITE_BUSY_SNAPSHOT,
+            ffi::SQLITE_BUSY_TIMEOUT,
+            ffi::SQLITE_LOCKED,
+            ffi::SQLITE_LOCKED_SHAREDCACHE,
+            ffi::SQLITE_LOCKED_VTAB,
+        ] {
+            let error =
+                crate::Error::Sqlite(rusqlite::Error::SqliteFailure(ffi::Error::new(code), None));
+            assert!(is_retryable_lock(&error), "SQLite code {code}");
+        }
+    }
+
+    #[test]
+    fn other_sqlite_codes_and_domain_errors_are_not_retryable_locks() {
+        for code in (ffi::SQLITE_OK..=ffi::SQLITE_WARNING)
+            .filter(|code| !matches!(*code, ffi::SQLITE_BUSY | ffi::SQLITE_LOCKED))
+            .chain([ffi::SQLITE_IOERR_LOCK, ffi::SQLITE_CONSTRAINT_UNIQUE])
+        {
+            let error = crate::Error::Sqlite(rusqlite::Error::SqliteFailure(
+                ffi::Error::new(code),
+                Some("database is locked".into()),
+            ));
+            assert!(!is_retryable_lock(&error), "SQLite code {code}");
+        }
+        for error in [
+            crate::Error::Sqlite(rusqlite::Error::InvalidQuery),
+            crate::Error::Parse("database is locked".into()),
+            crate::Error::Io(std::io::ErrorKind::WouldBlock.into()),
+        ] {
+            assert!(!is_retryable_lock(&error));
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

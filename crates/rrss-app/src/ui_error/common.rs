@@ -26,14 +26,7 @@ pub(super) fn classify(error: &Error) -> Option<UiErrorKind> {
             file: params::file_name(path),
         },
         Error::Io(_) => CommonError::Io { file: None },
-        Error::Sqlite(rusqlite::Error::SqliteFailure(error, _))
-            if matches!(
-                error.code,
-                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
-            ) =>
-        {
-            CommonError::DatabaseBusy
-        }
+        Error::Sqlite(_) if rrss_core::db::is_retryable_lock(error) => CommonError::DatabaseBusy,
         Error::Sqlite(_) => CommonError::Database,
         _ => return None,
     };

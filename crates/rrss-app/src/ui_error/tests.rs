@@ -38,13 +38,17 @@ fn sqlite_busy_and_failure_are_distinct() {
             None,
         ))
     };
+    for code in [
+        rusqlite::ffi::SQLITE_BUSY,
+        rusqlite::ffi::SQLITE_BUSY_SNAPSHOT,
+        rusqlite::ffi::SQLITE_LOCKED,
+        rusqlite::ffi::SQLITE_LOCKED_SHAREDCACHE,
+    ] {
+        assert_eq!(UiError::from(busy(code)).code(), "database_busy");
+    }
     assert_eq!(
-        UiError::from(busy(rusqlite::ffi::SQLITE_BUSY)).code(),
-        "database_busy"
-    );
-    assert_eq!(
-        UiError::from(busy(rusqlite::ffi::SQLITE_LOCKED)).code(),
-        "database_busy"
+        UiError::from(busy(rusqlite::ffi::SQLITE_IOERR_LOCK)).code(),
+        "database"
     );
     assert_eq!(
         UiError::from(Error::Sqlite(rusqlite::Error::InvalidQuery)).code(),

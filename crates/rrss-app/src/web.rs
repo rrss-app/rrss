@@ -45,7 +45,7 @@ pub async fn open_web_link(
         .ok_or_else(|| FulltextError::network("invalid article URL"))?;
     let (html, actual_url) = fetch_page_with_url(network, requested.as_str()).await?;
     let path = db_path.to_path_buf();
-    tokio::task::spawn_blocking(move || store_page(&path, &canonical, &html, &actual_url, None))
+    crate::execution::blocking(move || store_page(&path, &canonical, &html, &actual_url, None))
         .await
         .map_err(FulltextError::network)?
 }

@@ -23,12 +23,8 @@ mod runtime;
 pub use runtime::{FetchTicket, Scheduler};
 const DB_WRITE_ATTEMPTS: u32 = 4;
 
-fn is_sqlite_busy(err: &rrss_core::Error) -> bool {
-    matches!(err, rrss_core::Error::Sqlite(rusqlite::Error::SqliteFailure(code, _))
-        if code.code == rusqlite::ErrorCode::DatabaseBusy)
-}
-
-/// 刷新的写操作。写事务在库内等待；仍遇到锁定时再试几次，避免把忙等记成源错误。
+/// Retry only repeatable database work after the previous transaction has ended.
+/// Requests, state publication and events belong outside this retry boundary.
 async fn write_db<T, F>(path: PathBuf, f: F) -> Result<T>
 where
     T: Send + 'static,
@@ -36,8 +32,8 @@ where
 {
     let f = Arc::new(f);
     let capacity = model_capacity::Capacity::for_database(&path);
-    let mut last = None;
-    for attempt in 0..DB_WRITE_ATTEMPTS {
+    let mut attempt = 0;
+    loop {
         let path = path.clone();
         let f = Arc::clone(&f);
         let turn = capacity.feed_writes.clone().lock_owned().await;
@@ -51,19 +47,16 @@ where
             Err(err)
                 if err
                     .downcast_ref::<rrss_core::Error>()
-                    .is_some_and(is_sqlite_busy)
+                    .is_some_and(db::is_retryable_lock)
                     && attempt + 1 < DB_WRITE_ATTEMPTS =>
             {
                 tracing::warn!(attempt, error = %crate::log::error(err.as_ref()), "refresh write busy; retrying");
-                last = Some(err);
-                tokio::time::sleep(Duration::from_millis(200 * u64::from(attempt + 1))).await;
+                attempt += 1;
+                tokio::time::sleep(Duration::from_millis(200 * u64::from(attempt))).await;
             }
             Err(err) => return Err(err),
         }
     }
-    Err(last
-        .map(Into::into)
-        .unwrap_or_else(|| anyhow::anyhow!("database is locked")))
 }
 
 impl Scheduler {

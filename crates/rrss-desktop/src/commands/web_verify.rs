@@ -115,7 +115,7 @@ async fn run(
                     let state = window.state::<crate::AppState>();
                     let (db, data, page) = (state.db_path.clone(), state.data_dir.clone(), url.clone());
                     let ticket = ticket.clone();
-                    tokio::task::spawn_blocking(move || {
+                    rrss_app::execution::blocking(move || {
                         // A blocking store cannot be aborted once started. Keep
                         // its lock even if the observer is cancelled, so an older
                         // document can never overwrite a newer manual extraction.

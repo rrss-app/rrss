@@ -914,8 +914,6 @@ async fn update(
             return Ok(());
         }
         let raw = serde_json::to_string(&candidate.snapshot(now))?;
-        let target = state.clone();
-        let intended = candidate.clone();
         // Keep serialization and the dispatch barrier until error handling also
         // finishes. The blocking worker needs its own leases if we are cancelled.
         let writer_owner = owner.clone();
@@ -923,23 +921,17 @@ async fn update(
         let result = write_db(state.path.clone(), move |conn| {
             let _owner = &writer_owner;
             let _writing = &writer_intent;
-            let mut committed = intended.clone();
-            let result = db::atomic_write(conn, |conn| db::set_setting(conn, SETTING, &raw));
-            committed.persist_error = result.is_err();
-            committed.last_saved = target.clock.now().mono;
-            *target.cooldowns.lock().unwrap() = committed;
-            target.notify_status();
-            result
+            db::atomic_write(conn, |conn| db::set_setting(conn, SETTING, &raw))
         })
         .await;
+        candidate.persist_error = result.is_err();
+        candidate.last_saved = state.clock.now().mono;
+        *state.cooldowns.lock().unwrap() = candidate;
+        state.notify_status();
         if let Err(error) = &result {
             if !previous.persist_error {
                 tracing::warn!(error = %crate::log::error(error.as_ref()), "feed cooldown write failed; fetch paused");
             }
-            candidate.persist_error = true;
-            candidate.last_saved = state.clock.now().mono;
-            *state.cooldowns.lock().unwrap() = candidate;
-            state.notify_status();
         } else {
             state.cooldowns.lock().unwrap().log_changes(&previous, state.clock.now());
         }

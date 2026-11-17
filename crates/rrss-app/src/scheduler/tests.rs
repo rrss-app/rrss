@@ -6,6 +6,7 @@ mod cooldown;
 mod offline;
 mod polling;
 mod scale;
+mod writes;
 
 pub(super) fn capture_logs(run: impl FnOnce()) -> String {
     let dir = tempfile::tempdir().unwrap();
@@ -1364,6 +1365,15 @@ async fn shutdown_waits_for_a_started_blocking_transaction() {
     release.send(()).unwrap();
     write.await.unwrap().unwrap();
     assert!(shutdown.await.unwrap());
+    let capacity = &scheduler.shared.capacity;
+    assert_eq!(*capacity.active_work.borrow(), 0);
+    assert_eq!(
+        capacity.database.available_permits(),
+        db::pool::BACKGROUND_CONNECTIONS
+    );
+    let measured_work = capacity.metrics.db_work.snapshot().count;
+    assert!(measured_work >= 1);
+    assert_eq!(capacity.metrics.db_queue.snapshot().count, measured_work);
     assert_eq!(
         db::get_setting(&db::open_at(&path).unwrap(), "shutdown_fixture")
             .unwrap()

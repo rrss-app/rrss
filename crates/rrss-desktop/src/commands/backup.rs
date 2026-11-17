@@ -86,9 +86,9 @@ pub async fn backup_inspect(
             }
         }
     };
-    tokio::task::spawn_blocking(move || actions::backup_inspect(&data_dir, &path))
+    rrss_app::execution::blocking(move || actions::backup_inspect(&data_dir, &path))
         .await
-        .map_err(|error| UiError::from(anyhow::Error::from(error)))?
+        .map_err(UiError::from)?
         .map(Some)
         .map_err(UiError::from)
 }
@@ -117,9 +117,9 @@ pub async fn backup_restore(
 #[tauri::command]
 pub async fn backup_cancel_restore(state: State<'_, AppState>) -> Result<(), UiError> {
     let data_dir = state.data_dir.clone();
-    tokio::task::spawn_blocking(move || actions::backup_cancel_restore(&data_dir))
+    rrss_app::execution::blocking(move || actions::backup_cancel_restore(&data_dir))
         .await
-        .map_err(|error| UiError::from(anyhow::Error::from(error)))?
+        .map_err(UiError::from)?
         .map_err(UiError::from)
 }
 
@@ -173,9 +173,9 @@ pub(crate) async fn pick<F>(f: F) -> Result<Option<PathBuf>, UiError>
 where
     F: FnOnce() -> Option<tauri_plugin_dialog::FilePath> + Send + 'static,
 {
-    let picked = tokio::task::spawn_blocking(f)
+    let picked = rrss_app::execution::blocking(f)
         .await
-        .map_err(|error| UiError::from(anyhow::Error::from(error)))?;
+        .map_err(UiError::from)?;
     picked
         .map(|p| {
             p.into_path().map_err(|_| {
@@ -197,9 +197,7 @@ db_task!(retention_set_days(days: i64) -> () => |conn| actions::set_retention_da
 
 /// 立即清理：第一次会先做完整备份，大库上耗时明显。
 #[tauri::command]
-pub async fn retention_clean_now(
-    state: State<'_, AppState>,
-) -> Result<RetentionMessage, UiError> {
+pub async fn retention_clean_now(state: State<'_, AppState>) -> Result<RetentionMessage, UiError> {
     let data_dir = state.data_dir.clone();
     tracing::info!("retention cleanup requested");
     with_db("retention_clean_now", state.db_path.clone(), move |conn| {

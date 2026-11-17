@@ -73,7 +73,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.db");
         let conn = db::open_at(&path).unwrap();
-        let transaction = db::write_transaction(&conn).unwrap();
+        // A separate connection exercises SQLite's write lock, not write_gate.
+        let mut writer = rusqlite::Connection::open(&path).unwrap();
+        let transaction = writer
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .unwrap();
         let (started, waiting) = tokio::sync::oneshot::channel();
         let worker = tokio::spawn(with_db(path, move |conn| {
             let _ = started.send(());
@@ -81,7 +85,14 @@ mod tests {
             Ok(())
         }));
         waiting.await.unwrap();
-        tokio::task::yield_now().await;
+        let ping = tokio::spawn(async { "executor available" });
+        assert_eq!(
+            tokio::time::timeout(std::time::Duration::from_secs(5), ping)
+                .await
+                .unwrap()
+                .unwrap(),
+            "executor available"
+        );
         assert!(!worker.is_finished());
         transaction.commit().unwrap();
         worker.await.unwrap().unwrap();
@@ -103,6 +114,18 @@ mod tests {
             error.downcast_ref::<rrss_ai::Error>(),
             Some(rrss_ai::Error::BudgetExhausted)
         ));
+        let error = core_db(dir.path().join("test.db"), |_| {
+            Err::<(), _>(rrss_core::Error::Sqlite(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY_SNAPSHOT),
+                None,
+            )))
+        })
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(error, rrss_core::Error::Sqlite(rusqlite::Error::SqliteFailure(error, _))
+            if error.extended_code == rusqlite::ffi::SQLITE_BUSY_SNAPSHOT)
+        );
         let error = blocking(|| panic!("fixture worker panic"))
             .await
             .unwrap_err();
@@ -111,6 +134,28 @@ mod tests {
                 .downcast_ref::<tokio::task::JoinError>()
                 .unwrap()
                 .is_panic()
+        );
+    }
+
+    #[tokio::test]
+    async fn file_errors_keep_typed_sources_instead_of_classifying_their_text() {
+        let error = blocking(|| Err::<(), _>(std::io::Error::other(crate::log::NotInitialized)))
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert!(
+            error
+                .get_ref()
+                .is_some_and(|source| source.is::<crate::log::NotInitialized>())
+        );
+        let error = blocking(|| Err::<(), _>(std::io::Error::other("logging is not initialized")))
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert!(
+            !error
+                .get_ref()
+                .is_some_and(|source| source.is::<crate::log::NotInitialized>())
         );
     }
 

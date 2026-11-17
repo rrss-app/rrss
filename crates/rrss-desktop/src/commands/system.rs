@@ -69,11 +69,14 @@ pub async fn log_export(
     };
     let db_path = state.db_path.clone();
     super::logged("log_export", async move {
-        tokio::task::spawn_blocking(move || {
+        rrss_app::execution::blocking(move || {
             rrss_app::log::export_diagnostics(&db_path, &dest)
                 .map(|()| dest.display().to_string())
                 .map_err(|error| {
-                    if error.to_string() == "logging is not initialized" {
+                    if error
+                        .get_ref()
+                        .is_some_and(|source| source.is::<rrss_app::log::NotInitialized>())
+                    {
                         HostError::LogExportNotInitialized.into()
                     } else {
                         HostError::log_export_failed(&error)
@@ -81,7 +84,7 @@ pub async fn log_export(
                 })
         })
         .await
-        .map_err(|error| UiError::from(anyhow::Error::from(error)))?
+        .map_err(UiError::from)?
     })
     .await
     .map(Some)

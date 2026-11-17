@@ -145,6 +145,42 @@ mod skip_tests {
     use super::*;
 
     #[tokio::test]
+    async fn failed_and_panicking_workers_release_permits_and_finish_accounting() {
+        for panics in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("worker.db");
+            let capacity = crate::scheduler::model_capacity::Capacity::for_database(&path);
+            let error = spawn_db::<(), _>(path, move |_| {
+                if panics {
+                    panic!("fixture database worker panic");
+                }
+                Err(CoreError::DailyBudgetExhausted)
+            })
+            .await
+            .unwrap_err();
+            if panics {
+                assert!(
+                    error
+                        .downcast_ref::<tokio::task::JoinError>()
+                        .is_some_and(|error| error.is_panic())
+                );
+            } else {
+                assert!(matches!(
+                    error.downcast_ref::<CoreError>(),
+                    Some(CoreError::DailyBudgetExhausted)
+                ));
+            }
+            assert_eq!(*capacity.active_work.borrow(), 0);
+            assert_eq!(
+                capacity.database.available_permits(),
+                db::pool::BACKGROUND_CONNECTIONS
+            );
+            assert_eq!(capacity.metrics.db_queue.snapshot().count, 1);
+            assert_eq!(capacity.metrics.db_work.snapshot().count, 1);
+        }
+    }
+
+    #[tokio::test]
     async fn background_admission_leaves_connections_for_foreground_and_cancel_releases_waiter() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("admission.db");
@@ -247,6 +283,10 @@ mod skip_tests {
         );
         assert_eq!(capacity.metrics.db_queue.snapshot().count, 1);
         assert_eq!(capacity.metrics.db_work.snapshot().count, 1);
+        assert_eq!(
+            capacity.database.available_permits(),
+            db::pool::BACKGROUND_CONNECTIONS
+        );
     }
 
     #[test]

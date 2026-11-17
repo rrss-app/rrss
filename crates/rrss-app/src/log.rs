@@ -304,9 +304,14 @@ pub fn default_export_name() -> String {
     )
 }
 
+/// Typed source for an unavailable logger; callers must not parse error text.
+#[derive(Debug, thiserror::Error)]
+#[error("logging is not initialized")]
+pub struct NotInitialized;
+
 /// 诊断包：日志逐行再脱敏一遍，另附不含路径的 `diagnostics.json`。
 pub fn export_diagnostics(db_path: &Path, dest: &Path) -> io::Result<()> {
-    let handle = current().ok_or_else(|| io::Error::other("logging is not initialized"))?;
+    let handle = current().ok_or_else(|| io::Error::other(NotInitialized))?;
     let log = handle.status_view();
     let diagnostics = serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),

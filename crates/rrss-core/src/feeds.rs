@@ -617,12 +617,7 @@ pub fn refresh_error_json(error: &Error) -> String {
         },
         Error::FetchPaused => ("feed_network_unavailable".into(), json!({})),
         Error::Fetch(failure) => (failure.code().into(), json!({})),
-        Error::Sqlite(rusqlite::Error::SqliteFailure(error, _))
-            if matches!(
-                error.code,
-                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
-            ) =>
-        {
+        Error::Sqlite(_) if crate::db::is_retryable_lock(error) => {
             ("database_busy".into(), json!({}))
         }
         Error::Sqlite(_) => ("database".into(), json!({})),
@@ -685,6 +680,24 @@ mod tests {
     use crate::parse::ParsedEntry;
     use crate::rules::{Dimension, NewRule, Polarity, insert_rule};
     use tempfile::tempdir;
+
+    #[test]
+    fn refresh_error_records_share_the_typed_lock_classification() {
+        for (code, expected) in [
+            (rusqlite::ffi::SQLITE_BUSY_SNAPSHOT, "database_busy"),
+            (rusqlite::ffi::SQLITE_LOCKED_SHAREDCACHE, "database_busy"),
+            (rusqlite::ffi::SQLITE_IOERR_LOCK, "database"),
+        ] {
+            let error = Error::Sqlite(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(code),
+                Some("database is locked".into()),
+            ));
+            let value: serde_json::Value =
+                serde_json::from_str(&refresh_error_json(&error)).unwrap();
+            assert_eq!(value["code"], expected);
+            assert_eq!(value["params"], serde_json::json!({}));
+        }
+    }
 
     #[test]
     fn new_error_records_do_not_copy_raw_failure_text_or_extra_parameters() {
