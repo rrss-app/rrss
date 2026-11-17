@@ -15,6 +15,7 @@ export const webFailureReasons: Record<FulltextError["kind"], { summary: string;
   Network: failureReason("Network"),
   Empty: failureReason("Empty"),
   NotArticle: failureReason("NotArticle"),
+  Changed: failureReason("Changed"),
 };
 
 export const WebLinksContext = createContext<{

@@ -59,6 +59,12 @@ impl PiProcess {
     }
 
     pub async fn shutdown(&self, grace: Duration) {
+        self.request_shutdown(grace);
+        self.stdin.lock().await.take();
+        let _ = self.finished.clone().wait_for(|done| *done).await;
+    }
+
+    pub(crate) fn request_shutdown(&self, grace: Duration) {
         // Set intent before closing stdin; a quick orderly exit must not look
         // unexpected to the process owner.
         self.shutdown.send_if_modified(|requested| {
@@ -69,8 +75,6 @@ impl PiProcess {
                 true
             }
         });
-        self.stdin.lock().await.take();
-        let _ = self.finished.clone().wait_for(|done| *done).await;
     }
 
     pub(super) fn watch(

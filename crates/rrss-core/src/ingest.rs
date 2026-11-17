@@ -154,7 +154,6 @@ pub fn due_feed_page(
         .collect::<rusqlite::Result<_>>()?)
 }
 
-
 /// 核对抓取时的源快照：源已删除或地址已改变时返回该结果，调用方不得再写这个源。
 /// 必须在写事务内调用，核对与写入之间才不会插进改址或删除。
 fn stale_snapshot(conn: &Connection, feed: &FeedRow) -> Result<Option<RefreshStatus>> {
@@ -564,13 +563,10 @@ fn stage_entry<'a>(
     folder_ids: &[i64],
     compiled: &[crate::score::CompiledRule],
 ) -> StagedEntry<'a> {
-    let blocks_json = entry.content_html.as_deref().and_then(|html| {
-        let opts = rrss_render::RenderOpts {
-            base_url: entry.canonical_url.as_deref().and_then(|u| u.parse().ok()),
-        };
-        let doc = rrss_render::html_to_document(html, &opts);
-        rrss_render::document_to_json(&doc).ok()
-    });
+    let blocks_json = entry
+        .content_html
+        .as_deref()
+        .and_then(|html| crate::body::feed_json(html, entry.canonical_url.as_deref()).ok());
     let result = if compiled.is_empty() {
         None
     } else {
@@ -592,9 +588,7 @@ fn stage_entry<'a>(
         entry,
         blocks_json,
         score: result.as_ref().map(|r| r.score).unwrap_or(0),
-        reasons_json: result
-            .as_ref()
-            .map(crate::score::stored_reasons_json),
+        reasons_json: result.as_ref().map(crate::score::stored_reasons_json),
         simhash: crate::simhash::fingerprint_article(&entry.title, entry.content_html.as_deref()),
     }
 }

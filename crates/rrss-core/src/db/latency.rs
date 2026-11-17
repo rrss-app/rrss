@@ -7,6 +7,28 @@ use std::{
 };
 
 pub const SLOW: Duration = Duration::from_millis(100);
+
+pub fn stage(conn: &rusqlite::Connection, name: &'static str) -> Option<Guard> {
+    super::metrics::for_connection(conn).map(|metrics| metrics.activity.start(name))
+}
+
+/// CPU/file stages share the caller's span, never record input data.
+pub fn measure<T>(stage: &'static str, work: impl FnOnce() -> T) -> T {
+    let started = Instant::now();
+    let result = work();
+    let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+    if started.elapsed() >= SLOW {
+        tracing::warn!(
+            stage,
+            elapsed_ms,
+            error_kind = "slow_stage",
+            "slow backend stage"
+        );
+    } else {
+        tracing::debug!(stage, elapsed_ms, "backend stage");
+    }
+    result
+}
 thread_local! { static OPERATION: Cell<&'static str> = const { Cell::new("database") }; }
 
 pub fn scope<T>(name: &'static str, work: impl FnOnce() -> T) -> T {

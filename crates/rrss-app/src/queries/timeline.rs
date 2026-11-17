@@ -24,7 +24,7 @@ pub fn feeds_page(
         }),
         articles::FOCUS_PAGE_SIZE,
     )?;
-    let icons = super::feeds::feed_icon_hrefs(conn)?;
+    let icons = super::feeds::feed_icon_hrefs(conn, cards.iter().map(|a| a.feed_id))?;
     let articles = cards
         .into_iter()
         .map(|card| {

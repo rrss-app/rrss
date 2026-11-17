@@ -5,6 +5,7 @@
 pub mod ai_store;
 pub mod articles;
 pub mod backup;
+pub mod body;
 pub mod chunk;
 pub mod cite;
 pub mod cluster;

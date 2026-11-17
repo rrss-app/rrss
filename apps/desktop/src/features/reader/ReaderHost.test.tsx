@@ -9,6 +9,7 @@ import { ARTICLE_A, ARTICLE_B, TWO_ARTICLE_PAGE, focusRow, readerView, translati
 import { createReactHarness } from "../../test/react";
 import { ReaderHost, type ReaderHostHandle, type ReaderHostProps } from "./ReaderHost";
 import { WebLinksContext } from "../../lib/webLinks";
+import { i18n } from "../../i18n";
 import { deferred } from "../../test/deferred";
 import type { WebVerifyStateEvent } from "../../bindings";
 import { READER_CACHE_SIZE } from "./readerCache";
@@ -150,6 +151,23 @@ describe("ReaderHost standalone", () => {
     pending.reject({ kind: "Network", error: { code: "reader_fulltext_network", detail: "offline" } });
     await harness.flush();
     expect(calls.onRequestOpen).not.toHaveBeenCalled();
+    expect(host.querySelector(".web-failure")).toBeNull();
+  });
+
+  it("can retry reading after a content change cancels extraction", async () => {
+    const url = "https://web.example/story";
+    box.stub!.handle("openArticle", id => readerView(id));
+    box.stub!.handle("openWebLink", () => ({ article_id: ARTICLE_A, temporary: true,
+      actual_host: "web.example", actual_url: url, layer: "General" as const, text_chars: 100, image_count: 0 }));
+    const { ref, host } = setup();
+    const pending = box.stub!.deferNext("openWebLink");
+    act(() => { void ref.current!.openWebLink(url); });
+    pending.reject({ kind: "Changed", error: { code: "web_extraction_page_changed" } });
+    await harness.flush();
+    const retry = [...host.querySelectorAll("button")].find(button => button.textContent === i18n.t("web.failure.retry", { ns: "reader" }));
+    await act(async () => { retry!.click(); });
+    await harness.flush();
+    expect(title(host)).toBe(readerView(ARTICLE_A).title);
     expect(host.querySelector(".web-failure")).toBeNull();
   });
 

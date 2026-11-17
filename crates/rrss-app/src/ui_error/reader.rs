@@ -136,6 +136,7 @@ fn reader_failures_retain_codes() {
         (FulltextErrorKind::Network, "reader_fulltext_network"),
         (FulltextErrorKind::Empty, "reader_fulltext_empty"),
         (FulltextErrorKind::NotArticle, "reader_fulltext_not_article"),
+        (FulltextErrorKind::Changed, "web_extraction_page_changed"),
     ] {
         assert_eq!(UiError::from(FulltextError::coded(kind, None)).code(), code);
     }

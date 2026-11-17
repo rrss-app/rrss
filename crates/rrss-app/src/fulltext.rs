@@ -13,6 +13,7 @@ pub enum FulltextErrorKind {
     Network,
     Empty,
     NotArticle,
+    Changed,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ts_rs::TS)]
@@ -38,6 +39,9 @@ impl FulltextError {
             FulltextErrorKind::Network => ReaderError::FulltextNetwork,
             FulltextErrorKind::Empty => ReaderError::FulltextEmpty,
             FulltextErrorKind::NotArticle => ReaderError::FulltextNotArticle,
+            FulltextErrorKind::Changed => {
+                return crate::ui_error::web::WebError::ExtractionPageChanged.into();
+            }
         }
         .into()
     }
@@ -78,12 +82,14 @@ pub async fn fetch_and_store(
 ) -> Result<(), FulltextError> {
     let db_path_buf = db_path.to_path_buf();
     let path = db_path_buf.clone();
-    let url = tokio::task::spawn_blocking(move || {
+    let (url, baseline) = crate::execution::blocking(move || {
         let conn = rrss_core::db::open_at(&path).map_err(FulltextError::network)?;
         let article = articles::get_article(&conn, id).map_err(FulltextError::network)?;
         article
             .canonical_url
+            .clone()
             .filter(|u| u.starts_with("http"))
+            .map(|url| (url, article))
             .ok_or_else(|| FulltextError::new(FulltextErrorKind::Empty, "no url"))
     })
     .await
@@ -109,20 +115,38 @@ pub async fn fetch_and_store(
         .map_err(|e: url::ParseError| FulltextError::new(FulltextErrorKind::Empty, e))?;
 
     // Keep extraction, serialization and SQLite work off the async worker thread.
-    tokio::task::spawn_blocking(move || {
-        let conn = rrss_core::db::open_at(&db_path_buf).map_err(FulltextError::network)?;
-        let rule = crate::site_rules::resolve_site_rule(
-            &conn,
-            page_url.host_str().unwrap_or_default(),
-        )
-        .map_err(FulltextError::network)?;
+    crate::execution::blocking(move || {
+        let rule = {
+            let conn = rrss_core::db::open_at(&db_path_buf).map_err(FulltextError::network)?;
+            let rule = crate::site_rules::resolve_site_rule(&conn, page_url.host_str().unwrap_or_default())
+                .map_err(FulltextError::network)?;
+            rule
+        };
         let extracted = crate::extract::extract_article(&html, &page_url, rule.rule.as_ref())?;
         tracing::debug!(layer = ?extracted.layer, suspicious = ?extracted.suspicious, "fulltext extraction");
         let doc = extracted.document;
         let plain = rrss_render::document_to_plain(&doc);
-        let blocks_json = rrss_render::document_to_json(&doc)
+        let blocks_json = rrss_core::body::fulltext_json(&doc, &plain)
             .map_err(|e| FulltextError::new(FulltextErrorKind::Empty, e))?;
-        articles::set_fulltext(&conn, id, &plain, &blocks_json).map_err(FulltextError::network)
+        let conn = rrss_core::db::open_at(&db_path_buf).map_err(FulltextError::network)?;
+        rrss_core::db::atomic_write(&conn, |conn| {
+            let current = articles::get_article(conn, id)?;
+            let current_rule = crate::site_rules::resolve_site_rule(conn, page_url.host_str().unwrap_or_default())?;
+            if current.canonical_url != baseline.canonical_url || current.hash != baseline.hash
+                || current.guid != baseline.guid || current.feed_id != baseline.feed_id
+                || current.content_html != baseline.content_html
+                || current.fulltext_md != baseline.fulltext_md || current.blocks_json != baseline.blocks_json
+                || current_rule.rule != rule.rule {
+                return Err(rrss_core::Error::Web(rrss_core::error::WebFailure::PageChanged));
+            }
+            articles::set_fulltext(conn, id, &plain, &blocks_json)
+        }).map_err(|error| {
+            let kind = match &error {
+                rrss_core::Error::Web(rrss_core::error::WebFailure::PageChanged) => FulltextErrorKind::Changed,
+                _ => FulltextErrorKind::Network,
+            };
+            FulltextError::coded(kind, Some(error.into()))
+        })
     })
     .await
     .map_err(FulltextError::network)?

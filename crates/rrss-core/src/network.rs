@@ -836,7 +836,7 @@ pub fn merge_no_proxy(user: &str) -> Result<String> {
     Ok(entries.join(","))
 }
 
-fn decode(raw: &str) -> Result<ProxyConfig> {
+pub fn decode(raw: &str) -> Result<ProxyConfig> {
     // serde 的错误可能包含原始字段值，因此只回传固定文案。
     let config: ProxyConfig =
         serde_json::from_str(raw).map_err(|_| invalid(ProxyError::ConfigInvalid))?;

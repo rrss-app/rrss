@@ -15,7 +15,7 @@ use rrss_ai::pi::{
     cmd_set_thinking_level, cmd_switch_session, prompt_was_handled,
 };
 use serde_json::Value;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, watch};
 
 use super::compat::VersionGate;
 use super::launch::{self, PiProcess, Prepared, RPC_TIMEOUT};
@@ -81,6 +81,9 @@ pub struct OpenedSession {
 pub struct Supervisor {
     cfg: SupervisorConfig,
     running: Mutex<Option<Running>>,
+    lifecycle: Arc<Mutex<()>>,
+    stop_epoch: watch::Sender<u64>,
+    starting: StdMutex<Option<Arc<PiProcess>>>,
     generation: AtomicU64,
     busy: AtomicBool,
     last_active: StdMutex<Instant>,
@@ -94,6 +97,9 @@ impl Supervisor {
         Arc::new(Self {
             cfg,
             running: Mutex::new(None),
+            lifecycle: Arc::new(Mutex::new(())),
+            stop_epoch: watch::channel(0).0,
+            starting: StdMutex::new(None),
             generation: AtomicU64::new(0),
             busy: AtomicBool::new(false),
             last_active: StdMutex::new(Instant::now()),
@@ -155,12 +161,32 @@ impl Supervisor {
 
     /// 进程在跑就复用，否则准备托管目录、启动新进程、握手，并分配新代次。
     async fn process(&self) -> Result<Arc<PiProcess>, ChatError> {
-        let mut guard = self.running.lock().await;
-        if let Some(running) = guard.as_ref()
-            && running.process.is_alive()
-        {
-            return Ok(running.process.clone());
+        let mut stopped = self.stop_epoch.subscribe();
+        let cancelled =
+            || ChatError::new(ChatErrorKind::ProcessExit, Error::Pi(PiFailure::NotRunning));
+        let _lifecycle = tokio::select! {
+            biased;
+            _ = stopped.changed() => return Err(cancelled()),
+            guard = self.lifecycle.clone().lock_owned() => Arc::new(guard),
+        };
+        let abandoned = self.starting.lock().unwrap().take();
+        if let Some(process) = abandoned {
+            process.shutdown(Duration::ZERO).await;
         }
+        if let Ok(process) = self.current().await {
+            return Ok(process);
+        }
+        tokio::select! {
+            biased;
+            _ = stopped.changed() => Err(cancelled()),
+            result = self.start_process(_lifecycle.clone()) => result,
+        }
+    }
+
+    async fn start_process(
+        &self,
+        lifecycle: Arc<tokio::sync::OwnedMutexGuard<()>>,
+    ) -> Result<Arc<PiProcess>, ChatError> {
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         let (tx, mut rx) = mpsc::unbounded_channel::<PiEvent>();
         let out = self.events.clone();
@@ -177,9 +203,20 @@ impl Supervisor {
             &self.cfg.tool_path,
             self.target(),
             tx,
+            lifecycle,
         )
         .await?;
         let process = Arc::new(process);
+        *self.starting.lock().unwrap() = Some(process.clone());
+        struct Unready(Arc<PiProcess>, bool);
+        impl Drop for Unready {
+            fn drop(&mut self) {
+                if !self.1 {
+                    self.0.request_shutdown(Duration::ZERO);
+                }
+            }
+        }
+        let mut unready = Unready(process.clone(), false);
         let (thinking_levels, model) = match handshake(&process, &prepared).await {
             Ok(found) => found,
             Err(err) => {
@@ -228,7 +265,7 @@ impl Supervisor {
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "unknown".into())
         });
-        *guard = Some(Running {
+        *self.running.lock().await = Some(Running {
             process: process.clone(),
             generation,
             session_file: None,
@@ -239,6 +276,8 @@ impl Supervisor {
             session_model: None,
             unverified,
         });
+        self.starting.lock().unwrap().take();
+        unready.1 = true;
         self.touch();
         Ok(process)
     }
@@ -584,6 +623,7 @@ impl Supervisor {
     /// 中止当前生成并等待会话空闲。没有进程时什么也不做。
     pub async fn abort(&self) -> Result<(), ChatError> {
         let Ok(process) = self.current().await else {
+            self.stop().await;
             return Ok(());
         };
         process
@@ -606,10 +646,25 @@ impl Supervisor {
 
     /// 有序关闭当前进程。之后的发送会重新启动。
     pub async fn stop(&self) {
-        let mut guard = self.running.lock().await;
-        if let Some(running) = guard.take() {
-            tracing::info!(generation = running.generation, "stopping pi");
-            running.process.shutdown(SHUTDOWN_GRACE).await;
+        self.stop_epoch
+            .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
+        let lifecycle = self.lifecycle.clone().lock_owned().await;
+        let running = self.running.lock().await.take();
+        let starting = self.starting.lock().unwrap().take();
+        if let Some(running) = &running {
+            tracing::info!(generation = running.generation, "stopping pi generation");
+        }
+        let stopping = running
+            .map(|r| (r.process, SHUTDOWN_GRACE))
+            .or_else(|| starting.map(|p| (p, Duration::ZERO)));
+        if let Some((process, grace)) = stopping {
+            tracing::info!("stopping pi");
+            // Shutdown owns the lifecycle permit even if its caller goes away.
+            let _ = tokio::spawn(async move {
+                let _lifecycle = lifecycle;
+                process.shutdown(grace).await;
+            })
+            .await;
         }
     }
 
@@ -639,7 +694,7 @@ impl Supervisor {
                     continue;
                 }
                 let db_path = this.cfg.db_path.clone();
-                let limit = tokio::task::spawn_blocking(move || {
+                let limit = crate::execution::blocking(move || {
                     rrss_core::db::open_at(&db_path)
                         .and_then(|conn| rrss_core::pi_store::idle_timeout_secs(&conn))
                         .unwrap_or(rrss_core::pi_store::DEFAULT_IDLE_TIMEOUT_SECS)

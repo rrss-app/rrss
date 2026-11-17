@@ -1,6 +1,7 @@
 //! 任务入口使用的网络客户端。每次领取时读取最新配置，未变更则复用连接池。
 //! 保存配置只影响下一次领取；已经克隆出去的客户端和进行中的请求不受影响。
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -13,7 +14,7 @@ pub struct NetworkClients(Arc<Inner>);
 
 struct Inner {
     db_path: PathBuf,
-    cache: Mutex<Option<Cached>>,
+    cache: Mutex<VecDeque<Cached>>,
     _model_capacity: Arc<crate::scheduler::model_capacity::Capacity>,
     #[cfg(test)]
     feed_builder:
@@ -21,7 +22,8 @@ struct Inner {
 }
 
 struct Cached {
-    config: ProxyConfig,
+    raw: Option<String>,
+    config: Arc<ProxyConfig>,
     env: ProxyEnvironment,
     clients: [Option<Client>; 4],
 }
@@ -33,7 +35,7 @@ impl NetworkClients {
         Self(Arc::new(Inner {
             _model_capacity: crate::scheduler::model_capacity::Capacity::for_database(&db_path),
             db_path,
-            cache: Mutex::new(None),
+            cache: Mutex::new(VecDeque::new()),
             #[cfg(test)]
             feed_builder: None,
         }))
@@ -59,26 +61,33 @@ impl NetworkClients {
 
     async fn client_with_policy(&self, scope: NetworkScope, feed: bool) -> Result<Client> {
         let inner = self.0.clone();
-        tokio::task::spawn_blocking(move || {
-            // 读库也在锁内，防止并发领取的旧读取结果覆盖较新的缓存。
-            // 不跨 await 持锁，也不让调用方在 UI / Tokio 工作线程做同步 SQLite I/O。
-            let mut cache = inner.cache.lock().map_err(|_| unavailable())?;
-            let config = {
+        crate::execution::blocking(move || {
+            // SQLite/system reads and client construction never hold the cache
+            // mutex. Entries are keyed by immutable snapshots, so a late old
+            // acquisition cannot replace the current configuration's clients.
+            let raw = {
                 let conn = db::open_at(&inner.db_path)?;
-                network::load(&conn)?
+                db::get_setting(&conn, network::SETTING_KEY)?
             };
-            let env = ProxyEnvironment::capture();
-            if cache
-                .as_ref()
-                .is_none_or(|old| old.config != config || old.env != env)
-            {
-                *cache = Some(Cached {
-                    config,
-                    env,
-                    clients: [None, None, None, None],
-                });
-            }
-            let cached = cache.as_mut().ok_or_else(unavailable)?;
+            let config = inner
+                .cache
+                .lock()
+                .map_err(|_| unavailable())?
+                .iter()
+                .find(|entry| entry.raw == raw)
+                .map(|entry| entry.config.clone());
+            let config = match config {
+                Some(config) => config,
+                None => Arc::new(match &raw {
+                    Some(raw) => network::decode(raw)?,
+                    None => ProxyConfig::default(),
+                }),
+            };
+            let env = if config.effective_for(scope).mode == network::ProxyMode::System {
+                db::latency::measure("proxy_environment", ProxyEnvironment::capture)
+            } else {
+                ProxyEnvironment::default()
+            };
             let index = if feed {
                 3
             } else {
@@ -88,8 +97,20 @@ impl NetworkClients {
                     NetworkScope::Pi => 2,
                 }
             };
-            if let Some(client) = &cached.clients[index] {
-                return Ok(client.clone());
+            let hit = {
+                let mut cache = inner.cache.lock().map_err(|_| unavailable())?;
+                cache
+                    .iter()
+                    .position(|entry| entry.raw == raw && entry.env == env)
+                    .and_then(|pos| {
+                        let entry = cache.remove(pos).expect("cached snapshot");
+                        let client = entry.clients[index].clone();
+                        cache.push_back(entry);
+                        client
+                    })
+            };
+            if let Some(client) = hit {
+                return Ok(client);
             }
             let builder = if feed {
                 rrss_core::ingest::feed_http::client_builder()
@@ -109,10 +130,27 @@ impl NetworkClients {
             } else {
                 builder
             };
-            let client = cached
-                .config
-                .build_client_with_env(scope, builder, &cached.env)?;
-            cached.clients[index] = Some(client.clone());
+            let client = db::latency::measure("network_client_build", || {
+                config.build_client_with_env(scope, builder, &env)
+            })?;
+            let mut cache = inner.cache.lock().map_err(|_| unavailable())?;
+            if let Some(entry) = cache
+                .iter_mut()
+                .find(|entry| entry.raw == raw && entry.env == env)
+            {
+                return Ok(entry.clients[index].get_or_insert(client).clone());
+            }
+            if cache.len() == 4 {
+                cache.pop_front();
+            }
+            let mut clients = [None, None, None, None];
+            clients[index] = Some(client.clone());
+            cache.push_back(Cached {
+                raw,
+                config,
+                env,
+                clients,
+            });
             Ok(client)
         })
         .await

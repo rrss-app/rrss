@@ -2,7 +2,6 @@ use rusqlite::Connection;
 
 use rrss_core::ai_store::{self, ALL_TASKS};
 use rrss_core::translations;
-use rrss_render::document_to_json;
 
 use crate::views::*;
 
@@ -264,7 +263,9 @@ pub fn digest(conn: &Connection, id: i64) -> rrss_core::Result<DigestView> {
 
 pub fn markdown_document_json(body: &str) -> Option<serde_json::Value> {
     let doc = rrss_render::markdown_to_document(body);
-    serde_json::from_str(&document_to_json(&doc).unwrap_or_else(|_| "{}".into())).ok()
+    rrss_core::db::latency::measure("document_serialize", || {
+        Some(serde_json::to_value(&doc).unwrap_or_else(|_| serde_json::json!({})))
+    })
 }
 
 #[cfg(test)]

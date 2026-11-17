@@ -74,7 +74,6 @@ pub fn cluster_summary(
     let scope = rrss_core::feed_scope::resolve(conn, FeedScope::parse_str(scope.unwrap_or("all")))?;
     let cards = summary::visible_members(conn, cluster_id, scope)?;
     let input = summary::build_input(conn, &cards, ai_store::input_tier(conn)?)?;
-    let icons = super::feeds::feed_icon_hrefs(conn)?;
     let resolved = crate::ai_language::resolve_task(conn, ai_store::TASK_CLUSTER_SUMMARY).ok();
     let template_chars = resolved
         .as_ref()
@@ -84,7 +83,7 @@ pub fn cluster_summary(
         article_id: member.article_id,
         feed_id: member.feed_id,
         feed_title: member.feed_title.clone(),
-        icon_href: icons.get(&member.feed_id).cloned().unwrap_or_default(),
+        icon_href: String::new(),
         title: member.title.clone(),
         published_at: member.published_at,
         one_liner: member.one_liner.clone(),
@@ -113,11 +112,7 @@ pub fn cluster_summary(
                     })
                 },
             )
-            .optional()?
-            .map(|mut found| {
-                found.icon_href = icons.get(&found.feed_id).cloned().unwrap_or_default();
-                found
-            }))
+            .optional()?)
     };
     let stored = summary::load(conn, cluster_id)?;
     let (state, fresh, overview, additions, conflicts, basis, generated_at) = match stored {
@@ -180,7 +175,7 @@ pub fn cluster_summary(
             )
         }
     };
-    Ok(ClusterSummaryView {
+    let mut view = ClusterSummaryView {
         cluster_id,
         state: state.into(),
         model_ready: resolved.is_some_and(|task| !task.provider.base_url.trim().is_empty()),
@@ -192,14 +187,42 @@ pub fn cluster_summary(
         generated_at,
         fresh,
         members,
-    })
+    };
+    let sources = |view: &ClusterSummaryView| {
+        view.members
+            .iter()
+            .chain(&view.fresh)
+            .chain(
+                view.additions
+                    .iter()
+                    .chain(&view.conflicts)
+                    .flat_map(|n| &n.sources),
+            )
+            .map(|a| a.feed_id)
+            .collect::<Vec<_>>()
+    };
+    let icons = super::feeds::feed_icon_hrefs(conn, sources(&view))?;
+    for article in view.members.iter_mut().chain(&mut view.fresh).chain(
+        view.additions
+            .iter_mut()
+            .chain(&mut view.conflicts)
+            .flat_map(|n| &mut n.sources),
+    ) {
+        article.icon_href = icons.get(&article.feed_id).cloned().unwrap_or_default();
+    }
+    Ok(view)
 }
 
 fn article_views(
     conn: &Connection,
     cards: Vec<rrss_core::ArticleCard>,
 ) -> rrss_core::Result<Vec<ArticleView>> {
-    let icons = super::feeds::feed_icon_hrefs(conn)?;
+    let icons = super::feeds::feed_icon_hrefs(
+        conn,
+        cards
+            .iter()
+            .flat_map(|c| std::iter::once(c.feed_id).chain(c.cluster_feeds.iter().map(|f| f.0))),
+    )?;
     let groups: Vec<(i64, Vec<i64>)> = cards
         .iter()
         .filter(|card| card.row_kind == articles::ROW_HEADER)
@@ -283,17 +306,17 @@ fn digest_lede(body: &str) -> String {
 }
 
 pub fn ranking_settings(conn: &Connection) -> rrss_core::Result<RankingSettings> {
-    let learned = db::rank_switches(conn).unwrap_or(rrss_core::rank::combine::Switches::ALL);
+    let learned = db::rank_switches(conn)?;
     Ok(RankingSettings {
         show_details: db::setting_enabled(conn, db::FOCUS_SHOW_DETAILS_KEY, false)?,
-        interest_boost: interests::boost_enabled(conn).unwrap_or(true),
-        rerank: interests::rerank_enabled(conn).unwrap_or(false),
-        cluster_group: interests::cluster_group_enabled(conn).unwrap_or(true),
-        hide_noisy: interests::hide_noisy_enabled(conn).unwrap_or(false),
-        interest_ready: interests::interest_ready(conn).unwrap_or(false),
-        ranking_note: interests::ranking_note(conn).unwrap_or_default(),
-        hide_threshold: articles::hide_threshold(conn).unwrap_or(-10),
-        theme: db::theme_preference(conn).unwrap_or_else(|_| "system".into()),
+        interest_boost: interests::boost_enabled(conn)?,
+        rerank: interests::rerank_enabled(conn)?,
+        cluster_group: interests::cluster_group_enabled(conn)?,
+        hide_noisy: interests::hide_noisy_enabled(conn)?,
+        interest_ready: interests::interest_ready(conn)?,
+        ranking_note: interests::ranking_note(conn)?,
+        hide_threshold: articles::hide_threshold(conn)?,
+        theme: db::theme_preference(conn)?,
         rank_features: learned.features,
         rank_source: learned.source,
         rank_coverage: learned.coverage,
@@ -306,6 +329,17 @@ pub fn ranking_settings(conn: &Connection) -> rrss_core::Result<RankingSettings>
 mod tests {
     use super::*;
     use rrss_core::feed_scope::FeedScope;
+
+    #[test]
+    fn ranking_defaults_require_successful_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open_at(&dir.path().join("settings.db")).unwrap();
+        conn.execute("DELETE FROM settings", []).unwrap();
+        assert!(ranking_settings(&conn).is_ok());
+        conn.execute_batch("ALTER TABLE interests RENAME TO unavailable_interests;")
+            .unwrap();
+        assert!(ranking_settings(&conn).is_err());
+    }
 
     #[test]
     fn focus_page_exposes_spots_and_defaults_ordinary_cards_to_false() {

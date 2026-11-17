@@ -34,6 +34,10 @@ pub struct RenderOpts {
     pub base_url: Option<Url>,
 }
 
+/// Bump when HTML parsing, sanitization or normalization changes so stored
+/// documents and HTML caches are invalidated independently of the IR wire format.
+pub const HTML_RENDER_REVISION: u32 = 1;
+
 pub fn html_to_document(html: &str, opts: &RenderOpts) -> Document {
     let blocks = html::html_to_blocks(html, opts.base_url.as_ref());
     Document::new(blocks)

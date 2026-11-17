@@ -8,7 +8,7 @@ use tracing::{Instrument, instrument::WithSubscriber};
 
 use rrss_ai::pi::{PiEvent, is_dialog_method, ui_cancel, ui_confirm};
 use rrss_core::threads::{self, MessageRole};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 use super::supervisor::{Supervisor, SupervisorConfig};
 use super::{ChatError, ChatErrorKind};
@@ -140,7 +140,8 @@ impl TurnState {
         };
         Some(ChatStreamEvent {
             thread_id: self.thread_id,
-            document: crate::queries::markdown_document_json(&text),
+            // Parsing belongs to the renderer worker, outside the state lock.
+            document: None,
             text,
         })
     }
@@ -223,6 +224,26 @@ pub struct ChatRuntime {
     post_turn_jobs: bool,
     /// 极快的 settled 可能先于 prompt 的响应；发送编排返回前不接下一轮。
     dispatch_lock: Arc<tokio::sync::Mutex<()>>,
+    stream_revision: StdMutex<u64>,
+    stream: watch::Sender<Option<StreamUpdate>>,
+}
+
+#[derive(Clone)]
+struct StreamUpdate {
+    revision: u64,
+    generation: u64,
+    snapshot: ChatStreamEvent,
+    span: tracing::Span,
+}
+
+async fn render_snapshot(mut snapshot: ChatStreamEvent) -> anyhow::Result<ChatStreamEvent> {
+    crate::execution::blocking(move || {
+        snapshot.document = rrss_core::db::latency::measure("pi_markdown_snapshot", || {
+            crate::queries::markdown_document_json(&snapshot.text)
+        });
+        snapshot
+    })
+    .await
 }
 
 impl ChatRuntime {
@@ -239,6 +260,7 @@ impl ChatRuntime {
         let (tx, rx) = mpsc::unbounded_channel();
         let sup = Supervisor::new(cfg, tx);
         sup.spawn_idle_reaper();
+        let (stream, stream_rx) = watch::channel(None);
         let runtime = Arc::new(Self {
             sup,
             turn: StdMutex::new(TurnState::default()),
@@ -249,9 +271,59 @@ impl ChatRuntime {
             network,
             post_turn_jobs,
             dispatch_lock: Arc::new(tokio::sync::Mutex::new(())),
+            stream_revision: StdMutex::new(0),
+            stream,
         });
+        tokio::spawn(
+            Self::render_updates(Arc::downgrade(&runtime), stream_rx).with_current_subscriber(),
+        );
         tokio::spawn(runtime.clone().pump(rx).with_current_subscriber());
         runtime
+    }
+
+    fn queue_snapshot(&self, snapshot: ChatStreamEvent) {
+        let revision = self.stream_revision.lock().unwrap();
+        self.stream.send_replace(Some(StreamUpdate {
+            revision: *revision,
+            generation: self.sup.generation(),
+            snapshot,
+            span: self.turn_span(),
+        }));
+    }
+
+    fn invalidate_snapshots(&self) {
+        let mut revision = self.stream_revision.lock().unwrap();
+        *revision = revision.wrapping_add(1);
+        self.stream.send_replace(None);
+    }
+
+    async fn render_updates(
+        runtime: std::sync::Weak<Self>,
+        mut updates: watch::Receiver<Option<StreamUpdate>>,
+    ) {
+        while updates.changed().await.is_ok() {
+            let update = updates.borrow_and_update().clone();
+            let Some(update) = update else { continue };
+            let rendered = render_snapshot(update.snapshot)
+                .instrument(update.span)
+                .await;
+            let Some(runtime) = runtime.upgrade() else {
+                break;
+            };
+            let revision = runtime.stream_revision.lock().unwrap();
+            // One renderer emits in order. A newer queued snapshot does not
+            // suppress every completed render during a continuously long reply;
+            // settlement/new turns invalidate the whole epoch instead.
+            if *revision != update.revision || runtime.sup.generation() != update.generation {
+                continue;
+            }
+            match rendered {
+                Ok(snapshot) => runtime.sink.emit(ChatEvent::Delta(snapshot)),
+                Err(error) => {
+                    tracing::warn!(error = %crate::log::error(error.as_ref()), "pi snapshot render failed")
+                }
+            }
+        }
     }
 
     pub fn supervisor(&self) -> &Arc<Supervisor> {
@@ -308,8 +380,10 @@ impl ChatRuntime {
             span.record("thread_id", args.thread_id);
         }
         *self.turn_span.lock().unwrap() = Some(span.clone());
+        self.invalidate_snapshots();
         let result = self.dispatch(args).instrument(span.clone()).await;
         if result.is_err() {
+            self.invalidate_snapshots();
             let _entered = span.enter();
             self.turn_span.lock().unwrap().take();
             if let Some(done) = self.turn.lock().ok().and_then(|mut t| t.finish()) {
@@ -698,7 +772,7 @@ impl ChatRuntime {
                     });
                     if let Some(snapshot) = snapshot {
                         last = Instant::now();
-                        self.sink.emit(ChatEvent::Delta(snapshot));
+                        self.queue_snapshot(snapshot);
                     }
                 }
                 PiEvent::MessageEnd {
@@ -721,7 +795,7 @@ impl ChatRuntime {
                         (role == "assistant").then(|| t.snapshot()).flatten()
                     });
                     if let Some(snapshot) = snapshot {
-                        self.sink.emit(ChatEvent::Delta(snapshot));
+                        self.queue_snapshot(snapshot);
                     }
                 }
                 PiEvent::ToolStart {
@@ -921,9 +995,18 @@ impl ChatRuntime {
     }
 
     async fn settle(&self, exited: bool) {
-        let Some(done) = self.turn.lock().ok().and_then(|mut t| t.finish()) else {
+        let Some(mut done) = self.turn.lock().ok().and_then(|mut t| t.finish()) else {
             return;
         };
+        self.invalidate_snapshots();
+        // Final output is rendered exactly once and precedes Done. A pending
+        // intermediate worker can no longer publish over this final snapshot.
+        match render_snapshot(done.snapshot.clone()).await {
+            Ok(snapshot) => done.snapshot = snapshot,
+            Err(error) => {
+                tracing::warn!(error = %crate::log::error(error.as_ref()), "final pi snapshot render failed")
+            }
+        }
         self.mcp_confirms.lock().unwrap().clear();
         self.mcp_steps.lock().unwrap().clear();
         let thread_id = done.snapshot.thread_id;

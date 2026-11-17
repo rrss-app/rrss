@@ -443,15 +443,21 @@ pub async fn spawn(
     rrss_tool: &Path,
     target: Option<ModelChoice>,
     events: mpsc::UnboundedSender<PiEvent>,
+    lifecycle: std::sync::Arc<tokio::sync::OwnedMutexGuard<()>>,
 ) -> std::result::Result<(PiProcess, Prepared), ChatError> {
     if let Err(err) = super::install::ensure_pi_binary(db_path, data_dir, false).await {
         tracing::warn!(error = %err, "ensure managed pi before spawn");
     }
     let prepared = {
         let (db_path, data_dir) = (db_path.to_path_buf(), data_dir.to_path_buf());
-        crate::execution::blocking(move || prepare(&db_path, &data_dir, target.as_ref()))
-            .await
-            .map_err(|err| ChatError::internal(ChatErrorKind::Internal, err))??
+        crate::execution::blocking(move || {
+            // Cancellation cannot stop this file writer. Retain the lifecycle
+            // permit until it finishes so a restart cannot overwrite its files.
+            let _lifecycle = lifecycle;
+            prepare(&db_path, &data_dir, target.as_ref())
+        })
+        .await
+        .map_err(|err| ChatError::internal(ChatErrorKind::Internal, err))??
     };
     let spec = &prepared.spec;
 

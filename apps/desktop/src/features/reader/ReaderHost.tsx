@@ -510,7 +510,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
 
   const failWeb = (url: string, err: unknown) => {
     const kind = err && typeof err === "object" && "kind" in err ? err.kind : null;
-    const error: Pick<FulltextError, "kind"> = { kind: kind === "Waf" || kind === "Empty" || kind === "NotArticle" ? kind : "Network" };
+    const error: Pick<FulltextError, "kind"> = { kind: kind === "Waf" || kind === "Empty" || kind === "NotArticle" || kind === "Changed" ? kind : "Network" };
     setOpening(null);
     sessionRef.current = null;
     setSession(null);

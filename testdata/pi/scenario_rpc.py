@@ -166,6 +166,15 @@ def start_prompt(message):
         os._exit(3)
     elif "[[slow]]" in message:
         streaming = {"text": "", "left": 400, "next": time.monotonic()}
+    elif "[[long-stream]]" in message:
+        text = ""
+        for i in range(200):
+            delta = f"## Fixture {i}\n\nA synthetic paragraph with **formatting**.\n\n"
+            text += delta
+            emit({"type": "message_update", "assistantMessageEvent": {"type": "text_delta", "delta": delta}})
+        text += "Final fixture paragraph."
+        assistant(text)
+        settle()
     elif "[[confirm:" in message:
         timeout = int(message.split("[[confirm:", 1)[1].split("]]", 1)[0])
         emit({"type": "tool_execution_start", "toolCallId": "call_fetch", "toolName": "fetch_url", "args": {"url": "https://example.org"}})
@@ -230,6 +239,9 @@ def handle(command):
     elif kind == "get_session_stats":
         respond(command, data={"tokens": {"total": 99999}, "contextUsage": {"tokens": context_tokens}})
     elif kind == "get_state":
+        if (session_dir.parent / "hold-handshake").exists():
+            (session_dir.parent / "handshake-waiting").write_text("fixture")
+            return
         reported = next((m for m in (generated_models() or USER_MODELS) if m["provider"] == state_model["provider"] and m["id"] == state_model["id"]), state_model)
         respond(command, data={"model": reported, "sessionFile": str(session_file) if session_file else None,
                                "isStreaming": streaming is not None})

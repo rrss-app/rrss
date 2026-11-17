@@ -90,6 +90,9 @@ pub(crate) fn store_page(
                 .collect::<rrss_core::Result<Vec<_>>>()
         })
         .transpose();
+    let plain = rrss_render::document_to_plain(&extracted.document);
+    let json = rrss_core::body::fulltext_json(&extracted.document, &plain)
+        .map_err(FulltextError::network)?;
     let tx = db::write_transaction(&conn).map_err(FulltextError::network)?;
     let existing: Option<(i64, bool)> = tx
         .query_row(
@@ -134,9 +137,6 @@ pub(crate) fn store_page(
                 &crate::document::load_document(&current),
             )
         {
-            let plain = rrss_render::document_to_plain(&extracted.document);
-            let json = rrss_render::document_to_json(&extracted.document)
-                .map_err(FulltextError::network)?;
             articles::set_fulltext(&tx, id, &plain, &json).map_err(FulltextError::network)?;
             tx.execute(
             "UPDATE articles SET hash=?2,summary=NULL,summary_json=NULL,summary_hash=NULL,embed_tier=0 WHERE id=?1",

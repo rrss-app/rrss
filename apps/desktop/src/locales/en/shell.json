@@ -29,6 +29,10 @@
       "summary": "Network request failed",
       "detail": "The request failed, so this page can’t be read right now."
     },
+    "Changed": {
+      "summary": "Content changed",
+      "detail": "The content or extraction rules changed while loading. Try again."
+    },
     "Empty": {
       "summary": "No article text found",
       "detail": "No article text could be extracted from this page. It may load its content with scripts or need a sign-in."

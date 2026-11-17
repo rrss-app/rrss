@@ -2,7 +2,7 @@
 
 use sha2::{Digest, Sha256};
 
-use rrss_render::{RenderOpts, document_from_json, document_to_plain, html_to_document};
+use rrss_render::document_to_plain;
 
 use crate::ai_store::truncate_chars;
 
@@ -51,19 +51,9 @@ pub fn title_summary_text(title: &str, summary: Option<&str>) -> String {
 }
 
 fn body_plain(blocks_json: Option<&str>, content_html: Option<&str>) -> String {
-    if let Some(json) = blocks_json.map(str::trim).filter(|s| !s.is_empty())
-        && let Ok(doc) = document_from_json(json)
-    {
-        let plain = document_to_plain(&doc);
-        if !plain.trim().is_empty() {
-            return plain;
-        }
-    }
-    if let Some(html) = content_html.map(str::trim).filter(|s| !s.is_empty()) {
-        let doc = html_to_document(html, &RenderOpts::default());
-        return document_to_plain(&doc);
-    }
-    String::new()
+    crate::body::generation_document(blocks_json, content_html)
+        .map(|doc| document_to_plain(&doc))
+        .unwrap_or_default()
 }
 
 fn split_body(text: &str) -> Vec<String> {

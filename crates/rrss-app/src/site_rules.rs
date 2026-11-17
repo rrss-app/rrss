@@ -153,7 +153,7 @@ pub async fn test_site_rule(
         ));
     }
     let (html, actual_url) = crate::fulltext::fetch_page_with_url(network, url.as_str()).await?;
-    tokio::task::spawn_blocking(move || {
+    crate::execution::blocking(move || {
         let report = extract::site_rules::test_site_rule(&html, &actual_url, &rule)?;
         Ok(SiteRuleTestView {
             layer: WebLinkLayer::from_extraction(report.layer, true),

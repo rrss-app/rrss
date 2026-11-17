@@ -11,6 +11,61 @@ fn clients(dir: &Path) -> crate::network::NetworkClients {
     crate::network::NetworkClients::new(&path)
 }
 
+#[tokio::test]
+async fn late_fulltext_cannot_overwrite_a_newer_saved_body() {
+    use tokio::io::AsyncWriteExt;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/story", listener.local_addr().unwrap());
+    let (began, started) = tokio::sync::oneshot::channel();
+    let (release, released) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        crate::test_net::read_request_head(&mut stream).await;
+        began.send(()).unwrap();
+        released.await.unwrap();
+        let text = "A synthetic report about a local library and its reading rooms. ".repeat(50);
+        let html = format!(
+            "<html><title>Fixture</title><article><h1>Fixture</h1><p>{text}</p></article></html>"
+        );
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{html}",
+            html.len()
+        );
+        stream.write_all(response.as_bytes()).await.unwrap();
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let network = clients(dir.path());
+    let path = dir.path().join("test.db");
+    let conn = rrss_core::db::open_at(&path).unwrap();
+    conn.execute_batch(
+        "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://fulltext.example/feed',0);",
+    )
+    .unwrap();
+    conn.execute("INSERT INTO articles(id,feed_id,title,canonical_url,created_at) VALUES(1,1,'fixture',?1,0)",[url]).unwrap();
+    let download = tokio::spawn(async move { fetch_and_store(&network, &path, 1).await });
+    started.await.unwrap();
+    let doc = rrss_render::markdown_to_document("New saved body");
+    articles::set_fulltext(
+        &conn,
+        1,
+        "New saved body",
+        &rrss_render::document_to_json(&doc).unwrap(),
+    )
+    .unwrap();
+    release.send(()).unwrap();
+    let error = download.await.unwrap().unwrap_err();
+    assert_eq!(error.kind, FulltextErrorKind::Changed);
+    assert_eq!(error.ui_error().code(), "web_extraction_page_changed");
+    assert_eq!(
+        articles::get_article(&conn, 1)
+            .unwrap()
+            .fulltext_md
+            .as_deref(),
+        Some("New saved body")
+    );
+    server.await.unwrap();
+}
+
 #[test]
 fn detects_cloudflare_challenge() {
     assert!(detect_waf(

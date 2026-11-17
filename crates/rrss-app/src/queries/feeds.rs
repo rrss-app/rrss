@@ -7,11 +7,11 @@ use crate::views::*;
 
 pub fn feed_tree(conn: &Connection) -> rrss_core::Result<FeedTree> {
     let listed = feeds::list_feeds(conn)?;
-    let icons = feed_icon_hrefs(conn)?;
-    let views = feeds::list_folder_views(conn).unwrap_or_default();
-    let noisy = feeds::noisy_feed_ids(conn).unwrap_or_default();
+    let icons = feed_icon_hrefs(conn, listed.iter().map(|f| f.id))?;
+    let views = feeds::list_folder_views(conn)?;
+    let noisy = feeds::noisy_feed_ids(conn)?;
     let retention = feed_retention(conn)?;
-    let health = feed_health::feed_health(conn, feeds::now_ms()).unwrap_or_default();
+    let health = feed_health::feed_health(conn, feeds::now_ms())?;
     // 只有手动收录源要这个标记：没有文章时订阅树不显示它。
     let empty_manual: Option<i64> = conn
         .query_row(
@@ -67,12 +67,19 @@ pub fn feed_tree(conn: &Connection) -> rrss_core::Result<FeedTree> {
 
 pub(super) fn feed_icon_hrefs(
     conn: &Connection,
+    feeds: impl IntoIterator<Item = i64>,
 ) -> rrss_core::Result<std::collections::HashMap<i64, String>> {
+    let ids: std::collections::BTreeSet<_> = feeds.into_iter().collect();
+    if ids.is_empty() {
+        return Ok(Default::default());
+    }
+    let _stage = rrss_core::db::latency::stage(conn, "feed_icons");
     if !rrss_core::feed_icon::enabled(conn)? {
         return Ok(Default::default());
     }
-    let mut stmt = conn.prepare("SELECT feed_id, id, local_path FROM media WHERE feed_id IS NOT NULL AND local_path IS NOT NULL")?;
-    let rows = stmt.query_map([], |r| {
+    let mut stmt = conn.prepare("SELECT feed_id, id, local_path FROM media WHERE feed_id IN (SELECT value FROM json_each(?1)) AND local_path IS NOT NULL")?;
+    let ids = serde_json::to_string(&ids).expect("feed ids");
+    let rows = stmt.query_map([ids], |r| {
         Ok((
             r.get::<_, i64>(0)?,
             r.get::<_, i64>(1)?,
@@ -80,12 +87,19 @@ pub(super) fn feed_icon_hrefs(
         ))
     })?;
     let mut icons = std::collections::HashMap::new();
+    let mut checked = 0usize;
     for row in rows {
         let (feed, media, path) = row?;
+        checked += 1;
         if std::path::Path::new(&path).is_file() {
             icons.insert(feed, super::media::media_href(media));
         }
     }
+    tracing::debug!(
+        files_checked = checked,
+        icons_found = icons.len(),
+        "feed icon query work"
+    );
     Ok(icons)
 }
 
@@ -140,6 +154,68 @@ fn health_notice(h: &FeedHealth) -> crate::ui_error::feeds::FeedHealthNotice {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    #[ignore = "explicit offline many-feeds icon query comparison"]
+    fn result_icon_work_latency() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = rrss_core::db::open_at(&dir.path().join("icons-perf.db")).unwrap();
+        let file = dir.path().join("icon.svg");
+        std::fs::write(&file, b"<svg/>").unwrap();
+        let tx = rrss_core::db::write_transaction(&conn).unwrap();
+        for id in 1..=600 {
+            tx.execute(
+                "INSERT INTO feeds(id,url,created_at) VALUES(?1,?2,0)",
+                rusqlite::params![id, format!("https://source{id}.example/feed")],
+            )
+            .unwrap();
+            tx.execute("INSERT INTO media(feed_id,url,local_path,created_at) VALUES(?1,'https://icon.example/image',?2,0)",rusqlite::params![id,file.to_string_lossy()]).unwrap();
+        }
+        tx.commit().unwrap();
+        let mut full = 0.0f64;
+        let mut selected = 0.0f64;
+        for _ in 0..30 {
+            let start = std::time::Instant::now();
+            let all = feed_icon_hrefs(&conn, 1..=600).unwrap();
+            full = full.max(start.elapsed().as_secs_f64() * 1000.0);
+            let start = std::time::Instant::now();
+            let result = feed_icon_hrefs(&conn, 1..=10).unwrap();
+            selected = selected.max(start.elapsed().as_secs_f64() * 1000.0);
+            for (id, icon) in result {
+                assert_eq!(all.get(&id), Some(&icon));
+            }
+        }
+        eprintln!(
+            "icon result probe: samples=30, all_sources=600, result_sources=10, full_max_ms={full:.2}, selected_max_ms={selected:.2}"
+        );
+    }
+
+    #[test]
+    fn icon_batches_ignore_unrequested_rows_and_preserve_missing_file_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = rrss_core::db::open_at(&dir.path().join("icons.db")).unwrap();
+        let icon = dir.path().join("icon.svg");
+        std::fs::write(&icon, b"<svg/>").unwrap();
+        conn.execute_batch("INSERT INTO feeds(id,url,created_at) VALUES(1,'https://one.example/feed',0),(2,'https://two.example/feed',0),(3,'https://three.example/feed',0);").unwrap();
+        for id in 1..=3 {
+            conn.execute("INSERT INTO media(feed_id,url,local_path,created_at) VALUES(?1,'https://icons.example/icon',?2,0)", rusqlite::params![id, if id==2 { "missing".into() } else { icon.to_string_lossy().into_owned() }]).unwrap();
+        }
+        let icons = feed_icon_hrefs(&conn, [1, 1, 2]).unwrap();
+        assert_eq!(icons.len(), 1);
+        assert!(icons.contains_key(&1));
+        assert!(feed_icon_hrefs(&conn, []).unwrap().is_empty());
+        rrss_core::db::set_setting(&conn, rrss_core::feed_icon::SETTING_KEY, "0").unwrap();
+        assert!(feed_icon_hrefs(&conn, [1]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn folder_failure_is_not_a_successful_empty_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = rrss_core::db::open_at(&dir.path().join("folders.db")).unwrap();
+        conn.execute_batch("ALTER TABLE folders RENAME TO broken_folders;")
+            .unwrap();
+        assert!(feed_tree(&conn).is_err());
+    }
 
     #[test]
     fn tree_reads_old_text_and_new_error_records_and_carries_raw_health_data() {

@@ -6,9 +6,7 @@
 
 use crate::text::truncate_chars;
 
-use rrss_render::{
-    Block, Document, RenderOpts, document_from_json, html_to_document, inlines_to_plain,
-};
+use rrss_render::{Block, Document, inlines_to_plain};
 
 /// 设置里的「输入档位」：每次送给模型多少正文。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -73,14 +71,7 @@ pub const BODY_SIG_KEY: &str = "body_sig";
 
 /// 摘要所依据正文的签名：优先块 IR，没有时用原始 HTML。抓回全文会替换块 IR，签名随之变化。
 pub fn body_signature(blocks_json: Option<&str>, content_html: Option<&str>) -> String {
-    use sha2::{Digest, Sha256};
-    let source = blocks_json
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .or_else(|| content_html.map(str::trim))
-        .unwrap_or("");
-    let digest = Sha256::digest(source.as_bytes());
-    digest[..8].iter().map(|b| format!("{b:02x}")).collect()
+    crate::body::signature(blocks_json, content_html)
 }
 
 /// 摘要是否来自旧正文。旧摘要没有签名时无法判断，不算过期。
@@ -238,19 +229,7 @@ pub fn extract_body_excerpt(
 }
 
 fn parse_document(blocks_json: Option<&str>, content_html: Option<&str>) -> Option<Document> {
-    if let Some(json) = blocks_json.map(str::trim).filter(|s| !s.is_empty())
-        && let Ok(doc) = document_from_json(json)
-        && !doc.blocks.is_empty()
-    {
-        return Some(doc);
-    }
-    if let Some(html) = content_html.map(str::trim).filter(|s| !s.is_empty()) {
-        let doc = html_to_document(html, &RenderOpts::default());
-        if !doc.blocks.is_empty() {
-            return Some(doc);
-        }
-    }
-    None
+    crate::body::generation_document(blocks_json, content_html)
 }
 
 fn items_from_document(doc: &Document) -> Vec<Item> {

@@ -6,7 +6,7 @@ use rrss_core::articles;
 use rrss_core::feedback::{self, FeedbackKind};
 use rrss_core::interests;
 use rrss_core::parse_reasons;
-use rrss_render::{Block, document_to_json};
+use rrss_render::Block;
 
 use super::media::{cached_media_ref, failed_media_ref};
 use crate::document::article_truncated;
@@ -62,7 +62,7 @@ pub fn reader_view(conn: &Connection, id: i64) -> rrss_core::Result<ReaderView> 
     present_document(&mut doc);
     let media = article_media_from_doc(conn, article.id, &doc);
     let embed_covers = embed_fetch::cached_covers(conn, article.id, &doc);
-    let feedback = match feedback::feedback_for_article(conn, id).ok().flatten() {
+    let feedback = match feedback::feedback_for_article(conn, id)? {
         Some(FeedbackKind::Up) => 1,
         Some(FeedbackKind::Down) => -1,
         None => 0,
@@ -87,8 +87,9 @@ pub fn reader_view(conn: &Connection, id: i64) -> rrss_core::Result<ReaderView> 
         summary: article.summary.clone().unwrap_or_default(),
         score: article.score,
         feedback,
-        document: serde_json::from_str(&document_to_json(&doc).unwrap_or_else(|_| "{}".into()))
-            .unwrap_or(serde_json::json!({"v":1,"blocks":[]})),
+        document: rrss_core::db::latency::measure("document_serialize", || {
+            serde_json::to_value(&doc).unwrap_or_else(|_| serde_json::json!({}))
+        }),
         reasons: article_reasons(&article),
         media,
         embed_covers,
@@ -122,7 +123,7 @@ pub fn related_articles(
     if articles.is_empty() {
         return Ok(Vec::new());
     }
-    let icons = super::feeds::feed_icon_hrefs(conn)?;
+    let icons = super::feeds::feed_icon_hrefs(conn, articles.iter().map(|a| a.feed_id))?;
     Ok(articles
         .into_iter()
         .map(|article| RelatedArticleView {

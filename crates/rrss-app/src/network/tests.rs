@@ -5,6 +5,68 @@ use tokio::io::AsyncWriteExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn slow_client_construction_does_not_hold_other_routes_or_replace_new_config() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("snapshot.db");
+    let conn = db::open_at(&path).unwrap();
+    network::save(&conn, &ProxyConfig::default()).unwrap();
+    let (began, started) = tokio::sync::oneshot::channel();
+    let began = Mutex::new(Some(began));
+    let (release, released) = std::sync::mpsc::channel();
+    let released = Mutex::new(released);
+    let clients = NetworkClients::with_feed_builder(path.clone(), move |builder| {
+        if let Some(began) = began.lock().unwrap().take() {
+            began.send(()).unwrap();
+            released
+                .lock()
+                .unwrap()
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+        }
+        builder
+    });
+    let old = tokio::spawn({
+        let clients = clients.clone();
+        async move { clients.feed_client().await }
+    });
+    started.await.unwrap();
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    network::save(
+        &conn,
+        &ProxyConfig {
+            global: ProxyRule::custom(&server.uri()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let next = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        clients.client(NetworkScope::Api),
+    )
+    .await;
+    release.send(()).unwrap();
+    let next = next
+        .expect("API acquisition must not wait for feed client construction")
+        .unwrap();
+    old.await.unwrap().unwrap();
+    for client in [next, clients.client(NetworkScope::Api).await.unwrap()] {
+        assert!(
+            client
+                .get("http://snapshot.example/")
+                .send()
+                .await
+                .unwrap()
+                .status()
+                .is_success()
+        );
+    }
+}
+
 #[tokio::test]
 async fn changed_configuration_affects_next_client_but_not_an_inflight_request() {
     let dir = tempfile::tempdir().unwrap();

@@ -26,8 +26,9 @@ pub fn search_hits(
         published_since: query.published_since,
         limit: query.limit,
     };
-    let icons = super::feeds::feed_icon_hrefs(conn)?;
-    Ok(search::search_articles_with_query(conn, &options)?
+    let hits = search::search_articles_with_query(conn, &options)?;
+    let icons = super::feeds::feed_icon_hrefs(conn, hits.iter().map(|h| h.feed_id))?;
+    Ok(hits
         .into_iter()
         .map(|hit| {
             let icon = icons.get(&hit.feed_id).cloned().unwrap_or_default();

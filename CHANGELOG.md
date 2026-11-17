@@ -6,6 +6,8 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ### Fixed
 
+- Full-text fetches report concurrent content changes separately from network failures, and unreadable body caches are rebuilt automatically.
+- Reading, search, and feed lists avoid unnecessary icon scans and repeated body parsing. Failed settings queries report errors instead of showing defaults. Chat startup can be stopped during a slow handshake, streamed replies render off the event loop, and client setup no longer holds a shared cache lock while reading configuration or building connections.
 - Interest edits handle overlapping small batches of embedding updates, cluster merges avoid loading old article vectors, and failed media registration or rolled-back web snapshots clean up newly written cache files.
 - Background refreshes, clustering, interest updates, and vector preparation use shorter database writes so reading actions stay responsive. Cached images no longer write access timestamps while loading, file cleanup runs after commit, and diagnostics capture database waits and delayed close prompts.
 - Closing the window responds right away: the "close RRSS" prompt (or hiding to the tray) no longer waits while background updates are busy, and the choice in the prompt takes effect immediately.

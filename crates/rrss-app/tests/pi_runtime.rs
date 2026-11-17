@@ -92,6 +92,71 @@ fn setup(idle_secs: i64) -> Harness {
     setup_with(idle_secs, Model::Bound)
 }
 
+#[tokio::test]
+async fn stopping_during_handshake_leaves_state_queries_responsive_and_allows_restart() {
+    let h = setup(0);
+    std::fs::create_dir_all(h.data.join("pi")).unwrap();
+    let hold = h.data.join("pi/hold-handshake");
+    std::fs::write(&hold, b"fixture").unwrap();
+    let sender = tokio::spawn({
+        let chat = h.chat.clone();
+        async move { chat.send(args(0, "fixture")).await }
+    });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !h.data.join("pi/handshake-waiting").exists() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(
+        !tokio::time::timeout(Duration::from_secs(1), h.chat.supervisor().is_running())
+            .await
+            .unwrap()
+    );
+    tokio::time::timeout(Duration::from_secs(2), h.chat.stop_engine())
+        .await
+        .unwrap();
+    assert!(sender.await.unwrap().is_err());
+    std::fs::remove_file(hold).unwrap();
+    h.sink.clear();
+    h.chat.send(args(0, "restart fixture")).await.unwrap();
+    h.sink.done().await;
+    h.chat.stop_engine().await;
+}
+
+#[tokio::test]
+async fn long_stream_final_document_is_complete_and_never_followed_by_stale_delta() {
+    let h = setup(0);
+    h.chat.send(args(0, "[[long-stream]]")).await.unwrap();
+    let events = h.sink.done().await;
+    let final_delta = events
+        .iter()
+        .filter_map(|event| match event {
+            ChatEvent::Delta(delta) => Some(delta),
+            _ => None,
+        })
+        .last()
+        .unwrap();
+    let expected = rrss_render::markdown_to_document(&final_delta.text);
+    assert_eq!(
+        final_delta.document,
+        Some(serde_json::to_value(&expected).unwrap())
+    );
+    assert!(final_delta.text.ends_with("Final fixture paragraph."));
+    h.chat.stop_engine().await;
+    let events = h.sink.snapshot();
+    let done = events
+        .iter()
+        .position(|e| matches!(e, ChatEvent::Done(_)))
+        .unwrap();
+    assert!(
+        !events[done + 1..]
+            .iter()
+            .any(|e| matches!(e, ChatEvent::Delta(_)))
+    );
+}
+
 fn setup_with(idle_secs: i64, model: Model) -> Harness {
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();
