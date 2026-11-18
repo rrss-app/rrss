@@ -23,7 +23,7 @@ export function EmbedCoverCard({ cover, site, openUrl, onOpenUrl }: Props) {
   }
   const meta = coverMeta(site, cover.author, cover.duration_secs);
   return (
-    <button type="button" className="embed-cover" onClick={() => onOpenUrl?.(cover.open_url || openUrl)}>
+    <button type="button" className="embed-cover" onClick={() => onOpenUrl?.(openUrl)}>
       <span className="embed-cover-frame">
         <img src={cover.cover_href} alt="" />
         <span className="embed-cover-play" aria-hidden="true" />

@@ -20,9 +20,6 @@ function mediaProbeScript(expect) {
       }
       throw new Error(label);
     }
-    const all = [...document.querySelectorAll('button.tab')].find((node) => node.textContent.trim() === '全部条目');
-    if (!all) throw new Error('Focus filter tab missing');
-    all.click();
     const card = await waitFor('Media fixture card did not appear', () => document.querySelector('article[aria-label="媒体夹具"]'), 8000);
     card.click();
     const img = await waitFor('Reader did not render a cached image', () => {
@@ -41,6 +38,12 @@ function mediaProbeScript(expect) {
       .map((entry) => entry.name)
       .filter((name) => /^https?:/i.test(name) && (name.includes('/media/' + expect.mediaId) || name.includes(expect.src)));
     if (remote.length) throw new Error('image was fetched over HTTP: ' + remote[0]);
+    const play = await waitFor('Audio control missing', () => document.querySelector('.drawer.reader button.embed-external'), 8000);
+    play.click();
+    await waitFor('Cached WAV did not decode in WebKit', () => {
+      const audio = document.querySelector('.drawer.reader audio');
+      return audio?.currentSrc.startsWith('blob:') && audio.duration === 1;
+    }, 8000);
     return 'rrss-media-smoke-ok ' + src + ' ' + img.naturalWidth + 'x' + img.naturalHeight;
   })()`;
 }
@@ -321,6 +324,10 @@ try {
     await tool("ipc_get_backend_state", {});
     const expectedDb = process.env.RRSS_EXPECTED_DB || "";
     const inspected = await tool("webview_execute_js", { script: `(async () => {
+      const deadline = performance.now() + 8000;
+      while (!document.querySelector('.shell') && performance.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
       if (!window.__TAURI_INTERNALS__ || !document.querySelector('.shell')) throw new Error('RRSS UI missing');
       if (${process.env.RRSS_EXPECT_DEV === "1"} && !document.querySelector('script[src*="/@vite/client"]')) throw new Error('Vite development client missing');
       const diag = await window.__TAURI_INTERNALS__.invoke('diagnostics', {});

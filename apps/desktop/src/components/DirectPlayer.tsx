@@ -13,6 +13,7 @@ type Props = {
 function playableType(media: "video" | "audio", blobType: string): string {
   const type = blobType.split(";")[0]?.trim().toLowerCase() ?? "";
   if (type === "audio/vnd.wave" || type === "audio/wave" || type === "audio/x-wav") return "audio/wav";
+  if (media === "audio" && ["video/mp4", "video/webm", "video/ogg"].includes(type)) return type.replace("video/", "audio/");
   if (media === "audio" && type.startsWith("audio/")) return type;
   if (media === "video" && (type.startsWith("video/") || type.startsWith("audio/"))) return type;
   return media === "audio" ? "audio/wav" : "video/mp4";
@@ -39,8 +40,9 @@ export function DirectPlayer({ url, articleId, media, onOpenUrl }: Props) {
         const typed = blob.type.split(";")[0]?.trim().toLowerCase() === type
           ? blob
           : new Blob([await blob.arrayBuffer()], { type });
+        if (cancelled) return;
         objectUrl = URL.createObjectURL(typed);
-        if (!cancelled) setSrc(objectUrl);
+        setSrc(objectUrl);
       } catch {
         if (!cancelled) setExternal(true);
       }
@@ -54,7 +56,7 @@ export function DirectPlayer({ url, articleId, media, onOpenUrl }: Props) {
   if (external || articleId == null) {
     return (
       <button type="button" className="embed-external" onClick={() => onOpenUrl?.(url)}>
-        {label}
+        {external ? t("embed.playbackFallback", { site: label }) : label}
       </button>
     );
   }

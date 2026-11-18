@@ -117,7 +117,7 @@
 
 | 平台 | 安装包 | 运行要求 |
 | :-- | :-- | :-- |
-| Linux x64 | `rrss-linux-x64.tar.gz` | WebKitGTK 4.1（Debian / Ubuntu 为 `libwebkit2gtk-4.1-0`） |
+| Linux x64 | `rrss-linux-x64.tar.gz` | WebKitGTK 4.1（Debian / Ubuntu 为 `libwebkit2gtk-4.1-0`）。阅读器播放 H.264 视频需要 GStreamer 解码器，Debian / Ubuntu 可安装 `gstreamer1.0-plugins-good`、`gstreamer1.0-plugins-bad` 和 `gstreamer1.0-libav` |
 | Windows x64 | `rrss-windows-x64.zip` / `rrss-windows-x64-msvc.zip` | WebView2 Runtime（Windows 11 自带） |
 
 解压后运行 `rrss`（Windows 为 `rrss.exe`）。

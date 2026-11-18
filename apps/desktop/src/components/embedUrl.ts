@@ -7,9 +7,9 @@ export type EmbedPresentation =
   | { kind: "video" | "audio"; openUrl: string }
   | { kind: "external"; openUrl: string; label: string };
 
-const VIDEO_EXT = new Set(["mp4", "webm", "ogv"]);
-const AUDIO_EXT = new Set(["ogg", "mp3", "m4a", "aac", "wav", "opus"]);
-const REJECTED_EXT = new Set(["mkv", "avi", "m3u8"]);
+const VIDEO_EXT = new Set(["mp4", "m4v", "webm", "ogv"]);
+const AUDIO_EXT = new Set(["ogg", "oga", "mp3", "m4a", "m4b", "aac", "wav", "opus", "flac"]);
+const REJECTED_EXT = new Set(["mkv", "avi", "m3u", "m3u8", "mpd", "pls"]);
 
 export function classifyEmbed(raw: string, storedKind = ""): EmbedPresentation {
   const normalized = normalize(raw);
@@ -17,8 +17,10 @@ export function classifyEmbed(raw: string, storedKind = ""): EmbedPresentation {
   if (!url) return external(normalized || raw);
   const official = officialOf(url);
   if (official) return official;
+  if (["youtube.com", "youtu.be", "youtube-nocookie.com", "bilibili.com", "b23.tv"].some((domain) => hostIs(url.hostname, domain))) return external(url.toString());
   const ext = pathExt(url);
   if (REJECTED_EXT.has(ext)) return external(url.toString());
+  if (["webm", "mp4", "ogg"].includes(ext) && (storedKind === "audio" || storedKind === "video")) return { kind: storedKind, openUrl: url.toString() };
   if (VIDEO_EXT.has(ext)) return { kind: "video", openUrl: url.toString() };
   if (AUDIO_EXT.has(ext)) return { kind: "audio", openUrl: url.toString() };
   if (storedKind === "video") return { kind: "video", openUrl: url.toString() };
@@ -92,7 +94,7 @@ function officialOf(url: URL): EmbedPresentation | null {
 function youtubeId(url: URL): string | null {
   const parts = url.pathname.split("/").filter(Boolean);
   if (parts[0] === "watch") return validYt(url.searchParams.get("v") ?? "");
-  if (parts[0] === "embed" || parts[0] === "shorts") return validYt(parts[1] ?? "");
+  if (["embed", "shorts", "live", "v"].includes(parts[0])) return validYt(parts[1] ?? "");
   return null;
 }
 

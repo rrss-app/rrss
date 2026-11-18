@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 ammonia.workspace = true
+dom_query.workspace = true
 html5ever.workspace = true
 pulldown-cmark.workspace = true
 serde.workspace = true

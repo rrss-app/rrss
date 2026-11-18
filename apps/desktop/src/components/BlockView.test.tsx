@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { BlockView, LIBRARY_FIXTURE, LIBRARY_FIXTURE_EN, parseDocument, readSelection } from "./BlockView";
 import { api } from "../lib/api";
+import { WebLinksContext } from "../lib/webLinks";
 
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -400,8 +401,11 @@ describe("embeds", () => {
   ];
 
   it("shows cover copy and never puts a remote url on img video or audio", () => {
+    const open = vi.fn();
     const { host, unmount } = mount(
-      <BlockView document={embedDoc} embedCovers={covers} articleId={7} onOpenUrl={() => {}} />,
+      <WebLinksContext.Provider value={{ open, menu: vi.fn() }}>
+        <BlockView document={embedDoc} embedCovers={covers} articleId={7} />
+      </WebLinksContext.Provider>,
     );
     const bili = host.querySelectorAll(".embed-cover")[0];
     expect(bili.querySelector(".embed-cover-title")?.textContent).toBe("示例视频");
@@ -409,6 +413,9 @@ describe("embeds", () => {
     const yt = [...host.querySelectorAll(".embed-cover")].find((el) => el.textContent?.includes("芯片升级"));
     expect(yt?.querySelector(".embed-cover-meta")?.textContent).toBe("YouTube · 极客湾");
     expect(yt?.textContent).not.toMatch(/\d+:\d+/);
+    act(() => { (bili as HTMLButtonElement).click(); (yt as HTMLButtonElement).click(); });
+    expect(open).toHaveBeenCalledWith("https://www.bilibili.com/video/BV1xx411c7mD/", "", "browser");
+    expect(open).toHaveBeenCalledWith("https://www.youtube.com/watch?v=abc123def45", "", "browser");
     expect(host.textContent).not.toContain("不该用远程图");
     expect(host.textContent).not.toContain("watch?v=");
     expect(host.textContent).not.toContain("token=");
@@ -450,14 +457,16 @@ describe("embeds", () => {
       writable: true,
       value: () => {},
     });
+    const open = vi.fn();
     const { host, unmount } = mount(
       <BlockView
-        document={{ v: 1, blocks: [{ t: "embed", kind: "video", url: "https://cdn.example/a.mp4", title: "视频" }] }}
+        onOpenUrl={open}
+        document={{ v: 1, blocks: [{ t: "embed", kind: "video", url: "https://cdn.example/a.mp4", title: "Clip" }] }}
         articleId={7}
       />,
     );
     try {
-      const button = [...host.querySelectorAll("button")].find((el) => el.textContent === "播放");
+      const button = host.querySelector("button");
       expect(button).toBeTruthy();
       await act(async () => {
         button!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -467,6 +476,9 @@ describe("embeds", () => {
       expect(fetched).toEqual(["rrss://localhost/media/8"]);
       expect(host.querySelector("video")?.getAttribute("src")).toBe("blob:local-media");
       expect(host.textContent).not.toContain("cdn.example");
+      act(() => { host.querySelector("video")!.dispatchEvent(new Event("error")); });
+      act(() => { host.querySelector("button")!.click(); });
+      expect(open).toHaveBeenCalledWith("https://cdn.example/a.mp4");
     } finally {
       unmount();
       if (previousCreate) Object.defineProperty(URL, "createObjectURL", previousCreate);

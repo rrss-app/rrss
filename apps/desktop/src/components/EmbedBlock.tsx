@@ -1,4 +1,6 @@
+import { useContext } from "react";
 import type { EmbedCoverView } from "../bindings";
+import { WebLinksContext } from "../lib/webLinks";
 import { EmbedCoverCard } from "./EmbedCoverCard";
 import { DirectPlayer } from "./DirectPlayer";
 import { classifyEmbed } from "./embedUrl";
@@ -13,6 +15,11 @@ type Props = {
 };
 
 export function EmbedBlock({ block, covers = [], articleId, onOpenUrl }: Props) {
+  const links = useContext(WebLinksContext);
+  const openInBrowser = (url: string) => {
+    if (links) links.open(url, "", "browser");
+    else onOpenUrl?.(url);
+  };
   const classified = classifyEmbed(block.url, block.kind);
   switch (classified.kind) {
     case "youtube":
@@ -23,7 +30,7 @@ export function EmbedBlock({ block, covers = [], articleId, onOpenUrl }: Props) 
           cover={cover}
           site={classified.kind}
           openUrl={classified.openUrl}
-          onOpenUrl={onOpenUrl}
+          onOpenUrl={openInBrowser}
         />
       );
     }
@@ -31,16 +38,17 @@ export function EmbedBlock({ block, covers = [], articleId, onOpenUrl }: Props) 
     case "audio":
       return (
         <DirectPlayer
+          key={`${articleId}:${classified.openUrl}`}
           url={classified.openUrl}
           articleId={articleId}
           media={classified.kind}
-          onOpenUrl={onOpenUrl}
+          onOpenUrl={openInBrowser}
         />
       );
     case "external": {
       const usable = block.title && !block.title.includes("://") && !block.title.includes("?") && !block.title.includes(block.url);
       return (
-        <button type="button" className="embed-external" onClick={() => onOpenUrl?.(classified.openUrl)}>
+        <button type="button" className="embed-external" onClick={() => openInBrowser(classified.openUrl)}>
           {usable ? block.title : classified.label}
         </button>
       );

@@ -68,6 +68,17 @@ pub fn run() -> anyhow::Result<()> {
     .register_asynchronous_uri_scheme_protocol("rrss", move |ctx, request, responder| {
         let db_path = protocol_db.clone();
         let allowed = rrss_core::media::media_window_allowed(ctx.webview_label());
+        let reader_origin = if tauri::is_dev() {
+            ctx.app_handle()
+                .config()
+                .build
+                .dev_url
+                .as_ref()
+                .map(|url| url.origin().ascii_serialization())
+        } else {
+            None
+        }
+        .unwrap_or_else(|| rrss_core::platform::Os::current().protocol_origin("tauri"));
         tauri::async_runtime::spawn(async move {
             let mut response = if !allowed {
                 tauri::http::Response::builder()
@@ -93,6 +104,8 @@ pub fn run() -> anyhow::Result<()> {
                 };
                 match result {
                     Ok(payload) => {
+                        let av = payload.mime.starts_with("audio/")
+                            || payload.mime.starts_with("video/");
                         let mut builder = tauri::http::Response::builder()
                             .status(payload.status)
                             .header(tauri::http::header::CONTENT_TYPE, payload.mime)
@@ -101,6 +114,12 @@ pub fn run() -> anyhow::Result<()> {
                                 tauri::http::header::CACHE_CONTROL,
                                 "public, max-age=31536000, immutable",
                             );
+                        if av {
+                            builder = builder.header(
+                                tauri::http::header::ACCESS_CONTROL_ALLOW_ORIGIN,
+                                reader_origin,
+                            );
+                        }
                         if payload.accept_ranges {
                             builder = builder.header(tauri::http::header::ACCEPT_RANGES, "bytes");
                         }

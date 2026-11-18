@@ -179,6 +179,7 @@
     "remove": "移除引用"
   },
   "embed": {
+    "playbackFallback": "无法在阅读器播放，前往 {{site}} 打开",
     "preparing": "正在准备播放…",
     "downloading": "正在下载…",
     "play": "播放",

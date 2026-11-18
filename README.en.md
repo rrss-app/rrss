@@ -117,7 +117,7 @@ Get the package for your platform from [Releases](https://github.com/rrss-app/rr
 
 | Platform | Package | Requirements |
 | :-- | :-- | :-- |
-| Linux x64 | `rrss-linux-x64.tar.gz` | WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian / Ubuntu) |
+| Linux x64 | `rrss-linux-x64.tar.gz` | WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian / Ubuntu). H.264 video playback requires GStreamer codecs. On Debian / Ubuntu, install `gstreamer1.0-plugins-good`, `gstreamer1.0-plugins-bad` and `gstreamer1.0-libav` for playback. |
 | Windows x64 | `rrss-windows-x64.zip` / `rrss-windows-x64-msvc.zip` | WebView2 Runtime (included in Windows 11) |
 
 Unpack and run `rrss` (`rrss.exe` on Windows).

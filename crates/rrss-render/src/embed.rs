@@ -21,14 +21,6 @@ pub enum EmbedClass {
     External { open_url: String, label: String },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum UrlVerdict {
-    Official,
-    Direct,
-    Rejected,
-    Unknown,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PresentedEmbed {
     pub kind: EmbedKind,
@@ -40,96 +32,93 @@ pub struct PresentedEmbed {
 /// 也避免 `<audio>` 里的 “does not support” 提示留在正文。
 pub fn excise_embeds(html: &str, base: Option<&Url>) -> (String, Vec<Block>) {
     let lower = html.to_ascii_lowercase();
-    let mut spans: Vec<(usize, usize, Block)> = Vec::new();
-    for tag in ["iframe", "video", "audio"] {
-        let open = format!("<{tag}");
-        let close = format!("</{tag}");
-        let mut from = 0;
-        while let Some(idx) = lower[from..].find(&open) {
-            let start = from + idx;
-            let after = start + open.len();
-            if after < lower.len() {
-                let b = lower.as_bytes()[after];
-                if b.is_ascii_alphanumeric() {
-                    from = after;
-                    continue;
-                }
-            }
-            let Some(gt) = lower[start..].find('>') else {
-                break;
-            };
-            let open_end = start + gt;
-            let open_tag = &html[start..=open_end];
-            let mut src = attr_value(open_tag, "src");
-            let mut type_attr = attr_value(open_tag, "type");
-            let element_end = match lower[open_end + 1..].find(&close) {
-                Some(rel) => {
-                    let close_at = open_end + 1 + rel;
-                    let inner = &html[open_end + 1..close_at];
-                    if src.is_none() && tag != "iframe" {
-                        if let Some((source_src, source_type)) = first_source(inner) {
-                            src = Some(source_src);
-                            if type_attr.is_none() {
-                                type_attr = source_type;
-                            }
-                        }
-                    }
-                    lower[close_at..]
-                        .find('>')
-                        .map(|gt| close_at + gt + 1)
-                        .unwrap_or(close_at)
-                }
-                None => open_end + 1,
-            };
-            if let Some(raw) = src {
-                if let Some(normalized) = normalize_url(&raw, base) {
-                    let hint = match tag {
-                        "audio" => EmbedHint::Audio,
-                        "video" => EmbedHint::Video,
-                        _ => EmbedHint::Iframe,
-                    };
-                    let class = classify_with_hint(&normalized, hint, type_attr.as_deref());
-                    let attr_title = attr_value(open_tag, "title")
-                        .or_else(|| attr_value(open_tag, "aria-label"));
-                    let presented = present_class(&class, attr_title.as_deref());
-                    tracing::debug!(kind = ?presented.kind, "embed collapsed");
-                    spans.push((
-                        start,
-                        element_end,
-                        Block::Embed {
-                            kind: presented.kind,
-                            url: presented.url,
-                            title: presented.title,
-                        },
-                    ));
-                }
-            }
-            from = element_end;
-        }
+    if !["<iframe", "<video", "<audio", "<embed", "<object"]
+        .iter()
+        .any(|tag| lower.contains(tag))
+    {
+        return (html.to_owned(), Vec::new());
     }
-    spans.sort_by_key(|(start, _, _)| *start);
-    let mut kept: Vec<(usize, usize, Block)> = Vec::new();
-    let mut cursor = 0;
-    for span in spans {
-        if span.0 < cursor {
+    let dom = dom_query::Document::fragment(html);
+    let mut blocks = Vec::new();
+    for node in dom.select("iframe, video, audio, object, embed").nodes() {
+        if node
+            .ancestors_it(None)
+            .any(|ancestor| ancestor.is("noscript, template, iframe, video, audio"))
+        {
             continue;
         }
-        cursor = span.1;
-        kept.push(span);
+        let hint = if node.has_name("video") {
+            EmbedHint::Video
+        } else if node.has_name("audio") {
+            EmbedHint::Audio
+        } else {
+            EmbedHint::Iframe
+        };
+        let sources = std::iter::once(*node).chain(
+            node.children_it(false)
+                .filter(|child| child.has_name("source")),
+        );
+        let mut external = None;
+        let mut playable = None;
+        'sources: for source in sources {
+            let primary = if source.has_name("object") {
+                "data"
+            } else {
+                "src"
+            };
+            let mime = source.attr("type");
+            for attr in ["data-src", "data-lazy-src", primary] {
+                let Some(url) = source.attr(attr).and_then(|raw| normalize_url(&raw, base)) else {
+                    continue;
+                };
+                let class = classify_with_hint(&url, hint, mime.as_deref());
+                match class {
+                    EmbedClass::External { .. } => {
+                        external.get_or_insert(class);
+                    }
+                    EmbedClass::Direct { .. }
+                        if type_media(mime.as_deref()).is_none()
+                            && Url::parse(&url)
+                                .ok()
+                                .as_ref()
+                                .and_then(direct_extension)
+                                .is_none() =>
+                    {
+                        playable.get_or_insert(class);
+                    }
+                    _ => {
+                        playable = Some(class);
+                        break 'sources;
+                    }
+                }
+            }
+        }
+        let Some(class) = playable.or(external) else {
+            continue;
+        };
+        let title = node.attr("title").or_else(|| node.attr("aria-label"));
+        let presented = present_class(&class, title.as_deref());
+        node.replace_with_html(format!("<p>RRSS_EMBED_SLOT_{}</p>", blocks.len()));
+        blocks.push(Block::Embed {
+            kind: presented.kind,
+            url: presented.url,
+            title: presented.title,
+        });
     }
-    let mut html_out = String::with_capacity(html.len());
-    let mut blocks = Vec::with_capacity(kept.len());
-    let mut at = 0;
-    for (start, end, block) in kept {
-        html_out.push_str(&html[at..start]);
-        html_out.push_str("<p>RRSS_EMBED_SLOT_");
-        html_out.push_str(&blocks.len().to_string());
-        html_out.push_str("</p>");
-        blocks.push(block);
-        at = end;
+    if blocks.is_empty() {
+        return (html.to_owned(), blocks);
     }
-    html_out.push_str(&html[at..]);
-    (html_out, blocks)
+    (dom.html_root().inner_html().to_string(), blocks)
+}
+
+pub fn attachment_embed(
+    raw: &str,
+    base: Option<&Url>,
+    mime: Option<&str>,
+) -> Option<PresentedEmbed> {
+    let url = normalize_url(raw, base)?;
+    let class = classify_with_hint(&url, EmbedHint::Unknown, mime);
+    (!matches!(class, EmbedClass::External { .. })).then(|| present_class(&class, None))
 }
 
 /// 阅读时按 URL 重分类。官方地址和直链扩展名压过存储的 kind；
@@ -145,22 +134,12 @@ pub fn present_embed(stored: EmbedKind, url: &str, title: &str) -> PresentedEmbe
 
 pub fn classify_for_read(url: &str, stored: EmbedKind) -> EmbedClass {
     let normalized = normalize_url(url, None).unwrap_or_else(|| url.to_string());
-    let (verdict, class) = classify_parts(&normalized, EmbedHint::Unknown, None);
-    match verdict {
-        UrlVerdict::Official | UrlVerdict::Direct | UrlVerdict::Rejected => class,
-        UrlVerdict::Unknown => {
-            let hint = match stored {
-                EmbedKind::Video => EmbedHint::Video,
-                EmbedKind::Audio => EmbedHint::Audio,
-                _ => EmbedHint::Unknown,
-            };
-            if hint == EmbedHint::Unknown {
-                class
-            } else {
-                classify_with_hint(&normalized, hint, None)
-            }
-        }
-    }
+    let hint = match stored {
+        EmbedKind::Video => EmbedHint::Video,
+        EmbedKind::Audio => EmbedHint::Audio,
+        _ => EmbedHint::Unknown,
+    };
+    classify_with_hint(&normalized, hint, None)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -172,46 +151,45 @@ enum EmbedHint {
 }
 
 fn classify_with_hint(url: &str, hint: EmbedHint, type_attr: Option<&str>) -> EmbedClass {
-    classify_parts(url, hint, type_attr).1
-}
-
-fn classify_parts(url: &str, hint: EmbedHint, type_attr: Option<&str>) -> (UrlVerdict, EmbedClass) {
     let Some(parsed) = Url::parse(url).ok().filter(is_http) else {
-        return (UrlVerdict::Unknown, external_for(url));
+        return external_for(url);
     };
     if let Some(class) = official(&parsed) {
-        return (UrlVerdict::Official, class);
+        return class;
     }
-    if rejected_container(&parsed) || type_is_playlist(type_attr) {
-        return (UrlVerdict::Rejected, external_for(parsed.as_str()));
+    let host = parsed.host_str().unwrap_or_default();
+    if [
+        "youtube.com",
+        "youtu.be",
+        "youtube-nocookie.com",
+        "bilibili.com",
+        "b23.tv",
+    ]
+    .iter()
+    .any(|domain| host_is(host, domain))
+        || rejected_container(&parsed)
+        || type_is_playlist(type_attr)
+    {
+        return external_for(parsed.as_str());
     }
-    if let Some(media) = direct_extension(&parsed).or_else(|| type_media(type_attr)) {
-        return (
-            UrlVerdict::Direct,
-            EmbedClass::Direct {
-                media,
-                url: parsed.to_string(),
-            },
-        );
-    }
-    match hint {
-        EmbedHint::Video => (
-            UrlVerdict::Direct,
-            EmbedClass::Direct {
-                media: DirectMedia::Video,
-                url: parsed.to_string(),
-            },
-        ),
-        EmbedHint::Audio => (
-            UrlVerdict::Direct,
-            EmbedClass::Direct {
-                media: DirectMedia::Audio,
-                url: parsed.to_string(),
-            },
-        ),
-        EmbedHint::Iframe | EmbedHint::Unknown => {
-            (UrlVerdict::Unknown, external_for(parsed.as_str()))
+    let tag_media = match hint {
+        EmbedHint::Video => Some(DirectMedia::Video),
+        EmbedHint::Audio => Some(DirectMedia::Audio),
+        _ => None,
+    };
+    let declared = type_media(type_attr);
+    let media = match path_ext(&parsed).as_deref() {
+        Some("webm" | "mp4" | "ogg") => {
+            declared.or(tag_media).or_else(|| direct_extension(&parsed))
         }
+        _ => direct_extension(&parsed).or(declared).or(tag_media),
+    };
+    match media {
+        Some(media) => EmbedClass::Direct {
+            media,
+            url: parsed.to_string(),
+        },
+        None => external_for(parsed.as_str()),
     }
 }
 
@@ -303,7 +281,7 @@ fn youtube_id_on_youtube(url: &Url) -> Option<String> {
             let id = url.query_pairs().find(|(k, _)| k == "v")?.1;
             valid_yt_id(&id)
         }
-        "embed" | "shorts" => valid_yt_id(segs.next()?),
+        "embed" | "shorts" | "live" | "v" => valid_yt_id(segs.next()?),
         _ => None,
     }
 }
@@ -332,7 +310,7 @@ fn valid_yt_id(raw: &str) -> Option<String> {
 
 fn normalize_bvid(raw: &str) -> Option<String> {
     let raw = raw.trim().trim_end_matches('/');
-    if raw.len() < 3 || !raw[..2].eq_ignore_ascii_case("bv") {
+    if !raw.is_ascii() || raw.len() < 3 || !raw[..2].eq_ignore_ascii_case("bv") {
         return None;
     }
     if !raw[2..].bytes().all(|b| b.is_ascii_alphanumeric()) {
@@ -350,15 +328,29 @@ fn host_is(host: &str, domain: &str) -> bool {
 }
 
 fn rejected_container(url: &Url) -> bool {
-    matches!(path_ext(url).as_deref(), Some("mkv" | "avi" | "m3u8"))
+    matches!(
+        path_ext(url).as_deref(),
+        Some("mkv" | "avi" | "m3u" | "m3u8" | "mpd" | "pls")
+    )
 }
 
 fn direct_extension(url: &Url) -> Option<DirectMedia> {
-    match path_ext(url)?.as_str() {
-        "mp4" | "webm" | "ogv" => Some(DirectMedia::Video),
-        "ogg" | "mp3" | "m4a" | "aac" | "wav" | "opus" => Some(DirectMedia::Audio),
-        _ => None,
-    }
+    type_media(direct_media_mime(url))
+}
+
+pub fn direct_media_mime(url: &Url) -> Option<&'static str> {
+    Some(match path_ext(url)?.as_str() {
+        "mp4" | "m4v" => "video/mp4",
+        "webm" => "video/webm",
+        "ogv" => "video/ogg",
+        "ogg" | "oga" | "opus" => "audio/ogg",
+        "mp3" => "audio/mpeg",
+        "m4a" | "m4b" => "audio/mp4",
+        "aac" => "audio/aac",
+        "wav" => "audio/wav",
+        "flac" => "audio/flac",
+        _ => return None,
+    })
 }
 
 fn path_ext(url: &Url) -> Option<String> {
@@ -373,7 +365,7 @@ fn path_ext(url: &Url) -> Option<String> {
 fn type_is_playlist(type_attr: Option<&str>) -> bool {
     let Some(t) = type_attr else { return false };
     let t = t.split(';').next().unwrap_or(t).trim().to_ascii_lowercase();
-    t.contains("mpegurl") || t == "application/vnd.apple.mpegurl"
+    t.contains("mpegurl") || matches!(t.as_str(), "application/dash+xml" | "audio/x-scpls")
 }
 
 fn type_media(type_attr: Option<&str>) -> Option<DirectMedia> {
@@ -386,7 +378,9 @@ fn type_media(type_attr: Option<&str>) -> Option<DirectMedia> {
     match t.as_str() {
         "video/mp4" | "video/webm" | "video/ogg" => Some(DirectMedia::Video),
         "audio/mpeg" | "audio/mp4" | "audio/aac" | "audio/wav" | "audio/wave" | "audio/ogg"
-        | "audio/opus" | "audio/webm" => Some(DirectMedia::Audio),
+        | "audio/opus" | "audio/webm" | "audio/flac" | "audio/x-flac" | "audio/x-wav" => {
+            Some(DirectMedia::Audio)
+        }
         _ => None,
     }
 }
@@ -450,45 +444,6 @@ fn normalize_url(raw: &str, base: Option<&Url>) -> Option<String> {
     let base = base?;
     let url = base.join(raw).ok()?;
     is_http(&url).then(|| url.to_string())
-}
-
-fn first_source(inner: &str) -> Option<(String, Option<String>)> {
-    let lower = inner.to_ascii_lowercase();
-    let mut from = 0;
-    while let Some(idx) = lower[from..].find("<source") {
-        let start = from + idx;
-        let after = start + "<source".len();
-        if after < lower.len() && lower.as_bytes()[after].is_ascii_alphanumeric() {
-            from = after;
-            continue;
-        }
-        let gt = lower[start..].find('>')?;
-        let tag = &inner[start..start + gt + 1];
-        if let Some(src) = attr_value(tag, "src") {
-            return Some((src, attr_value(tag, "type")));
-        }
-        from = start + gt + 1;
-    }
-    None
-}
-
-fn attr_value(tag: &str, name: &str) -> Option<String> {
-    let needle = format!("{name}=");
-    let lower = tag.to_ascii_lowercase();
-    let i = lower.find(&needle)?;
-    let rest = &tag[i + needle.len()..];
-    let rest = rest.trim_start();
-    let quote = rest.chars().next()?;
-    if quote == '"' || quote == '\'' {
-        let end = rest[1..].find(quote)?;
-        Some(rest[1..=end].to_string())
-    } else {
-        Some(
-            rest.split(|c: char| c.is_whitespace() || c == '>')
-                .next()?
-                .to_string(),
-        )
-    }
 }
 
 #[cfg(test)]
@@ -650,6 +605,69 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn mixed_containers_keep_the_media_kind_and_official_players_stay_external() {
+        for (html, expected_kind) in [
+            (
+                r#"<audio src="https://cdn.example/episode.webm"></audio>"#,
+                EmbedKind::Audio,
+            ),
+            (
+                r#"<video src="https://cdn.example/movie.ogg"></video>"#,
+                EmbedKind::Video,
+            ),
+            (
+                r#"<video src="https://www.youtube.com/playlist?list=sample"></video>"#,
+                EmbedKind::Iframe,
+            ),
+            (
+                r#"<audio src="https://cdn.example/stream.mpd"></audio>"#,
+                EmbedKind::Iframe,
+            ),
+        ] {
+            let Block::Embed { kind, url, title } = embed(html) else {
+                unreachable!()
+            };
+            assert_eq!(kind, expected_kind);
+            assert_eq!(present_embed(kind, &url, &title).kind, expected_kind);
+        }
+    }
+
+    #[test]
+    fn wordpress_and_lazy_players_keep_order_and_skip_unusable_sources() {
+        let html = r#"<figure class="wp-block-video"><video height="576" style="aspect-ratio: 720 / 576;" width="720" controls src="/clip.mp4"></video></figure>
+        <audio><source src="show.m3u8"><source src="javascript:void(0)"><source data-lazy-src = "episode.flac?a=1&amp;b=2"></audio>
+        <iframe src="about:blank" data-src="https://player.bilibili.com/player.html?page=1&amp;bvid=BVabc"></iframe>
+        <object data="https://www.youtube.com/v/abc123"></object>
+        <script>"<video src='script.mp4'></video>"</script><!-- <audio src='comment.mp3'></audio> -->"#;
+        let doc = html_to_document(
+            html,
+            &RenderOpts {
+                base_url: Some(Url::parse("https://reader.example/post/").unwrap()),
+            },
+        );
+        let media: Vec<_> = doc
+            .blocks
+            .iter()
+            .filter_map(|block| match block {
+                Block::Embed { kind, url, .. } => Some((*kind, url.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            media,
+            [
+                (EmbedKind::Video, "https://reader.example/clip.mp4"),
+                (
+                    EmbedKind::Audio,
+                    "https://reader.example/post/episode.flac?a=1&b=2"
+                ),
+                (EmbedKind::Bilibili, "https://www.bilibili.com/video/BVabc/"),
+                (EmbedKind::Youtube, "https://www.youtube.com/watch?v=abc123"),
+            ]
+        );
     }
 
     #[test]

@@ -484,8 +484,8 @@ class MediaFixtureTest(unittest.TestCase):
             self.assertEqual(settings["pi_auto_download"], "0")
             self.assertEqual(settings["pi_auto_update"], "0")
             self.assertEqual(settings["ai_daily_budget_tokens"], "1")
-            self.assertEqual(len(media), 1)
-            media_id, article_id, url, local_path, mime, kind, size = media[0]
+            self.assertEqual({row[4] for row in media}, {"image/png", "audio/wav"})
+            media_id, article_id, url, local_path, mime, kind, size = next(row for row in media if row[5] == "image")
             src = json.loads(document)["blocks"][0]["src"]
             self.assertEqual(src, url)
             self.assertEqual(src, expect["src"])

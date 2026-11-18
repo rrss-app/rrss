@@ -379,24 +379,12 @@ fn mime_for_direct(url: &str, header: Option<&str>) -> String {
             return mime;
         }
     }
-    let ext = url
-        .rsplit(['/', '?', '#'])
-        .next()
-        .and_then(|seg| seg.rsplit_once('.'))
-        .map(|(_, ext)| ext.to_ascii_lowercase());
-    match ext.as_deref() {
-        Some("mp4") => "video/mp4",
-        Some("webm") => "video/webm",
-        Some("ogv") => "video/ogg",
-        Some("ogg") => "audio/ogg",
-        Some("mp3") => "audio/mpeg",
-        Some("m4a") => "audio/mp4",
-        Some("aac") => "audio/aac",
-        Some("wav") => "audio/wav",
-        Some("opus") => "audio/opus",
-        _ => "application/octet-stream",
-    }
-    .to_string()
+    url::Url::parse(url)
+        .ok()
+        .as_ref()
+        .and_then(rrss_render::direct_media_mime)
+        .unwrap_or("application/octet-stream")
+        .to_string()
 }
 
 pub fn youtube_oembed_url(open_url: &str) -> String {
@@ -636,5 +624,20 @@ mod tests {
     fn direct_quota_constant_rejects_oversize_length() {
         assert!(rrss_core::media::direct_len_allowed(64 * 1024 * 1024));
         assert!(!rrss_core::media::direct_len_allowed(64 * 1024 * 1024 + 1));
+    }
+
+    #[test]
+    fn signed_direct_urls_use_the_path_for_missing_mime() {
+        assert_eq!(
+            mime_for_direct(
+                "https://cdn.example/song.flac?key=clip.mp4",
+                Some("application/octet-stream")
+            ),
+            "audio/flac"
+        );
+        assert_eq!(
+            mime_for_direct("https://cdn.example/book.m4b#intro", None),
+            "audio/mp4"
+        );
     }
 }

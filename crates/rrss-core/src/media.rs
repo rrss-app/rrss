@@ -628,6 +628,9 @@ pub fn canonical_av_mime(raw: &str) -> Option<String> {
     }
     let mime = match mime.as_str() {
         "audio/vnd.wave" | "audio/wave" | "audio/x-wav" => "audio/wav",
+        "audio/x-flac" => "audio/flac",
+        "audio/x-m4a" => "audio/mp4",
+        "video/x-m4v" => "video/mp4",
         other => other,
     };
     if mime.starts_with("audio/") || mime.starts_with("video/") {
@@ -639,7 +642,9 @@ pub fn canonical_av_mime(raw: &str) -> Option<String> {
 
 /// 文件头能确定时，覆盖错误的 Content-Type。
 pub fn sniff_av_mime(bytes: &[u8]) -> Option<&'static str> {
-    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WAVE" {
+    if bytes.starts_with(b"fLaC") {
+        Some("audio/flac")
+    } else if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WAVE" {
         Some("audio/wav")
     } else if bytes.starts_with(b"ID3")
         || (bytes.len() >= 2 && bytes[0] == 0xFF && bytes[1] & 0xE0 == 0xE0)

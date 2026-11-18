@@ -1,7 +1,7 @@
 //! feed-rs → 领域条目。日志 target：`rrss_core::parse`。
 
 use chrono::{DateTime, Utc};
-use feed_rs::model::{Content, Entry, Feed, FeedType, Link, Person};
+use feed_rs::model::{Entry, Feed, FeedType, Link, Person};
 use feed_rs::parser;
 use sha2::{Digest, Sha256};
 
@@ -68,7 +68,7 @@ fn from_feed(feed: Feed, source_uri: Option<&str>) -> ParsedFeed {
     let entries = feed
         .entries
         .iter()
-        .map(|entry| map_entry(entry, site_url.as_deref()))
+        .map(|entry| map_entry(entry, site_url.as_deref(), feed.feed_type == FeedType::JSON))
         .collect();
     ParsedFeed {
         title,
@@ -79,7 +79,7 @@ fn from_feed(feed: Feed, source_uri: Option<&str>) -> ParsedFeed {
     }
 }
 
-fn map_entry(entry: &Entry, base: Option<&str>) -> ParsedEntry {
+fn map_entry(entry: &Entry, base: Option<&str>, json_feed: bool) -> ParsedEntry {
     let title = entry
         .title
         .as_ref()
@@ -88,7 +88,7 @@ fn map_entry(entry: &Entry, base: Option<&str>) -> ParsedEntry {
     let canonical_url = entry_url(entry, base);
     let author = entry.authors.iter().find_map(person_label);
     let published = entry.published.or(entry.updated).map(datetime_ms);
-    let content_html = entry_html(entry);
+    let content_html = entry_html(entry, canonical_url.as_deref().or(base), json_feed);
     let hash = entry_hash(&title, canonical_url.as_deref(), content_html.as_deref());
     let tags = entry
         .categories
@@ -139,15 +139,68 @@ fn entry_url(entry: &Entry, base: Option<&str>) -> Option<String> {
     canonical_article_url(&link.href, base)
 }
 
-fn entry_html(entry: &Entry) -> Option<String> {
-    if let Some(Content {
-        body: Some(body), ..
-    }) = &entry.content
-        && !body.trim().is_empty()
-    {
-        return Some(body.clone());
+fn entry_html(entry: &Entry, base: Option<&str>, json_feed: bool) -> Option<String> {
+    use rrss_render::{Block, EmbedKind, RenderOpts};
+    let mut html = entry
+        .content
+        .as_ref()
+        .and_then(|content| content.body.clone())
+        .filter(|body| !body.trim().is_empty())
+        .or_else(|| {
+            entry
+                .summary
+                .as_ref()
+                .map(|summary| summary.content.clone())
+        });
+    let base_url = base.and_then(|base| url::Url::parse(base).ok());
+    let media = entry
+        .media
+        .iter()
+        .flat_map(|group| &group.content)
+        .filter_map(|media| {
+            Some((
+                media.url.as_ref()?.as_str(),
+                media.content_type.as_ref().map(|mime| mime.as_str()),
+            ))
+        });
+    let links = entry
+        .links
+        .iter()
+        .filter(|link| {
+            link.rel.as_deref() == Some("enclosure") || (json_feed && link.media_type.is_some())
+        })
+        .map(|link| (link.href.as_str(), link.media_type.as_deref()));
+    let opts = RenderOpts { base_url };
+    let mut attachments = media
+        .chain(links)
+        .filter_map(|(url, mime)| rrss_render::attachment_embed(url, opts.base_url.as_ref(), mime))
+        .peekable();
+    if attachments.peek().is_none() {
+        return html;
     }
-    entry.summary.as_ref().map(|t| t.content.clone())
+    let mut seen: std::collections::HashSet<_> =
+        rrss_render::html_to_document(html.as_deref().unwrap_or_default(), &opts)
+            .blocks
+            .into_iter()
+            .filter_map(|block| match block {
+                Block::Embed { url, .. } => Some(url),
+                _ => None,
+            })
+            .collect();
+    for attachment in attachments {
+        if !seen.insert(attachment.url.clone()) {
+            continue;
+        }
+        let tag = match attachment.kind {
+            EmbedKind::Audio => "audio",
+            EmbedKind::Video => "video",
+            _ => "iframe",
+        };
+        let src = attachment.url.replace('&', "&amp;").replace('"', "&quot;");
+        html.get_or_insert_with(String::new)
+            .push_str(&format!("\n<{tag} src=\"{src}\"></{tag}>"));
+    }
+    html
 }
 
 fn homepage_link(links: &[Link]) -> Option<String> {
@@ -208,6 +261,41 @@ mod tests {
     const RSS2: &str = include_str!("../../../testdata/feeds/rss2-sample.xml");
     const ATOM: &str = include_str!("../../../testdata/feeds/atom-sample.xml");
     const JSON: &str = include_str!("../../../testdata/feeds/jsonfeed-sample.json");
+
+    #[test]
+    fn podcast_and_video_attachments_reach_the_reader_once() {
+        use rrss_render::{Block, EmbedKind, RenderOpts};
+        let rss = r#"<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Media</title><item><title>Clip</title><link>https://media.example/post/</link><content:encoded><![CDATA[<figure><video src="clip.mp4"></video></figure>]]></content:encoded><enclosure url="https://media.example/post/clip.mp4" type="video/mp4"/><media:content url="https://cdn.example/listen?a=1&amp;b=2" type="audio/mpeg"/><media:content url="https://cdn.example/cover.jpg" type="image/jpeg"/></item></channel></rss>"#;
+        let atom = r#"<feed xmlns="http://www.w3.org/2005/Atom"><id>urn:example:feed</id><title>Media</title><entry><id>urn:example:item</id><title>Episode</title><link rel="enclosure" type="audio/mpeg" href="https://cdn.example/listen?a=1&amp;b=2"/></entry></feed>"#;
+        let json = r#"{"version":"https://jsonfeed.org/version/1.1","title":"Show","items":[{"id":"1","content_text":"Episode","attachments":[{"url":"https://cdn.example/listen?a=1&b=2","mime_type":"audio/mpeg"}]}]}"#;
+        for (wire, video) in [(rss, true), (atom, false), (json, false)] {
+            let entry = parse_feed_bytes(wire.as_bytes(), Some("https://media.example/feed"))
+                .unwrap()
+                .entries
+                .remove(0);
+            let opts = RenderOpts {
+                base_url: entry
+                    .canonical_url
+                    .as_deref()
+                    .and_then(|url| url.parse().ok()),
+            };
+            let doc = rrss_render::html_to_document(entry.content_html.as_deref().unwrap(), &opts);
+            let blocks: Vec<_> = doc
+                .blocks
+                .iter()
+                .filter_map(|block| match block {
+                    Block::Embed { kind, url, .. } => Some((*kind, url.as_str())),
+                    _ => None,
+                })
+                .collect();
+            let mut expected = Vec::new();
+            if video {
+                expected.push((EmbedKind::Video, "https://media.example/post/clip.mp4"));
+            }
+            expected.push((EmbedKind::Audio, "https://cdn.example/listen?a=1&b=2"));
+            assert_eq!(blocks, expected);
+        }
+    }
 
     #[test]
     fn parses_rss2_and_strips_tracking() {

@@ -2,6 +2,7 @@
 """Verify the real Tauri/Vite/MCP development entry under an isolated Xvfb display."""
 from __future__ import annotations
 import hashlib
+import wave
 import argparse
 import importlib.util
 import json
@@ -226,7 +227,7 @@ def encode_fixture_png(width: int = MEDIA_PNG_WIDTH, height: int = MEDIA_PNG_HEI
 
 
 def seed_media_fixture(db: Path, work: Path) -> dict:
-    """One feed, one article, one local PNG. The image token is not HTTP, so startup refresh will not fetch it."""
+    """One article with a cached PNG and one second of silent PCM audio."""
     if not db.is_relative_to(work):
         raise smoke.SmokeError("Media fixture requires the temporary smoke database")
     now = int(time.time() * 1000)
@@ -237,11 +238,18 @@ def seed_media_fixture(db: Path, work: Path) -> dict:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / (hashlib.sha256(MEDIA_SRC.encode("utf-8")).hexdigest() + ".png")
     path.write_bytes(png)
+    audio_src = "https://media.example/episode.wav"
+    wav = directory / "episode.wav"
+    with wave.open(str(wav), "wb") as audio:
+        audio.setparams((1, 2, 8000, 8000, "NONE", ""))
+        audio.writeframes(bytes(16000))
     document = json.dumps(
-        {"v": 1, "blocks": [{"t": "img", "src": MEDIA_SRC, "alt": "夹具图"}]},
+        {"v": 1, "blocks": [{"t": "img", "src": MEDIA_SRC, "alt": "夹具图"},
+                            {"t": "embed", "kind": "audio", "url": audio_src, "title": "Episode"}]},
         ensure_ascii=False,
     )
     with sqlite3.connect(db) as connection:
+        connection.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('focus_filter', 'all')")
         connection.execute(
             "INSERT INTO feeds (id, url, title, last_fetched_at, interval_secs, created_at) VALUES (?, 'https://example.invalid/media', '媒体夹具', ?, 86400, ?)",
             (MEDIA_FEED_ID, now, now),
@@ -255,6 +263,10 @@ def seed_media_fixture(db: Path, work: Path) -> dict:
             (MEDIA_ARTICLE_ID, MEDIA_SRC, str(path), len(png), now, now),
         )
         media_id = cursor.lastrowid
+        connection.execute(
+            "INSERT INTO media (article_id, url, local_path, mime, kind, bytes, created_at, accessed_at) VALUES (?, ?, ?, 'audio/wav', 'video', ?, ?, ?)",
+            (MEDIA_ARTICLE_ID, audio_src, str(wav), wav.stat().st_size, now, now),
+        )
     return {
         "articleId": MEDIA_ARTICLE_ID,
         "feedId": MEDIA_FEED_ID,

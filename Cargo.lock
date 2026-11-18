@@ -4166,6 +4166,7 @@ name = "rrss-render"
 version = "0.4.1"
 dependencies = [
  "ammonia",
+ "dom_query",
  "html5ever 0.35.0",
  "pulldown-cmark",
  "serde",
