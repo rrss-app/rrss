@@ -137,6 +137,24 @@
     "rename": "Rename",
     "noMatch": "No models match “{{query}}”."
   },
+  "titles": {
+    "menu": "Generate title with AI",
+    "confirm": "Generate a chat title with AI?",
+    "message": "RRSS sends up to two short question excerpts to {{model}}. Your provider may charge for this. A successful result replaces the current title, including one you wrote yourself.",
+    "generate": "Generate",
+    "pending": "Generating title",
+    "settings": "Choose a title model",
+    "noModel": "Choose a title model before generating a title.",
+    "failed": "Couldn’t generate a title. The current title was kept.",
+    "loadFailed": "Couldn’t load the title model.",
+    "outcome": {
+      "stale": "The current title was kept.",
+      "busy": "A title is already being generated.",
+      "no_questions": "Write a question before generating a title.",
+      "model_changed": "The title model changed. Confirm again to use the new model.",
+      "invalid": "The model returned an invalid title. The current title was kept."
+    }
+  },
   "thread": {
     "section": "Chats",
     "newFolder": "New folder",

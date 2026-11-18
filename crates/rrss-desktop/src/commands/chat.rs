@@ -20,6 +20,22 @@ db_task!(reorder_thread_folders(ids: Vec<i64>) -> () => |conn| actions::reorder_
 db_task!(set_thread_folder_collapsed(folder_id: i64, collapsed: bool) -> () => |conn| actions::set_thread_folder_collapsed(conn, folder_id, collapsed));
 
 #[tauri::command]
+pub async fn generate_thread_title(
+    state: State<'_, AppState>,
+    thread_id: i64,
+    expected: rrss_app::ModelChoice,
+) -> Result<rrss_app::ThreadTitleOutcome, UiError> {
+    super::logged("generate_thread_title", async {
+        state
+            .chat
+            .generate_title(thread_id, expected)
+            .await
+            .map_err(UiError::from)
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn delete_thread(state: State<'_, AppState>, thread_id: i64) -> Result<(), UiError> {
     let guard = state
         .chat
@@ -108,6 +124,7 @@ command_handler![
     search_threads,
     archived_threads,
     rename_thread,
+    generate_thread_title,
     set_thread_folder,
     set_thread_pinned,
     archive_thread,

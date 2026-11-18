@@ -137,24 +137,32 @@ test("main views stay mounted once opened, keep scroll and do not refetch on swi
   expect(count("focus_stream")).toBe(focusReads);
 });
 
-test("background updates keep the focus scroll position and offer new articles at the top", async ({ page }) => {
+test("lower arrivals stay quiet and successive upper arrivals share one return to the top", async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 520 });
   await installMockHost(page, { focus: longFocus });
   await page.goto("/");
   await expect(page.getByText("保活测试条目 1", { exact: true })).toBeVisible();
   await scrollTo(page, ".focus .scroll", 1200);
-  // 阶段 17 · 后台更新不动视口：抓到一篇新文章，排在第一，但不插进正在看的列表。
-  await page.evaluate((row) => {
+  const arrive = (id: number, index: number) => page.evaluate(({ row, index }) => {
     const host = (window as any).__mockHost;
-    host.state.focus.articles.unshift(row);
-    host.emit("feed:updated", { run_id: "bg", feed_id: row.feed_id, generation: 1, status: "ok", inserted: 1, error: null, derived_degraded: false });
-  }, { ...template, id: 999, cluster_id: 0, title: "后台抓到的新文章" });
+    host.state.focus.articles.splice(index, 0, row);
+    host.emit("feed:updated", { run_id: "bg", feed_id: row.feed_id, generation: row.id, status: "ok", inserted: 1, error: null, derived_degraded: false });
+  }, { row: { ...template, id, cluster_id: 0, title: `Arrival ${id}` }, index });
   const pill = page.getByTestId("focus-new-content");
-  await expect(pill).toBeVisible();
+  const list = page.locator(".article-list");
+  const initialHeight = await list.evaluate(el => el.clientHeight);
+  await arrive(900, 48);
+  await expect.poll(() => list.evaluate(el => el.clientHeight)).toBeGreaterThan(initialHeight);
+  await expect(pill).toHaveCount(0);
+  await arrive(901, 5);
+  await expect(pill).toContainText("1");
+  await arrive(902, 3);
+  await expect(pill).toContainText("2");
   expect((await panes(page)).focus.top).toBe(1200);
   await pill.click();
-  await expect(page.getByText("后台抓到的新文章", { exact: true })).toBeVisible();
-  expect((await panes(page)).focus.top).toBe(0);
+  await expect(page.getByTestId("focus-scroll")).toHaveJSProperty("scrollTop", 0);
+  await expect(page.getByRole("article", { name: "Arrival 902", exact: true })).toBeInViewport();
+  await expect(page.locator(".focus .article.focused")).toHaveCount(0);
   await expect(pill).toHaveCount(0);
 });
 
@@ -194,10 +202,9 @@ test("background updates adopt new articles until browsing starts, including whi
   await expect(page.getByRole("article", { name: "New article 902", exact: true })).toHaveCount(0);
   await expect(scroll).toHaveJSProperty("scrollTop", 0);
 
-  // 主动采用后重新等待，下一轮后台到达直接采用。
   await pill.click();
-  await expect(page.getByRole("article", { name: "New article 902", exact: true })).toBeVisible();
+  await expect(page.getByRole("article", { name: "New article 902", exact: true })).toBeInViewport();
   await arrive(903);
-  await expect(page.getByRole("article", { name: "New article 903", exact: true })).toBeVisible();
-  await expect(pill).toHaveCount(0);
+  await expect(pill).toBeVisible();
+  await expect(page.getByRole("article", { name: "New article 902", exact: true })).toBeInViewport();
 });

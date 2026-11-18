@@ -21,7 +21,7 @@ export function ReaderCitationTray({ drafts, context, focusRequest, target, sour
   onClear: () => void;
 }) {
   const { t } = useTranslation("reader");
-  const { draft, canSend, send, onKeyDown, pending } = useDraftSubmission({ drafts, context, ready: true, busy, onSend });
+  const { draft, canSend, send, onKeyDown, pending } = useDraftSubmission({ drafts, context, ready: true, busy, onSend, clearOnSend: true });
   const [menu, setMenu] = useState<MenuAnchor | null>(null);
   const [threads, setThreads] = useState<ThreadView[]>([]);
   const root = useRef<HTMLDivElement>(null);

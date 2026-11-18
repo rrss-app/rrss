@@ -67,7 +67,7 @@ pub struct Message {
 pub fn create_thread(conn: &Connection, title: Option<&str>) -> Result<Thread> {
     let now = now_ms();
     conn.execute(
-        "INSERT INTO threads (title, created_at, updated_at) VALUES (?1, ?2, ?3)",
+        "INSERT INTO threads (title, created_at, updated_at, title_successful_turns) VALUES (?1, ?2, ?3, 0)",
         params![title, now, now],
     )?;
     get_thread(conn, conn.last_insert_rowid())

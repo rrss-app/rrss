@@ -29,9 +29,10 @@ import { taskTitle } from "./taskNames";
 type Result = { tone: "ok" | "err"; text: string; detail?: string };
 
 /** 用途按功能分组显示，存储仍按用途一行（阶段 19-7）；用途常量以后端 `ALL_TASKS` 为准。 */
-type UseGroupId = "chat" | "summary" | "digest" | "memory" | "translate" | "embed";
+type UseGroupId = "chat" | "chatTitle" | "summary" | "digest" | "memory" | "translate" | "embed";
 export const USE_GROUPS: Array<{ id: UseGroupId; tasks: string[]; need?: Need }> = [
   { id: "chat", tasks: ["chat"], need: "tools" },
+  { id: "chatTitle", tasks: ["chat_title"] },
   { id: "summary", tasks: ["focus_summary", "article_summary", "article_segment", "cluster_summary"], need: "json" },
   { id: "digest", tasks: ["digest_daily", "digest_weekly", "digest_pick_daily", "digest_pick_weekly"], need: "json" },
   { id: "memory", tasks: ["memory_candidate", "episode_compress"], need: "json" },
@@ -302,7 +303,7 @@ function ModelsSummary({ pool, disabled, firstRun, onFirstRunDone, onAdd, onMana
   const first = firstRun && findEntry(pool, firstRun);
   const applyAll = async () => {
     if (!firstRun) return;
-    const tasks = USE_GROUPS.filter((g) => g.id !== "embed" && (g.id !== "chat" || first?.chat)).flatMap((g) => g.tasks);
+    const tasks = USE_GROUPS.filter((g) => g.id !== "embed" && g.id !== "chatTitle" && (g.id !== "chat" || first?.chat)).flatMap((g) => g.tasks);
     const outcome = await run({ type: "bindings", args: { bindings: tasks.map((task) => ({ task, ...firstRun })) } });
     if (outcome.status === "busy" || !outcome.mounted) return;
     if (outcome.status === "failed") { setStatus({ tone: "err", text: formatNotice(t("pane.applyFailed"), outcome.error) }); return; }
@@ -397,7 +398,8 @@ function UsesSection({ view, providers, pool, onAsk, onNavigate, onManage }: {
       onAsk(confirm.title, confirm.message, () => void save(tasks, choice, done), { okLabel: confirm.okLabel });
     } else void save(tasks, choice, done);
   };
-  const scoped = USE_GROUPS.filter((g) => g.id !== "chat" && scope[g.id]);
+  const bulkGroups = USE_GROUPS.filter((group) => group.id !== "chat" && group.id !== "chatTitle");
+  const scoped = bulkGroups.filter((group) => scope[group.id]);
   const scopedTasks = scoped.flatMap((g) => g.tasks);
 
   return (
@@ -418,7 +420,7 @@ function UsesSection({ view, providers, pool, onAsk, onNavigate, onManage }: {
                 onClick={() => applyModel && pick(scopedTasks, applyModel)}>{t("pane.applyTo", { count: scopedTasks.length })}</button>
             </div>
             <div className="row apply-scope">
-              {USE_GROUPS.filter((g) => g.id !== "chat").map((g) => (
+              {bulkGroups.map((g) => (
                 <label key={g.id}><input type="checkbox" checked={!!scope[g.id]} disabled={writing}
                   onChange={(e) => setScope((old) => ({ ...old, [g.id]: e.target.checked }))} />{t(`pane.use.${g.id}.title`)}</label>
               ))}

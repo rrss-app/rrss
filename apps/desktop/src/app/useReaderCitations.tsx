@@ -1,17 +1,20 @@
 import { useRef, useState } from "react";
-import { api, type CitationView, type ThreadView } from "../lib/api";
+import { type CitationView, type ThreadView } from "../lib/api";
 import { formatNotice } from "../lib/notice";
 import { i18n } from "../i18n";
 import type { DraftStore, useConversationRuntime } from "../features/chat";
 import { ReaderCitationTray, citationTargetContext, type ReaderCitationSource } from "../features/reader";
 
 /** 根壳的跨域适配：阅读器只收集引用，对话运行层仍负责发送，唯一草稿在 drafts。 */
-export function useReaderCitations({ drafts, chat, getThreads, getSourceArticle, onSent, notify, inert }: {
+export function useReaderCitations({ drafts, chat, getThreads, getSourceArticle, onSending, onDigestSent, notify, inert }: {
   drafts: DraftStore; chat: ReturnType<typeof useConversationRuntime>; getThreads: () => ThreadView[];
   getSourceArticle: () => Readonly<{ id: number; title: string }> | null;
-  onSent: (id: number, digestId: number | null, sameReader: boolean) => void; notify: (notice: { message: string }) => void; inert: boolean;
+  onSending: (id: number, context: string) => (threadId: number) => void;
+  onDigestSent: () => void;
+  notify: (notice: { message: string }) => void;
+  inert: boolean;
 }) {
-  const [origins, setOrigins] = useState<ReadonlyMap<number, Readonly<{ id: number; title: string }>>>(new Map());
+  const [origins, setOrigins] = useState<ReadonlyMap<number | string, Readonly<{ id: number; title: string }>>>(new Map());
   const [focusRequest, setFocusRequest] = useState(0);
   const [target, setTarget] = useState<ReaderCitationSource>({ kind: "new" });
   const [source, setSource] = useState<ReaderCitationSource>({ kind: "new" });
@@ -22,8 +25,6 @@ export function useReaderCitations({ drafts, chat, getThreads, getSourceArticle,
   const targetRef = useRef(target);
   targetRef.current = target;
   const sendLock = useRef(false);
-  const callbacks = useRef({ onSent, notify });
-  callbacks.current = { onSent, notify };
   const context = citationTargetContext(drafts, target);
   const version = epoch.current;
   const begin = (next: ReaderCitationSource) => {
@@ -50,35 +51,62 @@ export function useReaderCitations({ drafts, chat, getThreads, getSourceArticle,
     targetRef.current = next; setTarget(next);
     if (next.kind === "thread") chat.seedThread(next.threadId, getThreads().find(t => t.id === next.threadId));
   };
+  const adoptOrigin = (from: number | string, id: number) => {
+    if (from === id) return;
+    setOrigins(previous => {
+      const origin = previous.get(from);
+      if (!origin) return previous;
+      const next = new Map(previous);
+      next.delete(from);
+      next.set(id, origin);
+      return next;
+    });
+  };
   const send = async (text: string, citations: CitationView[]) => {
-    if (sendLock.current) return false;
+    if (sendLock.current || chat.sending || chat.busyThreadId !== null) return false;
     const origin = getSourceArticle();
     sendLock.current = true; setResolving(true);
-    try {
-      let id = target.kind === "thread" ? target.threadId : 0;
-      const digestId = target.kind === "digest" ? target.digestId : null;
-      if (digestId !== null) {
-        const thread = await api.digestThread(digestId);
-        id = thread.thread_id;
-        chat.seedThread(id, thread);
-        drafts.bindThread(id, context);
-      }
-      id = await chat.sendMessage(id, text, citations, digestId, context);
+    const targetId = target.kind === "thread" ? target.threadId : 0;
+    const digestId = target.kind === "digest" ? target.digestId : null;
+    const slot = targetId || context;
+    // 发送失败时把这次改动过的来源还原，不让没发出去的问题留下「回到文章」。
+    const before = origins;
+    const touched = new Set<number | string>([slot]);
+    if (origin) setOrigins(previous => new Map(previous).set(slot, origin));
+    setVisible(false);
+    const follow = onSending(targetId, context);
+    const adoptThread = (id: number) => {
       if (digestId !== null) drafts.bindThread(id, context);
-      const sameReader = version === epoch.current;
-      if (sameReader) {
-        setVisible(false);
-        if (origin) setOrigins(previous => new Map(previous).set(id, origin));
-      }
-      callbacks.current.onSent(id, digestId, sameReader);
+      touched.add(id);
+      adoptOrigin(slot, id);
+      follow(id);
+    };
+    try {
+      await chat.sendMessage(targetId, text, citations, digestId, context, {
+        resolveDigestThread: digestId !== null,
+        onResolved: adoptThread,
+        onAccepted: id => {
+          adoptThread(id);
+          if (digestId !== null) onDigestSent();
+        },
+      });
       return true;
     } catch (error) {
-      callbacks.current.notify({ message: formatNotice(i18n.t("citation.sendFailed", { ns: "reader" }), error) });
+      if (origin) setOrigins(previous => {
+        const next = new Map(previous);
+        for (const key of touched) {
+          const kept = before.get(key);
+          if (kept) next.set(key, kept);
+          else next.delete(key);
+        }
+        return next;
+      });
+      notify({ message: formatNotice(i18n.t("citation.sendFailed", { ns: "reader" }), error) });
       return false;
     } finally { sendLock.current = false; setResolving(false); }
   };
   return {
-    begin, end, add, origins,
+    begin, end, add, origins, adoptOrigin,
     captureAdd: () => { const expected = epoch.current; return (chip: CitationView) => add(chip, expected); },
     ask: () => { setVisible(true); setFocusRequest(n => n + 1); },
     escape: () => {

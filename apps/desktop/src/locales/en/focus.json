@@ -90,8 +90,6 @@
     "groupAlreadyRead": "Everything in this group is already read",
     "groupMarked_one": "Marked this group as read",
     "groupMarked_other": "Marked this group of {{count}} articles as read",
-    "refreshedInserted_one": "Refresh finished, 1 new article added",
-    "refreshedInserted_other": "Refresh finished, {{count}} new articles added",
     "refreshFailed": "Couldn’t refresh:"
   },
   "hidden": {
@@ -239,8 +237,8 @@
     "refreshTitle": "Fetch all feeds (R)",
     "markAllRead": "Mark all as read",
     "markAllReadTitle": "Mark items in the current scope as read",
-    "newContent_one": "1 new article",
-    "newContent_other": "{{count}} new articles",
+    "newContent_one": "Show 1 new article",
+    "newContent_other": "Show {{count}} new articles",
     "digestTitle": "Today’s digest",
     "digestCta": "Read digest",
     "retryLoadMore": "Retry loading more",

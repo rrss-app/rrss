@@ -208,6 +208,7 @@ export function FocusPane({
   revision = 0,
   newCount = 0,
   onShowNew,
+  onVisibleEnd,
   visible = true,
   scrollRootRef,
   onObserveArticle,
@@ -254,6 +255,7 @@ export function FocusPane({
   /** 后台发现、还没并进列表的新文章数（阶段 17 · 后台更新不动视口）；点提示重读并回顶部。 */
   newCount?: number;
   onShowNew?: () => void;
+  onVisibleEnd?: (index: number) => void;
   /** 主栏目保活：隐藏时不续页、不把虚拟行尺寸写成 0，范围变化的回顶部延到重新显示。 */
   visible?: boolean;
   /** 交给功能域监听曝光；组件只登记文章行，并继续负责虚拟列表测量。 */
@@ -307,6 +309,10 @@ export function FocusPane({
     scrollMargin,
   });
   const pageKey = `${revision}-${page?.filter}-${page?.list_scope}-${ranking.cluster_group}-${ranking.interest_boost}-${ranking.rerank}-${ranking.hide_noisy}-${LEARNED.map((l) => +ranking[l.key]).join("")}`;
+  const visibleEnd = virtual.calculateRange()?.endIndex;
+  useLayoutEffect(() => {
+    if (visible && visibleEnd !== undefined) onVisibleEnd?.(visibleEnd);
+  }, [visible, visibleEnd, onVisibleEnd]);
   const requestedFor = useRef(0);
   const empty = focusEmptyState(page, feeds);
   const hasEmpty = page !== null && !!empty.message;

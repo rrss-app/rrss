@@ -639,6 +639,10 @@
     "developer_tools": {
       "label": "开发者工具"
     },
+    "chat_auto_title": {
+      "label": "自动生成会话标题",
+      "hint": "新会话第二轮成功回复后在后台生成一次，模型服务商可能收费。"
+    },
     "fetch_url_enabled": {
       "label": "网页读取"
     },

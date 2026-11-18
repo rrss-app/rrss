@@ -72,18 +72,24 @@ test("focus masthead: digest entry, first unread headline and measured responsiv
   await scroll.evaluate(el => { el.scrollTop = 0; });
   await expect(headline).toHaveAttribute("aria-label", articles[0].title);
 
+  // 手动刷新只就地更新已显示行（已读以本地为准）；唤回窗口才整页采用宿主的新第一页。
+  const reads = () => page.evaluate(() => (window as any).__mockHost.calls.filter((call: string) => call === "focus_stream").length);
   async function change(patch: Partial<FocusPage>) {
-    await page.evaluate(patch => { Object.assign((window as any).__mockHost.state.focus, patch); }, patch);
-    await focus.getByRole("button", { name: "刷新", exact: true }).click();
-    await expect(focus.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
+    const before = await reads();
+    await page.evaluate(patch => {
+      const host = (window as any).__mockHost;
+      Object.assign(host.state.focus, patch);
+      host.emit("window:restored", null);
+    }, patch);
+    await expect.poll(reads).toBeGreaterThan(before);
   }
   await change({ articles: [{ ...articles[0], read: true }, ...articles.slice(1)], digest_lede: "" });
   await expect(headline).toHaveCount(0); // 第二行虽未读，也不能越过已读首行。
   await expect(lede).toContainText("阅读简报");
   await expect(lede.locator(".focus-lede-text > span")).toHaveCount(0);
   await change({ articles: [{ ...articles[0], row_kind: 1, cluster_id: 90, cluster_size: 2 }, ...articles.slice(1)], digest_banner: "" });
-  await expect(headline).toHaveCount(0); // 首行是聚类时也不跳过它。
   await expect(lede).toHaveCount(0);
+  await expect(headline).toHaveCount(0); // 首行是聚类时也不跳过它。
   await change({ articles });
   await expect(headline).toHaveAttribute("aria-label", articles[0].title);
 });

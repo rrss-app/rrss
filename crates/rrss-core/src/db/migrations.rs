@@ -2,7 +2,7 @@ use rusqlite::Connection;
 
 use crate::error::{Error, Result};
 
-pub const SCHEMA_VERSION: i32 = 45;
+pub const SCHEMA_VERSION: i32 = 47;
 
 /// 低于此版本的库不能在当前程序里升级。
 pub const MIN_UPGRADE_VERSION: i32 = 33;
@@ -34,6 +34,8 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         (43, apply_v43),
         (44, apply_v44),
         (45, apply_v45),
+        (46, apply_v46),
+        (47, apply_v47),
     ];
     let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if !(0..=SCHEMA_VERSION).contains(&version) {
@@ -67,6 +69,52 @@ pub fn migrate(conn: &Connection) -> Result<()> {
     // 补全新增 prompt / task_bindings（如 digest_pick_*）。
     crate::ai_store::seed_defaults(conn)?;
     Ok(())
+}
+
+fn apply_v47(conn: &Connection) -> Result<()> {
+    crate::db::atomic_write(conn, |conn| {
+        if !column_exists(conn, "threads", "title_successful_turns")? {
+            conn.execute_batch(
+                "ALTER TABLE threads ADD COLUMN title_successful_turns INTEGER;
+                 ALTER TABLE threads ADD COLUMN title_user_edited INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE threads ADD COLUMN title_request_token TEXT;",
+            )?;
+        }
+        conn.execute_batch(
+            "CREATE TRIGGER IF NOT EXISTS chat_title_binding_revision AFTER UPDATE ON task_bindings
+             WHEN new.task = 'chat_title' AND (old.provider_id IS NOT new.provider_id OR old.model IS NOT new.model) BEGIN
+                 INSERT INTO settings (key, value) VALUES ('chat_title_binding_revision', lower(hex(randomblob(16))))
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+             END;",
+        )?;
+        Ok(())
+    })
+}
+
+fn apply_v46(conn: &Connection) -> Result<()> {
+    crate::db::atomic_write(conn, |conn| {
+        conn.execute_batch(
+            "CREATE VIEW IF NOT EXISTS model_memories AS
+                SELECT * FROM memories
+                WHERE scope = 'global' AND kind != 'episode'
+                  AND COALESCE(source, '') NOT IN ('pending', 'rejected') AND strength > 0;
+             CREATE TABLE IF NOT EXISTS memory_candidate_receipts (
+                fingerprint TEXT PRIMARY KEY NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS memory_episode_progress (
+                thread_id INTEGER PRIMARY KEY REFERENCES threads(id) ON DELETE CASCADE,
+                through_message_id INTEGER NOT NULL DEFAULT 0,
+                generation BLOB NOT NULL DEFAULT (randomblob(16))
+             );
+             CREATE TRIGGER IF NOT EXISTS memory_episode_thread_deleted AFTER DELETE ON threads BEGIN
+                DELETE FROM memories
+                WHERE kind = 'episode' AND scope = 'thread' AND scope_id = old.id;
+             END;
+             INSERT OR IGNORE INTO memory_episode_progress (thread_id, through_message_id)
+                SELECT thread_id, MAX(id) FROM messages GROUP BY thread_id;",
+        )?;
+        crate::memories::remember_existing_facts(conn)
+    })
 }
 
 // Upgrade databases with the original v44 triggers as well as fresh installs.
@@ -560,6 +608,106 @@ fn apply_v34(conn: &Connection) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn v47_keeps_existing_titles_and_only_counts_new_threads() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             CREATE TABLE task_bindings (task TEXT PRIMARY KEY, provider_id INTEGER, model TEXT);
+             CREATE TABLE threads (id INTEGER PRIMARY KEY, title TEXT);
+             INSERT INTO threads(id, title) VALUES (1, 'Local title'), (2, NULL);",
+        )
+        .unwrap();
+        apply_v47(&conn).unwrap();
+        let old: (String, Option<i64>) = conn
+            .query_row(
+                "SELECT title, title_successful_turns FROM threads WHERE id=1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(old, ("Local title".into(), None));
+        let (_dir, fresh) = {
+            let dir = tempfile::tempdir().unwrap();
+            let fresh = crate::db::open_at(&dir.path().join("fresh.db")).unwrap();
+            (dir, fresh)
+        };
+        let thread = crate::threads::create_thread(&fresh, None).unwrap();
+        assert_eq!(
+            fresh
+                .query_row(
+                    "SELECT title_successful_turns FROM threads WHERE id=?1",
+                    [thread.id],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+        let binding =
+            crate::ai_store::get_task_binding(&fresh, crate::ai_store::TASK_CHAT_TITLE).unwrap();
+        assert_eq!(binding.provider_id, None);
+        assert_eq!(binding.model, None);
+    }
+
+    #[test]
+    fn v46_keeps_unattributed_episodes_but_never_replays_old_messages() {
+        use crate::{memories, threads};
+
+        let dir = tempfile::tempdir().unwrap();
+        let conn = crate::db::open_at(&dir.path().join("legacy-memory.db")).unwrap();
+        conn.execute_batch(
+            "DROP VIEW model_memories;
+             DROP TABLE memory_candidate_receipts;
+             DROP TABLE memory_episode_progress;
+             DROP TRIGGER memory_episode_thread_deleted;
+             INSERT INTO threads(id,pi_session_file,created_at,updated_at) VALUES(7,'old.jsonl',0,0);
+             WITH RECURSIVE ids(id) AS (SELECT 1 UNION ALL SELECT id+1 FROM ids WHERE id<30)
+                 INSERT INTO messages(id,thread_id,role,content,created_at)
+                 SELECT id,7,CASE WHEN id%2=0 THEN 'assistant' ELSE 'user' END,'legacy',0 FROM ids;
+             INSERT INTO memories(kind,content,pinned,source,strength,created_at) VALUES
+                 ('episode','Unattributed private episode',1,'compress',1,0),
+                 ('semantic','I prefer offline reading.',0,'pending',0,0);
+             PRAGMA user_version=45;",
+        ).unwrap();
+        migrate(&conn).unwrap();
+        assert_eq!(
+            conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
+                .unwrap(),
+            SCHEMA_VERSION
+        );
+        assert_eq!(memories::list_memories(&conn, "").unwrap().len(), 2);
+        assert!(memories::inject_prefix(&conn).unwrap().is_empty());
+        assert!(
+            memories::episode_context(&conn, "old.jsonl")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            memories::search_memory(&conn, "Unattributed", 20)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(memories::episode_batch(&conn, 7, 30).unwrap().is_none());
+        let pending = memories::list_memories(&conn, "offline").unwrap()[0].id;
+        memories::delete_memory(&conn, pending).unwrap();
+        assert!(
+            memories::insert_new_candidates(&conn, vec!["I prefer offline reading".into()])
+                .unwrap()
+                .is_empty()
+        );
+
+        let mut latest = 30;
+        for _ in 0..10 {
+            for role in [threads::MessageRole::User, threads::MessageRole::Assistant] {
+                latest = threads::insert_message(&conn, 7, role, "since upgrade", None)
+                    .unwrap()
+                    .id;
+            }
+        }
+        let batch = memories::episode_batch(&conn, 7, latest).unwrap().unwrap();
+        assert!(batch.lines.iter().all(|(_, text)| text == "since upgrade"));
+    }
 
     #[test]
     fn v43_moves_the_default_chinese_target_to_follow_the_interface() {

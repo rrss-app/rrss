@@ -350,6 +350,7 @@ const TASK_TITLES: Array<[string, string]> = [
   ["focus_summary", "焦点摘要"], ["article_summary", "本篇摘要"], ["article_segment", "长文分段压缩"], ["digest_daily", "日 Digest"],
   ["digest_weekly", "周 Digest"], ["digest_pick_daily", "日 Digest 选题"], ["digest_pick_weekly", "周 Digest 选题"],
   ["cluster_summary", "相近报道综述"], ["memory_candidate", "记忆候选"], ["episode_compress", "情节压缩"], ["article_translate", "本篇翻译"], ["embed", "嵌入"], ["chat", "对话"],
+  ["chat_title", "会话标题"],
 ];
 const TASK_MODELS: Record<string, [number, string]> = {
   focus_summary: [1, "llama3.2"], article_summary: [1, "qwen2.5:14b"], article_segment: [1, "qwen2.5:14b"],
@@ -573,6 +574,7 @@ export type MockHostOptions = {
   networkProxy?: NetworkProxyView;
   /** 加进来的模型；默认 `MOCK_POOL`。 */
   pool?: ModelPoolView;
+  bindings?: ModelBindingsView;
   /** 引用托盘发送：只使用模拟消息与事件；可控制接受前失败 / 挂起。 */
   sendFailures?: number;
   holdSend?: boolean;
@@ -660,6 +662,8 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
         } as Record<string, any> };
       let remainingSendFailures = sendFailures;
       const pendingSends: Array<() => void> = [];
+      const pendingHistory: Array<() => void> = [];
+      const pendingDigestThreads: Array<() => void> = [];
       const digestThreads = new Map<number, number>([[101, 301]]);
       let nextThreadId = Math.max(400, ...threads.map(t => t.id)) + 1;
       let nextMessageId = Math.max(0, ...Object.values(messages).flat().map(m => m.id)) + 1;
@@ -668,6 +672,8 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
       const pendingOpens: Array<() => void> = [];
       const pendingFocusPages: Array<() => void> = [];
       const pendingDigests: Array<() => void> = [];
+      const pendingTitles = new Map<number, (title: string) => void>();
+      const titleRevisions = new Map<number, number>();
       const pendingSelectionTranslations: Array<() => void> = [];
       // IR 校验会清洗未知节点；e2e 仅在测试浏览器内模拟该坏块的渲染器异常。
       const brokenDocuments: Array<{ raw: Record<string, unknown>; blocks: unknown[] }> = [];
@@ -751,6 +757,8 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
         webViewBounds: [] as unknown[],
         webViewVisible: [] as { label: string; visible: boolean }[],
         calls: [] as string[], args: {} as Record<string, unknown>,
+        chatAcceptanceDelayMs: 0, chatReplyDelayMs: 0,
+        holdHistory: false, holdDigestThread: false,
         /** 窗口三键的效果：最小化次数、最大化状态、是否已关闭。 */
         window: { minimized: 0, maximized: false, closed: false, hidden: false, trayLabels: null as unknown, closeChoices: [] as Array<{ choice: string; remember: boolean }> },
         /** 外部工具检测的结果（按服务名覆盖，没写的用 `default`）；浏览器登录挂起到 `finishMcpLogin`。 */
@@ -779,6 +787,8 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
         releaseFocusPage: () => { for (const finish of pendingFocusPages.splice(0)) finish(); },
         holdDigest,
         releaseDigest: () => { for (const finish of pendingDigests.splice(0)) finish(); },
+        holdTitle: false,
+        releaseTitle: (id: number, title: string) => pendingTitles.get(id)?.(title),
         emit: (event: string, payload: unknown) => {
           const web = payload as { label: string; url: string };
           if (event === "web:verify-state") {
@@ -794,6 +804,14 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
           for (const id of listeners.get(event) ?? []) callbacks.get(id)?.({ event, id, payload });
         },
         releaseSend: () => { for (const finish of pendingSends.splice(0)) finish(); },
+        releaseHistory: () => {
+          harness.holdHistory = false;
+          for (const finish of pendingHistory.splice(0)) finish();
+        },
+        releaseDigestThread: () => {
+          harness.holdDigestThread = false;
+          for (const finish of pendingDigestThreads.splice(0)) finish();
+        },
         /** 对话引擎下载：`holdInstall` 时停在下载中，`progressInstall` 推进度，`finishInstall` 走完安装。 */
         holdInstall: false,
         progressInstall: (received: number) => {
@@ -1010,13 +1028,33 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               }
               // 会话文件夹与归档：只保留命令契约与写后可读，排序、标题回退与删除锁在后端测试。
               case "thread_list": {
-                const live = state.threads.filter(t => t.archived_at == null)
+                const ordinary = state.threads.filter(t => ![...digestThreads.values()].includes(t.id));
+                const live = ordinary.filter(t => t.archived_at == null)
                   .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated_at - a.updated_at || b.id - a.id);
                 return structuredClone({ folders: [...state.threadFolders].sort((a, b) => a.position - b.position), threads: live,
-                  archived_count: state.threads.length - live.length });
+                  archived_count: ordinary.length - live.length });
               }
               case "archived_threads":
                 return structuredClone(state.threads.filter(t => t.archived_at != null).sort((a, b) => (b.archived_at ?? 0) - (a.archived_at ?? 0)));
+              case "generate_thread_title": {
+                const id = Number(args.threadId);
+                const thread = state.threads.find(item => item.id === id);
+                if (!thread || !messages[id]?.some(message => message.role === "user" && message.text.trim())) return "no_questions";
+                const binding = state.bindings.tasks.find(task => task.task === "chat_title");
+                if (!binding?.provider_id) return "no_model";
+                if (!same(binding, args.expected)) return "model_changed";
+                if (pendingTitles.has(id)) return "busy";
+                const revision = titleRevisions.get(id);
+                const result = harness.holdTitle ? new Promise<string>(resolve => pendingTitles.set(id, resolve)) : Promise.resolve("Garden planning");
+                harness.emit("chat:title-started", id);
+                const title = await result;
+                pendingTitles.delete(id);
+                harness.emit("chat:title-finished", id);
+                if (titleRevisions.get(id) !== revision || !state.threads.includes(thread)) return "stale";
+                thread.title = title;
+                harness.emit("chat:title-changed", id);
+                return "applied";
+              }
               case "rename_thread":
               case "set_thread_folder":
               case "set_thread_pinned":
@@ -1024,7 +1062,10 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               case "unarchive_thread": {
                 const thread = state.threads.find(t => t.id === args.threadId);
                 if (!thread) throw new Error("会话不存在");
-                if (command === "rename_thread") thread.title = String(args.title).trim() || (messages[thread.id]?.[0]?.text ?? "新对话").slice(0, 20);
+                if (command === "rename_thread") {
+                  titleRevisions.set(thread.id, (titleRevisions.get(thread.id) ?? 0) + 1);
+                  thread.title = String(args.title).trim() || (messages[thread.id]?.[0]?.text ?? "新对话").slice(0, 20);
+                }
                 if (command === "set_thread_folder") thread.folder_id = args.folderId ?? null;
                 if (command === "set_thread_pinned") thread.pinned = !!args.pinned;
                 if (command === "archive_thread") thread.archived_at = Date.now();
@@ -1065,6 +1106,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 }).slice(0, args.limit ?? 20);
               }
               case "messages": {
+                if (harness.holdHistory) await new Promise<void>(resolve => pendingHistory.push(resolve));
                 const all = (messages[args.threadId] ?? []).filter((m: { id: number }) => args.beforeId == null || m.id < args.beforeId);
                 const window = all.slice(Math.max(0, all.length - 40));
                 return { messages: window.map(messageFor), has_more: all.length > 40 };
@@ -1118,11 +1160,13 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 });
               }
               case "digest_thread": {
+                if (harness.holdDigestThread) await new Promise<void>(resolve => pendingDigestThreads.push(resolve));
                 const id = digestThreads.get(args.digestId) ?? 0;
                 return { thread_id: id, chat_model: state.threads.find(t => t.id === id)?.chat_model ?? null, chat_thinking: state.threads.find(t => t.id === id)?.chat_thinking ?? null, context: state.threads.find(t => t.id === id)?.context ?? null, messages: (messages[id] ?? []).map(messageFor), has_more: false };
               }
               case "send_message": {
                 if (holdSend) await new Promise<void>(resolve => pendingSends.push(resolve));
+                if (harness.chatAcceptanceDelayMs) await new Promise<void>(resolve => setTimeout(resolve, harness.chatAcceptanceDelayMs));
                 if (remainingSendFailures > 0) { --remainingSendFailures; throw new Error("模拟发送失败，请重试"); }
                 const input = args.args;
                 const id = input.threadId || (input.digestId ? digestThreads.get(input.digestId) : 0) || nextThreadId++;
@@ -1141,12 +1185,16 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 const message = (role: string, text: string, citations: CitationView[] = []) => ({ id: nextMessageId++, role, text, citations, document: null, streaming: false, cite_article_id: 0, cite_title: "" });
                 messages[id] = [...(messages[id] ?? []), message("user", input.text, input.citations)];
                 harness.emit("chat:start", id);
-                const answer = "我会结合这些引用继续分析。";
-                messages[id].push(message("assistant", answer));
-                harness.emit("chat:delta", { thread_id: id, text: answer, document: null });
-                thread.context = { used: Math.ceil(messages[id].reduce((sum,m) => sum + m.text.length,0) / 3), window, at: Date.now() };
-                harness.emit("chat:context", { thread_id: id, context: thread.context });
-                harness.emit("chat:done", id);
+                const finish = () => {
+                  const answer = "我会结合这些引用继续分析。";
+                  messages[id].push(message("assistant", answer));
+                  harness.emit("chat:delta", { thread_id: id, text: answer, document: null });
+                  thread.context = { used: Math.ceil(messages[id].reduce((sum,m) => sum + m.text.length,0) / 3), window, at: Date.now() };
+                  harness.emit("chat:context", { thread_id: id, context: thread.context });
+                  harness.emit("chat:done", id);
+                };
+                if (harness.chatReplyDelayMs) setTimeout(finish, harness.chatReplyDelayMs);
+                else finish();
                 return id;
               }
               case "translate_snapshot":
@@ -1865,7 +1913,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
       sendFailures: options.sendFailures ?? 0,
       holdSend: options.holdSend ?? false,
       ai: options.ai ? { ...MOCK_AI, ...options.ai } : MOCK_AI,
-      bindings: MOCK_BINDINGS,
+      bindings: options.bindings ?? MOCK_BINDINGS,
       pool: options.pool ?? MOCK_POOL,
       presets: MOCK_PRESETS,
       rules: options.rules ?? MOCK_RULES,

@@ -458,6 +458,8 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
         return clone({ folders: [], threads: state.threads, archived_count: 0 });
       case "archived_threads":
         return [];
+      case "generate_thread_title":
+        return "no_model";
       case "messages": {
         const threadId = asNumber(pick(rawArgs, "threadId", "thread_id"));
         const beforeRaw = pick(rawArgs, "beforeId", "before_id");

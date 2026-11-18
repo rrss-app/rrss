@@ -341,6 +341,12 @@ CREATE TABLE task_bindings (
     model        TEXT
 );
 
+CREATE TRIGGER chat_title_binding_revision AFTER UPDATE ON task_bindings
+WHEN new.task = 'chat_title' AND (old.provider_id IS NOT new.provider_id OR old.model IS NOT new.model) BEGIN
+    INSERT INTO settings (key, value) VALUES ('chat_title_binding_revision', lower(hex(randomblob(16))))
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+END;
+
 CREATE TABLE ai_cache (
     cache_key   TEXT    PRIMARY KEY,
     value       TEXT    NOT NULL,
@@ -368,6 +374,9 @@ CREATE TABLE thread_folders (
 CREATE TABLE threads (
     id               INTEGER PRIMARY KEY,
     title            TEXT,
+    title_successful_turns INTEGER,
+    title_user_edited INTEGER NOT NULL DEFAULT 0,
+    title_request_token TEXT,
     pinned           INTEGER NOT NULL DEFAULT 0,
     folder_id        INTEGER REFERENCES thread_folders (id) ON DELETE SET NULL,
     archived_at      INTEGER,
@@ -432,6 +441,26 @@ CREATE TABLE memories (
     last_used_at  INTEGER,
     created_at    INTEGER NOT NULL
 );
+
+CREATE VIEW model_memories AS
+    SELECT * FROM memories
+    WHERE scope = 'global' AND kind != 'episode'
+      AND COALESCE(source, '') NOT IN ('pending', 'rejected') AND strength > 0;
+
+CREATE TABLE memory_candidate_receipts (
+    fingerprint TEXT PRIMARY KEY NOT NULL
+);
+
+CREATE TABLE memory_episode_progress (
+    thread_id INTEGER PRIMARY KEY REFERENCES threads(id) ON DELETE CASCADE,
+    through_message_id INTEGER NOT NULL DEFAULT 0,
+    generation BLOB NOT NULL DEFAULT (randomblob(16))
+);
+
+CREATE TRIGGER memory_episode_thread_deleted AFTER DELETE ON threads BEGIN
+    DELETE FROM memories
+    WHERE kind = 'episode' AND scope = 'thread' AND scope_id = old.id;
+END;
 
 CREATE TABLE chunks (
     id          INTEGER PRIMARY KEY,

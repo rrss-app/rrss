@@ -154,6 +154,7 @@ export type SystemProxyView = { http: string | null, https: string | null, all: 
 export type SaveNetworkProxyRuleArgs = { mode: NetworkProxyMode, url: string, no_proxy: string, username?: string, password?: string, clear_auth: boolean, };
 export type SaveNetworkProxyArgs = { global: SaveNetworkProxyRuleArgs, content: SaveNetworkProxyRuleArgs, api: SaveNetworkProxyRuleArgs, pi: SaveNetworkProxyRuleArgs, };
 export type ModelChoice = { provider_id: number, model: string, };
+export type ThreadTitleOutcome = "applied" | "stale" | "busy" | "no_questions" | "no_model" | "model_changed" | "invalid";
 export type ModelBindingsView = { tasks: Array<TaskBindView>, chat_uses_own_config: boolean, };
 export type VectorSpaceView = { id: number, model: string, provider_name: string | null, dims: number, source_dims: number, state: string, chunks: number, stale_reason: string | null, checked_at: number | null, };
 export type VectorRebuildView = { space: VectorSpaceView, written: number, total: number, };

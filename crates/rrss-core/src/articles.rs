@@ -809,6 +809,33 @@ fn attach_noise(conn: &Connection, cards: &mut [ArticleCard]) -> Result<()> {
     Ok(())
 }
 
+pub struct CitationMetadata {
+    pub title: String,
+    pub feed_title: String,
+    pub canonical_url: Option<String>,
+    pub temporary: bool,
+}
+
+pub fn citation_metadata(conn: &Connection, id: i64) -> Result<CitationMetadata> {
+    conn.query_row(
+        "SELECT a.title, COALESCE(f.title, f.url), a.canonical_url, a.expires_at IS NOT NULL
+         FROM articles a
+         JOIN feeds f ON f.id = a.feed_id
+         WHERE a.id = ?1",
+        [id],
+        |row| {
+            Ok(CitationMetadata {
+                title: row.get(0)?,
+                feed_title: crate::feeds::display_title(&row.get::<_, String>(1)?, ""),
+                canonical_url: row.get(2)?,
+                temporary: row.get(3)?,
+            })
+        },
+    )
+    .optional()?
+    .ok_or(Error::ArticleNotFound)
+}
+
 pub fn get_article(conn: &Connection, id: i64) -> Result<ArticleRow> {
     conn.query_row(
         "SELECT a.id, a.feed_id, a.guid, a.canonical_url, a.title, a.author, a.published_at,

@@ -231,6 +231,23 @@ async fn memory_finds_vector_only_hits() {
     )
     .unwrap();
     rag::set_memory_embedding(&fixture.conn, id, &[0.6, 0.8]).unwrap();
+    for (kind, scope, source) in [
+        ("episode", "global", "compress"),
+        ("episode", "thread", "compress"),
+        ("semantic", "global", "pending"),
+        ("semantic", "global", "rejected"),
+    ] {
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO memories(kind,scope,source,content,created_at)
+             VALUES(?1,?2,?3,'unmatched-query private canary',0)",
+                rusqlite::params![kind, scope, source],
+            )
+            .unwrap();
+        let hidden = fixture.conn.last_insert_rowid();
+        rag::set_memory_embedding(&fixture.conn, hidden, &[0.6, 0.8]).unwrap();
+    }
     assert!(
         memories::search_memory(&fixture.conn, "unmatched-query", 20)
             .unwrap()
@@ -246,4 +263,68 @@ async fn memory_finds_vector_only_hits() {
             "pinned": false, "pending": false,
         }])
     );
+}
+
+#[test]
+fn private_preview_separates_thread_episodes_from_global_facts() {
+    use rrss_core::threads;
+
+    let fixture = Fixture::new();
+    let conn = &fixture.conn;
+    let first = threads::create_thread(conn, None).unwrap().id;
+    let second = threads::create_thread(conn, None).unwrap().id;
+    for (thread, path, content) in [
+        (first, "first.jsonl", "First thread history"),
+        (second, "second.jsonl", "Second thread history"),
+    ] {
+        threads::set_pi_session_file(conn, thread, Some(path)).unwrap();
+        conn.execute(
+            "INSERT INTO memories(kind,scope,scope_id,source,content,created_at)
+             VALUES('episode','thread',?1,'compress',?2,0)",
+            rusqlite::params![thread, content],
+        )
+        .unwrap();
+    }
+    let legacy = memories::insert_memory(
+        conn,
+        memories::MemoryKind::Episode,
+        "Unknown thread history",
+        "compress",
+        1.0,
+    )
+    .unwrap();
+    memories::set_pinned(conn, legacy, true).unwrap();
+    let fact = memories::insert_pending_fact(conn, "I prefer weekly summaries.").unwrap();
+    let rows = run_on(
+        conn,
+        &["rrss", "tool", "search_memory", "--query", "%"].map(str::to_owned),
+    )
+    .unwrap();
+    assert_eq!(serde_json::from_str::<Value>(&rows).unwrap(), json!([]));
+    let preview = |session| {
+        let output = run_on(
+            conn,
+            &["rrss", "tool", "memory_preview", "--session-file", session].map(str::to_owned),
+        )
+        .unwrap();
+        serde_json::from_str::<Value>(&output).unwrap()
+    };
+    assert_eq!(
+        preview("first.jsonl"),
+        json!({"memory":"", "episode":"First thread history"})
+    );
+    assert_eq!(preview("second.jsonl")["episode"], "Second thread history");
+    assert_eq!(preview("unknown.jsonl")["episode"], "");
+    memories::confirm_memory(conn, fact).unwrap();
+    assert!(
+        preview("second.jsonl")["memory"]
+            .as_str()
+            .unwrap()
+            .contains("I prefer weekly summaries.")
+    );
+    let episode = memories::list_memories(conn, "First thread").unwrap()[0].id;
+    memories::delete_memory(conn, episode).unwrap();
+    assert_eq!(preview("first.jsonl")["episode"], "");
+    threads::set_pi_session_file(conn, first, Some("second.jsonl")).unwrap();
+    assert_eq!(preview("second.jsonl")["episode"], "");
 }

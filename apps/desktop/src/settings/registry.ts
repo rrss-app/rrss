@@ -89,6 +89,7 @@ export const REGISTRY = {
   pi_idle_timeout_secs: { hint: true, control: true, display: "minutes" },
   pi_assistant_note: { hint: true, display: "multiline" },
   pi_auto_download: { hint: true, control: true, on: true, off: true },
+  chat_auto_title: { hint: true },
   pi_auto_update: { hint: true, control: true, on: true, off: true },
   close_action: { hint: true, options: ["ask", "tray", "quit"] },
   ui_language: { options: ["system", "zh-CN", "en"] },

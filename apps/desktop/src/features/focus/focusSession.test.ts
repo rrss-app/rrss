@@ -306,6 +306,7 @@ it("background updates refresh shown rows in place and only count new articles u
   session.start(); await flushUpdates();
   session.readerOpened();
   session.setRead(2, true);
+  session.setVisibleEnd(2);
   const revision = session.getSnapshot().revision;
   // 排序变了、第 1 篇有了摘要、来了一篇新文章；后台的旧已读状态不覆盖本地。
   focus.mockResolvedValueOnce({ ...TWO_ARTICLE_PAGE, articles: [focusRow(9, "新文章"), focusRow(3, "文章 3"), { ...rows[0], summary: "刚写好的摘要" }, rows[1]] });
@@ -316,11 +317,33 @@ it("background updates refresh shown rows in place and only count new articles u
   expect(snapshot.page?.articles[0].summary).toBe("刚写好的摘要");
   expect(snapshot.page?.articles[1].read).toBe(true);
   expect(snapshot.pendingNew).toBe(1);
-  focus.mockResolvedValueOnce({ ...TWO_ARTICLE_PAGE, articles: [focusRow(9, "新文章"), ...rows] });
-  await session.reload();
+  focus.mockResolvedValueOnce({ ...TWO_ARTICLE_PAGE, articles: [rows[2], focusRow(9, "First"), focusRow(10, "Second"), ...rows.slice(0, 2)] });
+  await session.backgroundChanged();
+  expect(session.getSnapshot().pendingNew).toBe(2);
+  session.showNew();
   expect(session.getSnapshot().revision).toBe(revision + 1);
   expect(session.getSnapshot().pendingNew).toBe(0);
-  expect(session.getSnapshot().page?.articles[0].id).toBe(9);
+  expect(session.getSnapshot().page?.articles.map(row => row.id)).toEqual([9, 10, 3, 1, 2]);
+  expect(session.findArticle(2)?.read).toBe(true);
+});
+
+it("finishes a successful manual refresh silently when none of the inserted articles are in this list", async () => {
+  const notify = vi.fn();
+  session = createFocusSession(notify);
+  vi.spyOn(apiModule, "onSchedulerUpdated").mockResolvedValue(() => {});
+  vi.spyOn(api, "refresh").mockResolvedValue({ run_id: "run", operation_id: 1 });
+  vi.spyOn(api, "schedulerStatus").mockResolvedValue({
+    run_id: "run", version: 1, stopped: false, background: [], background_requested: 0, background_completed: 0, feed_pause: null,
+    operations: [{ id: 1, target: 1, completed: 1, inserted: 12, failed: 0, failed_feeds: [], deleted: 0, skipped: 0, done: true, error: null }],
+  });
+  vi.spyOn(api, "focus").mockResolvedValue(TWO_ARTICLE_PAGE);
+  session.start(); await flushUpdates();
+  session.startBrowsing();
+  const before = session.getSnapshot();
+  await session.refresh();
+  expect(session.getSnapshot()).toMatchObject({ refreshing: false, pendingNew: 0, revision: before.revision });
+  expect(session.getSnapshot().page).toBe(before.page);
+  expect(notify).not.toHaveBeenCalled();
 });
 
 it("keeps a browsed list and counts new articles when the resumed startup refresh completes", async () => {
@@ -338,6 +361,7 @@ it("keeps a browsed list and counts new articles when the resumed startup refres
   expect(session.getSnapshot().loading).toBe(false);
   session.startBrowsing();
   const revision = session.getSnapshot().revision;
+  session.setVisibleEnd(1);
   focus.mockResolvedValue({ ...TWO_ARTICLE_PAGE, articles: [focusRow(3, "New article 3"), focusRow(4, "New article 4"), ...TWO_ARTICLE_PAGE.articles] });
   finished.resolve({ ...running, version: 2, operations: [{ ...running.operations[0], done: true, completed: 1, inserted: 2 }] });
   await flushUpdates();

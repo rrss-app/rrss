@@ -12,11 +12,12 @@ use tokio::sync::{mpsc, watch};
 
 use super::supervisor::{Supervisor, SupervisorConfig};
 use super::{ChatError, ChatErrorKind};
+use crate::jobs::chat_titles;
 use crate::ui_error::chat::ChatUiError;
 use crate::views::UiError;
 use crate::views::{
     ChatConfirmEvent, ChatContextEvent, ChatErrorEvent, ChatStatusEvent, ChatStepView,
-    ChatStreamEvent, ContextUsageView, SendMessageArgs,
+    ChatStreamEvent, ContextUsageView, ModelChoice, SendMessageArgs, ThreadTitleOutcome,
 };
 
 use rrss_core::{Error, error::PiFailure};
@@ -33,6 +34,9 @@ pub enum ChatEvent {
     Confirm(ChatConfirmEvent),
     Context(ChatContextEvent),
     Error(ChatErrorEvent),
+    TitleStarted(i64),
+    TitleFinished(i64),
+    TitleChanged(i64),
     /// 本轮结束（成功、出错或中止都会发）。
     Done(i64),
 }
@@ -45,6 +49,7 @@ pub trait ChatSink: Send + Sync + 'static {
 #[derive(Debug, Clone, Default)]
 pub struct TurnState {
     pub thread_id: i64,
+    user_text: String,
     buffer: String,
     last_usage: Option<rrss_ai::pi::PiUsage>,
     context_window: Option<i64>,
@@ -58,6 +63,7 @@ pub struct TurnState {
 #[derive(Debug, Clone)]
 pub struct Settled {
     pub snapshot: ChatStreamEvent,
+    user_text: String,
     pub model_error: Option<UiError>,
     pub aborted: bool,
     pub used: Option<i64>,
@@ -152,6 +158,7 @@ impl TurnState {
         self.settled = true;
         Some(Settled {
             snapshot,
+            user_text: std::mem::take(&mut self.user_text),
             model_error: self.model_error.clone(),
             aborted: self.aborted,
             used: self.last_usage.map(|u| u.context_tokens()),
@@ -222,6 +229,7 @@ pub struct ChatRuntime {
     network: crate::network::NetworkClients,
     /// 结算后是否跑记忆候选与情节压缩（测试里关掉，免得访问网络）。
     post_turn_jobs: bool,
+    episode_job: Arc<tokio::sync::Mutex<()>>,
     /// 极快的 settled 可能先于 prompt 的响应；发送编排返回前不接下一轮。
     dispatch_lock: Arc<tokio::sync::Mutex<()>>,
     stream_revision: StdMutex<u64>,
@@ -270,6 +278,7 @@ impl ChatRuntime {
             sink,
             network,
             post_turn_jobs,
+            episode_job: Arc::default(),
             dispatch_lock: Arc::new(tokio::sync::Mutex::new(())),
             stream_revision: StdMutex::new(0),
             stream,
@@ -471,6 +480,7 @@ impl ChatRuntime {
         if let Ok(mut turn) = self.turn.lock() {
             turn.begin(thread_id);
             turn.context_window = window;
+            turn.user_text = args.text;
         }
         // 先通知线程归属，再写提示词，防止极快的回复先于 Start 到达。
         self.sink.emit(ChatEvent::Start(thread_id));
@@ -495,15 +505,8 @@ impl ChatRuntime {
                 step: None,
             }));
         }
-        if let Err(err) = self.sup.prompt(&prompt).await {
-            let _ = blocking(db, move |conn| {
-                threads::discard_unsent_message(conn, thread_id, message_id).map_err(Into::into)
-            })
-            .await;
-            return Err(err);
-        }
         let file = session.file;
-        if let Err(err) = blocking(db, move |conn| {
+        if let Err(err) = blocking(db.clone(), move |conn| {
             threads::set_pi_session_file(conn, thread_id, Some(&file)).map_err(Into::into)
         })
         .await
@@ -513,6 +516,13 @@ impl ChatRuntime {
                 ChatErrorKind::Internal,
                 ChatUiError::SessionSaveFailed.caused_by(err.message),
             );
+        }
+        if let Err(err) = self.sup.prompt(&prompt).await {
+            let _ = blocking(db, move |conn| {
+                threads::discard_unsent_message(conn, thread_id, message_id).map_err(Into::into)
+            })
+            .await;
+            return Err(err);
         }
         Ok(thread_id)
     }
@@ -994,6 +1004,26 @@ impl ChatRuntime {
         }
     }
 
+    pub async fn generate_title(
+        &self,
+        thread_id: i64,
+        expected: ModelChoice,
+    ) -> anyhow::Result<ThreadTitleOutcome> {
+        match chat_titles::request_manual(self.db_path(), thread_id).await? {
+            Ok(request) => {
+                run_title(
+                    self.db_path(),
+                    &self.network,
+                    self.sink.as_ref(),
+                    request,
+                    Some(expected),
+                )
+                .await
+            }
+            Err(outcome) => Ok(outcome),
+        }
+    }
+
     async fn settle(&self, exited: bool) {
         let Some(mut done) = self.turn.lock().ok().and_then(|mut t| t.finish()) else {
             return;
@@ -1011,20 +1041,35 @@ impl ChatRuntime {
         self.mcp_steps.lock().unwrap().clear();
         let thread_id = done.snapshot.thread_id;
         let body = done.snapshot.text.clone();
+        let mut settled_id = None;
+        let mut title_request = None;
         let mut error: Option<(ChatErrorKind, UiError)> = None;
         if !body.trim().is_empty() {
             let text = body.clone();
-            let saved = blocking(self.db_path().to_path_buf(), move |conn| {
-                threads::insert_message(conn, thread_id, MessageRole::Assistant, &text, None)
-                    .map(|_| ())
-                    .map_err(Into::into)
+            let path = self.db_path().to_path_buf();
+            let success = !exited && !done.aborted && done.model_error.is_none();
+            let saved = blocking(path.clone(), move |conn| {
+                if success {
+                    chat_titles::save_successful_reply(conn, &path, thread_id, &text)
+                        .map_err(Into::into)
+                } else {
+                    threads::insert_message(conn, thread_id, MessageRole::Assistant, &text, None)
+                        .map(|message| (message.id, None))
+                        .map_err(Into::into)
+                }
             })
             .await;
-            if let Err(err) = saved {
-                error = Some((
-                    ChatErrorKind::Internal,
-                    ChatUiError::ReplySaveFailed.caused_by(err.message),
-                ));
+            match saved {
+                Ok((message_id, request)) => {
+                    settled_id = Some(message_id);
+                    title_request = request;
+                }
+                Err(err) => {
+                    error = Some((
+                        ChatErrorKind::Internal,
+                        ChatUiError::ReplySaveFailed.caused_by(err.message),
+                    ))
+                }
             }
         }
         if exited {
@@ -1050,6 +1095,7 @@ impl ChatRuntime {
             notice_version: String::new(),
             step: None,
         }));
+        let successful = error.is_none() && !done.aborted;
         if let Some((kind, message)) = error {
             self.emit_error(thread_id, kind, message);
         }
@@ -1061,26 +1107,46 @@ impl ChatRuntime {
         self.turn_span.lock().unwrap().take();
         self.sup.end();
         self.sink.emit(ChatEvent::Done(thread_id));
-        if self.post_turn_jobs && !body.trim().is_empty() {
+        if let Some(request) = title_request {
             let path = self.db_path().to_path_buf();
             let network = self.network.clone();
+            let sink = self.sink.clone();
+            tokio::spawn(async move {
+                if let Err(error) = run_title(&path, &network, sink.as_ref(), request, None).await
+                    && !crate::jobs::is_skip(&error)
+                {
+                    tracing::warn!(error = %crate::log::error(error.as_ref()), "automatic thread title failed");
+                }
+            }.instrument(crate::jobs::span("chat_title")).with_current_subscriber());
+        }
+        if self.post_turn_jobs
+            && successful
+            && let Some(settled_id) = settled_id
+        {
+            let path = self.db_path().to_path_buf();
+            let network = self.network.clone();
+            let episode_job = self.episode_job.clone();
+            let user_text = done.user_text;
             tokio::spawn(
                 async move {
                     use rrss_core::network::NetworkScope;
                     match network.client(NetworkScope::Api).await {
                         Ok(client) => {
                             let _ =
-                                crate::jobs::extract_memory_candidates(&path, &client, body).await;
+                                crate::jobs::extract_memory_candidates(&path, &client, &user_text)
+                                    .await;
                         }
                         Err(error) => {
                             tracing::warn!(%error, "memory extraction network unavailable")
                         }
                     }
+                    let _episode_guard = episode_job.lock().await;
                     match network.client(NetworkScope::Api).await {
                         Ok(client) => {
-                            let _ =
-                                crate::jobs::compress_episode_if_needed(&path, &client, thread_id)
-                                    .await;
+                            let _ = crate::jobs::compress_episode_if_needed(
+                                &path, &client, thread_id, settled_id,
+                            )
+                            .await;
                         }
                         Err(error) => {
                             tracing::warn!(%error, "episode compression network unavailable")
@@ -1095,6 +1161,26 @@ impl ChatRuntime {
 }
 
 /// 在阻塞线程里开库执行；错误统一归为内部错误。
+async fn run_title(
+    path: &std::path::Path,
+    network: &crate::network::NetworkClients,
+    sink: &dyn ChatSink,
+    request: chat_titles::TitleRequest,
+    expected: Option<ModelChoice>,
+) -> anyhow::Result<ThreadTitleOutcome> {
+    let id = request.thread_id();
+    sink.emit(ChatEvent::TitleStarted(id));
+    let result = chat_titles::generate(path, network, &request, expected).await;
+    sink.emit(ChatEvent::TitleFinished(id));
+    if result
+        .as_ref()
+        .is_ok_and(|outcome| *outcome == ThreadTitleOutcome::Applied)
+    {
+        sink.emit(ChatEvent::TitleChanged(id));
+    }
+    result
+}
+
 async fn blocking<T, F>(db: std::path::PathBuf, f: F) -> Result<T, ChatError>
 where
     T: Send + 'static,

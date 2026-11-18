@@ -1365,6 +1365,18 @@ pub struct ModelChoice {
     pub model: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum ThreadTitleOutcome {
+    Applied,
+    Stale,
+    Busy,
+    NoQuestions,
+    NoModel,
+    ModelChanged,
+    Invalid,
+}
+
 // 连接上获取到的模型 id（阶段 19-6）。
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct ModelCatalogView {

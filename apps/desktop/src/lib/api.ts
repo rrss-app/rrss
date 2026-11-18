@@ -148,6 +148,7 @@ import type {
   ScopeOption,
   TaskBindView,
   ThreadView,
+  ThreadTitleOutcome,
   ThreadFolderView,
   ThreadListView,
   ThreadSearchHitView,
@@ -361,6 +362,7 @@ export const api = {
   threadList: async () => { const list = await invoke<ThreadListView>("thread_list"); return { ...list, threads: list.threads.map(titled) }; },
   archivedThreads: async () => (await invoke<ThreadView[]>("archived_threads")).map(titled),
   renameThread: (threadId: number, title: string) => invoke<void>("rename_thread", { threadId, title }),
+  generateThreadTitle: (threadId: number, expected: ModelChoice) => invoke<ThreadTitleOutcome>("generate_thread_title", { threadId, expected }),
   setThreadFolder: (threadId: number, folderId: number | null) => invoke<void>("set_thread_folder", { threadId, folderId }),
   setThreadPinned: (threadId: number, pinned: boolean) => invoke<void>("set_thread_pinned", { threadId, pinned }),
   archiveThread: (threadId: number) => invoke<void>("archive_thread", { threadId }),
@@ -634,6 +636,9 @@ export function onChatError(cb: (event: ChatErrorEvent) => void): Promise<Unlist
 }
 export function onChatDone(cb: (id: number) => void): Promise<UnlistenFn> {
   return onWebEvent<number>("chat:done", cb);
+}
+export function onThreadTitleEvent(event: "started" | "finished" | "changed", cb: (id: number) => void): Promise<UnlistenFn> {
+  return onWebEvent<number>(`chat:title-${event}`, cb);
 }
 /** 结算或压缩后的上下文快照；按 thread_id 替换，不累加。 */
 export function onChatContext(cb: (event: ChatContextEvent) => void): Promise<UnlistenFn> {

@@ -22,6 +22,15 @@
         "hint": "Each link still needs confirmation in the chat."
       }
     },
+    "titles": {
+      "section": "Conversations",
+      "model": "Title model: {{model}}",
+      "noModel": "No title model selected. Automatic titles are paused.",
+      "settings": "Title model settings",
+      "confirmTitle": "Turn on automatic chat titles?",
+      "confirmMessage": "After the second successful reply in a new chat, RRSS sends up to two short question excerpts to {{model}} to generate a title once. Your provider may charge for this.",
+      "enable": "Turn on"
+    },
     "note": {
       "title": "Assistant instructions",
       "hint": "Included in every chat. Good for preferences like answer style or preferred language.",

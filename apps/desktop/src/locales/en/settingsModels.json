@@ -340,6 +340,10 @@
         "title": "Chat",
         "hint": "New chats use it by default; you can switch temporarily in a chat. Only models marked for chat are listed."
       },
+      "chatTitle": {
+        "title": "Chat titles",
+        "hint": "Uses a separate model for manual and automatic titles. If unset, chats keep their current titles."
+      },
       "summary": {
         "title": "Summary",
         "hint": "Article summaries, long-article segments, and related-coverage overviews. Background auto summaries and auto overviews have their own switches under “Automated tasks” below."

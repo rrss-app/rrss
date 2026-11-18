@@ -4,6 +4,13 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Changed
+
+- While you read in Focus, new articles below the screen appear quietly. Batches that affect your reading position share one button that brings the updates to the top of the list.
+- Chat suggests lasting preferences from your own words and uses them across conversations after you confirm them. Conversation summaries stay with their original thread and are deleted with it. Clearing all memories also forgets which suggestions you already saw. Older summaries with no known thread remain available in memory settings.
+- Sending a question from the reader opens the conversation immediately with your question and citations visible. The usual chat progress appears as the engine starts, and a failed send keeps the draft ready to retry.
+- Chat titles can now be generated on demand from the conversation menu or automatically after the second successful reply in a new conversation. Automatic titles are off by default. Choose a title model in Settings to use either option.
+
 ## [0.4.1] - 2026-11-18
 
 ### Fixed

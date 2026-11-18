@@ -653,6 +653,10 @@
     "developer_tools": {
       "label": "Developer tools"
     },
+    "chat_auto_title": {
+      "label": "Automatically generate chat titles",
+      "hint": "Runs once after the second successful reply in a new chat. Your provider may charge for this."
+    },
     "fetch_url_enabled": {
       "label": "Web page reading"
     },

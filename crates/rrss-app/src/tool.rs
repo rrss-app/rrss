@@ -100,7 +100,17 @@ fn run_with_connection(
             }))?)
         }
         // 扩展每轮写进系统提示「长期记忆」小节的内容（阶段 18 D10）。不在工具清单里，模型不能调用。
-        "memory_preview" => Ok(memories::inject_preview(&conn)?.0),
+        "memory_preview" => {
+            let (memory, _) = memories::inject_preview(conn)?;
+            match flag(rest, "--session-file") {
+                Some(file) if !file.trim().is_empty() => Ok(json!({
+                    "memory": memory,
+                    "episode": memories::episode_context(conn, &file)?,
+                })
+                .to_string()),
+                _ => Ok(memory),
+            }
+        }
         "get_assistant_config" => Ok(serde_json::to_string_pretty(&assistant_config(
             conn, rest,
         )?)?),

@@ -357,7 +357,8 @@
     "episode_compress": "Episode compression",
     "article_translate": "Article translation",
     "embed": "Embeddings",
-    "chat": "Chat"
+    "chat": "Chat",
+    "chat_title": "Chat titles"
   },
   "setting_unknown": "No setting named {{id}}",
   "setting_boolean_required": "{{id}} can only be on or off",

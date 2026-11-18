@@ -32,7 +32,7 @@ pub fn parse_citations_json(raw: Option<&str>) -> Vec<CitationSnap> {
 pub fn expand_user_prompt(
     text: &str,
     citations: &[CitationSnap],
-    context: impl Fn(&CitationSnap) -> Option<String>,
+    mut context: impl FnMut(&CitationSnap) -> Option<String>,
 ) -> String {
     let question = text.trim();
     if citations.is_empty() {

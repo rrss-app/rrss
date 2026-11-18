@@ -27,3 +27,4 @@ export { mergeLatestPage, useConversationRuntime, type ConversationRuntimeOption
 
 export { useDraftSubmission } from "./useDraftSubmission";
 export { ArchivedThreads, ThreadList, type ThreadNotice } from "./ThreadList";
+export { useThreadTitles } from "./useThreadTitles";

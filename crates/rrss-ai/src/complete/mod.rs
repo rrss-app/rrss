@@ -235,6 +235,19 @@ pub async fn complete_admitted_until(
     deadline: tokio::time::Instant,
     admission: Option<&dyn crate::admission::Admission>,
 ) -> Result<CompleteResponse> {
+    complete_admitted_with_repair_until(client, req, cached, on_usage, deadline, admission, true)
+        .await
+}
+
+pub async fn complete_admitted_with_repair_until(
+    client: &reqwest::Client,
+    req: &CompleteRequest,
+    cached: Option<&str>,
+    on_usage: &(dyn Fn(u32, u32) + Send + Sync),
+    deadline: tokio::time::Instant,
+    admission: Option<&dyn crate::admission::Admission>,
+    repair_json: bool,
+) -> Result<CompleteResponse> {
     if let Some(raw) = cached {
         return Ok(CompleteResponse {
             content: raw.into(),
@@ -248,7 +261,7 @@ pub async fn complete_admitted_until(
     }
     crate::deadline::until(
         deadline,
-        complete_observed(client, req, on_usage, admission),
+        complete_observed(client, req, on_usage, admission, repair_json),
     )
     .await
 }
@@ -262,17 +275,26 @@ async fn complete_observed(
     req: &CompleteRequest,
     on_usage: &(dyn Fn(u32, u32) + Send + Sync),
     admission: Option<&dyn crate::admission::Admission>,
+    repair_json: bool,
 ) -> Result<CompleteResponse> {
     if req.base_url.trim().is_empty() || req.model.trim().is_empty() {
         return Err(Error::NoProvider);
     }
     match req.protocol {
-        Protocol::Chat => complete_via(client, req, Protocol::Chat, on_usage, admission).await,
-        Protocol::Responses => {
-            complete_via(client, req, Protocol::Responses, on_usage, admission).await
+        Protocol::Chat | Protocol::Responses => {
+            complete_via(client, req, req.protocol, on_usage, admission, repair_json).await
         }
         Protocol::Auto => {
-            match complete_via(client, req, Protocol::Chat, on_usage, admission).await {
+            match complete_via(
+                client,
+                req,
+                Protocol::Chat,
+                on_usage,
+                admission,
+                repair_json,
+            )
+            .await
+            {
                 Ok(mut out) => {
                     out.detected_protocol = Some("chat".into());
                     Ok(out)
@@ -281,8 +303,15 @@ async fn complete_observed(
                     tracing::debug!(
                         "chat/completions returned 404/405; auto fallback to responses"
                     );
-                    let mut out =
-                        complete_via(client, req, Protocol::Responses, on_usage, admission).await?;
+                    let mut out = complete_via(
+                        client,
+                        req,
+                        Protocol::Responses,
+                        on_usage,
+                        admission,
+                        repair_json,
+                    )
+                    .await?;
                     out.detected_protocol = Some("responses".into());
                     Ok(out)
                 }
@@ -308,6 +337,7 @@ async fn complete_via(
     protocol: Protocol,
     on_usage: &(dyn Fn(u32, u32) + Send + Sync),
     admission: Option<&dyn crate::admission::Admission>,
+    repair_json: bool,
 ) -> Result<CompleteResponse> {
     for format in [
         ResponseFormat::JsonSchema,
@@ -318,8 +348,9 @@ async fn complete_via(
             Ok(body) => match parse_observed(protocol, &body, on_usage) {
                 Ok(out) => return Ok(out),
                 Err(err)
-                    if matches!(&err, Error::InvalidJson(_))
-                        || matches!(&err, Error::Content { source, .. } if matches!(**source, Error::InvalidJson(_))) =>
+                    if repair_json
+                        && (matches!(&err, Error::InvalidJson(_))
+                            || matches!(&err, Error::Content { source, .. } if matches!(**source, Error::InvalidJson(_)))) =>
                 {
                     tracing::warn!(model = %req.model, protocol = protocol.as_str(), format = format.as_str(), response_bytes = body.len(), error_kind = "invalid_json", "invalid json received; retrying with prompt-only format");
                     let usage = match err {

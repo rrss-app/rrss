@@ -1,9 +1,11 @@
 //! 主对话与简报追问：会话锚点与每轮上下文组装。进程与一轮对话的结算在 `crate::pi`。
 
+use std::collections::HashMap;
+
 use anyhow::Result;
 use rrss_core::cite::{CitationSnap, expand_user_prompt, passage_around};
 use rrss_core::{ai_store, threads};
-use rrss_render::{Block, inlines_to_plain};
+use rrss_render::{Block, Document, inlines_to_plain};
 use rusqlite::Connection;
 
 use crate::digest::{self, DigestContext};
@@ -105,7 +107,10 @@ pub fn prepare_send(conn: &Connection, args: &SendMessageArgs) -> Result<Prepare
         .collect();
     // 每轮只带随轮变化的内容：原文、引用展开、简报锚点（检索结果由调用方追加）。
     // 固定规则在 `pi/SYSTEM.md`，长期记忆由扩展每轮写进系统提示小节（阶段 18 D10）。
-    let mut prompt = expand_user_prompt(&args.text, &snaps, |c| citation_passage(conn, c));
+    let mut documents = HashMap::new();
+    let mut prompt = expand_user_prompt(&args.text, &snaps, |citation| {
+        citation_passage(conn, &mut documents, citation)
+    });
     if let Some(d) = context.as_ref() {
         prompt.push_str(&digest_prompt(d));
     }
@@ -121,13 +126,27 @@ pub fn prepare_send(conn: &Connection, args: &SendMessageArgs) -> Result<Prepare
 
 /// 划选所在的段落：展示文档里第 `block_id` 块（与阅读器 `data-block-id` 相同）。
 /// 简报摘录、整篇引用、读不到或对不上的都不给，模型需要时自己调 `get_article`。
-fn citation_passage(conn: &Connection, c: &CitationSnap) -> Option<String> {
-    if c.kind == "digest" || c.excerpt.trim().is_empty() || c.article_id <= 0 || c.block_id < 0 {
+fn citation_passage(
+    conn: &Connection,
+    documents: &mut HashMap<i64, Option<Document>>,
+    citation: &CitationSnap,
+) -> Option<String> {
+    if citation.kind == "digest"
+        || citation.excerpt.trim().is_empty()
+        || citation.article_id <= 0
+        || citation.block_id < 0
+    {
         return None;
     }
-    let article = rrss_core::articles::get_article(conn, c.article_id).ok()?;
-    let doc = load_document(&article);
-    let text = match doc.blocks.get(usize::try_from(c.block_id).ok()?)? {
+    let block = usize::try_from(citation.block_id).ok()?;
+    let document = documents
+        .entry(citation.article_id)
+        .or_insert_with(|| {
+            let article = rrss_core::articles::get_article(conn, citation.article_id).ok()?;
+            Some(load_document(&article))
+        })
+        .as_ref()?;
+    let text = match document.blocks.get(block)? {
         Block::Heading { inlines, .. }
         | Block::Paragraph { inlines }
         | Block::ListItem { inlines, .. }
@@ -136,7 +155,7 @@ fn citation_passage(conn: &Connection, c: &CitationSnap) -> Option<String> {
         block @ Block::Table { .. } => rrss_render::block_plain(block),
         _ => return None,
     };
-    passage_around(&text, &c.excerpt, PASSAGE_CHARS)
+    passage_around(&text, &citation.excerpt, PASSAGE_CHARS)
 }
 
 pub fn validate_thinking(thinking: Option<&str>) -> Result<()> {
@@ -181,6 +200,129 @@ fn digest_prompt(d: &DigestContext) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn passage_fixture(conn: &Connection, blocks: usize) -> (String, SendMessageArgs) {
+        let before = "Synthetic field notes with nearby context. ".repeat(10);
+        let after = " Additional observations from this fictional field visit.".repeat(10);
+        let paragraphs = (0..blocks)
+            .map(|index| format!("{before}**Marker {index:03}**{after}"))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let document = rrss_render::markdown_to_document(&paragraphs);
+        assert_eq!(document.blocks.len(), blocks);
+        let stored = rrss_core::body::fulltext_json(&document, &paragraphs).unwrap();
+        conn.execute(
+            "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://notes.example/feed',0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO articles(id,feed_id,title,created_at,fulltext_md,blocks_json)
+             VALUES(1,1,'Synthetic field notes',0,?1,?2)",
+            rusqlite::params![paragraphs, stored],
+        )
+        .unwrap();
+        let args = SendMessageArgs {
+            thread_id: threads::create_thread(conn, None).unwrap().id,
+            text: "What do the selected observations say?".into(),
+            citations: [0, blocks / 2, blocks - 1]
+                .into_iter()
+                .map(|index| {
+                    crate::actions::cite_selection(
+                        conn,
+                        1,
+                        &format!("Marker {index:03}"),
+                        index as i64,
+                    )
+                    .unwrap()
+                })
+                .collect(),
+            digest_id: None,
+            model: None,
+            thinking: None,
+        };
+        (paragraphs, args)
+    }
+
+    #[test]
+    fn send_expands_each_matching_block_and_uses_current_document_on_next_send() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = rrss_core::db::open_at(&dir.path().join("t.db")).unwrap();
+        let (markdown, mut args) = passage_fixture(&conn, 3);
+        let mut unmatched = args.citations[1].clone();
+        unmatched.block_id = args.citations[0].block_id;
+        args.citations.push(unmatched);
+        let prompt = prepare_send(&conn, &args).unwrap().prompt;
+        let passages = prompt
+            .lines()
+            .filter_map(|line| line.strip_prefix("In the paragraph: \""))
+            .map(|line| line.strip_suffix('"').unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(passages.len(), 3);
+        for (index, passage) in passages.into_iter().enumerate() {
+            assert!(passage.contains(&format!("Marker {index:03}")));
+            assert!(passage.chars().count() <= PASSAGE_CHARS + 2);
+        }
+        conn.execute(
+            "UPDATE articles SET fulltext_md=?1,blocks_json=NULL WHERE id=1",
+            [markdown.replace("Marker 001", "Updated observation")],
+        )
+        .unwrap();
+        let prompt = prepare_send(&conn, &args).unwrap().prompt;
+        assert_eq!(prompt.matches("\nIn the paragraph: ").count(), 2);
+    }
+
+    #[test]
+    #[ignore = "synthetic send preparation latency probe"]
+    fn send_preparation_latency_with_same_article_selections() {
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        let dir = tempfile::tempdir().unwrap();
+        let conn = rrss_core::db::open_at(&dir.path().join("t.db")).unwrap();
+        let (markdown, selections) = passage_fixture(&conn, 120);
+        let whole = SendMessageArgs {
+            citations: vec![crate::actions::cite_article(&conn, 1).unwrap()],
+            ..selections.clone()
+        };
+        let plain = SendMessageArgs {
+            citations: vec![],
+            ..selections.clone()
+        };
+        for source in ["stored IR", "Markdown fallback"] {
+            if source == "Markdown fallback" {
+                conn.execute("UPDATE articles SET blocks_json=NULL WHERE id=1", [])
+                    .unwrap();
+            }
+            for (kind, args, passages) in [
+                ("none", &plain, 0),
+                ("whole", &whole, 0),
+                ("three spans", &selections, 3),
+            ] {
+                let warm = prepare_send(&conn, args).unwrap();
+                assert_eq!(
+                    warm.prompt.matches("\nIn the paragraph: ").count(),
+                    passages
+                );
+                let mut timings = (0..50)
+                    .map(|_| {
+                        let started = Instant::now();
+                        let prepared = prepare_send(&conn, black_box(args)).unwrap();
+                        let elapsed = started.elapsed().as_secs_f64() * 1_000.0;
+                        black_box(prepared);
+                        elapsed
+                    })
+                    .collect::<Vec<_>>();
+                timings.sort_by(f64::total_cmp);
+                println!(
+                    "prepare_send {source}, {} bytes Markdown, {kind}, n=50 median/p95 ms: {:.3}/{:.3}",
+                    markdown.len(),
+                    (timings[24] + timings[25]) / 2.0,
+                    timings[47],
+                );
+            }
+        }
+    }
 
     #[test]
     fn sending_to_an_archived_thread_restores_it_during_preparation() {

@@ -245,7 +245,9 @@ const NO_TURNS = createTurnStore();
  * 失败时由发送方撤回。
  */
 export function useReleaseOutgoing(store: ConversationStore, slot: string) {
-  useEffect(() => () => store.setOutgoing(slot, (current) => (current?.accepted ? null : current)), [store, slot]);
+  useEffect(() => {
+    if (slot.startsWith("new:")) return () => store.setOutgoing(slot, (current) => (current?.accepted ? null : current));
+  }, [store, slot]);
 }
 
 export type ChatPaneProps = Omit<ThreadMessagesProps, "onLoadOlder" | "scrollContainer"> & {
@@ -259,11 +261,14 @@ export function ChatPane({ onLoadOlder, jump, store, threadId, context = "chat",
   const scroller = useRef<HTMLDivElement>(null);
   const column = useRef<HTMLDivElement>(null);
   const slot = threadSlot(threadId, context);
-  const conversation = useConversation(store, threadId);
   const outgoing = useOutgoing(store, slot);
   const live = useLiveTurn(turns ?? NO_TURNS, slot, threadId);
+  const resolvedId = threadId || live?.threadId || outgoing?.threadId || 0;
+  const conversation = useConversation(store, resolvedId);
+  const inHistory = threadId === 0 && outgoing && conversation.messages.some(message =>
+    message.role === "user" && message.id > outgoing.after && message.text === outgoing.text);
   const traces = useTraces(turns ?? NO_TURNS);
-  const failure = useFailure(store, slot);
+  const failure = useFailure(store, threadSlot(resolvedId, context));
   useReleaseOutgoing(store, slot);
   // 从「新对话」发出后切到刚建的线程，是同一段对话的延续，不当作换对话。
   const fadeOnSwitch = useCallback((previous: string) => store.getOutgoing(previous)?.threadId !== threadId, [store, threadId]);
@@ -273,7 +278,7 @@ export function ChatPane({ onLoadOlder, jump, store, threadId, context = "chat",
     tail: `${last}:${conversation.stream?.text.length ?? 0}:${failure ? 1 : 0}`,
     sent: outgoing && !outgoing.accepted ? outgoing.token : 0,
   });
-  const loadOlder = onLoadOlder ? () => onLoadOlder(threadId) : undefined;
+  const loadOlder = onLoadOlder ? () => onLoadOlder(resolvedId) : undefined;
   return (
     <div className="scroll chat-pane" ref={scroller}>
       <div className="chat-column" ref={column}>
@@ -281,7 +286,7 @@ export function ChatPane({ onLoadOlder, jump, store, threadId, context = "chat",
           {...rest}
           messages={conversation.messages}
           stream={conversation.stream}
-          outgoing={outgoing}
+          outgoing={inHistory ? null : outgoing}
           live={live}
           traces={traces}
           failure={failure}

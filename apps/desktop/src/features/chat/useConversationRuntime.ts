@@ -61,6 +61,12 @@ export type ConversationRuntimeOptions = {
   store?: ConversationStore;
 };
 
+type SendOptions = {
+  resolveDigestThread?: boolean;
+  onResolved?: (threadId: number) => void;
+  onAccepted?: (threadId: number) => void;
+};
+
 /**
  * 会话运行层：订阅宿主流式事件，把正文按线程写入 store；回复按线程归属更新，
  * 翻期、切页和迟到请求都不能改写另一个会话。停止生成只在宿主 `abort` 支持时才是真正取消。
@@ -237,7 +243,7 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
   const thinkingFor = useCallback((id: number, context: string) => models[modelKey(id, context)]?.thinking ?? null, [models]);
   const contextFor = useCallback((id: number) => (id > 0 ? contexts[id] ?? null : null), [contexts]);
 
-  const sendMessage = useCallback(async (id: number, text: string, citations: CitationView[], digestId: number | null, context = "chat") => {
+  const sendMessage = useCallback(async (id: number, text: string, citations: CitationView[], digestId: number | null, context = "chat", dispatch?: SendOptions) => {
     const current = store.getStatus();
     if (current.sending || current.busyThreadId !== null) {
       throw new Error(i18n.t("runtime.busy", { ns: "chat" }));
@@ -246,7 +252,7 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
     settled.current.clear();
     // 自己的消息立刻出现在末尾（发送中），不等引擎启动；失败撤回，由调用方把文字和引用放回输入框。
     const key = modelKey(id, context);
-    const outgoing: Outgoing = {
+    let outgoing: Outgoing = {
       token: ++outgoingSeq.current, text, citations, accepted: false, threadId: 0,
       after: id > 0 ? store.get(id).messages.at(-1)?.id ?? 0 : 0,
     };
@@ -255,22 +261,42 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
     store.setOutgoing(key, () => outgoing);
     turns.begin(key, id);
     try {
-      const options = modelsRef.current[key];
-      const model = options?.model ?? null;
+      let targetId = id;
+      let targetKey = key;
+      let options = modelsRef.current[key];
       let threadId: number;
       try {
+        if (id === 0 && digestId !== null && dispatch?.resolveDigestThread) {
+          const target = await api.digestThread(digestId);
+          targetId = target.thread_id;
+          if (targetId > 0) {
+            hydrate(targetId, target.messages, target.has_more);
+            seedThread(targetId, target);
+            targetKey = modelKey(targetId, context);
+            options = modelsRef.current[targetKey];
+            outgoing = { ...outgoing, threadId: targetId, after: store.get(targetId).messages.at(-1)?.id ?? 0 };
+            store.setOutgoing(key, (current) => (mine(current) ? outgoing : current));
+            turns.attach(targetId);
+            store.setFailure(targetKey, () => null);
+            store.setOutgoing(targetKey, () => outgoing);
+            dispatch.onResolved?.(targetId);
+          }
+        }
         // 不知道这条线程的设置时不带思考强度（保持线程上已存的）；知道时连同「跟随模型」一起发。
-        threadId = await api.sendMessage(id, text, citations, digestId, model, options ? options.thinking ?? "" : null);
+        threadId = await api.sendMessage(targetId, text, citations, digestId, options?.model ?? null, options ? options.thinking ?? "" : null);
       } catch (err) {
         store.setOutgoing(key, (current) => (mine(current) ? null : current));
+        if (targetKey !== key) store.setOutgoing(targetKey, (current) => (mine(current) ? null : current));
         turns.abandon();
         throw err;
       }
       turns.attach(threadId);
       const accepted: Outgoing = { ...outgoing, accepted: true, threadId };
-      store.setOutgoing(key, (current) => (mine(current) ? accepted : current));
+      store.setOutgoing(key, (current) => (mine(current) ? (targetKey === key ? accepted : null) : current));
       // 新线程：切过去之前历史可能还没读回，先把这条挂到新线程上。
-      if (modelKey(threadId, context) !== key) store.setOutgoing(modelKey(threadId, context), (current) => current ?? accepted);
+      if (targetKey !== key) store.setOutgoing(targetKey, (current) => (mine(current) ? accepted : current));
+      else if (modelKey(threadId, context) !== key) store.setOutgoing(modelKey(threadId, context), (current) => current ?? accepted);
+      if (settled.current.has(threadId)) settleOutgoing(store, threadId, store.get(threadId).messages);
       for (const articleId of new Set(citations.map((c) => c.article_id).filter((a) => a > 0))) trackEvent(articleId, "ask");
       if (id <= 0) {
         setModels((old) => {
@@ -280,6 +306,7 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
         });
       }
       if (!settled.current.has(threadId)) store.setStatus({ busyThreadId: threadId });
+      dispatch?.onAccepted?.(threadId);
       // 发送已被接受后，即使历史加载失败，也不能把它当成发送失败再发一遍。
       await loadMessages(threadId, settled.current.has(threadId)).catch((err) => {
         callbacks.current.onError(formatNotice(i18n.t("runtime.messagesLoadFailed", { ns: "chat" }), err));
@@ -292,7 +319,7 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
     } finally {
       store.setStatus({ sending: false });
     }
-  }, [loadMessages, store, turns]);
+  }, [hydrate, loadMessages, seedThread, store, turns]);
 
   return {
     store, activity, turns, hydrate, loadMessages, loadOlder, release, sendMessage, sending: status.sending, busyThreadId: status.busyThreadId,

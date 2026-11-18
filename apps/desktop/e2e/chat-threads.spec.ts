@@ -1,9 +1,37 @@
 import { expect, test } from "./fixtures";
-import { installMockHost } from "./mockHost";
+import { installMockHost, MOCK_BINDINGS, MOCK_MESSAGES, MOCK_THREADS } from "./mockHost";
 import { shot } from "./shots";
 
 // 会话文件夹与归档（阶段 14 · 会话文件夹与归档）：文件夹、移动、置顶、重命名、归档与撤销、已归档列表、删除确认。
 const OUT = "../../test-results/chat-threads";
+
+test("a confirmed AI title cannot replace a rename made while it is running", async ({ page }) => {
+  await installMockHost(page, {
+    systemLanguage: "en",
+    threads: [{ ...MOCK_THREADS[0]!, title: "Garden volunteers" }],
+    messages: { 7: [{ ...MOCK_MESSAGES[7]![0]!, text: "How should we schedule garden volunteers?", cite_article_id: 0, citations: [] }] },
+    bindings: { ...MOCK_BINDINGS, tasks: MOCK_BINDINGS.tasks.map(task => task.task === "chat_title"
+      ? { ...task, provider_id: 1, model: "llama3.2" } : task) },
+  });
+  await page.goto("/");
+  await page.evaluate(() => { (window as any).__mockHost.holdTitle = true; });
+  const thread = page.getByRole("button", { name: "Garden volunteers", exact: true });
+  const openMenu = () => thread.click({ button: "right" });
+  await openMenu();
+  await page.getByRole("menuitem", { name: "Generate title with AI" }).click();
+  await page.getByRole("alertdialog", { name: "Generate a chat title with AI?" }).getByRole("button", { name: "Generate", exact: true }).click();
+  await expect(thread).toHaveAttribute("aria-busy", "true");
+  await openMenu();
+  await expect(page.getByRole("menuitem", { name: "Generate title with AI" })).toBeDisabled();
+  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+  const input = page.getByRole("textbox", { name: "Chat title" });
+  await input.fill("Weekend garden rota");
+  await input.press("Enter");
+  await expect(page.getByRole("button", { name: "Weekend garden rota", exact: true })).toBeVisible();
+  await page.evaluate(() => (window as any).__mockHost.releaseTitle(7, "Late garden title"));
+  await expect(page.getByRole("button", { name: "Weekend garden rota", exact: true })).not.toHaveAttribute("aria-busy", "true");
+  await expect(page.getByRole("button", { name: "Late garden title", exact: true })).toHaveCount(0);
+});
 
 test("threads can be filed, pinned, renamed, archived and deleted from the sidebar", async ({ page }) => {
   await installMockHost(page);

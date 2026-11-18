@@ -407,7 +407,10 @@ pub fn import(conn: &Connection, export: &Export) -> Result<ImportReport> {
     }
     for memory in export.memories.iter().flatten() {
         let content = memory.content.trim();
-        if content.is_empty() || crate::memories::MemoryKind::parse_str(&memory.kind).is_err() {
+        let Ok(memory_kind) = crate::memories::MemoryKind::parse_str(&memory.kind) else {
+            continue;
+        };
+        if content.is_empty() {
             continue;
         }
         let exists: i64 = conn.query_row(
@@ -431,6 +434,9 @@ pub fn import(conn: &Connection, export: &Export) -> Result<ImportReport> {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![memory.kind, content, kind, scope_id, memory.pinned, memory.strength, memory.source, now_ms()],
         )?;
+        if memory_kind == crate::memories::MemoryKind::Semantic {
+            crate::memories::remember_fact(conn, content)?;
+        }
         report.memories_added += 1;
     }
     Ok(report)
@@ -518,6 +524,11 @@ mod tests {
         assert_eq!(report.rules_added, 1);
         assert_eq!(report.interests_added, 1);
         assert_eq!(report.memories_added, 1);
+        assert!(
+            crate::memories::insert_new_candidates(&dst, vec!["喜欢短文。".into()])
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(report.skipped.len(), 3, "{:?}", report.skipped);
         assert!(matches!(
             &report.skipped[0],

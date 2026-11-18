@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use crate::scheduler::model_capacity::{Priority, RequestAdmission};
+use crate::scheduler::model_capacity::{DispatchCheck, Priority, RequestAdmission};
 use anyhow::Result;
-use rrss_ai::{CompleteRequest, complete::complete_admitted_until};
+use rrss_ai::{CompleteRequest, complete::complete_admitted_with_repair_until};
 use rrss_core::Error as CoreError;
 use rrss_core::ai_store::{self, ResolvedTask};
 use serde_json::Value;
@@ -17,6 +17,7 @@ pub(crate) struct Prepared {
     pub cached: Option<String>,
     pub write_detected_protocol: bool,
     pub auto: bool,
+    pub dispatch_check: Option<DispatchCheck>,
 }
 
 pub(crate) fn same_task(left: &ResolvedTask, right: &ResolvedTask) -> bool {
@@ -79,14 +80,27 @@ pub(crate) fn prepare_resolved(
     );
     Ok(Prepared {
         provider: resolved.provider.clone(),
+        cached: if caches_output(&resolved.task) {
+            ai_store::cache_get(conn, &key)?
+        } else {
+            None
+        },
         resolved,
-        cached: ai_store::cache_get(conn, &key)?,
         cache_key: key,
         write_detected_protocol: true,
         auto,
+        dispatch_check: None,
     })
 }
 
+fn caches_output(task: &str) -> bool {
+    !matches!(
+        task,
+        ai_store::TASK_MEMORY_CANDIDATE | ai_store::TASK_EPISODE_COMPRESS | ai_store::TASK_CHAT_TITLE
+    )
+}
+
+#[cfg(test)]
 pub(crate) async fn complete_task(
     db_path: &Path,
     client: &reqwest::Client,
@@ -140,6 +154,7 @@ fn request_priority(task: &str, auto: bool) -> Priority {
                 | ai_store::TASK_DIGEST_WEEKLY
                 | ai_store::TASK_DIGEST_PICK_DAILY
                 | ai_store::TASK_DIGEST_PICK_WEEKLY
+                | ai_store::TASK_CHAT_TITLE
         );
     if manual || task == ai_store::TASK_ARTICLE_TRANSLATE {
         Priority::Interactive
@@ -204,13 +219,14 @@ pub(crate) async fn execute_prepared_with_policy<T>(
         .in_current_span()
         .with_current_subscriber(),
     );
-    let admission = RequestAdmission::new(
+    let mut admission = RequestAdmission::new(
         db_path,
         &prepared.provider.base_url,
         request_priority(&prepared.resolved.task, prepared.auto),
         prepared.auto,
     )?;
-    let response = complete_admitted_until(
+    admission.dispatch_check = prepared.dispatch_check.clone();
+    let response = complete_admitted_with_repair_until(
         client,
         &req,
         prepared.cached.as_deref(),
@@ -219,6 +235,7 @@ pub(crate) async fn execute_prepared_with_policy<T>(
         },
         tokio::time::Instant::now() + rrss_ai::deadline::ITEM_TIMEOUT,
         Some(&admission),
+        prepared.resolved.task != ai_store::TASK_CHAT_TITLE,
     )
     .await;
     drop(usage_send);
@@ -241,7 +258,7 @@ pub(crate) async fn execute_prepared_with_policy<T>(
             }
             if out.from_cache && !valid {
                 ai_store::cache_delete(conn, &prepared.cache_key)?;
-            } else if !out.from_cache && valid {
+            } else if !out.from_cache && valid && caches_output(&prepared.resolved.task) {
                 ai_store::cache_put(conn, &prepared.cache_key, &out.content)?;
             }
             if let Some(detected) = out.detected_protocol

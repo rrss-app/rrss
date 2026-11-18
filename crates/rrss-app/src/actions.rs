@@ -382,17 +382,7 @@ fn bind_task(
 pub use crate::web::{collect_article, open_web_link};
 
 pub fn cite_article(conn: &Connection, id: i64) -> rrss_core::Result<CitationView> {
-    articles::collect_article(conn, id)?;
-    let article = articles::get_article(conn, id)?;
-    Ok(CitationView {
-        kind: "article".into(),
-        article_id: article.id,
-        title: article.title,
-        feed_title: article.feed_title,
-        url: article.canonical_url.unwrap_or_default(),
-        excerpt: String::new(),
-        block_id: -1,
-    })
+    article_citation(conn, id, "article", String::new(), -1)
 }
 
 pub fn cite_selection(
@@ -401,15 +391,33 @@ pub fn cite_selection(
     excerpt: &str,
     block_id: i64,
 ) -> rrss_core::Result<CitationView> {
-    articles::collect_article(conn, article_id)?;
-    let article = articles::get_article(conn, article_id)?;
+    article_citation(
+        conn,
+        article_id,
+        "span",
+        excerpt.chars().take(500).collect(),
+        block_id,
+    )
+}
+
+fn article_citation(
+    conn: &Connection,
+    article_id: i64,
+    kind: &str,
+    excerpt: String,
+    block_id: i64,
+) -> rrss_core::Result<CitationView> {
+    let article = articles::citation_metadata(conn, article_id)?;
+    if article.temporary {
+        articles::collect_article(conn, article_id)?;
+    }
     Ok(CitationView {
-        kind: "span".into(),
-        article_id: article.id,
+        kind: kind.into(),
+        article_id,
         title: article.title,
         feed_title: article.feed_title,
         url: article.canonical_url.unwrap_or_default(),
-        excerpt: excerpt.chars().take(500).collect(),
+        excerpt,
         block_id,
     })
 }
@@ -648,6 +656,132 @@ fn open_temp() -> (tempfile::TempDir, rrss_core::db::PooledConnection) {
 mod tests {
     use super::*;
     use rrss_core::db;
+
+    #[test]
+    fn citations_keep_snapshot_fields_and_only_collect_temporary_articles() {
+        let (_dir, conn) = open_temp();
+        conn.execute_batch(
+            "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://notes.example/feed',0);
+             INSERT INTO articles(id,feed_id,title,canonical_url,created_at,expires_at)
+             VALUES(1,1,'Fixture','https://notes.example/fixture',0,1),
+                   (2,1,'Selection fixture',NULL,0,1)",
+        )
+        .unwrap();
+
+        let whole = cite_article(&conn, 1).unwrap();
+        assert_eq!(whole.kind, "article");
+        assert_eq!(whole.article_id, 1);
+        assert_eq!(whole.title, "Fixture");
+        assert_eq!(whole.feed_title, "notes.example");
+        assert_eq!(whole.url, "https://notes.example/fixture");
+        assert!(whole.excerpt.is_empty());
+        assert_eq!(whole.block_id, -1);
+        assert!(!articles::is_temporary(&conn, 1).unwrap());
+
+        let excerpt = "é".repeat(501);
+        let span = cite_selection(&conn, 2, &excerpt, 7).unwrap();
+        assert_eq!(span.kind, "span");
+        assert_eq!(span.article_id, 2);
+        assert!(span.url.is_empty());
+        assert_eq!(span.excerpt, "é".repeat(500));
+        assert_eq!(span.block_id, 7);
+        assert!(!articles::is_temporary(&conn, 2).unwrap());
+
+        conn.execute("UPDATE articles SET title='Renamed fixture' WHERE id=2", [])
+            .unwrap();
+        conn.execute_batch("PRAGMA query_only=ON").unwrap();
+        assert!(cite_article(&conn, 1).is_ok());
+        let next = cite_selection(&conn, 2, "another excerpt", 8).unwrap();
+        assert_eq!(next.title, "Renamed fixture");
+        assert_eq!(next.excerpt, "another excerpt");
+        assert_eq!(next.block_id, 8);
+        assert!(matches!(
+            cite_article(&conn, 999),
+            Err(rrss_core::Error::ArticleNotFound)
+        ));
+        assert!(matches!(
+            cite_selection(&conn, 999, "missing", 0),
+            Err(rrss_core::Error::ArticleNotFound)
+        ));
+        conn.execute_batch("PRAGMA query_only=OFF").unwrap();
+    }
+
+    #[test]
+    #[ignore = "synthetic citation latency probe"]
+    fn citations_metadata_latency() {
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        let (dir, conn) = open_temp();
+        conn.execute_batch("INSERT INTO feeds(id,url,created_at) VALUES(1,'https://notes.example/feed',0)")
+            .unwrap();
+        for (id, kib) in [(1, 4), (2, 512)] {
+            let text = "Synthetic block ".repeat(kib * 64);
+            conn.execute(
+                "INSERT INTO articles(id,feed_id,title,created_at,content_html,blocks_json,fulltext_md)
+                 VALUES(?1,1,'Fixture',0,?2,?3,?4)",
+                rusqlite::params![
+                    id,
+                    format!("<p>{text}</p>"),
+                    serde_json::json!({"text": text}).to_string(),
+                    text,
+                ],
+            )
+            .unwrap();
+        }
+        let path = dir.path().join("t.db");
+        let run = |id, blocks: &[i64], fresh: bool, baseline: bool| {
+            let mut timings = Vec::new();
+            let warm = Connection::open(&path).unwrap();
+            if !fresh {
+                drop(articles::get_article(&warm, id).unwrap());
+            }
+            for _ in 0..30 {
+                let cold = fresh.then(|| Connection::open(&path).unwrap());
+                let connection = cold.as_ref().unwrap_or(&warm);
+                let started = Instant::now();
+                for &block_id in blocks {
+                    if baseline {
+                        articles::collect_article(connection, id).unwrap();
+                        let article = articles::get_article(connection, id).unwrap();
+                        black_box(CitationView {
+                            kind: if block_id < 0 { "article" } else { "span" }.into(),
+                            article_id: article.id,
+                            title: article.title,
+                            feed_title: article.feed_title,
+                            url: article.canonical_url.unwrap_or_default(),
+                            excerpt: if block_id < 0 { "" } else { "Synthetic excerpt" }
+                                .chars()
+                                .take(500)
+                                .collect(),
+                            block_id,
+                        });
+                    } else if block_id < 0 {
+                        black_box(cite_article(connection, id).unwrap());
+                    } else {
+                        black_box(
+                            cite_selection(connection, id, "Synthetic excerpt", block_id).unwrap(),
+                        );
+                    }
+                }
+                timings.push(started.elapsed().as_secs_f64() * 1_000.0);
+            }
+            timings.sort_by(f64::total_cmp);
+            ((timings[14] + timings[15]) / 2.0, timings[28])
+        };
+        for (id, kib) in [(1, 4), (2, 512)] {
+            for (kind, blocks) in [("article", &[-1_i64][..]), ("three spans", &[0, 1, 2][..])] {
+                for (cache, fresh) in [("new connection", true), ("warm connection", false)] {
+                    let before = run(id, blocks, fresh, true);
+                    let after = run(id, blocks, fresh, false);
+                    println!(
+                        "citation db {kib} KiB/field {kind} {cache} n=30 median/p95 ms: {:.3}/{:.3} -> {:.3}/{:.3}",
+                        before.0, before.1, after.0, after.1
+                    );
+                }
+            }
+        }
+    }
 
     #[tokio::test]
     async fn interest_edits_wake_existing_background_rebuild() {

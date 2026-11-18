@@ -170,7 +170,7 @@ export const FocusScreen = memo(function FocusScreen({ session, active, shortcut
     onSummarize={summarize} clusterSummary={clusterSummary} clusterSummaryShown={clusterSummaryShown}
     onRanking={session.setRanking} onMarkAllRead={session.markAllRead} onRefresh={session.refresh} refreshing={state.refreshing}
     onLoadMore={session.loadMore} loadingMore={state.loadingMore} loading={state.loading} moreError={state.moreError} revision={state.revision}
-    newCount={state.pendingNew} onShowNew={() => { clearFocus(); void session.reload(); }}
+    onVisibleEnd={session.setVisibleEnd} newCount={state.pendingNew} onShowNew={() => { clearFocus(); session.showNew(); }}
     focusedRowIndex={focusedRowIndex} returnFocus={focusedRowIndex >= 0 ? keyboard.returned : 0} onOpen={(id) => { clearFocus(); onOpen(id); }} onCite={(id) => void cite(id)}
     onRate={onRate} onStar={(row) => void session.toggleStar(row.id, row.starred)} onOpenDigest={column ? undefined : onOpenDigest} onOpenSearch={onOpenSearch} onSource={(feedId) => { clearFocus(); onOpenFeed(feedId); }}
   /></>;

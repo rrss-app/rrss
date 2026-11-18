@@ -437,6 +437,16 @@ const DEFS: &[Def] = &[
         write: None,
     },
     Def {
+        id: crate::jobs::chat_titles::AUTO_TITLE_KEY,
+        domain: SettingDomain::Assistant,
+        level: SettingLevel::L0,
+        kind: Kind::Bool,
+        default: "0",
+        apply: SettingApply::Immediate,
+        affects_pi: false,
+        write: Some(crate::jobs::chat_titles::set_auto_enabled),
+    },
+    Def {
         id: db::PI_IDLE_TIMEOUT_SECS_KEY,
         domain: SettingDomain::Assistant,
         level: SettingLevel::L1,

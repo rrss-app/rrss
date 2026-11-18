@@ -38,6 +38,9 @@ impl ChatSink for TauriChatSink {
             ChatEvent::Error(error) => self.app.emit("chat:error", error),
             ChatEvent::Context(context) => self.app.emit("chat:context", context),
             ChatEvent::Done(thread_id) => self.app.emit("chat:done", thread_id),
+            ChatEvent::TitleStarted(thread_id) => self.app.emit("chat:title-started", thread_id),
+            ChatEvent::TitleFinished(thread_id) => self.app.emit("chat:title-finished", thread_id),
+            ChatEvent::TitleChanged(thread_id) => self.app.emit("chat:title-changed", thread_id),
         };
         if let Err(err) = sent {
             tracing::warn!(error = %err, "emit chat event");

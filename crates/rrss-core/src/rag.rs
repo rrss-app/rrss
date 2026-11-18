@@ -11,8 +11,7 @@ use crate::search::{SearchHit, search_articles_for_retrieval};
 const REQUIRED_TIER: &str = "CASE WHEN a.read = 1 OR a.starred = 1 THEN 2 ELSE 1 END";
 const TEXT_INPUTS: &str = "SELECT 'interest' kind,id row_id,label text,embedding,space_id
     FROM interests WHERE enabled=1
-    UNION ALL SELECT 'memory',id,content,embedding,space_id FROM memories
-    WHERE COALESCE(source,'')!='pending' AND strength>0";
+    UNION ALL SELECT 'memory',id,content,embedding,space_id FROM model_memories";
 
 // 待嵌入、进度、暂存及切换共用同一份输入；历史已有向量的正文也参加重建。
 pub(crate) fn rebuild_inputs() -> String {
@@ -512,9 +511,8 @@ pub(crate) fn knn_memories(
     let mut stmt = conn.prepare(
         "SELECT id, kind, content, scope, pinned, strength, source, last_used_at, created_at,
                 CASE WHEN embedding IS NOT NULL AND length(embedding) > 0 THEN 1 ELSE 0 END
-         FROM memories
+         FROM model_memories
          WHERE embedding IS NOT NULL AND length(embedding) = ?1 AND space_id = ?4
-           AND COALESCE(source, '') != 'pending' AND strength > 0
          ORDER BY vec_distance_cosine(embedding, ?2) ASC
          LIMIT ?3",
     )?;

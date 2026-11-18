@@ -14,6 +14,7 @@ import { useTranslation } from "../../i18n";
  */
 
 export type ThreadNotice = { message: string; actionLabel?: string; onAction?: () => void };
+type TitleActions = { pending: ReadonlySet<number>; generate: (thread: ThreadView) => Promise<void> };
 
 type Menu =
   | { kind: "thread"; id: number; step: "root" | "move" | "delete"; anchor: MenuAnchor }
@@ -26,7 +27,7 @@ type Editing = { key: string; move?: number } | null;
 const TITLE_MAX = 80;
 const FOLDER_MAX = 40;
 
-export function ThreadList({ list, active, fresh, onThread, onChanged, onArchived, notify }: {
+export function ThreadList({ list, active, fresh, onThread, onChanged, onArchived, notify, titles }: {
   list: ThreadListView;
   /** 当前打开的会话；不在对话页时为 0。 */
   active: number;
@@ -37,6 +38,7 @@ export function ThreadList({ list, active, fresh, onThread, onChanged, onArchive
   onChanged: () => void;
   onArchived: () => void;
   notify: (notice: ThreadNotice) => void;
+  titles: TitleActions;
 }) {
   const { t: tr } = useTranslation("chat");
   const [menu, setMenu] = useState<Menu | null>(null);
@@ -62,7 +64,7 @@ export function ThreadList({ list, active, fresh, onThread, onChanged, onArchive
   const openMenu = (next: Menu) => setMenu((old) => (old && old.kind === next.kind && old.id === next.id ? null : next));
   const anchorOf = (el: Element): MenuAnchor => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.bottom + 4 }; };
 
-  const commit = async (value: string) => {
+  const commit = async (value: string, explicit = false) => {
     const edit = editing;
     setEditing(null);
     if (!edit) return;
@@ -75,8 +77,7 @@ export function ThreadList({ list, active, fresh, onThread, onChanged, onArchive
       }, tr("thread.failure.createFolder"));
     } else if (edit.key.startsWith("t:")) {
       const id = Number(edit.key.slice(2));
-      if (text === thread(id)?.title) return;
-      // 清空就回到自动标题。
+      if (!explicit && text === thread(id)?.title) return;
       await run(() => api.renameThread(id, text.slice(0, TITLE_MAX)), tr("thread.failure.rename"));
     } else {
       const id = Number(edit.key.slice(2));
@@ -91,7 +92,7 @@ export function ThreadList({ list, active, fresh, onThread, onChanged, onArchive
       onBlur={(event) => void commit(event.currentTarget.value)}
       onKeyDown={(event) => {
         if (event.nativeEvent.isComposing) return;
-        if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
+        if (event.key === "Enter") { event.preventDefault(); void commit(event.currentTarget.value, true); }
         if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setEditing(null); }
       }} />
   );
@@ -102,9 +103,11 @@ export function ThreadList({ list, active, fresh, onThread, onChanged, onArchive
       data-menu={menu?.kind === "thread" && menu.id === t.id ? "" : undefined}
       onContextMenu={(event) => { event.preventDefault(); openMenu({ kind: "thread", id: t.id, step: "root", anchor: { x: event.clientX, y: event.clientY } }); }}>
       {editing?.key === key ? <div className="thread-item thread-editing">{renameInput(tr("thread.label.title"), t.title)}</div> : <>
-        <button type="button" className="thread-item" title={t.title} data-on={active === t.id ? "1" : "0"} aria-description={t.pinned ? tr("thread.pinned") : undefined}
+        <button type="button" className="thread-item" title={t.title} data-on={active === t.id ? "1" : "0"}
+          aria-busy={titles.pending.has(t.id) || undefined} aria-description={titles.pending.has(t.id) ? tr("titles.pending") : t.pinned ? tr("thread.pinned") : undefined}
           onClick={() => onThread(t.id, t)}>
           <span className="thread-title">{t.title}</span>
+          {titles.pending.has(t.id) ? <span className="thread-when" aria-hidden="true">{tr("titles.pending")}</span> : null}
           {t.pinned ? <span className="thread-pin" title={tr("thread.pinned")} aria-hidden="true"><Icon name="pin" size={12} /></span> : null}
         </button>
         <button type="button" className="thread-more" aria-label={tr("thread.actionsFor", { title: t.title })} aria-haspopup="menu"
@@ -188,6 +191,7 @@ export function ThreadList({ list, active, fresh, onThread, onChanged, onArchive
     </>;
     return <>
       <button type="button" role="menuitem" onClick={() => { close(); setEditing({ key: `t:${t.id}` }); }}><Icon name="edit" size={14} />{tr("thread.menu.rename")}</button>
+      <ThreadTitleItem thread={t} titles={titles} onClose={close} />
       <button type="button" role="menuitem" onClick={() => { close(); void run(() => api.setThreadPinned(t.id, !t.pinned), t.pinned ? tr("thread.failure.unpin") : tr("thread.failure.pin")); }}>
         <Icon name="pin" size={14} />{t.pinned ? tr("thread.menu.unpin") : tr("thread.menu.pin")}</button>
       <button type="button" role="menuitem" onClick={() => setMenu({ ...m, step: "move" })}><Icon name="folder" size={14} />{tr("thread.menu.moveToEllipsis")}</button>
@@ -248,13 +252,14 @@ export function DeleteConfirm({ title, folder = false, note, onCancel, onDelete 
  * 「已归档」：整列侧栏换成归档列表（做法同「订阅」），左上角回到会话。归档的会话不在侧栏、不进搜索；
  * 打开后可以照常看，发新消息时宿主自动取消归档。
  */
-export function ArchivedThreads({ threads, active, onBack, onThread, onChanged, notify }: {
+export function ArchivedThreads({ threads, active, onBack, onThread, onChanged, notify, titles }: {
   threads: ThreadView[] | null;
   active: number;
   onBack: () => void;
   onThread: (id: number, saved?: ThreadView) => void;
   onChanged: () => void;
   notify: (notice: ThreadNotice) => void;
+  titles: TitleActions;
 }) {
   const { t: tr } = useTranslation("chat");
   const [menu, setMenu] = useState<Extract<Menu, { kind: "archived" }> | null>(null);
@@ -272,9 +277,11 @@ export function ArchivedThreads({ threads, active, onBack, onThread, onChanged, 
       {threads?.map((t) => (
         <div key={t.id} className="thread-row" data-menu={menu?.id === t.id ? "" : undefined}
           onContextMenu={(event) => { event.preventDefault(); setMenu({ kind: "archived", id: t.id, step: "root", anchor: { x: event.clientX, y: event.clientY } }); }}>
-          <button type="button" className="thread-item" title={t.title} aria-label={t.title} data-on={active === t.id ? "1" : "0"} onClick={() => onThread(t.id, t)}>
+          <button type="button" className="thread-item" title={t.title} aria-label={t.title} data-on={active === t.id ? "1" : "0"}
+            aria-busy={titles.pending.has(t.id) || undefined} aria-description={titles.pending.has(t.id) ? tr("titles.pending") : undefined} onClick={() => onThread(t.id, t)}>
             <span className="thread-title">{t.title}</span>
-            {t.archived_at ? <RelativeTimeLabel ms={t.archived_at} /> : null}
+            {titles.pending.has(t.id) ? <span className="thread-when" aria-hidden="true">{tr("titles.pending")}</span>
+              : t.archived_at ? <RelativeTimeLabel ms={t.archived_at} /> : null}
           </button>
           <button type="button" className="thread-more" aria-label={tr("thread.actionsFor", { title: t.title })} aria-haspopup="menu" aria-expanded={menu?.id === t.id}
             onClick={(event) => { const r = event.currentTarget.getBoundingClientRect(); setMenu((old) => old?.id === t.id ? null : { kind: "archived", id: t.id, step: "root", anchor: { x: r.left, y: r.bottom + 4 } }); }}>⋯</button>
@@ -289,11 +296,21 @@ export function ArchivedThreads({ threads, active, onBack, onThread, onChanged, 
         onDelete={() => { setMenu(null); void run(async () => { await api.deleteThread(target.id); if (active === target.id) onThread(0); }, tr("thread.failure.delete"), tr("thread.notice.deleted", { title: target.title })); }} /> : <>
         <button type="button" role="menuitem" onClick={() => { setMenu(null); void run(() => api.unarchiveThread(target.id), tr("thread.failure.unarchive"), tr("thread.notice.unarchived", { title: target.title })); }}>
           <Icon name="inbox" size={14} />{tr("thread.menu.unarchive")}</button>
+        <ThreadTitleItem thread={target} titles={titles} onClose={() => setMenu(null)} />
         <hr />
         <button type="button" role="menuitem" className="danger" onClick={() => setMenu({ ...menu, step: "delete" })}><Icon name="trash" size={14} />{tr("thread.menu.delete")}</button>
       </>}
     </FloatingMenu> : null}
   </>;
+}
+
+function ThreadTitleItem({ thread, titles, onClose }: { thread: ThreadView; titles: TitleActions; onClose: () => void }) {
+  const { t } = useTranslation("chat");
+  const pending = titles.pending.has(thread.id);
+  return <button type="button" role="menuitem" aria-busy={pending || undefined} disabled={pending}
+    onClick={() => { onClose(); void titles.generate(thread); }}>
+    <Icon name="chat" size={14} />{t("titles.menu")}
+  </button>;
 }
 
 function RelativeTimeLabel({ ms }: { ms: number }) {

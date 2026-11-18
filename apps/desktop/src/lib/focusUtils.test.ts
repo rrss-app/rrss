@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyStarToFocusPage, flattenFeeds, focusExcludes, mergeFocusPage } from "./focusUtils";
+import { applyStarToFocusPage, flattenFeeds, focusExcludes, mergeFocusPage, mergeLowerArrivals } from "./focusUtils";
 import { PREVIEW_FEEDS, PREVIEW_FOCUS } from "./preview";
 import { focusRow, TWO_ARTICLE_PAGE } from "../test/fixtures/reader";
 
@@ -20,6 +20,16 @@ describe("focus page transformations", () => {
     expect(next.digest_banner).toBe(PREVIEW_FOCUS.digest_banner);
     expect(next.has_more).toBe(false);
     expect(next.articles.map((row) => row.id)).toEqual([...PREVIEW_FOCUS.articles.map((row) => row.id), 99]);
+  });
+  it("inserts only the lower arrivals inside a partially visible group", () => {
+    const member = (id: number) => ({ ...focusRow(id, String(id)), cluster_id: 7 });
+    const header = { ...member(7), row_kind: 1 };
+    const footer = { ...member(7), row_kind: 2 };
+    const current = { ...TWO_ARTICLE_PAGE, articles: [header, member(1), member(2), footer] };
+    const latest = { ...current, articles: [header, member(3), member(1), member(4), member(2), footer] };
+    expect(mergeLowerArrivals(current, latest, new Set([3, 4]), 1).articles).toEqual([
+      header, member(1), member(4), member(2), footer,
+    ]);
   });
   it("removes an empty starred cluster including its header and more row, keeping other clusters", () => {
     const card = { ...focusRow(42, "唯一收藏"), cluster_id: 10, starred: true };

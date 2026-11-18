@@ -304,6 +304,7 @@ async fn complete_window<T>(
             ai_store::cache_get(conn, &key)?
         };
         Ok(Prepared {
+            dispatch_check: None,
             provider: resolved.provider.clone(),
             resolved,
             cache_key: key,

@@ -266,6 +266,9 @@ impl Endpoint {
     }
 }
 
+pub(crate) type DispatchCheck =
+    Arc<dyn Fn(&rusqlite::Connection) -> rrss_core::Result<bool> + Send + Sync>;
+
 pub(crate) struct RequestAdmission {
     _capacity: Arc<Capacity>,
     endpoint: Arc<Endpoint>,
@@ -274,6 +277,7 @@ pub(crate) struct RequestAdmission {
     pub(crate) budget_kind: rrss_core::ai_store::BudgetKind,
     path: PathBuf,
     service: String,
+    pub(crate) dispatch_check: Option<DispatchCheck>,
     pub(crate) space: Option<(
         PathBuf,
         Option<i64>,
@@ -303,6 +307,7 @@ impl RequestAdmission {
             budget_path: auto.then(|| path.to_owned()),
             budget_kind: rrss_core::ai_store::BudgetKind::Generation,
             space: None,
+            dispatch_check: None,
         })
     }
 }
@@ -437,6 +442,16 @@ impl rrss_ai::admission::Admission for RequestAdmission {
                     }
                     error
                 })?;
+            if let Some(check) = self.dispatch_check.clone() {
+                let authorized = crate::jobs::spawn_db(self.path.clone(), move |conn| {
+                    rrss_core::db::read_snapshot(conn, |conn| check(conn))
+                })
+                .await
+                .map_err(|_| rrss_ai::Error::Admission(JobFailure::ConfigChanged))?;
+                if !authorized {
+                    return Err(rrss_ai::Error::Admission(JobFailure::ConfigChanged));
+                }
+            }
             drop(queue_timer);
             drop(queued);
             let measured = super::diagnostics::ModelLease {

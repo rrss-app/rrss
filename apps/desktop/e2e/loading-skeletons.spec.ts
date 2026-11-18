@@ -111,7 +111,11 @@ test("refresh stays busy and keeps the old page until its replacement arrives", 
   await refresh.click();
   await expect(refresh).toHaveAttribute("aria-busy", "true");
   await expect(refresh).toBeDisabled();
-  await expect.poll(() => calls(page, "focus_stream")).toBe(2);
+  // 启动时的后台更新也可能读一次焦点页，先后不定；只等刷新之后发出的那次读取。
+  await expect.poll(() => page.evaluate(() => {
+    const log: string[] = (window as any).__mockHost.calls;
+    return log.slice(log.lastIndexOf("refresh") + 1).filter((call) => call === "focus_stream").length;
+  })).toBeGreaterThan(0);
   await expect(card).toHaveAttribute("aria-label", before!);
   await expect(focusSkeleton(page)).toHaveCount(0);
   await page.keyboard.press("r");

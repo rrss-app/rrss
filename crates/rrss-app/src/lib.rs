@@ -202,6 +202,7 @@ mod export_ts {
             SaveNetworkProxyRuleArgs::decl(),
             SaveNetworkProxyArgs::decl(),
             ModelChoice::decl(),
+            ThreadTitleOutcome::decl(),
             ModelBindingsView::decl(),
             VectorSpaceView::decl(),
             VectorRebuildView::decl(),

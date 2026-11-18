@@ -52,7 +52,7 @@ pub const DEFAULT_TOOLS: &[PiToolDef] = &[
     PiToolDef {
         name: "search_memory",
         label: "Search memory",
-        description: "Search confirmed and pending local memories by keyword or meaning.",
+        description: "Search confirmed long-term memories by keyword or meaning.",
         confirm_required: false,
         parameters: &[("query", "string", "search terms")],
     },

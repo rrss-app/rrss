@@ -52,7 +52,6 @@ pub fn applies(task: &str) -> bool {
             | ai_store::TASK_DIGEST_DAILY
             | ai_store::TASK_DIGEST_WEEKLY
             | ai_store::TASK_CLUSTER_SUMMARY
-            | ai_store::TASK_MEMORY_CANDIDATE
             | ai_store::TASK_EPISODE_COMPRESS
     )
 }

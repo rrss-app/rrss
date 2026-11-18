@@ -356,7 +356,8 @@
     "episode_compress": "情节压缩",
     "article_translate": "本篇翻译",
     "embed": "嵌入",
-    "chat": "对话"
+    "chat": "对话",
+    "chat_title": "会话标题"
   },
   "setting_unknown": "没有名为 {{id}} 的设置项",
   "setting_boolean_required": "{{id}} 只能是开或关",

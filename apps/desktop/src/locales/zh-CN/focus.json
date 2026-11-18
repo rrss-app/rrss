@@ -78,7 +78,6 @@
     "markFailed": "标记已读失败：",
     "groupAlreadyRead": "这组已经都读过了",
     "groupMarked_other": "已把这组 {{count}} 篇标为已读",
-    "refreshedInserted_other": "刷新完成，新入库 {{count}} 篇",
     "refreshFailed": "刷新失败："
   },
   "hidden": {
@@ -224,7 +223,7 @@
     "refreshTitle": "抓取全部订阅源（R）",
     "markAllRead": "全部已读",
     "markAllReadTitle": "把当前范围内的条目标为已读",
-    "newContent_other": "有 {{count}} 篇新内容",
+    "newContent_other": "查看 {{count}} 篇新内容",
     "digestTitle": "今日简报",
     "digestCta": "阅读简报",
     "retryLoadMore": "重试加载更多",

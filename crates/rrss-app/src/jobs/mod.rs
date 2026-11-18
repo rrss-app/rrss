@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use rrss_core::{Error as CoreError, db};
 use tracing::Instrument;
 
+pub mod chat_titles;
 pub mod cluster;
 pub mod cluster_summary;
 pub mod complete;

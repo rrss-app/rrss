@@ -1,6 +1,6 @@
 import { mcpFixture } from "../src/test/fixtures/settings";
 import { expect, test, type Locator, type Page } from "./fixtures";
-import { installMockHost, MOCK_PI, settingsTab } from "./mockHost";
+import { installMockHost, MOCK_BINDINGS, MOCK_PI, settingsTab } from "./mockHost";
 import { shot } from "./shots";
 
 // 复用共享模拟宿主：状态经 `__mockHost.state` 调整，事件经 `__mockHost.emit` 推送。
@@ -18,6 +18,29 @@ async function openAssistant(page: Page) {
   await expect(settings.getByRole("heading", { name: "对话助手", exact: true })).toBeVisible();
   return settings;
 }
+
+test("automatic chat titles require confirmation and save the setting", async ({ page }) => {
+  await installMockHost(page, { systemLanguage: "en", bindings: {
+    ...MOCK_BINDINGS, tasks: MOCK_BINDINGS.tasks.map(task => task.task === "chat_title"
+      ? { ...task, provider_id: 1, model: "llama3.2" } : task),
+  } });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  await settingsTab(settings, "assistant").click();
+  const toggle = settings.getByRole("button", { name: "Automatically generate chat titles" });
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await toggle.click();
+  const confirmation = page.getByRole("alertdialog", { name: "Turn on automatic chat titles?" });
+  await confirmation.getByRole("button", { name: "Cancel" }).click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await toggle.click();
+  await confirmation.getByRole("button", { name: "Turn on", exact: true }).click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await settingsTab(settings, "model").click();
+  await settingsTab(settings, "assistant").click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+});
 
 /** 对话模型说明必须横排。选择框若按 width:100% 占满行，左侧文字会被挤成一字一行。 */
 async function expectChatModelLabelHorizontal(settings: Locator) {

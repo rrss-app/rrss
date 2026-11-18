@@ -115,7 +115,7 @@ test("reader citation entrances share a persistent tray, deduplicate full articl
   await expect(reader).not.toBeVisible();
 });
 
-test("tray sends to new or recent thread, keeps the target draft and preserves reader position", async ({ page }) => {
+test("tray merges a recent thread draft, keeps its target across search and restores reader position", async ({ page }) => {
   await setup(page);
   await page.getByRole("button", { name: MOCK_THREADS[0].title, exact: true }).click();
   await page.getByRole("textbox", { name: "对话消息" }).fill("目标原有草稿");
@@ -151,12 +151,6 @@ test("tray sends to new or recent thread, keeps the target draft and preserves r
   await expect.poll(() => reader.locator(".drawer-body").evaluate(el => el.scrollTop)).toBeGreaterThan(top - 100);
   await citeFull(page);
   await expect(tray.getByRole("button", { name: "发到 新对话" })).toBeVisible();
-  await tray.getByRole("textbox").fill("新的引用问题");
-  await tray.getByRole("button", { name: "发送", exact: true }).click();
-  await expect(reader).not.toBeVisible();
-  await expect(page.locator(".thread-list .thread-item:not(.new-thread)").first()).toHaveText("新的引用问题");
-  await expect(page.locator(".thread-list .thread-item:not(.new-thread)").first()).toHaveAttribute("data-on", "1");
-  await expect.poll(() => page.evaluate(() => (window as any).__mockHost.args.send_message.args.threadId)).toBe(0);
 });
 
 test("digest source defaults to the same period draft and opens its conversation after sending", async ({ page }) => {
@@ -180,39 +174,53 @@ test("digest source defaults to the same period draft and opens its conversation
   await expect(page.locator(".digest-discussion .bubble.user").last()).toContainText("本期已有草稿");
 });
 
-test("failed sends retain the draft, composition never sends and in-flight sends are exclusive", async ({ page }) => {
+test("reader composition never sends and a held first send can only be retried after rejection", async ({ page }) => {
   await setup(page, { holdSend: true, sendFailures: 1 }); await open(page); await citeFull(page);
-  const tray = trayFor(page), input = tray.getByRole("textbox");
-  await input.fill("保留问题与引用");
-  await input.dispatchEvent("keydown", { key: "Enter", isComposing: true });
-  await input.dispatchEvent("keydown", { key: "Enter", keyCode: 229 });
+  const trayInput = trayFor(page).getByRole("textbox");
+  await trayInput.fill("保留问题与引用");
+  await trayInput.dispatchEvent("keydown", { key: "Enter", isComposing: true });
+  await trayInput.dispatchEvent("keydown", { key: "Enter", keyCode: 229 });
   expect(await calls(page, "send_message")).toBe(0);
-  await input.press("Enter");
+  await trayInput.press("Enter");
   await expect.poll(() => calls(page, "send_message")).toBe(1);
-  await input.dispatchEvent("keydown", { key: "Enter" });
-  await input.dispatchEvent("keydown", { key: "Enter" });
+  await expect(readerFor(page)).not.toBeVisible();
+  const composer = page.locator(".composer");
+  const input = page.getByRole("textbox", { name: "对话消息" });
+  const outgoing = page.locator(".chat-pane .bubble.user");
+  await input.fill("发送期间的第二个问题");
+  await expect(composer.getByRole("button", { name: "发送", exact: true })).toBeDisabled();
+  await input.press("Enter");
+  await input.press("Enter");
   expect(await calls(page, "send_message")).toBe(1);
+  await input.clear();
   await page.evaluate(() => (window as any).__mockHost.releaseSend());
   await expect(page.getByRole("status").filter({ hasText: "模拟发送失败" })).toBeVisible();
   await expect(input).toHaveValue("保留问题与引用");
-  await expect(tray.locator(".reader-citation-chip")).toHaveCount(1);
+  await expect(composer.locator(".citation-chip")).toHaveCount(1);
+  await expect(outgoing).toHaveCount(0);
   await input.press("Enter");
   await expect.poll(() => calls(page, "send_message")).toBe(2);
   await page.evaluate(() => (window as any).__mockHost.releaseSend());
-  await expect(readerFor(page)).not.toBeVisible();
-  await expect(page.locator(".chat-pane .bubble.user")).toHaveCount(1);
+  await expect(outgoing).toHaveCount(1);
+  await expect(outgoing).toHaveAttribute("data-message-id", /\d+/);
+  await expect(outgoing).toContainText("保留问题与引用");
+  await expect(outgoing.locator(".citation-open")).toContainText(fixture.plain.title);
 });
 
-test("an accepted send after leaving the reader does not dismiss another overlay", async ({ page }) => {
+test("a late citation send acceptance leaves Settings open over Today", async ({ page }) => {
   await setup(page, { holdSend: true }); await open(page); await citeFull(page);
   await trayFor(page).getByRole("textbox").fill("等待接受的提问");
   await trayFor(page).getByRole("textbox").press("Enter");
   await expect.poll(() => calls(page, "send_message")).toBe(1);
-  await readerFor(page).getByRole("button", { name: "返回", exact: true }).click();
+  await expect(page.locator(".chat-pane .bubble.user")).toContainText("等待接受的提问");
+  await page.getByRole("button", { name: "今日焦点", exact: true }).click();
   await page.getByRole("button", { name: "设置", exact: true }).click();
+  const settings = page.locator(".settings-drawer");
+  await expect(settings).toBeVisible();
   await page.evaluate(() => (window as any).__mockHost.releaseSend());
   await expect(page.locator(".thread-list .thread-title").first()).toHaveText("等待接受的提问");
-  await expect(page.locator(".settings-drawer")).toBeVisible();
+  await expect(settings).toBeVisible();
+  await expect(page.locator(".chat-pane")).not.toBeVisible();
   await expect(readerFor(page)).not.toBeVisible();
 });
 

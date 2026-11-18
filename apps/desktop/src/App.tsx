@@ -101,6 +101,15 @@ function DesktopShell() {
     setVisited((seen) => (seen.has(next) ? seen : new Set([...seen, next])));
   }, []);
   const [threadId, setThreadId] = useState(0);
+  const [newChatContext, setNewChatContext] = useState("chat");
+  const threadSelection = useRef(0);
+  const selectChatLocation = useCallback((id: number, context = "chat") => {
+    const selection = ++threadSelection.current;
+    setThreadId(id);
+    setNewChatContext(context);
+    setView("chat");
+    return selection;
+  }, [setView]);
   const [threadHeading, setThreadHeading] = useState({ id: 0, title: t("chat.newThread"), archived: false });
   const onThreadTitle = useCallback((id: number, title: string, archived: boolean) => {
     setThreadHeading(previous => previous.id === id && previous.title === title && previous.archived === archived ? previous : { id, title, archived });
@@ -121,6 +130,7 @@ function DesktopShell() {
   const readerListRef = useRef<ReaderList>("focus");
   const readerOwner = useRef(focus);
   const [drafts] = useState(createDraftStore);
+  const chatContext = threadId > 0 ? drafts.threadContext(threadId) : newChatContext;
   const [jump] = useState(createJumpController);
   const readerRef = useRef<ReaderHostHandle>(null);
   const trainingRef = useRef<FocusTrainingHandle>(null);
@@ -200,12 +210,17 @@ function DesktopShell() {
   const readerCitations = useReaderCitations({ drafts, chat, getThreads: () => sidebarRef.current?.getThreads() ?? [],
     getSourceArticle: () => readerRef.current?.getSourceArticle() ?? null,
     notify: setToast, inert: (top !== undefined && top !== "reader") || commandPaletteOpen || !!pendingLeave,
-    onSent: (id, digestId, sameReader) => {
-      if (digestId !== null) setDigestThreadRevision(n => n + 1);
-      // 等待期间用户已离开或打开另一层时，不用迟到结果关闭那一层。
-      if (!sameReader || (top !== undefined && top !== "reader") || commandPaletteOpen || pendingLeave) return;
-      setThreadId(id); setView("chat"); if (top === "reader") overlays.closeTopWithoutGuard();
+    onSending: (id, context) => {
+      const selection = selectChatLocation(id, context);
+      if (top === "reader") overlays.closeTopWithoutGuard();
+      if (id > 0) {
+        void chat.loadMessages(id).catch((err) => setToast({ message: formatNotice(t("notice.threadLoadFailed"), err) }));
+      }
+      return acceptedId => {
+        if (threadSelection.current === selection) setThreadId(acceptedId);
+      };
     },
+    onDigestSent: () => setDigestThreadRevision(n => n + 1),
   });
   const readerCitationsRef = useRef(readerCitations);
   readerCitationsRef.current = readerCitations;
@@ -230,8 +245,11 @@ function DesktopShell() {
   const conversationSource = useCallback(() => {
     const { view, threadId } = current.current;
     if (view !== "chat") return undefined;
+    if (threadId === 0 && newChatContext.startsWith("digest:")) {
+      return { kind: "digest" as const, digestId: Number(newChatContext.slice("digest:".length)) };
+    }
     return { kind: "thread" as const, threadId, title: sidebarRef.current?.getThreads().find(thread => thread.id === threadId)?.title ?? t("chat.newThread") };
-  }, [t]);
+  }, [newChatContext, t]);
   const openArticleFromMessage = useCallback((id: number, anchor?: ReaderOpenOptions["anchor"]) => {
     void openArticle(id, { skipNav: true, anchor, citationSource: conversationSource() });
   }, [openArticle, conversationSource]);
@@ -260,11 +278,14 @@ function DesktopShell() {
     const timer = window.setTimeout(() => releaseWebView.current(), 1500);
     return () => window.clearTimeout(timer);
   }, [hasWebHost]);
-  const origin = readerCitations.origins.get(threadId);
+  const origin = readerCitations.origins.get(threadId || chatContext);
   const backToArticle = () => {
     if (origin) void openArticle(origin.id, { citationSource: conversationSource(), returnToList: true });
   };
-  const returnToThread = (id: number) => { setThreadId(id); setView("chat"); };
+  const returnToThread = (id: number) => {
+    if (id === 0 || id === threadId) setView("chat");
+    else selectChatLocation(id);
+  };
   const rateArticle = useCallback((row: ArticleView, up: boolean) => trainingRef.current?.rate(row, up), []);
   // 阅读器 `x` / 篇目里的踩只记反馈，不弹规则建议，便于连续丢弃；规则建议留给阅读工具和列表里的踩。
   const dislikeArticle = useCallback(async (row: ArticleView) => {
@@ -337,18 +358,16 @@ function DesktopShell() {
 
   const { loadMessages, release, seedThread, resetNewModel } = chat;
   const selectThread = useCallback((id: number, saved?: ThreadView) => {
-    setThreadId(id);
-    setView("chat");
+    selectChatLocation(id);
     if (id > 0) {
       seedThread(id, saved);
       void loadMessages(id).catch((err) => setToast({ message: formatNotice(t("notice.threadLoadFailed"), err) }));
     } else resetNewModel("chat");
-  }, [t, loadMessages, resetNewModel, seedThread, setView]);
+  }, [t, loadMessages, resetNewModel, seedThread, selectChatLocation]);
   // 搜索里打开一条会话：载入最新一页，向前翻到命中的消息，滚到它并短暂高亮（N4 · 搜索对话）。
   const { loadOlder } = chat;
   const openThreadHit = useCallback(async (id: number, messageId: number | null) => {
-    setThreadId(id);
-    setView("chat");
+    selectChatLocation(id);
     seedThread(id, sidebarRef.current?.getThreads().find((thread) => thread.id === id));
     try { await loadMessages(id); } catch (err) { setToast({ message: formatNotice(t("notice.threadLoadFailed"), err) }); return; }
     if (messageId == null) return;
@@ -365,27 +384,40 @@ function DesktopShell() {
       node.setAttribute("data-flash", "");
       window.setTimeout(() => node.removeAttribute("data-flash"), 1600);
     }));
-  }, [t, chat.store, loadMessages, loadOlder, seedThread, setView]);
+  }, [t, chat.store, loadMessages, loadOlder, seedThread, selectChatLocation]);
   // 相近报道「引用整组到对话」：放进新对话的输入区，不打断当前对话的草稿。
   const citeGroup = useCallback((citations: CitationView[]) => {
     drafts.addCitations(drafts.threadContext(0), citations);
     setToast({ message: t("citeGroup.done", { count: citations.length }), actionLabel: t("citeGroup.action"), onAction: () => selectThread(0) });
   }, [drafts, selectThread, t]);
   const managePool = useCallback(() => { setSettingsTab("model"); open("settings"); }, [open]);
+  const askThreadAction = useCallback((title: string, message: string, onOk: () => void, options?: AskOptions) => {
+    setConfirm({ title, message, onOk, ...options });
+    open("confirm");
+  }, [open]);
   // 只在换线程时回收上一条；切栏目不清当前对话，生成中的回复仍归原线程。
   useEffect(() => {
     if (threadId <= 0) return;
     return () => { release(threadId); };
   }, [threadId, release]);
   const send = async (text: string, citations: CitationView[]) => {
-    const sentView = view;
-    const sentThreadId = threadId;
+    const selection = threadSelection.current;
+    const digestId = chatContext.startsWith("digest:") ? Number(chatContext.slice("digest:".length)) : null;
+    const adoptThread = (id: number) => {
+      if (digestId !== null) drafts.bindThread(id, chatContext);
+      readerCitations.adoptOrigin(threadId || chatContext, id);
+      if (threadSelection.current === selection) setThreadId(id);
+    };
     try {
-      const id = await chat.sendMessage(sentThreadId, text, citations, null, "chat");
-      if (current.current.threadId === sentThreadId) {
-        setThreadId(id);
-        if (current.current.view === sentView) setView("chat");
-      }
+      await chat.sendMessage(threadId, text, citations, digestId, chatContext, {
+        resolveDigestThread: digestId !== null,
+        onResolved: adoptThread,
+        onAccepted: id => {
+          adoptThread(id);
+          if (digestId !== null) setDigestThreadRevision(n => n + 1);
+          if (threadSelection.current === selection && viewRef.current === view) setView("chat");
+        },
+      });
       return true;
     } catch (err) { setToast({ message: formatNotice(t("notice.sendFailed"), err) }); return false; }
   };
@@ -393,7 +425,7 @@ function DesktopShell() {
   const webCovered = top !== "web-warning" || commandPaletteOpen || !!webLinks.menu || !!pendingLeave || stack.includes("confirm");
   return <WebLinksContext.Provider value={{ ...webLinks.context, editRule: (domain, url) => { setSiteRuleSeed({ domain, url }); setSettingsTab("web"); open("settings"); } }}><div className="shell" data-web-embedded={webLinks.windows.embedded ? "" : undefined}>
     <Sidebar ref={sidebarRef} view={view} threadId={threadId} inert={trapBackground} feeds={feedsSession} feedsReturn={feedsReturn} onView={setView} onThread={selectThread} onThreadTitle={onThreadTitle}
-      onSearch={openSearch} onSettings={openSettings} onAbout={openAbout} onAddFeed={openSubscribe}
+      onSearch={openSearch} onSettings={openSettings} onTitleSettings={managePool} onAsk={askThreadAction} onAbout={openAbout} onAddFeed={openSubscribe}
       columnId={columnId} onOpenColumn={openColumn} onColumnGone={onColumnGone} notify={setToast} />
     <main className="main" inert={trapBackground}>
       <FocusScreen session={focus} active={view === "focus"} shortcuts={view === "focus" && stack.length === 0 && !commandPaletteOpen && !pendingLeave}
@@ -415,19 +447,19 @@ function DesktopShell() {
           <button type="button" className="btn sm" onClick={() => void api.unarchiveThread(threadId).then(reloadThreads,
             (err) => setToast({ message: formatNotice(t("notice.unarchiveFailed"), err) }))}>{t("chat.unarchive")}</button>
         </div> : null}
-        <ChatPane store={chat.store} turns={chat.turns} threadId={threadId} busy={chat.busyThreadId === threadId} jump={jump}
+        <ChatPane store={chat.store} turns={chat.turns} threadId={threadId} context={chatContext} busy={chat.busyThreadId === threadId} jump={jump}
           onLoadOlder={chat.loadOlder} onOpenUrl={openContentLink} onOpenArticle={openArticleFromMessage} onFix={openChatFix} />
       </MainViewFrame> : null}
-      {view !== "digest" ? <Composer drafts={drafts} context={drafts.threadContext(threadId)} ariaLabel={t("chat.composerLabel")} placeholder={t("chat.composerPlaceholder")}
+      {view !== "digest" ? <Composer drafts={drafts} context={chatContext} ariaLabel={t("chat.composerLabel")} placeholder={t("chat.composerPlaceholder")}
         otherThreadBusy={chat.busyThreadId !== null && chat.busyThreadId !== threadId} generating={chat.busyThreadId !== null}
         sending={chat.sending} disabled={false} ready collapsible={false} forceExpanded={chat.busyThreadId !== null} showWhenEmpty={view !== "focus" && view !== "column" && view !== "feeds"}
         onSend={send} onStop={() => void api.abort().catch((err) => setToast({ message: formatNotice(t("notice.stopFailed"), err) }))}
         onOpenArticle={openArticleFromMessage} activity={<ChatActivity store={chat.activity} />}
         jump={view === "chat" ? <JumpToLatest controller={jump} /> : null}
-        model={<ChatModelChip value={chat.modelFor(threadId, "chat")} thinking={chat.thinkingFor(threadId, "chat")} disabled={chat.sending} onManagePool={managePool}
-          onChange={(choice, label) => chat.chooseModel(threadId, "chat", choice, label)}
-          onThinking={(level, label) => chat.chooseThinking(threadId, "chat", level, label)} />}
-        meter={<ChatContextMeter value={chat.modelFor(threadId, "chat")} usage={chat.contextFor(threadId)} />} /> : null}
+        model={<ChatModelChip value={chat.modelFor(threadId, chatContext)} thinking={chat.thinkingFor(threadId, chatContext)} disabled={chat.sending} onManagePool={managePool}
+          onChange={(choice, label) => chat.chooseModel(threadId, chatContext, choice, label)}
+          onThinking={(level, label) => chat.chooseThinking(threadId, chatContext, level, label)} />}
+        meter={<ChatContextMeter value={chat.modelFor(threadId, chatContext)} usage={chat.contextFor(threadId)} />} /> : null}
     </main>
     <FocusReader onOpenUrl={openContentLink} ref={readerRef} focus={focus} column={column} columnName={columnTitle} feeds={feedsSession} list={readerList} open={stack.includes("reader")} dismissible={top === "reader"}
       shortcuts={top === "reader" && !commandPaletteOpen && !pendingLeave} inert={trapBackground} style={layer("reader")}

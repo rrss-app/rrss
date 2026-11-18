@@ -6,7 +6,7 @@ import type { McpView, PiToolView } from "../bindings";
 import { api, type ModelChoice, type PiInstallView, type PiPage, type PiProbe } from "../lib/api";
 import { formatNotice } from "../lib/notice";
 import { i18n, Trans, useTranslation } from "../i18n";
-import { aiMutationOptions } from "./aiQuery";
+import { aiMutationOptions, bindingsQueryOptions, poolQueryOptions } from "./aiQuery";
 import { Field, Fold, SettingRow, Toggle } from "./chips";
 import { McpDialog, McpImportDialog } from "./McpDialogs";
 import { McpSection } from "./McpSection";
@@ -15,7 +15,7 @@ import { readGate, useEditReport, useMergedEditState, useSettingsWrite, type Set
 import { piConfigOptions, piKeys, piMutationOptions, piProbeOptions, piQueryOptions, type PiAction, type PiStatus } from "./piQuery";
 import { SettingsRows } from "./SettingsRows";
 import { installProgressText, piInstalling, usePiInstall } from "./usePiInstall";
-import { ChatModelMenu, chatDefault, findEntry, modelName, OwnModelMenu, sameChoice, thinkingLabel, usePoolChoices } from "./modelChoices";
+import { ChatModelMenu, chatDefault, findEntry, modelName, OwnModelMenu, sameChoice, taskChoice, thinkingLabel, usePoolChoices } from "./modelChoices";
 import type { Ask, Navigate } from "./SettingsPanel";
 import { Pending } from "../components/Pending";
 
@@ -87,6 +87,13 @@ export function AssistantPane({ onAsk, onNavigate, onEditStateChange }: {
             <Toggle warning label={t("assistant.abilities.fetchUrl.label")} on={!!page.data?.fetch_url} onLabel="" offLabel=""
               disabled={writing || !page.data} onClick={() => void run({ type: "fetchUrl", enabled: !page.data?.fetch_url })} />
           </SettingRow>
+        </div>
+      </section>
+
+      <section className="settings-group settings-section">
+        <div className="settings-section-meta"><h4>{t("assistant.titles.section")}</h4></div>
+        <div className="settings-section-body">
+          <ChatTitleSetting onAsk={onAsk} onNavigate={onNavigate} onEditStateChange={report("titles")} />
         </div>
       </section>
 
@@ -167,6 +174,28 @@ export function AssistantPane({ onAsk, onNavigate, onEditStateChange }: {
       {dialog?.kind === "mcpImport" && <McpImportDialog run={run} status={status} onAsk={onAsk} onClose={() => setDialog(null)} onEditStateChange={report("dialog")} />}
     </div>
   );
+}
+
+function ChatTitleSetting({ onAsk, onNavigate, onEditStateChange }: {
+  onAsk: Ask;
+  onNavigate: Navigate;
+  onEditStateChange: (state: SettingsEditState | null) => void;
+}) {
+  const { t } = useTranslation("settingsAssistant");
+  const bindings = useQuery(bindingsQueryOptions());
+  const pool = useQuery(poolQueryOptions());
+  const model = taskChoice(bindings.data, "chat_title");
+  const entry = findEntry(pool.data, model);
+  const name = entry ? modelName(entry) : model?.model;
+  const openModels = () => onNavigate("model");
+  return <SettingsRows ids={["chat_auto_title"]} label={t("assistant.titles.section")}
+    disabled={!bindings.data} onEditStateChange={onEditStateChange}
+    notes={{ chat_auto_title: <span className="hint">{model ? t("assistant.titles.model", { model: name }) : t("assistant.titles.noModel")}{" "}
+      <button className="link-btn" type="button" onClick={openModels}>{t("assistant.titles.settings")}</button></span> }}
+    beforeEnable={(enable) => {
+      if (model) onAsk(t("assistant.titles.confirmTitle"), t("assistant.titles.confirmMessage", { model: name }), enable, { okLabel: t("assistant.titles.enable") });
+      else openModels();
+    }} />;
 }
 
 /**

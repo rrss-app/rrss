@@ -8,7 +8,7 @@ mod test_display;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rrss_app::pi::{ChatErrorKind, ChatEvent, ChatRuntime, ChatSink, SupervisorConfig};
 use rrss_app::views::{ModelChoice, SendMessageArgs};
@@ -21,10 +21,17 @@ use tokio::sync::Notify;
 struct Collect {
     events: Mutex<Vec<ChatEvent>>,
     notify: Notify,
+    first_delta_at: Mutex<Option<Instant>>,
 }
 
 impl ChatSink for Collect {
     fn emit(&self, event: ChatEvent) {
+        if matches!(&event, ChatEvent::Delta(delta) if !delta.text.is_empty()) {
+            self.first_delta_at
+                .lock()
+                .unwrap()
+                .get_or_insert_with(Instant::now);
+        }
         if let ChatEvent::Start(thread_id) | ChatEvent::Done(thread_id) = &event {
             tracing::warn!(
                 thread_id = rrss_core::logsafe::unless_in_span("thread_id", *thread_id),
@@ -44,6 +51,7 @@ impl Collect {
 
     fn clear(&self) {
         self.events.lock().unwrap().clear();
+        self.first_delta_at.lock().unwrap().take();
     }
 
     async fn until(&self, what: &str, pred: impl Fn(&[ChatEvent]) -> bool) -> Vec<ChatEvent> {
@@ -90,6 +98,70 @@ enum Model {
 
 fn setup(idle_secs: i64) -> Harness {
     setup_with(idle_secs, Model::Bound)
+}
+
+#[tokio::test]
+#[ignore = "synthetic citation latency probe"]
+async fn cited_send_acceptance_and_first_delta_latency() {
+    for selections in [false, true] {
+        let mut samples = [Vec::new(), Vec::new()];
+        for _ in 0..8 {
+            let h = setup(0);
+            let citations = {
+                let conn = db::open_at(&h.db).unwrap();
+                conn.execute_batch(
+                    "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://notes.example/feed',0);
+                     INSERT INTO articles(id,feed_id,title,created_at,content_html)
+                     VALUES(1,1,'Fixture article',0,'<p>Synthetic excerpt</p>')",
+                )
+                .unwrap();
+                if selections {
+                    (0..3)
+                        .map(|block_id| {
+                            rrss_app::actions::cite_selection(
+                                &conn,
+                                1,
+                                "Synthetic excerpt",
+                                block_id,
+                            )
+                            .unwrap()
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![rrss_app::actions::cite_article(&conn, 1).unwrap()]
+                }
+            };
+            for (index, observations) in samples.iter_mut().enumerate() {
+                assert_eq!(h.chat.supervisor().is_running().await, index > 0);
+                h.sink.clear();
+                let mut input = args(0, "What does the fixture say?");
+                input.citations.clone_from(&citations);
+                let started = Instant::now();
+                h.chat.send(input).await.unwrap();
+                let accepted = started.elapsed().as_secs_f64() * 1_000.0;
+                h.sink.done().await;
+                let first = h.sink.first_delta_at.lock().unwrap().unwrap();
+                observations.push((
+                    accepted,
+                    (first - started).as_secs_f64() * 1_000.0 - accepted,
+                ));
+            }
+            h.chat.stop_engine().await;
+        }
+        for (cache, observations) in ["cold", "warm"].into_iter().zip(samples) {
+            let median = |mut values: Vec<f64>| {
+                values.sort_by(f64::total_cmp);
+                (values[3] + values[4]) / 2.0
+            };
+            println!(
+                "fake Pi {} {cache} n=8 median ms: send->return {:.2}; return->first delta {:.2}; delta before return {}/8",
+                if selections { "three spans" } else { "article" },
+                median(observations.iter().map(|sample| sample.0).collect()),
+                median(observations.iter().map(|sample| sample.1).collect()),
+                observations.iter().filter(|sample| sample.1 < 0.0).count(),
+            );
+        }
+    }
 }
 
 #[tokio::test]
@@ -158,6 +230,10 @@ async fn long_stream_final_document_is_complete_and_never_followed_by_stale_delt
 }
 
 fn setup_with(idle_secs: i64, model: Model) -> Harness {
+    setup_with_jobs(idle_secs, model, false)
+}
+
+fn setup_with_jobs(idle_secs: i64, model: Model, post_turn_jobs: bool) -> Harness {
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();
     let script = data.join("fake-pi");
@@ -210,7 +286,7 @@ fn setup_with(idle_secs: i64, model: Model) -> Harness {
         },
         rrss_app::network::NetworkClients::new(&db),
         sink.clone(),
-        false,
+        post_turn_jobs,
     );
     Harness {
         _dir: dir,
@@ -681,6 +757,157 @@ async fn unsupported_dialogs_are_cancelled_immediately() {
         "{}",
         h.pi_log()
     );
+}
+
+#[tokio::test]
+async fn automatic_title_starts_only_after_the_second_successful_reply_is_saved() {
+    use serde_json::json;
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
+
+    let h = setup(0);
+    let server = MockServer::start().await;
+    let conn = db::open_at(&h.db).unwrap();
+    let provider = ai_store::insert_provider(
+        &conn,
+        &NewProvider {
+            name: "Titles fixture".into(),
+            base_url: server.uri(),
+            api_key: None,
+            protocol: "chat".into(),
+        },
+    )
+    .unwrap();
+    ai_store::set_task_binding(
+        &conn,
+        ai_store::TASK_CHAT_TITLE,
+        Some(provider),
+        Some("fixture"),
+    )
+    .unwrap();
+    rrss_app::settings_schema::set(&conn, "chat_auto_title", "1").unwrap();
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "choices": [{"message": {"content": "{\"title\":\"Garden rota\"}"}}],
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let thread = h
+        .chat
+        .send(args(0, "How should we schedule the garden volunteers?"))
+        .await
+        .unwrap();
+    assert!(errors(&h.sink.done().await).is_empty());
+    h.sink.clear();
+    h.chat.send(args(thread, "[[compact-fail]]")).await.unwrap();
+    assert!(!errors(&h.sink.done().await).is_empty());
+    assert_eq!(h.messages(thread).last().unwrap().0, "assistant");
+    assert!(server.received_requests().await.unwrap().is_empty());
+
+    h.sink.clear();
+    h.chat
+        .send(args(thread, "Can we rotate crews each weekend?"))
+        .await
+        .unwrap();
+    let events = h
+        .sink
+        .until("committed title", |events| {
+            events
+                .iter()
+                .any(|event| matches!(event, ChatEvent::TitleChanged(id) if *id == thread))
+        })
+        .await;
+    let done = events
+        .iter()
+        .position(|event| matches!(event, ChatEvent::Done(id) if *id == thread))
+        .unwrap();
+    let started = events
+        .iter()
+        .position(|event| matches!(event, ChatEvent::TitleStarted(id) if *id == thread))
+        .unwrap();
+    assert!(done < started);
+    assert_eq!(h.messages(thread).len(), 6);
+    assert_eq!(
+        threads::get_thread(&conn, thread).unwrap().title.as_deref(),
+        Some("Garden rota")
+    );
+
+    h.sink.clear();
+    h.chat
+        .send(args(thread, "What about holidays?"))
+        .await
+        .unwrap();
+    assert!(errors(&h.sink.done().await).is_empty());
+    h.chat.stop_engine().await;
+    server.verify().await;
+}
+
+#[tokio::test]
+async fn settled_memory_job_receives_user_text_without_citation_or_assistant_reply() {
+    use rrss_core::memories;
+    use serde_json::{Value, json};
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
+
+    let h = setup_with_jobs(0, Model::Bound, true);
+    let server = MockServer::start().await;
+    let conn = db::open_at(&h.db).unwrap();
+    let fact = "I always prefer offline reading.";
+    let excerpt = "I collect antique measuring tools.";
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "choices": [{"message": {"content": json!({"facts": [excerpt, fact]}).to_string()}}],
+        })))
+        .mount(&server)
+        .await;
+    let provider = ai_store::insert_provider(
+        &conn,
+        &NewProvider {
+            name: "Memory fixture".into(),
+            base_url: server.uri(),
+            api_key: None,
+            protocol: "chat".into(),
+        },
+    )
+    .unwrap();
+    ai_store::set_task_binding(
+        &conn,
+        ai_store::TASK_MEMORY_CANDIDATE,
+        Some(provider),
+        Some("fixture"),
+    )
+    .unwrap();
+    let mut send = args(0, fact);
+    send.citations.push(rrss_app::views::CitationView {
+        kind: "quote".into(),
+        article_id: 42,
+        title: "Fixture article".into(),
+        feed_title: "Fixture feed".into(),
+        url: "https://feed.example/article".into(),
+        excerpt: excerpt.into(),
+        block_id: 1,
+    });
+    let thread = h.chat.send(send).await.unwrap();
+    assert!(errors(&h.sink.done().await).is_empty());
+    assert_eq!(h.messages(thread).len(), 2);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Some(candidate) = memories::list_memories(&conn, "").unwrap().first() {
+                assert_eq!(candidate.content, fact);
+                assert!(candidate.pending());
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1);
+    let body: Value = requests[0].body_json().unwrap();
+    assert_eq!(body["messages"][1]["content"], json!([fact]).to_string());
+    assert_eq!(memories::list_memories(&conn, "").unwrap().len(), 1);
+    h.chat.stop_engine().await;
 }
 
 #[tokio::test]

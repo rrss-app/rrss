@@ -18,7 +18,7 @@ type Row = { spec: SettingSpec; value: string; label: string; hint?: string; con
  * 描述符决定控件与保存方式；草稿留在行组，写入和权威快照由查询层共享。
  * 有草稿时出现保存栏，离开时由设置壳的 dirty / busy 守卫拦截。
  */
-export function SettingsRows({ ids, label, title, className, disabled = false, only, notes, onEditStateChange, onChanged }: {
+export function SettingsRows({ ids, label, title, className, disabled = false, only, notes, onEditStateChange, onChanged, beforeEnable }: {
   ids: SettingId[];
   /** 接在某行说明后的几行（估算、状态等随数据变化的内容）。 */
   notes?: Partial<Record<SettingId, ReactNode>>;
@@ -33,6 +33,7 @@ export function SettingsRows({ ids, label, title, className, disabled = false, o
   disabled?: boolean;
   onEditStateChange?: (state: SettingsEditState | null) => void;
   onChanged?: () => void;
+  beforeEnable?: (enable: () => void) => void;
 }) {
   const { t } = useTranslation("settingsSystem");
   const client = useQueryClient();
@@ -109,7 +110,10 @@ export function SettingsRows({ ids, label, title, className, disabled = false, o
     if (kind.type === "bool") {
       const entry = registryEntry(spec.id);
       return <Toggle label={row.control} on={value === "1"} onLabel={entry?.on ?? t("rows.on")} offLabel={entry?.off ?? t("rows.off")}
-        disabled={blocked} onClick={() => void change(row, value === "1" ? "0" : "1")} />;
+        disabled={blocked} onClick={() => {
+          if (value !== "1" && beforeEnable) beforeEnable(() => change(row, "1"));
+          else change(row, value === "1" ? "0" : "1");
+        }} />;
     }
     const display = registryEntry(spec.id)?.display;
     if (kind.type === "enum") {

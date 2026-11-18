@@ -6,6 +6,7 @@ use rrss_core::threads::{self, MessageRole};
 use rusqlite::Connection;
 use std::path::Path;
 
+use crate::jobs::chat_titles::{TITLE_MAX as THREAD_TITLE_MAX, store_manual_title};
 use crate::views::CitationView;
 
 fn ordinary_thread(conn: &Connection, thread_id: i64) -> anyhow::Result<threads::Thread> {
@@ -30,7 +31,6 @@ fn update_thread(
     Ok(())
 }
 
-const THREAD_TITLE_MAX: usize = 80;
 const THREAD_FOLDER_NAME_MAX: usize = 40;
 
 pub fn rename_thread(conn: &Connection, thread_id: i64, title: &str) -> anyhow::Result<()> {
@@ -39,12 +39,11 @@ pub fn rename_thread(conn: &Connection, thread_id: i64, title: &str) -> anyhow::
         title.chars().count() <= THREAD_TITLE_MAX,
         crate::ui_error::chat::ChatUiError::ThreadTitleTooLong { max: THREAD_TITLE_MAX }.failure("thread title too long")
     );
-    update_thread(
-        conn,
-        thread_id,
-        "UPDATE threads SET title=?1 WHERE id=?2",
-        (!title.is_empty()).then_some(title),
-    )
+    let tx = db::write_transaction(conn)?;
+    ordinary_thread(&tx, thread_id)?;
+    store_manual_title(&tx, thread_id, (!title.is_empty()).then_some(title))?;
+    tx.commit()?;
+    Ok(())
 }
 
 pub fn set_thread_folder(

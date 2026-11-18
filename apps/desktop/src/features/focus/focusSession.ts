@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { api, type ArticleView, type FeedTree, type FeedView, type FocusPage, type SearchQuery } from "../../lib/api";
 import { trackEvent } from "../../lib/signals";
-import { applyStarToFocusPage, flattenFeeds, focusExcludes, mergeFocusPage, refreshFocusRows, rowKey } from "../../lib/focusUtils";
+import { applyStarToFocusPage, flattenFeeds, focusBlocks, focusExcludes, mergeFocusPage, mergeLowerArrivals, refreshFocusRows, rowKey } from "../../lib/focusUtils";
 import { i18n } from "../../i18n";
 import { formatNotice } from "../../lib/notice";
 import { isTauri, PREVIEW_FOCUS } from "../../lib/preview";
@@ -27,7 +27,7 @@ export type FocusSnapshot = {
   revision: number;
   /** 后台就地更新或采用新内容时加一，不清键盘选中。 */
   dataRevision: number;
-  /** 后台发现、还没并进列表的新文章数；点顶部提示才重读。 */
+  /** 最近一次查询中可展示、尚未并进当前列表的文章数。 */
   pendingNew: number;
   readerReturn: { id: number; sequence: number } | null;
 };
@@ -57,6 +57,10 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
   let feedsGeneration = 0;
   let active = false;
   let browsingStarted = false;
+  let visibleEnd = 0;
+  let backgroundTicket = 0;
+  let pendingPage: FocusPage | null = null;
+  let pendingIds = new Set<number>();
   let viewport: { readTop: () => number; resetTop: () => void } | undefined;
   function startBrowsing() {
     if (active && !state.loading && state.page) browsingStarted = true;
@@ -96,7 +100,13 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     return { ...page, articles: [...page.articles.slice(0, insert), old[at], ...page.articles.slice(insert)] };
   };
   const publish = (patch: Partial<FocusSnapshot>) => {
+    if (pendingPage && patch.page) {
+      for (const row of patch.page.articles) if (row.row_kind === 0) pendingIds.delete(row.id);
+      for (const id of dismissedIds) pendingIds.delete(id);
+      if (!pendingIds.size) pendingPage = null;
+    }
     state = { ...state, ...patch };
+    state.pendingNew = pendingPage ? pendingIds.size : 0;
     listeners.forEach((listener) => listener());
   };
   const owns = (gen: number) => active && gen === generation;
@@ -183,9 +193,10 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
 
   async function reload(resetBrowsing = true) {
     const gen = ++generation;
+    pendingPage = null;
     if (resetBrowsing) browsingStarted = false;
     moreRequest = null;
-    publish({ readerReturn: null, loading: true, loadingMore: false, moreError: "", revision: state.revision + 1, pendingNew: 0 });
+    publish({ readerReturn: null, loading: true, loadingMore: false, moreError: "", revision: state.revision + 1 });
     // 筛选存于宿主设置：先等本实例排队的写入完成，再读取实际生效范围。
     await writes;
     if (!owns(gen)) return;
@@ -265,26 +276,56 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     if (state.loading) return;
     if (!state.page?.articles.length) return reload();
     const gen = generation;
+    const ticket = ++backgroundTicket;
+    const expanded = requestedCluster;
     let latest: FocusPage;
-    try { latest = await focusQuery(requestedCluster); } catch { return; }
-    if (!owns(gen) || pageGeneration !== gen || !state.page || state.loading) return;
+    try { latest = await focusQuery(expanded); } catch { return; }
+    if (!owns(gen) || ticket !== backgroundTicket || expanded !== requestedCluster || pageGeneration !== gen || !state.page || state.loading) return;
     // 查询期间也可能开始浏览；离顶部超过约一行时兜底，不能只看请求发出时的状态。
     if ((viewport?.readTop() ?? 0) > BROWSING_SCROLL_THRESHOLD) browsingStarted = true;
-    const { page, added } = refreshFocusRows(state.page, latest, (id) => dismissedIds.has(id));
-    if (added > 0 && !browsingStarted) {
-      // 替换分页基线，旧列表的迟到续页不能再追加；保留本地的已读 / 收藏写入。
-      pageGeneration = ++generation;
-      moreRequest = null;
-      const updated = new Map(page.articles.map(row => [rowKey(row), row]));
+    latest = visiblePage(latest)!;
+    let page = refreshFocusRows(state.page, latest);
+    const shown = new Set(page.articles.filter(row => row.row_kind === 0).map(row => row.id));
+    pendingIds = new Set(latest.articles.filter(row => row.row_kind === 0 && !shown.has(row.id) && !dismissedIds.has(row.id)).map(row => row.id));
+    if (browsingStarted && pendingIds.size) {
+      page = mergeLowerArrivals(page, latest, pendingIds, visibleEnd);
+      if (readingId !== null && !page.articles.some(row => row.row_kind === 0 && row.id === readingId)) {
+        page = keepReading(page, state.page);
+      }
+      for (const row of page.articles) if (row.row_kind === 0) pendingIds.delete(row.id);
+    }
+    pendingPage = pendingIds.size ? latest : null;
+    if (pendingPage && !browsingStarted) {
       viewport?.resetTop();
-      publish({ page: visiblePage({ ...latest, articles: latest.articles.map(row => updated.get(rowKey(row)) ?? row) }),
-        dataRevision: state.dataRevision + 1, pendingNew: 0, loadingMore: false, moreError: "" });
+      adoptPending();
       return;
     }
     const patch: Partial<FocusSnapshot> = {};
     if (page !== state.page) Object.assign(patch, { page, dataRevision: state.dataRevision + 1 });
-    if (added !== state.pendingNew) patch.pendingNew = added;
-    if (Object.keys(patch).length) publish(patch);
+    if (pendingIds.size !== state.pendingNew || patch.page) publish(patch);
+  }
+
+  function adoptPending(returnToTop = false) {
+    if (!active || !pendingPage || !state.page) return;
+    const local = new Map(state.page.articles.filter(row => row.row_kind === 0).map(row => [row.id, row]));
+    const page = visiblePage({ ...pendingPage, articles: pendingPage.articles.map(row => {
+      const shown = row.row_kind === 0 ? local.get(row.id) : undefined;
+      return shown ? { ...row, read: shown.read, starred: shown.starred } : row;
+    }) })!;
+    if (returnToTop) {
+      const updated: ArticleView[] = [];
+      const rest: ArticleView[] = [];
+      for (const block of focusBlocks(page.articles)) {
+        const target = block.some(row => row.row_kind === 0 && pendingIds.has(row.id)) ? updated : rest;
+        target.push(...block);
+      }
+      page.articles = updated.concat(rest);
+    }
+    pageGeneration = ++generation;
+    moreRequest = null;
+    pendingPage = null;
+    publish({ page, dataRevision: state.dataRevision + 1, loadingMore: false, moreError: "",
+      ...(returnToTop ? { revision: state.revision + 1, readerReturn: null } : {}) });
   }
 
   /**
@@ -302,8 +343,9 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     if (!owns(gen) || pageGeneration !== gen || state.loading) return;
     pageGeneration = ++generation;
     moreRequest = null;
+    pendingPage = null;
     viewport?.resetTop();
-    publish({ page: visiblePage(latest), dataRevision: state.dataRevision + 1, pendingNew: 0, loadingMore: false, moreError: "" });
+    publish({ page: visiblePage(latest), dataRevision: state.dataRevision + 1, loadingMore: false, moreError: "" });
   }
 
   async function toggleStar(id: number, starred: boolean) {
@@ -382,18 +424,13 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
         return running ? { run_id: snapshot.run_id, operation_id: running.id } : null;
       }, controller.signal, () => { if (active && refreshController === controller) publish({ refreshing: true }); });
       if (!active || !result || refreshController !== controller) return;
-      resetNavigation();
       const problem = refreshProblem(result, state.feeds);
       if (problem) notify({ message: problem, actionLabel: i18n.t("session.retry", { ns: "focus" }), onAction: () => void refresh() });
-      else if (result.inserted > 0) notify({ message: i18n.t("session.refreshedInserted", { ns: "focus", count: result.inserted }) });
     } catch (err) {
       if (active && !controller.signal.aborted && !resume) notify({ message: formatNotice(i18n.t("session.refreshFailed", { ns: "focus" }), err), actionLabel: i18n.t("session.retry", { ns: "focus" }), onAction: () => void refresh() });
     } finally {
       if (active && refreshController === controller) {
-        if (state.refreshing) {
-          if (resume) await backgroundChanged();
-          else await reload();
-        }
+        if (state.refreshing) await backgroundChanged();
         if (active && refreshController === controller) publish({ refreshing: false });
       }
     }
@@ -442,7 +479,8 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     start() { active = true; publish({ refreshing: false }); void reload(); void reloadFeeds(); if (isTauri() && !options?.scope) void refreshCurrent(true); },
     stop() { active = false; refreshController?.abort(); ++generation; ++feedsGeneration; moreRequest = null; },
     reload, reloadFeeds, feedsChanged, backgroundChanged, adoptLatest, loadMore, toggleStar, setRead, markAllRead, markGroupRead, refresh, revealSpotCheck, decideSpotCheck,
-    startBrowsing,
+    startBrowsing, showNew: () => adoptPending(true),
+    setVisibleEnd(index: number) { visibleEnd = index; },
     bindViewport(readTop: () => number, resetTop: () => void) {
       const bound = { readTop, resetTop };
       viewport = bound;
@@ -458,6 +496,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
         const current = state.expandedCluster;
         requestedCluster = null;
         if (current == null || !state.page) return Promise.resolve();
+        pendingPage = null;
         const rep = restoreCard(state.page.articles, current);
         representatives.delete(current);
         const articles = spliceCluster(state.page.articles, current, rep ? [rep] : []) ?? state.page.articles;
@@ -484,6 +523,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
           if (previous != null && previous !== clusterId) representatives.delete(previous);
           representatives.set(clusterId, shownRepresentative(base, clusterId));
           requestedCluster = clusterId;
+          pendingPage = null;
           publish({ page: visiblePage({ ...state.page, articles }), expandedCluster: clusterId });
         } catch (err) {
           if (!owns(gen) || ticket !== expandTicket) return;

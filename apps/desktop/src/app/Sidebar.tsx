@@ -1,4 +1,4 @@
-import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties } from "react";
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type ThreadFolderView, type ThreadListView, type ThreadView } from "../lib/api";
 import { feedQueryOptions } from "../lib/feedQuery";
@@ -8,7 +8,8 @@ import { Icon } from "../components/Icon";
 import { BrandMark } from "../components/BrandMark";
 import { MenuButton } from "../components/MenuSelect";
 import { FeedsTree, useFeedsSession, type FeedsSession, type TreeNotice } from "../features/feeds";
-import { ArchivedThreads, ThreadList } from "../features/chat";
+import { ArchivedThreads, ThreadList, useThreadTitles } from "../features/chat";
+import type { Ask } from "../settings/SettingsPanel";
 import { useFocusColumns, type FocusColumn } from "../features/focus";
 
 export type MainView = "focus" | "column" | "feeds" | "digest" | "chat";
@@ -37,6 +38,8 @@ export const Sidebar = memo(forwardRef<SidebarHandle, {
   /** 选中会话的标题与是否已归档（对话页顶部据此提示「已归档」）。 */
   onThreadTitle: (id: number, title: string, archived: boolean) => void;
   onSearch: () => void; onSettings: () => void; onAbout: () => void;
+  onTitleSettings: () => void;
+  onAsk: Ask;
   /** 打开设置 → 订阅，用来添加订阅。 */
   onAddFeed: () => void;
   /** 当前栏目的 `folder:<id>`；不在栏目页时仍传，文件夹被删后用来退回。 */
@@ -44,7 +47,7 @@ export const Sidebar = memo(forwardRef<SidebarHandle, {
   onOpenColumn: (id: string) => void;
   onColumnGone: () => void;
   notify: (notice: TreeNotice) => void;
-}>(function Sidebar({ view, threadId, inert, feeds, feedsReturn, onView, onThread, onThreadTitle, onSearch, onSettings, onAbout, onAddFeed, columnId, onOpenColumn, onColumnGone, notify }, ref) {
+}>(function Sidebar({ view, threadId, inert, feeds, feedsReturn, onView, onThread, onThreadTitle, onSearch, onSettings, onTitleSettings, onAsk, onAbout, onAddFeed, columnId, onOpenColumn, onColumnGone, notify }, ref) {
   const [list, setList] = useState<ThreadListView>(EMPTY_LIST);
   // 归档列表只在打开「已归档」、或当前会话不在主列表里（刚归档 / 从归档打开）时读取。
   const [archived, setArchived] = useState<ThreadView[] | null>(null);
@@ -90,7 +93,8 @@ export const Sidebar = memo(forwardRef<SidebarHandle, {
   const title = current?.title ?? t("sidebar.newThread");
   const isArchived = !!current?.archived_at && !threads.some((thread) => thread.id === threadId);
   useEffect(() => { onThreadTitle(threadId, title, isArchived); }, [threadId, title, isArchived, onThreadTitle]);
-  const reload = () => setRevision((value) => value + 1);
+  const reload = useCallback(() => setRevision((value) => value + 1), []);
+  const titles = useThreadTitles(onAsk, onTitleSettings, notify, reload);
   const feedsState = useFeedsSession(feeds);
   // 「订阅」项的未读总数：离开订阅模式时也刷新，标已读与阅读后不会停在旧数。
   useEffect(() => { if (view !== "feeds") void feeds.refreshCounts(); }, [feeds, view]);
@@ -98,7 +102,7 @@ export const Sidebar = memo(forwardRef<SidebarHandle, {
   if (archiveMode) return <aside className="sidebar thread-archive-mode" inert={inert} aria-label={t("sidebar.archivedLabel")}
     onKeyDown={(event) => { if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); setArchiveMode(false); } }}>
     <ArchivedThreads threads={archived} active={view === "chat" ? threadId : 0} onBack={() => setArchiveMode(false)}
-      onThread={onThread} onChanged={reload} notify={notify} />
+      onThread={onThread} onChanged={reload} notify={notify} titles={titles} />
     <div className="sidebar-foot">
       <button type="button" onClick={onSettings}><Icon name="settings" size={15} />{t("sidebar.settings")}</button>
       <button type="button" onClick={onAbout}><Icon name="info" size={15} />{t("sidebar.about")}</button>
@@ -120,7 +124,7 @@ export const Sidebar = memo(forwardRef<SidebarHandle, {
       <button type="button" className="nav-item" data-on={view === "chat" ? "1" : "0"} onClick={() => onView("chat")}><Icon name="chat" size={16} />{t(VIEW_LABEL.chat)}</button>
     </nav>
     <ThreadList list={list} active={view === "chat" ? threadId : 0} fresh={fresh} onThread={onThread} onChanged={reload}
-      onArchived={() => { setArchived(null); setArchiveMode(true); }} notify={notify} />
+      onArchived={() => { setArchived(null); setArchiveMode(true); }} notify={notify} titles={titles} />
     <div className="sidebar-foot">
       <button type="button" onClick={onSettings}><Icon name="settings" size={15} />{t("sidebar.settings")}</button>
       <button type="button" onClick={onAbout}><Icon name="info" size={15} />{t("sidebar.about")}</button>
