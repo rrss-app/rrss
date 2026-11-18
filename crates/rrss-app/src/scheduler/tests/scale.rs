@@ -97,7 +97,7 @@ fn distribution(samples: &[f64]) -> serde_json::Value {
             .unwrap_or(0.0)
     };
     json!({"samples":values.len(), "p50_ms":percentile(50), "p95_ms":percentile(95),
-        "p99_ms":percentile(99), "over_100ms":values.iter().filter(|&&v| v >= 100.0).count(), "max_ms":values.last().copied().unwrap_or(0.0)})
+        "p99_ms":percentile(99), "max_ms":values.last().copied().unwrap_or(0.0)})
 }
 
 #[derive(Default)]
@@ -140,7 +140,12 @@ impl Interactions {
         self.read.push(start.elapsed().as_secs_f64() * 1000.0);
     }
     fn report(&self) -> serde_json::Value {
-        json!({"focus_list":distribution(&self.list),"open_article":distribution(&self.reader),"mark_read":distribution(&self.read)})
+        let feedback = |samples: &[f64]| {
+            let mut stats = distribution(samples);
+            stats["over_100ms"] = json!(samples.iter().filter(|&&elapsed| elapsed > 100.0).count());
+            stats
+        };
+        json!({"focus_list":feedback(&self.list),"open_article":feedback(&self.reader),"mark_read":feedback(&self.read)})
     }
 }
 

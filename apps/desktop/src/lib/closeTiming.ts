@@ -26,9 +26,7 @@ export function measureClosePaint() {
   const sample = { event_to_paint_ms: eventToPaint, click_to_paint_ms: clickToPaint, host_to_event_ms: dispatchToEvent, host_to_paint_ms: dispatchToEvent === undefined ? undefined : dispatchToEvent + eventToPaint };
   performance.measure("rrss.close.event_to_paint", { start: received, end, detail: sample });
   if (clicked !== undefined) performance.measure("rrss.close.click_to_paint", { start: clicked, end });
-  if (Math.max(clickToPaint ?? 0, sample.host_to_paint_ms ?? eventToPaint) >= 100) {
-    void api.logClient("warn", "window_close_latency", JSON.stringify(sample)).catch(() => {});
-  }
+  void api.logClient("debug", "window_close_latency", JSON.stringify(sample)).catch(() => {});
   clicked = undefined;
   received = undefined;
 }

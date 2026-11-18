@@ -145,13 +145,19 @@ fn distribution(values: impl Iterator<Item = f64>) -> Value {
     json!({
         "samples": values.len(), "p50_ms": percentile(50), "p95_ms": percentile(95),
         "p99_ms": percentile(99), "max_ms": values.last().unwrap(),
-        "over_100ms": values.iter().filter(|ms| **ms > 100.0).count(),
     })
 }
 
 fn report(samples: &[Sample]) -> Value {
+    let mut total = distribution(samples.iter().map(|sample| sample.total_ms));
+    total["over_100ms"] = json!(
+        samples
+            .iter()
+            .filter(|sample| sample.total_ms > 100.0)
+            .count()
+    );
     json!({
-        "total": distribution(samples.iter().map(|s| s.total_ms)),
+        "total": total,
         "worker_queue": distribution(samples.iter().map(|s| s.worker_queue_ms)),
         "connection": distribution(samples.iter().map(|s| s.connection_ms)),
         // Includes implicit SQLite lock waits; not a measurement of pure SQL execution.

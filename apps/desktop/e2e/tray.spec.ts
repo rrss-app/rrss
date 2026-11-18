@@ -20,6 +20,9 @@ test("closing asks once, remembers hiding to the tray, and restoring adopts the 
   await closeKey.click();
   await expect(dialog).toBeVisible();
   await expect.poll(() => page.evaluate(() => performance.getEntriesByName("rrss.close.click_to_paint").length)).toBe(1);
+  await expect.poll(() => page.evaluate(() => (window as any).__mockHost.args.log_client)).toMatchObject({
+    level: "debug", scope: "window_close_latency",
+  });
   await expect(dialog.locator("[data-close-tray]")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);

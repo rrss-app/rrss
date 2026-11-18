@@ -75,18 +75,43 @@ test("rejects non-finite, negative, sample mismatch, missing scenes, and inconsi
   assert.doesNotMatch(result.io.stderrText, /"metricMeanings"/);
 });
 
-test("starting-target overrun is reported but not a failure; --strict fails", () => {
+test("direct feedback above the reference passes strict reporting, including an improving baseline", () => {
   const report = validPerfReport();
   report.scenarios.listScroll.interaction = sampleSummary([150, 160]);
   const file = writeReport("over.json", report);
   const ordinary = run([file]);
   assert.equal(ordinary.code, 0);
-  assert.match(ordinary.io.stdoutText, /需要复核/);
+  assert.match(ordinary.io.stdoutText, /above reference/);
   assert.match(ordinary.io.stdoutText, /listScroll\.interactionP95/);
   assert.doesNotMatch(ordinary.io.stdoutText, /"metricMeanings"/);
 
-  const strict = run([file, "--strict"]);
-  assert.equal(strict.code, 1);
+  assert.equal(run([file, "--strict"]).code, 0);
+  assert.equal(run([file, "--baseline", file, "--strict"]).code, 0);
+  report.scenarios.listScroll.interaction = sampleSummary([700, 800]);
+  assert.equal(run([file, "--baseline", writeReport("slower.json", report), "--strict"]).code, 0);
+});
+
+test("strict fails a direct interaction far above its reference even without a baseline", () => {
+  const report = validPerfReport();
+  report.scenarios.listScroll.interaction = sampleSummary([1500, 1600]);
+  const file = writeReport("ceiling.json", report);
+  const ordinary = run([file]);
+  assert.equal(ordinary.code, 0);
+  assert.match(ordinary.io.stdoutText, /above 10x reference: listScroll\.interactionP95/);
+  assert.equal(run([file, "--strict"]).code, 1);
+});
+
+test("old stream timings and cold work are compared only against their own baselines", () => {
+  const old = validPerfReport();
+  for (const [name, phase] of [["chatStream", "hot"], ["startup", "cold"]]) {
+    old.scenarios[name] = { name, phase, targetMs: 100, interaction: sampleSummary([150, 200]) };
+  }
+  assert.deepEqual(summarizePerfReport(old).overStart, []);
+  const current = structuredClone(old);
+  current.scenarios.chatStream.interaction = sampleSummary([300, 400]);
+  const result = run([writeReport("stream.json", current), "--baseline", writeReport("prior-stream.json", old), "--strict"]);
+  assert.equal(result.code, 1);
+  assert.match(result.io.stdoutText, /chatStream\.interactionP95/);
 });
 
 test("does not treat cumulative or action scriptDuration as the 8ms jsP95 metric", () => {

@@ -18,19 +18,40 @@ where
     tokio::task::spawn_blocking(move || {
         tracing::dispatcher::with_default(&dispatch, || {
             span.in_scope(|| {
-                if queued.elapsed() >= db::latency::SLOW {
-                    tracing::warn!(
-                        error_kind = "slow_queue",
-                        elapsed_ms = queued.elapsed().as_secs_f64() * 1000.0,
-                        "slow blocking worker queue"
-                    );
-                }
+                let waited = queued.elapsed();
+                tracing::debug!(
+                    elapsed_ms = waited.as_secs_f64() * 1000.0,
+                    "blocking worker queue wait"
+                );
+                queue_wait(waited);
                 db::latency::scope(std::any::type_name::<F>(), work)
             })
         })
     })
     .await
     .context("blocking worker join")
+}
+
+/// 线程池排满时只在开始和恢复时各记一条，不逐次刷屏。
+fn queue_wait(waited: std::time::Duration) {
+    use monitor::{Change, Sustained};
+    static QUEUE: std::sync::Mutex<Sustained> = std::sync::Mutex::new(Sustained::new());
+    let change = QUEUE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .observe(waited);
+    match change {
+        Some(Change::Began) => tracing::warn!(
+            error_kind = "slow_queue",
+            elapsed_ms = waited.as_millis() as u64,
+            "blocking worker queue delayed"
+        ),
+        Some(Change::Ended(peak)) => tracing::info!(
+            peak_ms = peak.as_millis() as u64,
+            "blocking worker queue recovered"
+        ),
+        None => {}
+    }
 }
 
 /// 在阻塞线程里开库、执行并归还连接；业务错误不转成字符串。

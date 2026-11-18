@@ -122,11 +122,11 @@ export const PERF_REPORT_NOTES = [
   "IPC 字节是完整 JSON 参数的 UTF-8 长度，不是 Object.keys(args)。日志不存参数内容。",
   "scriptDuration 是测量窗口（含准备 / 关闭等）内的 CDP 累积增量，只当窗口工作量；jsP95 标未测，不与 8ms 比较。",
   "流式时延按唯一 textLength 相等 + 时间顺序匹配 emit→渲染；未匹配记 missed。结束前等待 chat-status 消失且落库历史可见。",
-  "viewSwitch* 只保留三次单步，各自对照 100ms。不派生 cycle。",
+  "viewSwitch* 分别记录三次单步交互的反馈耗时。",
   "coldStart 由页内 MutationObserver 在首篇 article 可见时记录，不是仅节点插入。",
   "截图发生在 audit / CDP / 场景统计快照之后，不计入最终测量。",
   "IPC 字节与 latency 来自页内严格模拟宿主，不是真实 Rust / 自定义协议。",
   "图片 href 为 mock 宿主提供的回环 HTTP，Playwright route 返回本地 SVG/PNG；未测试 rrss:// 媒体协议。",
-  "p95 起始目标仅用于报告超出，不使当前已知缺陷导致默认 suite 失败。",
+  "热态直接交互的 p95 参考值用于阅读报告。严格模式按可比场景的相对退步判定，超过参考值 10 倍时无论有无基线都判失败。",
   "生产构建；React production 下 StrictMode 不会开发态双调用。未验 WebKitGTK / WebView2。",
 ];

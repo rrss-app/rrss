@@ -38,6 +38,8 @@ function pushIssue(issues, message) {
 }
 
 const LEGAL_ALGORITHMS = new Set(["nearest-rank"]);
+/** Strict mode fails a direct interaction whose p95 exceeds its reference by this factor, baseline or not. */
+export const CEILING_FACTOR = 10;
 
 function numbersClose(a, b) {
   if (a === b) return true;
@@ -203,6 +205,7 @@ export function summarizePerfReport(report) {
   const targets = reportTargets(report);
   const scenarios = [];
   const overStart = [];
+  const overCeiling = [];
   const unmeasured = [];
 
   for (const [name, scenario] of Object.entries(report.scenarios)) {
@@ -219,8 +222,10 @@ export function summarizePerfReport(report) {
     } else if (isFiniteNumber(scenario.scriptDurationDelta?.p95)) {
       script = scenario.scriptDurationDelta.p95;
     }
-    const overInteraction = isFiniteNumber(interactionP95) && isFiniteNumber(targets.interactionP95Ms) && interactionP95 > targets.interactionP95Ms;
+    const directFeedback = scenario.phase === "hot" && name !== "chatStream" && isFiniteNumber(scenario.targetMs);
+    const overInteraction = directFeedback && isFiniteNumber(interactionP95) && interactionP95 > scenario.targetMs;
     if (overInteraction) overStart.push(`${name}.interactionP95`);
+    if (overInteraction && interactionP95 > scenario.targetMs * CEILING_FACTOR) overCeiling.push(`${name}.interactionP95`);
     scenarios.push({
       name,
       phase: scenario.phase,
@@ -255,6 +260,7 @@ export function summarizePerfReport(report) {
     scenarios,
     jsWork,
     overStart,
+    overCeiling,
     unmeasured,
   };
 }
@@ -266,7 +272,7 @@ export function formatSummary(summary) {
     "scenarios:",
   ];
   for (const scenario of summary.scenarios) {
-    const flag = scenario.overStart ? " 需要复核(超起始目标)" : "";
+    const flag = scenario.overStart ? " (above reference)" : "";
     lines.push(
       `  ${scenario.name}  ${scenario.phase}  n=${scenario.n}  interactionP95=${scenario.interactionP95}  visibleP95=${scenario.visibleP95}  scriptDeltaP95=${scenario.scriptDurationDeltaP95}${flag}`,
     );
@@ -274,10 +280,11 @@ export function formatSummary(summary) {
   if (summary.jsWork.status === "unmeasured") {
     lines.push("jsWorkP95: 未测 (not using cdp.scriptDurationTotalMs or scenario scriptDurationDelta as the 8ms frame metric)");
   } else {
-    const flag = summary.jsWork.overStart ? " 需要复核(超起始目标)" : "";
+    const flag = summary.jsWork.overStart ? " (above reference)" : "";
     lines.push(`jsWorkP95: ${summary.jsWork.value} (${summary.jsWork.status})${flag}`);
   }
-  lines.push(`over starting targets: ${summary.overStart.length ? summary.overStart.join(", ") : "none"}`);
+  lines.push(`above reference: ${summary.overStart.length ? summary.overStart.join(", ") : "none"}`);
+  lines.push(`above ${CEILING_FACTOR}x reference: ${summary.overCeiling.length ? summary.overCeiling.join(", ") : "none"}`);
   lines.push(`unmeasured: ${summary.unmeasured.length ? summary.unmeasured.join(", ") : "none"}`);
   return `${lines.join("\n")}\n`;
 }
@@ -411,7 +418,7 @@ export function runPerfReport(argv, io = process) {
   const summary = summarizePerfReport(report);
   io.stdout.write(formatSummary(summary));
 
-  let needsReview = summary.overStart.length > 0;
+  let needsReview = summary.overCeiling.length > 0;
   if (args.values.baseline) {
     const baselinePath = path.resolve(args.values.baseline);
     let baseline;

@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub const SLOW: Duration = Duration::from_millis(100);
+const SNAPSHOT_SAMPLE_MIN: Duration = Duration::from_millis(100);
 
 pub fn stage(conn: &rusqlite::Connection, name: &'static str) -> Option<Guard> {
     super::metrics::for_connection(conn).map(|metrics| metrics.activity.start(name))
@@ -16,17 +16,11 @@ pub fn stage(conn: &rusqlite::Connection, name: &'static str) -> Option<Guard> {
 pub fn measure<T>(stage: &'static str, work: impl FnOnce() -> T) -> T {
     let started = Instant::now();
     let result = work();
-    let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
-    if started.elapsed() >= SLOW {
-        tracing::warn!(
-            stage,
-            elapsed_ms,
-            error_kind = "slow_stage",
-            "slow backend stage"
-        );
-    } else {
-        tracing::debug!(stage, elapsed_ms, "backend stage");
-    }
+    tracing::debug!(
+        stage,
+        elapsed_ms = started.elapsed().as_secs_f64() * 1000.0,
+        "backend stage"
+    );
     result
 }
 thread_local! { static OPERATION: Cell<&'static str> = const { Cell::new("database") }; }
@@ -109,6 +103,19 @@ impl Activity {
             span: tracing::Span::current(),
         }
     }
+    /// The stage that has been running longest, for the stall observer.
+    pub fn longest_active(&self) -> Option<Sample> {
+        let state = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        state
+            .active
+            .values()
+            .min_by_key(|item| item.started)
+            .map(|item| Sample {
+                operation: item.operation,
+                stage: item.stage,
+                elapsed_ms: item.started.elapsed().as_secs_f64() * 1000.0,
+            })
+    }
     pub fn snapshot(&self) -> Snapshot {
         let state = self.0.lock().unwrap_or_else(|e| e.into_inner());
         Snapshot {
@@ -134,28 +141,20 @@ impl Drop for Guard {
         if let Some(id) = self.id {
             state.active.remove(&id);
         }
-        if elapsed >= SLOW {
+        let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+        if elapsed >= SNAPSHOT_SAMPLE_MIN {
             state.slow_count += 1;
             if state.recent.len() == 128 {
                 state.recent.pop_front();
             }
-            let sample = Sample {
+            state.recent.push_back(Sample {
                 operation: self.operation,
                 stage: self.stage,
-                elapsed_ms: elapsed.as_secs_f64() * 1000.0,
-            };
-            state.recent.push_back(sample.clone());
-            drop(state);
-            self.span.in_scope(|| {
-                tracing::warn!(
-                    error_kind = "slow_stage",
-                    operation = sample.operation,
-                    stage = sample.stage,
-                    elapsed_ms = sample.elapsed_ms,
-                    "slow database stage"
-                )
+                elapsed_ms,
             });
         }
+        drop(state);
+        tracing::debug!(parent: &self.span, operation = self.operation, stage = self.stage, elapsed_ms, "database stage finished");
     }
 }
 

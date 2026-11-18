@@ -419,15 +419,10 @@ mod tests {
             assert_eq!(actual, expected);
         }
         eprintln!(
-            "document reuse: samples=30, legacy_parse_max_ms={:.2}, stored_ir_max_ms={:.2}, old_article_warm_cache_max_ms={:.2}, reused_over_100ms={}",
+            "document reuse: samples=30, legacy_parse_max_ms={:.2}, stored_ir_max_ms={:.2}, old_article_warm_cache_max_ms={:.2}",
             before.into_iter().fold(0.0, f64::max),
-            after.iter().copied().fold(0.0, f64::max),
-            legacy_cached.iter().copied().fold(0.0, f64::max),
-            after
-                .iter()
-                .chain(&legacy_cached)
-                .filter(|ms| **ms > 100.0)
-                .count()
+            after.into_iter().fold(0.0, f64::max),
+            legacy_cached.into_iter().fold(0.0, f64::max),
         );
     }
 }

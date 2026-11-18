@@ -66,6 +66,7 @@ pub enum UiErrorKind {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 pub enum ClientLogLevel {
+    Debug,
     Warn,
     Error,
 }

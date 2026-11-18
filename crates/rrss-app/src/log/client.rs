@@ -64,9 +64,17 @@ fn fields(scope: &str, message: &str, stack: Option<&str>) -> (String, String, S
 }
 
 pub fn record(level: ClientLogLevel, scope: &str, message: &str, stack: Option<&str>) {
-    static LIMITER: OnceLock<Mutex<Limiter>> = OnceLock::new();
+    static ERRORS: OnceLock<Mutex<Limiter>> = OnceLock::new();
+    static DETAILS: OnceLock<Mutex<Limiter>> = OnceLock::new();
+    let budget = match level {
+        ClientLogLevel::Debug if !tracing::enabled!(target: "rrss_ui", tracing::Level::DEBUG) => {
+            return;
+        }
+        ClientLogLevel::Debug => &DETAILS,
+        ClientLogLevel::Warn | ClientLogLevel::Error => &ERRORS,
+    };
     let now = Instant::now();
-    let mut limiter = LIMITER
+    let mut limiter = budget
         .get_or_init(|| Mutex::new(Limiter::new(now)))
         .lock()
         .unwrap();
@@ -77,6 +85,9 @@ pub fn record(level: ClientLogLevel, scope: &str, message: &str, stack: Option<&
     drop(limiter);
     let (scope, message, stack) = fields(scope, message, stack);
     match level {
+        ClientLogLevel::Debug => {
+            tracing::debug!(target: "rrss_ui", scope, detail = %message, dropped, "frontend diagnostic")
+        }
         ClientLogLevel::Warn => {
             tracing::warn!(target: "rrss_ui", scope, error = %message, stack, dropped, "frontend warning")
         }

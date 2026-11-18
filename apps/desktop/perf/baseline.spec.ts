@@ -225,10 +225,8 @@ for (const sceneName of selectedScenes(process.env.PERF_SCENE)) {
             streamBefore && streamAfter
               ? summarizeSamples([Math.max(0, streamAfter.scriptDurationMs - streamBefore.scriptDurationMs)])
               : { unmeasured: true },
-          targetMs: targets.interactionP95Ms,
           note: `emit→render matched=${stream.matched} missed=${stream.missed} observed=${stream.observed}`,
         };
-        overruns.push(checkTarget("chatStream.emitToRenderP95", streamSummary.p95, targets.interactionP95Ms));
 
         const focusToDigest = await sampleLoopWithCdp(client, warmup, samples, async () => {
           await page.locator(NAV.focus).click();

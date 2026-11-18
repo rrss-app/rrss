@@ -52,6 +52,60 @@ fn unknown_error_chains_keep_their_causes() {
     assert_eq!(text, "open database: disk is read-only");
 }
 
+#[tokio::test]
+async fn phase_timings_follow_the_file_filter_and_preserve_error_capacity() {
+    use crate::views::ClientLogLevel;
+    use rrss_core::db::latency::{Activity, measure};
+    use std::time::Duration;
+    use tracing::instrument::WithSubscriber;
+
+    let dir = tempfile::tempdir().unwrap();
+    let (subscriber, handle) = subscriber(
+        Mode::Desktop {
+            log_dir: dir.path().into(),
+        },
+        "",
+    );
+    async {
+        let activity = Arc::new(Activity::default());
+        let stage = activity.start("normal_stage");
+        measure("normal_work", || {
+            std::thread::sleep(Duration::from_millis(125))
+        });
+        drop(stage);
+        assert_eq!(activity.snapshot().recent_slow[0].stage, "normal_stage");
+        crate::execution::blocking(|| ()).await.unwrap();
+        client::record(ClientLogLevel::Debug, "normal_close", "120", None);
+        handle.set_level(Level::Detailed).unwrap();
+        crate::execution::blocking(move || {
+            let _stage = activity.start("detailed_stage");
+            measure("detailed_work", || ());
+        })
+        .await
+        .unwrap();
+        for _ in 0..32 {
+            client::record(ClientLogLevel::Debug, "detailed_close", "20", None);
+        }
+        client::record(ClientLogLevel::Error, "fixture_error", "failed", None);
+    }
+    .with_subscriber(subscriber)
+    .await;
+    handle.end();
+    let log = fs::read_to_string(dir.path().join("rrss.log")).unwrap();
+    for hidden in ["normal_stage", "normal_work", "normal_close"] {
+        assert!(!log.contains(hidden), "{hidden}");
+    }
+    for visible in [
+        "detailed_stage",
+        "detailed_work",
+        "detailed_close",
+        "fixture_error",
+    ] {
+        assert!(log.contains(visible), "{visible}");
+    }
+    assert_eq!(log.matches("blocking worker queue wait").count(), 1);
+}
+
 #[test]
 fn unavailable_directory_and_tool_mode_are_usable() {
     let dir = tempfile::tempdir().unwrap();

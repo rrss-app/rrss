@@ -98,6 +98,7 @@ export function validPerfReport(overrides = {}) {
       listScroll: {
         name: "listScroll",
         phase: "hot",
+        targetMs: 100,
         interaction,
       },
     },

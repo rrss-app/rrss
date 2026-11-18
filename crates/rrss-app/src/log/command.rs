@@ -1,5 +1,5 @@
 use crate::views::UiError;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Record the command name and result only; never its input arguments.
 pub struct CommandLog {
@@ -27,9 +27,6 @@ impl CommandLog {
         let elapsed_ms = elapsed.as_millis() as u64;
         if let Err(error) = result {
             tracing::info!(command, elapsed_ms, code = error.code(), detail = %error.log_detail(), "command failed");
-        }
-        if elapsed > Duration::from_secs(1) {
-            tracing::info!(command, elapsed_ms, "slow command");
         } else {
             tracing::debug!(command, elapsed_ms, "command finished");
         }
@@ -69,7 +66,7 @@ mod tests {
     }
 
     #[test]
-    fn command_failures_are_scrubbed_and_slow_calls_are_visible() {
+    fn command_failures_are_scrubbed_and_success_timings_require_detailed_logs() {
         let dir = tempfile::tempdir().unwrap();
         let (subscriber, handle) = crate::log::subscriber(
             crate::log::Mode::Desktop {
@@ -78,18 +75,23 @@ mod tests {
             "",
         );
         tracing::subscriber::with_default(subscriber, || {
-            CommandLog {
-                name: "fixture",
-                started: Instant::now() - Duration::from_secs(2),
+            let long_command = |name| CommandLog {
+                name,
+                started: Instant::now() - std::time::Duration::from_secs(2),
                 span: tracing::Span::none(),
-            }
-            .finish(&Err::<(), _>(UiError::from(anyhow::anyhow!(
+            };
+            long_command("default_success").finish(&Ok(()));
+            long_command("fixture").finish(&Err::<(), _>(UiError::from(anyhow::anyhow!(
                 "failed https://user:pass@example.test/a?token=canary-token sk-canary-key"
             ))));
+            handle.set_level(crate::log::Level::Detailed).unwrap();
+            long_command("detailed_success").finish(&Ok(()));
         });
         handle.end();
         let log = std::fs::read_to_string(dir.path().join("rrss.log")).unwrap();
-        assert!(log.contains("command failed") && log.contains("slow command"));
+        assert!(!log.contains("default_success"));
+        assert!(log.contains("detailed_success") && log.contains("command finished"));
+        assert!(log.contains("command failed") && !log.contains("slow command"));
         assert!(!log.contains("canary-") && !log.contains("user:pass"));
         assert!(log.contains("code=internal") && log.contains("detail="));
         assert!(!log.contains("WARN") && !log.contains("ERROR"));

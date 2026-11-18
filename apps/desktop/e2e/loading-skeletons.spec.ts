@@ -37,8 +37,10 @@ async function shots(page: Page, name: string) {
 }
 
 async function pauseClock(page: Page) {
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  // 假时钟从给定起点走真实时间；暂停点留 1 秒余量，免得落在已走过的时刻（Cannot fast-forward to the past）。
+  // 此时页面尚未导航，没有待触发的定时器。
+  await page.clock.install({ time: Date.now() });
+  await page.clock.pauseAt(Date.now() + 1000);
 }
 
 test("fast focus and digest reads never mount a skeleton", async ({ page }) => {

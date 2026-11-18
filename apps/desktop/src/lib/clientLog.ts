@@ -25,7 +25,7 @@ function details(error: unknown): { message: string; stack?: string } {
   } catch { return { message: "unreadable error" }; }
 }
 
-export function reportClientError(scope: string, error: unknown, level: ClientLogLevel = "error"): void {
+export function reportClientError(scope: string, error: unknown, level: Exclude<ClientLogLevel, "debug"> = "error"): void {
   if (!started) return;
   const now = performance.now();
   if (now - since >= WINDOW_MS) { since = now; count = 0; }

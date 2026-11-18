@@ -23,10 +23,12 @@ impl Capture {
     pub fn new() -> Self {
         let buffer = Buffer::default();
         let writer = buffer.clone();
+        // Per-stage database timings are Detailed-log diagnostics; tests here
+        // check the domain events, so those debug lines are left out.
         let subscriber = tracing_subscriber::fmt()
             .without_time()
             .with_ansi(false)
-            .with_max_level(tracing::Level::DEBUG)
+            .with_env_filter("debug,rrss_core::db::latency=off")
             .with_writer(move || writer.clone())
             .finish();
         Self {

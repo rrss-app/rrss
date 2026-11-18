@@ -10,6 +10,7 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 - Chat suggests lasting preferences from your own words and uses them across conversations after you confirm them. Conversation summaries stay with their original thread and are deleted with it. Clearing all memories also forgets which suggestions you already saw. Older summaries with no known thread remain available in memory settings.
 - Sending a question from the reader opens the conversation immediately with your question and citations visible. The usual chat progress appears as the engine starts, and a failed send keeps the draft ready to retry.
 - Chat titles can now be generated on demand from the conversation menu or automatically after the second successful reply in a new conversation. Automatic titles are off by default. Choose a title model in Settings to use either option.
+- Default logs are quieter during normal work. Enable Detailed logging in Settings → Diagnostics to see individual command, database, and window-close timings. Stalls that last two seconds or more (a busy executor, long database work or a full worker queue) and their recovery remain visible in the default log.
 
 ## [0.4.1] - 2026-11-18
 
