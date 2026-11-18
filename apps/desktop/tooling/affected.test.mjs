@@ -132,6 +132,39 @@ test("thread moves select actions, history queries and send-preparation consumer
   }
 });
 
+test("reading activity changes require root behavior and binding tests without local tests", () => {
+  const behavior = "actions::tests::successful_feedback_events_and_sessions_request_rank_refresh";
+  const bindings = "export_ts::bindings_are_current";
+  for (const file of ["actions/reading_activity.rs", "views/reading_activity.rs"]) {
+    const steps = planAffected({ changed: [`crates/rrss-app/src/${file}`], coverage, crates });
+    const rust = steps.find((step) => step.cmd?.[0] === "cargo");
+    assert.deepEqual(rust.rustFilters, { required: [behavior, bindings], path: [] });
+  }
+});
+
+test("rule actions and contracts select write behavior and rule queries", () => {
+  for (const [file, required] of [
+    ["actions/rules.rs", ["actions::rules::", "queries::rules::"]],
+    ["views/rules.rs", ["actions::rules::", "export_ts::bindings_are_current", "queries::rules::"]],
+  ]) {
+    const steps = planAffected({ changed: [`crates/rrss-app/src/${file}`], coverage, crates });
+    const rust = steps.find((step) => step.cmd?.[0] === "cargo");
+    assert.deepEqual(rust.rustFilters, { required, path: [] });
+  }
+});
+
+test("storage actions and contracts select cleanup and backup consumers", () => {
+  for (const file of ["actions/storage.rs", "views/storage.rs"]) {
+    const steps = planAffected({ changed: [`crates/rrss-app/src/${file}`], coverage, crates });
+    const rust = steps.find((step) => step.cmd?.[0] === "cargo");
+    const expected = ["actions::storage::", "queries::backup::", "queries::storage::",
+      "web::tests::retention_deletes_only_expired_temporary_rows_with_cascades_even_when_disabled",
+      "web::tests::citation_and_chat_persistence_collect_before_expiry_cleanup"];
+    if (file.startsWith("views/")) expected.push("export_ts::bindings_are_current");
+    assert.deepEqual(rust.rustFilters, { required: expected.sort(), path: [] });
+  }
+});
+
 test("subscription consumer filters still match after scheduler tests are renamed", () => {
   const steps = planAffected({ changed: ["crates/rrss-app/src/views/feeds.rs"], coverage, crates });
   const rust = steps.filter((step) => step.cmd?.[0] === "cargo");

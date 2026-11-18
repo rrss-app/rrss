@@ -6,6 +6,23 @@ pub use feeds::{
     move_tree_items, rename_folder, restore_tree_layout, save_feed, unsubscribe, unsubscribe_many,
 };
 
+mod reading_activity;
+pub use reading_activity::{record_article_events, record_exposures, record_read_sessions};
+
+mod rules;
+pub use rules::{
+    allow_rule_for_feed, apply_preset, confirm_feature, confirm_suggested_rule, create_rule,
+    discard_rule, release_article, remove_preset, rescore, set_rule_action, unrelease_article,
+    update_rule,
+};
+
+mod storage;
+pub use storage::{
+    APP_VERSION, backup_cancel_restore, backup_create, backup_inspect, backup_restore,
+    dismiss_restore_notice, retention_clean_now, run_retention, run_scheduled_backup,
+    set_backup_schedule, set_retention_days, storage_clean,
+};
+
 mod threads;
 pub use threads::{
     archive_thread, create_thread_folder, delete_thread, delete_thread_folder, insert_user_message,
@@ -15,7 +32,6 @@ pub use threads::{
 
 use rrss_core::ai_store::{AiProvider, NewProvider};
 use rrss_core::articles;
-use rrss_core::backup::{self, BackupKind};
 use rrss_core::error::{
     backup::BackupProblem,
     models::{CompatProblem, ModelChoiceProblem, ProviderProblem},
@@ -24,17 +40,11 @@ use rrss_core::error::{
 };
 use rrss_core::feed_scope::{self, FeedScope};
 use rrss_core::feedback::{self, FeedbackKind};
-use rrss_core::feeds::now_ms;
 use rrss_core::interests;
 use rrss_core::memories;
 use rrss_core::pi_store;
 use rrss_core::prefs;
-use rrss_core::presets;
 use rrss_core::rag;
-use rrss_core::rules::{
-    self, Dimension, NewRule, Polarity, RuleAction, RuleSource, ScopeKind, validate_pattern,
-};
-use rrss_core::storage::{self, Cleanup};
 use rrss_core::timeline;
 use rrss_core::translations;
 use rrss_core::{ai_store, db, rescore_all};
@@ -42,47 +52,9 @@ use rusqlite::Connection;
 use std::path::Path;
 
 use crate::views::{
-    BackupDoneView, CitationView, NewRuleSpec, PrefsImportView, PrefsScopeView, PrefsSkipView,
-    RestoreCheckView, SaveAiSettingsArgs, SavePiSettingsArgs, UiError,
+    CitationView, PrefsImportView, PrefsScopeView, PrefsSkipView, SaveAiSettingsArgs,
+    SavePiSettingsArgs, UiError,
 };
-
-pub fn record_exposures(
-    conn: &Connection,
-    records: Vec<crate::views::ExposureInput>,
-) -> rrss_core::Result<crate::views::ExposureIds> {
-    rrss_core::signals::record_exposures(
-        conn,
-        &records.into_iter().map(Into::into).collect::<Vec<_>>(),
-    )
-}
-
-pub fn record_article_events(
-    conn: &Connection,
-    records: Vec<crate::views::ArticleEventInput>,
-) -> rrss_core::Result<usize> {
-    let count = rrss_core::signals::record_events(
-        conn,
-        &records.into_iter().map(Into::into).collect::<Vec<_>>(),
-    )?;
-    if count > 0 {
-        crate::jobs::rank::request(conn)?;
-    }
-    Ok(count)
-}
-
-pub fn record_read_sessions(
-    conn: &Connection,
-    records: Vec<crate::views::ReadSessionInput>,
-) -> rrss_core::Result<usize> {
-    let count = rrss_core::signals::record_read_sessions(
-        conn,
-        &records.into_iter().map(Into::into).collect::<Vec<_>>(),
-    )?;
-    if count > 0 {
-        crate::jobs::rank::request(conn)?;
-    }
-    Ok(count)
-}
 
 pub fn mark_read(conn: &Connection, id: i64, read: bool) -> rrss_core::Result<()> {
     articles::set_read(conn, id, read)
@@ -163,28 +135,6 @@ pub fn rate_article(
     Ok(result)
 }
 
-fn spec_to_new_rule(spec: &NewRuleSpec) -> rrss_core::Result<NewRule> {
-    let polarity = Polarity::parse_str(&spec.polarity)?;
-    let dimension = Dimension::parse_str(&spec.dimension)?;
-    validate_pattern(dimension, &spec.pattern)?;
-    let scope_kind = ScopeKind::parse_str(&spec.scope_kind)?;
-    Ok(NewRule {
-        polarity,
-        dimension,
-        pattern: spec.pattern.trim().to_string(),
-        scope_kind,
-        scope_id: if scope_kind == ScopeKind::Global {
-            None
-        } else {
-            Some(spec.scope_id)
-        },
-        weight: spec.weight,
-        source: RuleSource::Manual,
-        enabled: true,
-        pack_id: None,
-    })
-}
-
 /// Persist a rule change and its article scores atomically.
 /// `rescore_all` reuses this transaction instead of starting a nested BEGIN.
 fn persist_then_rescore<T>(
@@ -196,96 +146,6 @@ fn persist_then_rescore<T>(
     rescore_all(&tx)?;
     tx.commit()?;
     Ok(out)
-}
-
-pub fn create_rule(conn: &Connection, spec: &NewRuleSpec) -> rrss_core::Result<i64> {
-    let spec = spec_to_new_rule(spec)?;
-    persist_then_rescore(conn, |c| rules::insert_rule(c, spec.clone()))
-}
-
-pub fn release_article(conn: &Connection, id: i64) -> rrss_core::Result<()> {
-    set_article_release(conn, id, Some(now_ms()))
-}
-
-pub fn unrelease_article(conn: &Connection, id: i64) -> rrss_core::Result<()> {
-    set_article_release(conn, id, None)
-}
-
-fn set_article_release(conn: &Connection, id: i64, at: Option<i64>) -> rrss_core::Result<()> {
-    let changed = conn.execute(
-        "UPDATE articles SET released_at = ?1 WHERE id = ?2",
-        rusqlite::params![at, id],
-    )?;
-    if changed == 0 {
-        return Err(rrss_core::Error::ArticleNotFound);
-    }
-    Ok(())
-}
-
-pub fn allow_rule_for_feed(
-    conn: &Connection,
-    rule_id: i64,
-    feed_id: i64,
-) -> rrss_core::Result<i64> {
-    persist_then_rescore(conn, |c| {
-        let rule = rules::get_rule(c, rule_id)?;
-        rules::insert_rule(
-            c,
-            NewRule {
-                polarity: match rule.polarity {
-                    Polarity::Like => Polarity::Dislike,
-                    Polarity::Dislike => Polarity::Like,
-                },
-                dimension: rule.dimension,
-                pattern: rule.pattern,
-                scope_kind: ScopeKind::Feed,
-                scope_id: Some(feed_id),
-                weight: rule.weight.abs(),
-                source: RuleSource::Manual,
-                enabled: true,
-                pack_id: None,
-            },
-        )
-    })
-}
-
-pub fn update_rule(conn: &Connection, id: i64, spec: &NewRuleSpec) -> rrss_core::Result<()> {
-    persist_then_rescore(conn, |c| {
-        let mut rule = rules::get_rule(c, id)?;
-        let n = spec_to_new_rule(spec)?;
-        rule.polarity = n.polarity;
-        rule.dimension = n.dimension;
-        rule.pattern = n.pattern;
-        rule.weight = n.weight;
-        rule.scope_kind = n.scope_kind;
-        rule.scope_id = n.scope_id;
-        rules::update_rule(c, &rule)
-    })
-}
-
-pub fn set_rule_action(conn: &Connection, id: i64, action: i32) -> rrss_core::Result<()> {
-    let mapped = match action {
-        0 => RuleAction::Like,
-        1 => RuleAction::Dislike,
-        _ => RuleAction::Neutral,
-    };
-    persist_then_rescore(conn, |c| rules::set_rule_action(c, id, mapped))
-}
-
-pub fn confirm_suggested_rule(conn: &Connection, id: i64) -> rrss_core::Result<()> {
-    persist_then_rescore(conn, |c| rules::confirm_rule(c, id))
-}
-
-pub fn discard_rule(conn: &Connection, id: i64) -> rrss_core::Result<()> {
-    persist_then_rescore(conn, |c| rules::delete_rule(c, id))
-}
-
-pub fn apply_preset(conn: &Connection, id: &str) -> rrss_core::Result<u32> {
-    persist_then_rescore(conn, |c| presets::apply_pack(c, id))
-}
-
-pub fn remove_preset(conn: &Connection, id: &str) -> rrss_core::Result<u32> {
-    persist_then_rescore(conn, |c| presets::remove_pack(c, id))
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -318,48 +178,6 @@ pub fn save_translate_settings(
         translations::set_http_config(tx, args.http_url.as_deref(), args.http_key.as_deref())?;
         Ok(())
     })
-}
-
-pub fn confirm_feature(
-    conn: &Connection,
-    _article_id: i64,
-    feed_id: i64,
-    dislike: bool,
-    feed_scope: bool,
-    dimension: &str,
-    pattern: &str,
-) -> rrss_core::Result<i64> {
-    let polarity = if dislike {
-        Polarity::Dislike
-    } else {
-        Polarity::Like
-    };
-    let dimension = Dimension::parse_str(dimension)?;
-    let (scope_kind, scope_id) = if feed_scope {
-        (ScopeKind::Feed, Some(feed_id))
-    } else {
-        (ScopeKind::Global, None)
-    };
-    persist_then_rescore(conn, |c| {
-        rules::insert_rule(
-            c,
-            NewRule {
-                polarity,
-                dimension,
-                pattern: pattern.to_string(),
-                scope_kind,
-                scope_id,
-                weight: rules::DEFAULT_WEIGHT,
-                source: RuleSource::Manual,
-                enabled: true,
-                pack_id: None,
-            },
-        )
-    })
-}
-
-pub fn rescore(conn: &Connection) -> rrss_core::Result<u32> {
-    rescore_all(conn)
 }
 
 pub fn confirm_memory(conn: &Connection, id: i64) -> rrss_core::Result<()> {
@@ -683,114 +501,6 @@ pub fn reset_failed_embeds(conn: &Connection) -> rrss_core::Result<u32> {
     Ok(reset)
 }
 
-/// 存储页的清理与压缩。`action` 取自 [`crate::views::StorageItemView::action`]；返回给用户看的结果。
-pub fn storage_clean(
-    conn: &Connection,
-    db_path: &std::path::Path,
-    action: &str,
-) -> rrss_core::Result<crate::views::StorageMessage> {
-    use crate::views::{StorageAction as A, StorageMessage as M};
-    if action == "vacuum" {
-        storage::vacuum(conn)?;
-        return Ok(M::StorageCleaned {
-            action: A::Vacuum,
-            count: 0,
-        });
-    }
-    if action == "logs" {
-        crate::log::current()
-            .ok_or_else(|| std::io::Error::other("logging is not initialized"))?
-            .clear()?;
-        return Ok(M::StorageCleaned {
-            action: A::Logs,
-            count: 0,
-        });
-    }
-    let what =
-        Cleanup::parse(action).ok_or_else(|| rrss_core::Error::UnknownCleanup(action.into()))?;
-    let data_dir = db_path.parent().unwrap_or(std::path::Path::new("."));
-    let model = ai_store::resolve_embed(conn)?.map(|e| e.model);
-    let count = storage::clean(conn, data_dir, what, model.as_deref())?;
-    let action = match what {
-        Cleanup::AiCache => A::AiCache,
-        Cleanup::RecommendationLogs => A::RecommendationLogs,
-        Cleanup::Translations => A::Translations,
-        Cleanup::Images => A::Images,
-        Cleanup::Videos => A::Videos,
-        Cleanup::UntrackedMedia => A::UntrackedMedia,
-        Cleanup::OldVectors => A::OldVectors,
-        Cleanup::LegacyTables => A::LegacyTables,
-    };
-    Ok(M::StorageCleaned { action, count })
-}
-
-/// 写进备份清单的程序版本。
-pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// 手动完整备份到用户选的位置。
-pub fn backup_create(
-    conn: &Connection,
-    data_dir: &Path,
-    dest: &Path,
-    include_secrets: bool,
-) -> rrss_core::Result<BackupDoneView> {
-    let manifest = backup::create(
-        conn,
-        data_dir,
-        dest,
-        BackupKind::Manual,
-        APP_VERSION,
-        include_secrets,
-    )?;
-    db::set_setting(
-        conn,
-        crate::queries::LAST_MANUAL_KEY,
-        &manifest.created_at.to_string(),
-    )?;
-    Ok(BackupDoneView {
-        path: dest.display().to_string(),
-        bytes: storage::file_bytes(dest) as i64,
-        summary: crate::views::BackupMessage::BackupCreated {
-            count: manifest.counts.articles, feeds: manifest.counts.feeds,
-            rules: manifest.counts.rules, threads: manifest.counts.threads,
-            secrets_included: manifest.secrets_included,
-        },
-    })
-}
-
-/// 恢复第一步：解压到暂存目录并检查，给出备份内容请用户确认。
-pub fn backup_inspect(data_dir: &Path, path: &Path) -> rrss_core::Result<RestoreCheckView> {
-    let check = backup::inspect(path, data_dir)?;
-    Ok(RestoreCheckView {
-        path: path.display().to_string(),
-        file_name: path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default(),
-        created_at: check.manifest.created_at,
-        schema_version: i64::from(check.schema_version),
-        summary: crate::views::BackupMessage::BackupRestoreSummary {
-            count: check.counts.articles, feeds: check.counts.feeds,
-            rules: check.counts.rules, threads: check.counts.threads,
-            secrets_included: check.manifest.secrets_included,
-        },
-    })
-}
-
-/// 恢复第二步：先把当前数据备份到自动备份里，再登记待办；调用方随后重启应用。
-pub fn backup_restore(conn: &Connection, data_dir: &Path, path: &Path) -> rrss_core::Result<()> {
-    backup::create_auto(conn, data_dir, BackupKind::BeforeRestore, APP_VERSION)?;
-    backup::schedule_restore(data_dir, path)
-}
-
-pub fn backup_cancel_restore(data_dir: &Path) -> rrss_core::Result<()> {
-    backup::cancel_restore(data_dir)
-}
-
-pub fn dismiss_restore_notice(data_dir: &Path) -> rrss_core::Result<()> {
-    backup::clear_restore_result(data_dir)
-}
-
 pub fn dismiss_auto_summary_notice(conn: &Connection) -> rrss_core::Result<()> {
     db::set_setting(conn, ai_store::FOCUS_AUTO_SUMMARY_NOTICE_KEY, "done")
 }
@@ -802,100 +512,6 @@ pub fn set_setting(
     value: &str,
 ) -> rrss_core::Result<crate::views::SettingValue> {
     crate::settings_schema::set(conn, id, value)
-}
-
-pub fn set_backup_schedule(conn: &Connection, value: &str) -> rrss_core::Result<()> {
-    if !matches!(value, "off" | "daily" | "weekly") {
-        return Err(rrss_core::Error::Backup(BackupProblem::ScheduleUnknown { schedule: value.into() }));
-    }
-    db::set_setting(conn, crate::queries::SCHEDULE_KEY, value)
-}
-
-/// 定时备份到期就生成一份；未开启或未到期时返回 `None`。刷新后的整理作业调用。
-pub fn run_scheduled_backup(
-    conn: &Connection,
-    data_dir: &Path,
-    now_ms: i64,
-) -> rrss_core::Result<Option<std::path::PathBuf>> {
-    const DAY: i64 = 24 * 3600 * 1000;
-    // 刷新时间有抖动，提前一小时也算到期，免得每天的备份一天天往后推。
-    const SLACK: i64 = 3600 * 1000;
-    let every = match crate::queries::backup_schedule(conn)?.as_str() {
-        "daily" => DAY,
-        "weekly" => 7 * DAY,
-        _ => return Ok(None),
-    };
-    if let Some(last) = backup::latest_auto(data_dir, BackupKind::Scheduled)
-        && now_ms - last < every - SLACK
-    {
-        return Ok(None);
-    }
-    backup::create_auto(conn, data_dir, BackupKind::Scheduled, APP_VERSION).map(Some)
-}
-
-pub fn set_retention_days(conn: &Connection, days: i64) -> rrss_core::Result<()> {
-    rrss_core::retention::set_global_days(conn, days)
-}
-
-const RETENTION_LAST_RUN: &str = "retention_last_run";
-const SIGNALS_LAST_RUN: &str = "signals_retention_last_run";
-
-/// 执行一轮保留清理：第一次清理前先自动备份，之后每批一个写事务。
-/// `force` 为假时一天最多一次（刷新后的整理作业调用）；返回清理篇数与是否做了备份。
-pub fn run_retention(
-    conn: &Connection,
-    data_dir: &Path,
-    now_ms: i64,
-    force: bool,
-) -> rrss_core::Result<(i64, bool)> {
-    use rrss_core::retention;
-    const DAY: i64 = 24 * 3600 * 1000;
-    let last_signals_run =
-        db::get_setting(conn, SIGNALS_LAST_RUN)?.and_then(|v| v.parse::<i64>().ok());
-    if force || last_signals_run.is_none_or(|last| now_ms.saturating_sub(last) >= DAY - 3600 * 1000)
-    {
-        rrss_core::signals::prune(conn, now_ms)?;
-        db::set_setting(conn, SIGNALS_LAST_RUN, &now_ms.to_string())?;
-    }
-    let expired = retention::delete_expired(conn, now_ms)?;
-    if !retention::active(conn)? {
-        return Ok((expired, false));
-    }
-    if !force {
-        let last = db::get_setting(conn, RETENTION_LAST_RUN)?
-            .and_then(|v| v.parse::<i64>().ok())
-            .unwrap_or(0);
-        if now_ms - last < DAY - 3600 * 1000 {
-            return Ok((expired, false));
-        }
-    }
-    let mut backed_up = false;
-    if !retention::ever_pruned(conn)? && !retention::due_batch(conn, now_ms, 1)?.is_empty() {
-        backup::create_auto(conn, data_dir, BackupKind::BeforePrune, APP_VERSION)?;
-        backed_up = true;
-    }
-    let mut total = expired;
-    loop {
-        let tx = db::write_transaction(conn)?;
-        let ids = retention::due_batch(&tx, now_ms, retention::BATCH)?;
-        if ids.is_empty() {
-            break;
-        }
-        total += retention::prune_articles(&tx, &ids, now_ms)?;
-        tx.commit()?;
-        rrss_core::media::flush_removed_files(conn)?;
-    }
-    db::set_setting(conn, RETENTION_LAST_RUN, &now_ms.to_string())?;
-    Ok((total, backed_up))
-}
-
-/// 存储页「立即清理」。
-pub fn retention_clean_now(
-    conn: &Connection,
-    data_dir: &Path,
-) -> rrss_core::Result<crate::views::RetentionMessage> {
-    let (count, backed_up) = run_retention(conn, data_dir, rrss_core::feeds::now_ms(), true)?;
-    Ok(crate::views::RetentionMessage::RetentionCleaned { count, backed_up })
 }
 
 /// 只导出偏好（规则、兴趣、记忆），不含密钥。
@@ -1021,16 +637,17 @@ pub fn cancel_vector_rebuild(
 }
 
 #[cfg(test)]
+fn open_temp() -> (tempfile::TempDir, rrss_core::db::PooledConnection) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("t.db");
+    let conn = db::open_at(&path).unwrap();
+    (dir, conn)
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use rrss_core::db;
-
-    fn open_temp() -> (tempfile::TempDir, rrss_core::db::PooledConnection) {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("t.db");
-        let conn = db::open_at(&path).unwrap();
-        (dir, conn)
-    }
 
     #[tokio::test]
     async fn interest_edits_wake_existing_background_rebuild() {
@@ -1294,188 +911,6 @@ mod tests {
     }
 
     #[test]
-    fn manual_backup_records_time_and_restore_is_scheduled_after_safety_backup() {
-        let (dir, conn) = open_temp();
-        let dest = dir.path().join("out/manual.zip");
-        let done = backup_create(&conn, dir.path(), &dest, false).unwrap();
-        assert!(matches!(done.summary, crate::views::BackupMessage::BackupCreated { count: 0, .. }));
-        assert!(
-            crate::queries::backup_page(&conn, dir.path())
-                .unwrap()
-                .last_manual_at
-                .is_some()
-        );
-
-        let check = backup_inspect(dir.path(), &dest).unwrap();
-        assert_eq!(check.file_name, "manual.zip");
-        assert_eq!(check.schema_version, i64::from(db::SCHEMA_VERSION));
-        backup_restore(&conn, dir.path(), &dest).unwrap();
-        let entries = backup::list_auto(dir.path());
-        assert_eq!(entries.len(), 1);
-        assert_eq!(
-            entries[0].manifest.as_ref().unwrap().kind,
-            BackupKind::BeforeRestore
-        );
-        assert!(dir.path().join("restore-pending.json").is_file());
-        backup_cancel_restore(dir.path()).unwrap();
-        assert!(!dir.path().join("restore-pending.json").exists());
-    }
-
-    #[test]
-    fn scheduled_backup_runs_only_when_due() {
-        let (dir, conn) = open_temp();
-        let now = rrss_core::feeds::now_ms();
-        assert!(
-            run_scheduled_backup(&conn, dir.path(), now)
-                .unwrap()
-                .is_none()
-        );
-        assert!(set_backup_schedule(&conn, "hourly").is_err());
-        set_backup_schedule(&conn, "daily").unwrap();
-        assert!(
-            run_scheduled_backup(&conn, dir.path(), now)
-                .unwrap()
-                .is_some()
-        );
-        assert!(
-            run_scheduled_backup(&conn, dir.path(), now + 3600 * 1000)
-                .unwrap()
-                .is_none()
-        );
-        assert!(
-            run_scheduled_backup(&conn, dir.path(), now + 47 * 1800 * 1000)
-                .unwrap()
-                .is_some()
-        );
-    }
-
-    #[test]
-    fn signals_retention_is_fixed_and_independent_of_body_retention() {
-        let (dir, conn) = open_temp();
-        let now = 1_800_000_000_000;
-        let cutoff = now - rrss_core::signals::RETENTION_MS;
-        conn.execute_batch("INSERT INTO feeds(id,url,created_at) VALUES(1,'https://test.invalid/rss',0);
-            INSERT INTO articles(id,feed_id,title,content_html,created_at) VALUES(1,1,'t','<p>body</p>',0);").unwrap();
-        let insert = |at: i64| {
-            conn.execute("INSERT INTO exposures(article_id,surface,position,score,interest_boost,rank_score,variant,session_id,shown_at)
-                VALUES(1,'focus',0,0,0,0,'baseline',?1,?2)", rusqlite::params![at.to_string(),at]).unwrap();
-            conn.execute(
-                "INSERT INTO article_events(article_id,kind,at) VALUES(1,'open',?1)",
-                [at],
-            )
-            .unwrap();
-            conn.execute("INSERT INTO read_sessions(article_id,opened_at,active_ms,idle_ms,read_chars,skimmed_chars,total_chars,max_block,reached_end,translated,ended_by,via)
-                VALUES(1,?1,0,0,0,0,0,0,0,0,'back','focus')", [at]).unwrap();
-        };
-        let counts = || {
-            ["exposures", "article_events", "read_sessions"].map(|t| {
-                conn.query_row(&format!("SELECT COUNT(*) FROM {t}"), [], |r| {
-                    r.get::<_, i64>(0)
-                })
-                .unwrap()
-            })
-        };
-        insert(cutoff - 1);
-        insert(cutoff);
-        insert(now - 100 * 24 * 3600 * 1000);
-        assert_eq!(
-            run_retention(&conn, dir.path(), now, false).unwrap(),
-            (0, false)
-        );
-        assert_eq!(counts(), [2; 3]);
-        assert!(backup::list_auto(dir.path()).is_empty());
-        assert_eq!(
-            conn.query_row("SELECT content_html FROM articles", [], |r| r
-                .get::<_, String>(0))
-                .unwrap(),
-            "<p>body</p>"
-        );
-        insert(cutoff - 2);
-        run_retention(&conn, dir.path(), now + 1000, false).unwrap();
-        assert_eq!(
-            counts(),
-            [3; 3],
-            "daily throttle applies while body retention is off"
-        );
-        run_retention(&conn, dir.path(), now, true).unwrap();
-        assert_eq!(counts(), [2; 3], "force bypasses log throttle");
-        set_retention_days(&conn, 90).unwrap();
-        run_retention(&conn, dir.path(), now, true).unwrap();
-        assert_eq!(
-            counts(),
-            [2; 3],
-            "body retention does not shorten log retention"
-        );
-        set_retention_days(&conn, 0).unwrap();
-        run_retention(&conn, dir.path(), now + 24 * 3600 * 1000, false).unwrap();
-        assert_eq!(
-            counts(),
-            [1; 3],
-            "logs keep pruning after body retention is disabled"
-        );
-    }
-
-    #[test]
-    fn retention_backs_up_once_prunes_in_batches_and_runs_daily() {
-        let (dir, conn) = open_temp();
-        let now = rrss_core::feeds::now_ms();
-        let old = now - 200 * 24 * 3600 * 1000;
-        conn.execute(
-            "INSERT INTO feeds (id, url, created_at) VALUES (1, 'https://a/rss', 0)",
-            [],
-        )
-        .unwrap();
-        for i in 0..(rrss_core::retention::BATCH + 5) {
-            conn.execute(
-                "INSERT INTO articles (feed_id, guid, title, content_html, created_at) VALUES (1, ?1, 't', '<p>x</p>', ?2)",
-                rusqlite::params![format!("g{i}"), old],
-            )
-            .unwrap();
-        }
-        assert_eq!(
-            run_retention(&conn, dir.path(), now, false).unwrap(),
-            (0, false),
-            "off by default"
-        );
-        set_retention_days(&conn, 90).unwrap();
-        let page = crate::queries::retention_page(&conn, now).unwrap();
-        assert!(matches!(page.preview, Some(crate::views::RetentionMessage::RetentionPreview { count: 205 })));
-        assert!(page.first_run);
-        assert!(matches!(page.confirm[2], crate::views::RetentionMessage::RetentionBackup {}));
-
-        let (n, backed_up) = run_retention(&conn, dir.path(), now, false).unwrap();
-        assert_eq!((n, backed_up), (rrss_core::retention::BATCH + 5, true));
-        assert_eq!(
-            backup::list_auto(dir.path())[0]
-                .manifest
-                .as_ref()
-                .unwrap()
-                .kind,
-            BackupKind::BeforePrune
-        );
-        conn.execute(
-            "INSERT INTO articles (feed_id, guid, title, content_html, created_at) VALUES (1, 'late', 't', '<p>x</p>', ?1)",
-            [old],
-        )
-        .unwrap();
-        assert_eq!(
-            run_retention(&conn, dir.path(), now + 3600 * 1000, false).unwrap(),
-            (0, false),
-            "once a day"
-        );
-        let msg = retention_clean_now(&conn, dir.path()).unwrap();
-        assert!(matches!(msg, crate::views::RetentionMessage::RetentionCleaned { count: 1, backed_up: false }));
-        assert_eq!(
-            backup::list_auto(dir.path()).len(),
-            1,
-            "no second pre-prune backup"
-        );
-        let page = crate::queries::retention_page(&conn, now).unwrap();
-        assert!(!page.can_run);
-        assert!(!page.first_run);
-    }
-
-    #[test]
     fn prefs_import_summarises_and_rescopes() {
         let (_dir, conn) = open_temp();
         conn.execute_batch(
@@ -1505,150 +940,6 @@ mod tests {
             serde_json::json!([{ "code": "prefs_rules", "params": { "count": 0, "duplicates": 1 } }, { "code": "prefs_interests", "params": { "count": 0, "duplicates": 1 } }])
         );
         assert!(prefs_import(&other, "not json").is_err());
-    }
-
-    #[test]
-    fn storage_clean_reports_and_rejects_unknown_actions() {
-        let (dir, conn) = open_temp();
-        let path = dir.path().join("t.db");
-        conn.execute(
-            "INSERT INTO ai_cache (cache_key, value, created_at) VALUES ('k', 'v', 1)",
-            [],
-        )
-        .unwrap();
-        assert_eq!(
-            serde_json::to_value(storage_clean(&conn, &path, "ai_cache").unwrap()).unwrap(),
-            serde_json::json!({ "code": "storage_cleaned", "params": { "action": "ai_cache", "count": 1 } })
-        );
-        assert_eq!(
-            serde_json::to_value(storage_clean(&conn, &path, "recommendation_logs").unwrap())
-                .unwrap(),
-            serde_json::json!({ "code": "storage_cleaned", "params": { "action": "recommendation_logs", "count": 0 } })
-        );
-        assert_eq!(
-            serde_json::to_value(storage_clean(&conn, &path, "vacuum").unwrap()).unwrap(),
-            serde_json::json!({ "code": "storage_cleaned", "params": { "action": "vacuum", "count": 0 } })
-        );
-        assert!(matches!(
-            storage_clean(&conn, &path, "drop_everything"),
-            Err(rrss_core::Error::UnknownCleanup(_))
-        ));
-    }
-
-    #[test]
-    fn create_rule_rescores_existing_articles() {
-        use crate::views::NewRuleSpec;
-        use rrss_core::articles::{self, FocusFilter};
-        use rrss_core::feeds::{SubscribeRequest, subscribe};
-        use rrss_core::parse::ParsedEntry;
-
-        let (_dir, conn) = open_temp();
-        let feed = subscribe(
-            &conn,
-            SubscribeRequest {
-                url: "https://news.example.com/rss.xml".into(),
-                folder_id: None,
-                as_rsshub: false,
-                rsshub_instance_id: None,
-            },
-        )
-        .unwrap();
-        rrss_core::ingest::upsert_entries(
-            &conn,
-            feed,
-            &[ParsedEntry {
-                guid: "r1".into(),
-                canonical_url: Some("https://news.example.com/rust".into()),
-                title: "Rust 1.80 shipped".into(),
-                author: None,
-                published_at: Some(1),
-                content_html: Some("<p>release</p>".into()),
-                hash: "h".into(),
-                tags: vec![],
-            }],
-            1,
-        )
-        .unwrap();
-        articles::set_focus_filter(&conn, FocusFilter::FocusOnly).unwrap();
-        assert!(articles::list_focus(&conn, 20).unwrap().is_empty());
-
-        create_rule(
-            &conn,
-            &NewRuleSpec {
-                polarity: "like".into(),
-                dimension: "title_kw".into(),
-                pattern: "Rust".into(),
-                weight: 10,
-                scope_kind: "global".into(),
-                scope_id: 0,
-            },
-        )
-        .unwrap();
-
-        let focus = articles::list_focus(&conn, 20).unwrap();
-        assert_eq!(focus.len(), 1);
-        assert_eq!(focus[0].title, "Rust 1.80 shipped");
-        assert_eq!(focus[0].score, 10);
-    }
-
-    #[test]
-    fn create_rule_rolls_back_when_rescore_fails() {
-        use crate::views::NewRuleSpec;
-        use rrss_core::feeds::{SubscribeRequest, subscribe};
-        use rrss_core::parse::ParsedEntry;
-        use rrss_core::rules::{self, RuleFilter};
-
-        let (_dir, conn) = open_temp();
-        let feed = subscribe(
-            &conn,
-            SubscribeRequest {
-                url: "https://news.example.com/rss.xml".into(),
-                folder_id: None,
-                as_rsshub: false,
-                rsshub_instance_id: None,
-            },
-        )
-        .unwrap();
-        rrss_core::ingest::upsert_entries(
-            &conn,
-            feed,
-            &[ParsedEntry {
-                guid: "r1".into(),
-                canonical_url: Some("https://news.example.com/rust".into()),
-                title: "Rust 1.80 shipped".into(),
-                author: None,
-                published_at: Some(1),
-                content_html: Some("<p>release</p>".into()),
-                hash: "h".into(),
-                tags: vec![],
-            }],
-            1,
-        )
-        .unwrap();
-        conn.execute(
-            "CREATE TRIGGER fail_score BEFORE UPDATE OF score ON articles
-             BEGIN SELECT RAISE(ABORT, 'injected'); END;",
-            [],
-        )
-        .unwrap();
-
-        let err = create_rule(
-            &conn,
-            &NewRuleSpec {
-                polarity: "like".into(),
-                dimension: "title_kw".into(),
-                pattern: "Rust".into(),
-                weight: 10,
-                scope_kind: "global".into(),
-                scope_id: 0,
-            },
-        )
-        .unwrap_err();
-        assert!(err.to_string().contains("injected"), "{err}");
-        let n = rules::list_rules(&conn, &RuleFilter::default())
-            .unwrap()
-            .len();
-        assert_eq!(n, 0);
     }
 
     fn ai_args(provider_id: i64) -> crate::views::SaveAiSettingsArgs {

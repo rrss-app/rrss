@@ -90,6 +90,21 @@ const APP_DOMAIN_TESTS = [
     source: /^src\/(?:(?:actions|views)\/threads|queries\/chat|chat)(?:\.rs$|\/)/,
     filters: ["actions::threads::", "queries::chat::", "chat::tests::"],
   },
+  {
+    source: /^src\/(?:actions|views)\/reading_activity\.rs$/,
+    filters: ["actions::tests::successful_feedback_events_and_sessions_request_rank_refresh", "export_ts::bindings_are_current"],
+    usePathFilter: false,
+  },
+  {
+    source: /^src\/(?:actions|views)\/rules(?:\.rs$|\/)/,
+    filters: ["actions::rules::", "queries::rules::"],
+  },
+  {
+    source: /^src\/(?:actions|views)\/storage(?:\.rs$|\/)/,
+    filters: ["actions::storage::", "queries::storage::", "queries::backup::",
+      "web::tests::retention_deletes_only_expired_temporary_rows_with_cascades_even_when_disabled",
+      "web::tests::citation_and_chat_persistence_collect_before_expiry_cleanup"],
+  },
 ];
 
 /**
@@ -117,7 +132,7 @@ function rustSteps(changed, crates) {
       const domain = name === "rrss-app" && APP_DOMAIN_TESTS.find(({ source }) => source.test(file));
       if (domain) {
         for (const filter of domain.filters) requiredFilters.add(filter);
-        if (file.startsWith("src/views/")) continue;
+        if (domain.usePathFilter === false || file.startsWith("src/views/")) continue;
       }
       const parts = (/^src\/(.+)\.rs$/.exec(file)?.[1].split("/") ?? []).filter((part) => part !== "mod");
       if (parts.at(-1) === "tests") parts.pop();
