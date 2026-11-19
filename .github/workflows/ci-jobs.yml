@@ -71,6 +71,7 @@ jobs:
               - '.github/apt/**'
               - '.github/ci/**'
               - 'scripts/*i18n*'
+              - 'scripts/test_apt_install.py'
             frontend:
               - 'apps/desktop/**'
               - 'testdata/**'
@@ -226,6 +227,9 @@ jobs:
       - name: Self-hosted cache
         run: bash .github/ci/prepare-runner.sh rust node
 
+      - name: Apt installer regression tests
+        run: python3 scripts/test_apt_install.py
+
       - uses: actions/setup-node@v5
         if: runner.environment != 'self-hosted' && needs.changes.outputs.release != 'true'
         with:
@@ -337,9 +341,29 @@ jobs:
         if: runner.environment == 'self-hosted'
         run: flock "$RUSTUP_HOME/.targets.lock" rustup target add x86_64-pc-windows-gnu
 
+      # mingw 在托管 runner 上也先从缓存离线安装；与 Linux 依赖使用不同的键。
+      - name: Runner image version
+        if: runner.environment != 'self-hosted'
+        run: echo "RUNNER_IMAGE_VERSION=${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+      - name: Restore apt cache
+        id: apt-cache
+        if: runner.environment != 'self-hosted'
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.apt-cache
+          key: apt-windows-cross-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/apt/windows-cross.txt') }}-${{ env.RUNNER_IMAGE_VERSION }}
+          restore-keys: apt-windows-cross-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/apt/windows-cross.txt') }}-
+
       - name: Install mingw cross toolchain
         timeout-minutes: 15
         run: .github/apt/install.sh .github/apt/windows-cross.txt
+
+      - name: Save apt cache
+        if: runner.environment != 'self-hosted' && github.ref == 'refs/heads/main' && steps.apt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.apt-cache
+          key: ${{ steps.apt-cache.outputs.cache-primary-key }}
 
       # 同 test：只由 main 写缓存。
       - uses: swatinem/rust-cache@v2
