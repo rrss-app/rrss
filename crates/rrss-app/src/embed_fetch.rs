@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
+use base64::Engine;
 use reqwest::header::{HeaderValue, REFERER};
 use rrss_core::media::{self, cache_key};
 use rrss_render::{Block, DirectMedia, Document, EmbedClass, EmbedKind, present_embed};
@@ -120,11 +121,20 @@ fn json_u32(value: &Value) -> Option<u32> {
 
 pub fn present_document(doc: &mut Document) {
     for block in &mut doc.blocks {
-        if let Block::Embed { kind, url, title } = block {
+        if let Block::Embed {
+            kind,
+            url,
+            title,
+            poster,
+        } = block
+        {
             let presented = present_embed(*kind, url, title);
             *kind = presented.kind;
             *url = presented.url;
             *title = presented.title;
+            if *kind != EmbedKind::Video {
+                *poster = None;
+            }
         }
     }
 }
@@ -152,28 +162,85 @@ pub fn cached_covers(
         .collect()
 }
 
-pub fn direct_in_document(doc: &Document, url: &str) -> Option<DirectMedia> {
+struct DirectSource<'a> {
+    media: DirectMedia,
+    url: String,
+    block_url: &'a str,
+}
+
+fn direct_in_document<'a>(doc: &'a Document, url: &str) -> Option<DirectSource<'a>> {
     let wanted = url.trim();
     for block in &doc.blocks {
         let Block::Embed {
             kind,
             url: block_url,
-            title,
+            ..
         } = block
         else {
             continue;
         };
-        let presented = present_embed(*kind, block_url, title);
-        if presented.url != wanted && block_url != wanted {
-            continue;
-        }
-        if let EmbedClass::Direct { media, .. } =
-            rrss_render::classify_for_read(&presented.url, presented.kind)
+        if let EmbedClass::Direct { media, url } = rrss_render::classify_for_read(block_url, *kind)
+            && (url == wanted || block_url == wanted)
         {
-            return Some(media);
+            return Some(DirectSource {
+                media,
+                url,
+                block_url,
+            });
         }
     }
     None
+}
+
+pub fn store_first_frame(
+    conn: &rusqlite::Connection,
+    data_dir: &Path,
+    article_id: i64,
+    url: &str,
+    png_base64: &str,
+) -> Result<MediaRef, DirectFail> {
+    if png_base64.len() > media::MAX_VIDEO_FRAME_BYTES.div_ceil(3) * 4 {
+        return Err(DirectFail::TooLarge);
+    }
+    let article =
+        rrss_core::articles::get_article(conn, article_id).map_err(|_| DirectFail::Store)?;
+    let doc = crate::document::load_document(&article);
+    let Some(video) =
+        direct_in_document(&doc, url).filter(|source| source.media == DirectMedia::Video)
+    else {
+        return Err(DirectFail::NotDirect);
+    };
+    if !media::lookup(conn, article_id, &video.url)
+        .map_err(|_| DirectFail::Store)?
+        .is_some_and(|row| {
+            row.kind == "video"
+                && row
+                    .local_path
+                    .is_some_and(|path| Path::new(&path).is_file())
+        })
+    {
+        return Err(DirectFail::NotDirect);
+    }
+    let key = media::video_frame_key(&video.url);
+    let block_key = media::video_frame_key(video.block_url);
+    if let Some(row) = media::lookup(conn, article_id, &key).map_err(|_| DirectFail::Store)? {
+        if row
+            .local_path
+            .as_deref()
+            .is_some_and(|path| Path::new(path).is_file())
+        {
+            return Ok(cached_media_ref(&row, &block_key));
+        }
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(png_base64)
+        .map_err(|_| DirectFail::Store)?;
+    media::store_video_frame(conn, data_dir, article_id, &video.url, &bytes)
+        .map_err(|_| DirectFail::Store)?;
+    let row = media::lookup(conn, article_id, &key)
+        .map_err(|_| DirectFail::Store)?
+        .ok_or(DirectFail::Store)?;
+    Ok(cached_media_ref(&row, &block_key))
 }
 
 pub async fn fetch_official_cover(
@@ -250,18 +317,10 @@ pub async fn download_direct(
     let doc = load_doc(db_path, article_id)
         .await
         .map_err(|err| DirectFail::Network(err))?;
-    let Some(media_kind) = direct_in_document(&doc, url) else {
+    let Some(source) = direct_in_document(&doc, url) else {
         return Err(DirectFail::NotDirect);
     };
-    let presented = present_embed(
-        match media_kind {
-            DirectMedia::Audio => EmbedKind::Audio,
-            DirectMedia::Video => EmbedKind::Video,
-        },
-        url,
-        "",
-    );
-    let url = presented.url;
+    let url = source.url;
     if let Some(href) = cached_direct(db_path, article_id, &url).await {
         return Ok(href);
     }
@@ -572,6 +631,81 @@ mod network_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn first_frame_requires_a_cached_article_video_and_safe_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = rrss_core::db::open_at(&dir.path().join("test.db")).unwrap();
+        conn.execute_batch(
+            "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://feed.example/rss',0);
+             INSERT INTO articles(id,feed_id,title,created_at,content_html) VALUES(1,1,'fixture',0,
+             '<video src=\"https://cdn.example/clip.mp4\" poster=\"https://cdn.example/cover.png\"></video>
+              <video src=\"https://cdn.example/other.mp4\" poster=\"https://cdn.example/clip.mp4\"></video>');",
+        ).unwrap();
+        assert_eq!(
+            crate::queries::pending_images(&conn, 1),
+            vec![("https://cdn.example/cover.png".into(), String::new())]
+        );
+        let video_url = "https://cdn.example/clip.mp4";
+        let block_url = "https://CDN.example:443/clip.mp4";
+        let article = rrss_core::articles::get_article(&conn, 1).unwrap();
+        let mut document = crate::document::load_document(&article);
+        let Block::Embed { url, .. } = &mut document.blocks[0] else {
+            panic!("expected a video embed");
+        };
+        *url = block_url.into();
+        conn.execute(
+            "UPDATE articles SET content_html = NULL, blocks_json = ? WHERE id = 1",
+            [serde_json::to_string(&document).unwrap()],
+        )
+        .unwrap();
+        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKk0AAAAASUVORK5CYII=";
+        assert!(matches!(
+            store_first_frame(&conn, dir.path(), 1, block_url, png),
+            Err(DirectFail::NotDirect)
+        ));
+
+        let path = dir.path().join("video.mp4");
+        std::fs::write(&path, b"fixture").unwrap();
+        let mut file = media::PendingCacheFile::new(path);
+        media::store_direct(
+            &conn,
+            dir.path(),
+            1,
+            video_url,
+            &mut file,
+            Some("video/mp4"),
+            7,
+        )
+        .unwrap();
+        assert!(matches!(
+            store_first_frame(&conn, dir.path(), 1, video_url, "PHN2Zz4="),
+            Err(DirectFail::Store)
+        ));
+        assert!(matches!(
+            store_first_frame(
+                &conn,
+                dir.path(),
+                1,
+                block_url,
+                &"x".repeat(media::MAX_VIDEO_FRAME_BYTES.div_ceil(3) * 4 + 1),
+            ),
+            Err(DirectFail::TooLarge)
+        ));
+        let saved = store_first_frame(&conn, dir.path(), 1, block_url, png).unwrap();
+        assert_eq!(saved.src, media::video_frame_key(block_url));
+        assert!(
+            media::lookup(&conn, 1, &media::video_frame_key(video_url))
+                .unwrap()
+                .is_some()
+        );
+        assert!(media::lookup(&conn, 1, &saved.src).unwrap().is_none());
+        let refs = crate::queries::article_media(&conn, 1).unwrap();
+        assert!(
+            refs.iter()
+                .any(|reference| reference.src == saved.src && reference.href == saved.href)
+        );
+    }
 
     #[test]
     fn youtube_oembed_ignores_duration() {

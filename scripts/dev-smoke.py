@@ -227,7 +227,7 @@ def encode_fixture_png(width: int = MEDIA_PNG_WIDTH, height: int = MEDIA_PNG_HEI
 
 
 def seed_media_fixture(db: Path, work: Path) -> dict:
-    """One article with a cached PNG and one second of silent PCM audio."""
+    """One article with cached PNG, WAV, and WebM fixtures."""
     if not db.is_relative_to(work):
         raise smoke.SmokeError("Media fixture requires the temporary smoke database")
     now = int(time.time() * 1000)
@@ -243,9 +243,13 @@ def seed_media_fixture(db: Path, work: Path) -> dict:
     with wave.open(str(wav), "wb") as audio:
         audio.setparams((1, 2, 8000, 8000, "NONE", ""))
         audio.writeframes(bytes(16000))
+    video_src = "https://media.example/clip.webm"
+    webm = directory / "clip.webm"
+    webm.write_bytes((ROOT / "apps/desktop/src/assets/media/player-video.webm").read_bytes())
     document = json.dumps(
         {"v": 1, "blocks": [{"t": "img", "src": MEDIA_SRC, "alt": "夹具图"},
-                            {"t": "embed", "kind": "audio", "url": audio_src, "title": "Episode"}]},
+                            {"t": "embed", "kind": "audio", "url": audio_src, "title": "Episode"},
+                            {"t": "embed", "kind": "video", "url": video_src, "title": "Clip"}]},
         ensure_ascii=False,
     )
     with sqlite3.connect(db) as connection:
@@ -266,6 +270,10 @@ def seed_media_fixture(db: Path, work: Path) -> dict:
         connection.execute(
             "INSERT INTO media (article_id, url, local_path, mime, kind, bytes, created_at, accessed_at) VALUES (?, ?, ?, 'audio/wav', 'video', ?, ?, ?)",
             (MEDIA_ARTICLE_ID, audio_src, str(wav), wav.stat().st_size, now, now),
+        )
+        connection.execute(
+            "INSERT INTO media (article_id, url, local_path, mime, kind, bytes, created_at, accessed_at) VALUES (?, ?, ?, 'video/webm', 'video', ?, ?, ?)",
+            (MEDIA_ARTICLE_ID, video_src, str(webm), webm.stat().st_size, now, now),
         )
     return {
         "articleId": MEDIA_ARTICLE_ID,

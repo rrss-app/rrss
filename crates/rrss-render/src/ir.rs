@@ -52,6 +52,8 @@ pub enum Block {
         kind: EmbedKind,
         url: String,
         title: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        poster: Option<String>,
     },
     #[serde(rename = "hr")]
     Rule,

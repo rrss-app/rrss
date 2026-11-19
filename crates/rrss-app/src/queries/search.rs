@@ -199,6 +199,7 @@ mod tests {
                 kind: EmbedKind::Youtube,
                 url: "https://youtu.be/abcdefghijk".into(),
                 title: "needle ignored".into(),
+                poster: None,
             },
             Block::Paragraph {
                 inlines: vec![Inline::text(" ")],

@@ -38,12 +38,14 @@ function mediaProbeScript(expect) {
       .map((entry) => entry.name)
       .filter((name) => /^https?:/i.test(name) && (name.includes('/media/' + expect.mediaId) || name.includes(expect.src)));
     if (remote.length) throw new Error('image was fetched over HTTP: ' + remote[0]);
-    const play = await waitFor('Audio control missing', () => document.querySelector('.drawer.reader button.embed-external'), 8000);
-    play.click();
-    await waitFor('Cached WAV did not decode in WebKit', () => {
-      const audio = document.querySelector('.drawer.reader audio');
-      return audio?.currentSrc.startsWith('blob:') && audio.duration === 1;
-    }, 8000);
+    const audio = await waitFor('Audio control missing', () => document.querySelector('.drawer.reader audio[controls]'), 8000);
+    const video = await waitFor('Video control missing', () => document.querySelector('.drawer.reader video[controls]'), 8000);
+    if ([audio, video].some((media) => media.currentSrc.startsWith('blob:'))) throw new Error('Reader loaded media before play');
+    audio.dispatchEvent(new Event('play'));
+    await waitFor('Cached WAV did not decode in WebKit', () => audio.currentSrc.startsWith('blob:') && audio.duration === 1, 8000);
+    video.dispatchEvent(new Event('play'));
+    const poster = await waitFor('Cached WebM did not produce a first frame', () => video.getAttribute('poster'), 8000);
+    if (!poster.startsWith('rrss://localhost/media/')) throw new Error('First frame did not come from the media cache');
     return 'rrss-media-smoke-ok ' + src + ' ' + img.naturalWidth + 'x' + img.naturalHeight;
   })()`;
 }

@@ -6,7 +6,7 @@ use rrss_core::articles;
 use rrss_core::feedback::{self, FeedbackKind};
 use rrss_core::interests;
 use rrss_core::parse_reasons;
-use rrss_render::Block;
+use rrss_render::{Block, EmbedKind};
 
 use super::media::{cached_media_ref, failed_media_ref};
 use crate::document::article_truncated;
@@ -170,16 +170,19 @@ pub fn article_media_from_doc(
     doc: &rrss_render::Document,
 ) -> Vec<MediaRef> {
     let mut media = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let direct_urls = direct_media_sources(doc);
     for block in &doc.blocks {
-        if let Block::Image { src, .. } = block {
+        if let Some(src) = image_source(block, &direct_urls).filter(|src| seen.insert(*src)) {
             let cached = rrss_core::media::lookup(conn, article_id, src)
                 .ok()
                 .flatten();
             media.push(match cached {
                 Some(ref m)
-                    if m.local_path
-                        .as_ref()
-                        .map_or(false, |p| Path::new(p).exists()) =>
+                    if m.kind == "image"
+                        && m.local_path
+                            .as_ref()
+                            .map_or(false, |p| Path::new(p).exists()) =>
                 {
                     cached_media_ref(m, src)
                 }
@@ -187,8 +190,57 @@ pub fn article_media_from_doc(
                 _ => failed_media_ref(src, ""),
             });
         }
+        if let Block::Embed { kind, url, .. } = block
+            && let rrss_render::EmbedClass::Direct {
+                media: rrss_render::DirectMedia::Video,
+                url: canonical_url,
+            } = rrss_render::classify_for_read(url, *kind)
+        {
+            let key = rrss_core::media::video_frame_key(&canonical_url);
+            if let Ok(Some(row)) = rrss_core::media::lookup(conn, article_id, &key) {
+                if row
+                    .local_path
+                    .as_deref()
+                    .is_some_and(|path| Path::new(path).is_file())
+                {
+                    media.push(cached_media_ref(
+                        &row,
+                        &rrss_core::media::video_frame_key(url),
+                    ));
+                }
+            }
+        }
     }
     media
+}
+
+fn direct_media_sources(doc: &rrss_render::Document) -> std::collections::HashSet<&str> {
+    doc.blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Embed {
+                kind: EmbedKind::Audio | EmbedKind::Video,
+                url,
+                ..
+            } => Some(url.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn image_source<'a>(
+    block: &'a Block,
+    direct_urls: &std::collections::HashSet<&str>,
+) -> Option<&'a str> {
+    match block {
+        Block::Image { src, .. } => Some(src),
+        Block::Embed {
+            kind: EmbedKind::Video,
+            poster: Some(src),
+            ..
+        } if !direct_urls.contains(src.as_str()) => Some(src),
+        _ => None,
+    }
 }
 
 pub fn pending_images(conn: &Connection, id: i64) -> Vec<(String, String)> {
@@ -196,14 +248,16 @@ pub fn pending_images(conn: &Connection, id: i64) -> Vec<(String, String)> {
         return Vec::new();
     };
     let referer = article.canonical_url.clone().unwrap_or_default();
-    load_document(&article)
+    let mut seen = std::collections::HashSet::new();
+    let document = load_document(&article);
+    let direct_urls = direct_media_sources(&document);
+    document
         .blocks
-        .into_iter()
-        .filter_map(|b| match b {
-            Block::Image { src, .. } if rrss_core::media::allowed_url(&src) => {
-                Some((src, referer.clone()))
-            }
-            _ => None,
+        .iter()
+        .filter_map(|block| {
+            let src = image_source(block, &direct_urls)?;
+            (rrss_core::media::allowed_url(src) && seen.insert(src))
+                .then(|| (src.to_owned(), referer.clone()))
         })
         .collect()
 }

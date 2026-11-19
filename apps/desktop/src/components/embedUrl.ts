@@ -29,9 +29,7 @@ export function classifyEmbed(raw: string, storedKind = ""): EmbedPresentation {
 }
 
 export function isLocalMediaHref(href: string): boolean {
-  return href.startsWith("rrss://")
-    || href.startsWith("http://rrss.localhost/")
-    || href.startsWith("https://rrss.localhost/");
+  return /^(?:rrss:\/\/localhost|https?:\/\/rrss\.localhost)\/media\/[1-9][0-9]*(?:\?v=[a-z0-9]+)?$/.test(href);
 }
 
 export function formatDuration(secs: number): string {

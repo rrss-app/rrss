@@ -186,7 +186,7 @@ function renderBlock(
     case "embed":
       return (
         <div key={key} {...id}>
-          <EmbedBlock block={block} covers={embedCovers} articleId={articleId} onOpenUrl={onOpenUrl} />
+          <EmbedBlock block={block} covers={embedCovers} articleId={articleId} mediaOf={mediaOf} onMediaRef={onMediaRef} onOpenUrl={onOpenUrl} />
         </div>
       );
     case "table": {

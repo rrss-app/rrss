@@ -737,6 +737,7 @@ mod tests {
                 kind: crate::EmbedKind::Video,
                 url: "https://example.test/v".into(),
                 title: "Watch".into(),
+                poster: None,
             },
         ]);
         let plain_plan = TranslationPlan::new("", &plain);

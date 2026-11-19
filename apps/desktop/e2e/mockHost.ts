@@ -1327,6 +1327,8 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 return;
               case "download_direct_media":
                 return { src: args.url, media_id: 1, href: "rrss://localhost/media/1", width: null, height: null, error: "" };
+              case "cache_video_first_frame":
+                return { src: `rrss-frame:${args.url}`, href: "rrss://localhost/media/2", width: 320, height: 180, error: "" };
               case "retry_image":
                 return { src: args.url, media_id: 1, href: "rrss://localhost/media/1", width: null, height: null, error: "" };
               case "search_articles": {

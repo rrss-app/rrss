@@ -98,11 +98,21 @@ pub fn excise_embeds(html: &str, base: Option<&Url>) -> (String, Vec<Block>) {
         };
         let title = node.attr("title").or_else(|| node.attr("aria-label"));
         let presented = present_class(&class, title.as_deref());
+        let poster = if presented.kind == EmbedKind::Video && node.has_name("video") {
+            node.attr("poster")
+                .and_then(|raw| normalize_url(&raw, base))
+                .and_then(|url| Url::parse(&url).ok())
+                .filter(|url| url.username().is_empty() && url.password().is_none())
+                .map(|url| url.to_string())
+        } else {
+            None
+        };
         node.replace_with_html(format!("<p>RRSS_EMBED_SLOT_{}</p>", blocks.len()));
         blocks.push(Block::Embed {
             kind: presented.kind,
             url: presented.url,
             title: presented.title,
+            poster,
         });
     }
     if blocks.is_empty() {
@@ -515,7 +525,7 @@ mod tests {
         );
         assert!(matches!(
             block,
-            Block::Embed { kind: EmbedKind::Youtube, ref url, ref title }
+            Block::Embed { kind: EmbedKind::Youtube, ref url, ref title, .. }
                 if url == "https://www.youtube.com/watch?v=abc123def45" && title == "讲座"
         ));
     }
@@ -539,7 +549,9 @@ mod tests {
             r#"<div class="embedly"><iframe src="https://cdn.embedly.com/widgets/media.html?src=https%3A%2F%2Fwww.youtube.com%2Fembed%2Fabc123def45&url=https%3A%2F%2Fyoutube.com%2Fwatch%3Fv%3Dabc123def45"></iframe></div>"#,
         );
         match block {
-            Block::Embed { kind, url, title } => {
+            Block::Embed {
+                kind, url, title, ..
+            } => {
                 assert_eq!(kind, EmbedKind::Iframe);
                 assert!(url.contains("embedly.com"), "{url}");
                 assert!(!title.contains("youtube.com"), "{title}");
@@ -578,7 +590,9 @@ mod tests {
         ));
         let m3u8 = embed(r#"<video src="https://cdn.example/live.m3u8"></video>"#);
         match m3u8 {
-            Block::Embed { kind, title, url } => {
+            Block::Embed {
+                kind, title, url, ..
+            } => {
                 assert_eq!(kind, EmbedKind::Iframe, "m3u8 must not be a local player");
                 assert!(!url.contains("m3u8") || kind != EmbedKind::Video);
                 assert!(
@@ -608,6 +622,23 @@ mod tests {
     }
 
     #[test]
+    fn direct_video_keeps_only_http_posters_without_credentials() {
+        let base = Url::parse("https://feed.example/posts/article").unwrap();
+        for (value, expected) in [
+            ("/cover.png", Some("https://feed.example/cover.png")),
+            ("file:///tmp/cover.png", None),
+            ("javascript:alert(1)", None),
+            ("https://user:password@feed.example/cover.png", None),
+        ] {
+            let html = format!(r#"<video poster="{value}" src="/clip.mp4"></video>"#);
+            let (_, blocks) = excise_embeds(&html, Some(&base));
+            assert!(
+                matches!(&blocks[..], [Block::Embed { poster, .. }] if poster.as_deref() == expected)
+            );
+        }
+    }
+
+    #[test]
     fn mixed_containers_keep_the_media_kind_and_official_players_stay_external() {
         for (html, expected_kind) in [
             (
@@ -627,7 +658,10 @@ mod tests {
                 EmbedKind::Iframe,
             ),
         ] {
-            let Block::Embed { kind, url, title } = embed(html) else {
+            let Block::Embed {
+                kind, url, title, ..
+            } = embed(html)
+            else {
                 unreachable!()
             };
             assert_eq!(kind, expected_kind);

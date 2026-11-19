@@ -22,7 +22,7 @@ export type Block =
   | { t: "pre"; lang?: string | null; text: string }
   | { t: "img"; src: string; alt: string }
   | { t: "q"; inlines: Inline[] }
-  | { t: "embed"; kind: string; url: string; title: string }
+  | { t: "embed"; kind: string; url: string; title: string; poster?: string }
   | TableBlock
   | { t: "hr" };
 
@@ -117,7 +117,10 @@ function parseBlock(node: unknown): Block | null {
     case "img":
       return typeof node.src === "string" ? { t: "img", src: node.src, alt: str(node.alt) } : null;
     case "embed":
-      return typeof node.url === "string" ? { t: "embed", kind: str(node.kind), url: node.url, title: str(node.title) } : null;
+      return typeof node.url === "string" ? {
+        t: "embed", kind: str(node.kind), url: node.url, title: str(node.title),
+        ...(typeof node.poster === "string" && node.poster ? { poster: node.poster } : {}),
+      } : null;
     case "table":
       return parseTable(node);
     case "hr":

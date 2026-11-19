@@ -185,7 +185,6 @@
   "embed": {
     "preparing": "Preparing to play…",
     "playbackFallback": "Can’t play here · Open on {{site}}",
-    "downloading": "Downloading…",
     "play": "Play",
     "bilibili": "Bilibili",
     "coverFailed": "{{label}} · cover couldn’t be shown",

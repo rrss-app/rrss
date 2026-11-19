@@ -492,6 +492,8 @@ export const api = {
   retryImage: (articleId: number, url: string) => invoke<MediaRef>("retry_image", { articleId, url }),
   prefetchEmbeds: (articleId: number) => invoke<void>("prefetch_embed_covers", { articleId }),
   downloadDirect: (articleId: number, url: string) => invoke<MediaRef>("download_direct_media", { articleId, url }),
+  cacheVideoFirstFrame: (articleId: number, url: string, pngBase64: string) =>
+    invoke<MediaRef>("cache_video_first_frame", { articleId, url, pngBase64 }),
   ruleStats: () => invoke<RuleStatsPage>("rule_stats"),
   hidden: () => invoke<HiddenPage>("hidden_page"),
   hiddenInScope: (scope: string, listScope: string) =>

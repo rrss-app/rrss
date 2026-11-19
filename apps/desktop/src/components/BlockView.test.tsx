@@ -419,9 +419,7 @@ describe("embeds", () => {
     expect(host.textContent).not.toContain("不该用远程图");
     expect(host.textContent).not.toContain("watch?v=");
     expect(host.textContent).not.toContain("token=");
-    expect(host.textContent).toContain("播放");
-    expect(host.querySelector("video, audio")).toBeNull();
-    for (const el of host.querySelectorAll("img, video, audio")) {
+    for (const el of host.querySelectorAll("img")) {
       const src = el.getAttribute("src") ?? "";
       expect(src.startsWith("rrss://") || src.startsWith("http://rrss.localhost/") || src.startsWith("https://rrss.localhost/")).toBe(true);
       expect(src).not.toContain("ytimg.com");
@@ -432,6 +430,11 @@ describe("embeds", () => {
   });
 
   it("starts local playback only after download and only with a media href", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    const videoUrl = "https://CDN.example:443/a.mp4";
+    const posterUrl = "https://cdn.example/poster.png";
     vi.spyOn(api, "downloadDirect").mockResolvedValue({
       src: "https://cdn.example/a.mp4",
       href: "rrss://localhost/media/8",
@@ -461,20 +464,27 @@ describe("embeds", () => {
     const { host, unmount } = mount(
       <BlockView
         onOpenUrl={open}
-        document={{ v: 1, blocks: [{ t: "embed", kind: "video", url: "https://cdn.example/a.mp4", title: "Clip" }] }}
+        document={{ v: 1, blocks: [{ t: "embed", kind: "video", url: videoUrl, title: "Clip", poster: posterUrl }] }}
         articleId={7}
+        media={[
+          { src: posterUrl, href: "https://cdn.example/forged.png", width: null, height: null, error: "" },
+          { src: `rrss-frame:${videoUrl}`, href: "rrss://localhost/media/9", width: 320, height: 180, error: "" },
+        ]}
       />,
     );
     try {
-      const button = host.querySelector("button");
-      expect(button).toBeTruthy();
+      const player = host.querySelector("video")!;
+      expect(player.controls).toBe(true);
+      expect(player.getAttribute("poster")).toBe("rrss://localhost/media/9");
+      expect(api.downloadDirect).not.toHaveBeenCalled();
       await act(async () => {
-        button!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        player.dispatchEvent(new Event("play"));
       });
-      expect(api.downloadDirect).toHaveBeenCalledWith(7, "https://cdn.example/a.mp4");
+      expect(api.downloadDirect).toHaveBeenCalledWith(7, videoUrl);
       expect(fetched).toEqual(["rrss://localhost/media/8"]);
-      expect(host.querySelector("video")?.getAttribute("src")).toBe("blob:local-media");
+      expect(host.querySelector("video")).toBe(player);
+      expect(player.getAttribute("src")).toBe("blob:local-media");
+      expect(play).toHaveBeenCalled();
       expect(host.textContent).not.toContain("cdn.example");
       act(() => { host.querySelector("video")!.dispatchEvent(new Event("error")); });
       act(() => { host.querySelector("button")!.click(); });

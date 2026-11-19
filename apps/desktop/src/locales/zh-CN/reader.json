@@ -181,7 +181,6 @@
   "embed": {
     "playbackFallback": "无法在阅读器播放，前往 {{site}} 打开",
     "preparing": "正在准备播放…",
-    "downloading": "正在下载…",
     "play": "播放",
     "bilibili": "哔哩哔哩",
     "coverFailed": "{{label}} · 封面未能显示",

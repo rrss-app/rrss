@@ -7,6 +7,7 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 ### Changed
 
 - The reader can play cached audio and video from WordPress posts, lazy-loaded players, and podcast feed attachments. When a codec is unavailable, a link opens the media in the browser. YouTube and Bilibili videos open on their original sites from cover cards.
+- The reader shows native audio and video controls before playback. Videos show a feed-supplied cover or a saved first frame when available, and the video itself downloads only when you press Play.
 - While you read in Focus, new articles below the screen appear quietly. Batches that affect your reading position share one button that brings the updates to the top of the list.
 - Chat suggests lasting preferences from your own words and uses them across conversations after you confirm them. Conversation summaries stay with their original thread and are deleted with it. Clearing all memories also forgets which suggestions you already saw. Older summaries with no known thread remain available in memory settings.
 - Sending a question from the reader opens the conversation immediately with your question and citations visible. The usual chat progress appears as the engine starts, and a failed send keeps the draft ready to retry.

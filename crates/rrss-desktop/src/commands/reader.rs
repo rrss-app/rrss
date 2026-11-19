@@ -144,6 +144,25 @@ pub async fn download_direct_media(
 }
 
 #[tauri::command]
+pub async fn cache_video_first_frame(
+    state: State<'_, AppState>,
+    article_id: i64,
+    url: String,
+    png_base64: String,
+) -> Result<MediaRef, UiError> {
+    let data_dir = state.data_dir.clone();
+    with_db(
+        "cache_video_first_frame",
+        state.db_path.clone(),
+        move |conn| {
+            rrss_app::embed_fetch::store_first_frame(conn, &data_dir, article_id, &url, &png_base64)
+                .map_err(UiError::from)
+        },
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn open_web_link(
     state: State<'_, AppState>,
     url: String,
@@ -200,5 +219,6 @@ command_handler![
     prefetch_images,
     prefetch_embed_covers,
     download_direct_media,
+    cache_video_first_frame,
     retry_image,
 ];

@@ -342,6 +342,7 @@ describe("ReaderHost standalone", () => {
 
   it.each(["fulltext", "summary", "translation", "star", "feedback", "media", "cover"] as const)("writes %s updates through to the next cached open", async kind => {
     const clock = harness.useClock();
+    const coverHref = "rrss://localhost/media/9";
     let current = readerView(ARTICLE_A, { truncated: true });
     box.stub!.handle("openArticle", id => id === ARTICLE_A ? current : readerView(id));
     box.stub!.handle("translateSnapshot", id => translationReply(id === ARTICLE_A ? current : readerView(id)));
@@ -373,7 +374,7 @@ describe("ReaderHost standalone", () => {
       current = { ...current, document: { v: 1, blocks: [{ t: "embed", url: "https://www.youtube.com/watch?v=example", kind: "youtube" }] } };
       box.stub!.handle("fetchFulltext", () => current);
       key("u"); await harness.flush();
-      act(() => box.events!.emit("embed:cover", { article_id: ARTICLE_A, cover: { url: "https://www.youtube.com/watch?v=example", open_url: "https://www.youtube.com/watch?v=example", cover_href: "rrss://media/cover", failed: false, title: "视频", site: "youtube", author: "", duration_secs: null } }));
+      act(() => box.events!.emit("embed:cover", { article_id: ARTICLE_A, cover: { url: "https://www.youtube.com/watch?v=example", open_url: "https://www.youtube.com/watch?v=example", cover_href: coverHref, failed: false, title: "视频", site: "youtube", author: "", duration_secs: null } }));
     }
     await harness.flush(); await clock.advance(100);
     await open(ref, ARTICLE_B);
@@ -387,7 +388,7 @@ describe("ReaderHost standalone", () => {
     if (kind === "star") expect(host.querySelector('[aria-label="取消收藏"]')).not.toBeNull();
     if (kind === "feedback") expect(host.querySelector('.reader-ending-actions button')?.getAttribute("aria-pressed")).toBe("true");
     if (kind === "media") expect(host.querySelector('img[src="rrss://media/photo"]')).not.toBeNull();
-    if (kind === "cover") expect(host.querySelector('img[src="rrss://media/cover"]')).not.toBeNull();
+    if (kind === "cover") expect(host.querySelector(`img[src="${coverHref}"]`)).not.toBeNull();
   });
 
   it("protects edits made while a cached open is being checked", async () => {

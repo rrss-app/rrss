@@ -262,6 +262,10 @@ pub fn prepare_image(data_dir: &Path, url: &str, bytes: &[u8]) -> Result<Prepare
     if !allowed_url(url) {
         return Err(Error::InvalidUrl(crate::url_norm::InvalidUrlReason::Media));
     }
+    prepare_image_file(data_dir, bytes)
+}
+
+fn prepare_image_file(data_dir: &Path, bytes: &[u8]) -> Result<PreparedImage> {
     if bytes.len() > MAX_IMAGE_BYTES {
         return Err(Error::MediaTooLarge {
             bytes: bytes.len() as u64,
@@ -280,6 +284,42 @@ pub fn prepare_image(data_dir: &Path, url: &str, bytes: &[u8]) -> Result<Prepare
         mime: mime_for_ext(ext),
         bytes: bytes.len(),
     })
+}
+
+pub fn video_frame_key(video_url: &str) -> String {
+    format!("rrss-frame:{video_url}")
+}
+
+pub const MAX_VIDEO_FRAME_BYTES: usize = 512 * 1024;
+
+pub fn store_video_frame(
+    conn: &Connection,
+    data_dir: &Path,
+    article_id: i64,
+    video_url: &str,
+    bytes: &[u8],
+) -> Result<()> {
+    let dimensions = bytes.get(16..24).filter(|_| {
+        bytes.get(8..16) == Some(b"\0\0\0\rIHDR") && sniff_image_ext(bytes) == Some("png")
+    });
+    if bytes.len() > MAX_VIDEO_FRAME_BYTES
+        || !dimensions.is_some_and(|dimensions| {
+            dimensions
+                .chunks_exact(4)
+                .all(|axis| (1..=320).contains(&u32::from_be_bytes(axis.try_into().unwrap())))
+        })
+    {
+        return Err(Error::UnsupportedImage);
+    }
+    let mut prepared = prepare_image_file(data_dir, bytes)?;
+    store_prepared_image(
+        conn,
+        data_dir,
+        article_id,
+        &video_frame_key(video_url),
+        &mut prepared,
+    )?;
+    Ok(())
 }
 
 pub fn store_prepared_image(
