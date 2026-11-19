@@ -8,6 +8,13 @@ packages_file="$1"
 cache="${APT_CACHE_DIR:-$HOME/.apt-cache}"
 mapfile -t packages < <(grep -v '^\s*#' "$packages_file" | grep -v '^\s*$')
 
+if [[ "${RUNNER_ENVIRONMENT:-}" == self-hosted ]] &&
+  installed=$(dpkg-query -W -f='${db:Status-Status}\n' -- "${packages[@]}" 2>/dev/null) &&
+  [[ -n $installed ]] && ! grep -qvx installed <<< "$installed"; then
+  echo "apt: required packages already installed"
+  exit 0
+fi
+
 mkdir -p "$cache/archives/partial" "$cache/lists/partial"
 opts=(
   -o "Dir::Cache::Archives=$cache/archives"

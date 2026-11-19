@@ -15,6 +15,10 @@ on:
     tags:
       - "v*"
 
+concurrency:
+  group: ${{ (vars.CI_RUNNER == 'rrss' || vars.CI_RUNNER == 'rrss-ci-arm64') && 'rrss-build-host' || format('release-hosted-{0}', github.run_id) }}
+  queue: max
+
 permissions:
   contents: write
 

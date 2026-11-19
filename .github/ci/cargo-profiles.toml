@@ -1,0 +1,20 @@
+[profile.dev]
+debug = 0
+
+[profile.dev.package.rrss-core]
+debug = 0
+
+[profile.dev.package.rrss-render]
+debug = 0
+
+[profile.dev.package.rrss-ai]
+debug = 0
+
+[profile.dev.package.rrss-app]
+debug = 0
+
+[profile.dev.package.rrss-desktop]
+debug = 0
+
+[profile.test]
+debug = 0

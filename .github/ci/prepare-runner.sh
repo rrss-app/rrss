@@ -8,7 +8,9 @@ if [[ "${RUNNER_ENVIRONMENT:-}" != "self-hosted" ]]; then
 fi
 
 cache="${RRSS_CI_CACHE:-/ci-cache}"
-mkdir -p "$cache/cargo" "$cache/rustup" "$cache/target" "$cache/pnpm-store" "$cache/ms-playwright" "$cache/apt" "$cache/node"
+runner_cache="${RRSS_CI_RUNNER_CACHE:-$cache}"
+mkdir -p "$cache/cargo" "$cache/rustup" "$cache/pnpm-store" "$cache/node" \
+  "$runner_cache/target" "$runner_cache/ms-playwright" "$runner_cache/apt"
 
 if ! awk -v p="$cache" '$2 == p { found = 1 } END { exit !found }' /proc/mounts; then
   echo "::warning::${cache} 不是挂载卷，重建容器后 Cargo、pnpm 和浏览器缓存会丢。请加 -v rrss-ci-cache:${cache}，并且不要设 EPHEMERAL。"
@@ -17,10 +19,10 @@ fi
 {
   echo "CARGO_HOME=$cache/cargo"
   echo "RUSTUP_HOME=$cache/rustup"
-  echo "CARGO_TARGET_DIR=$cache/target"
-  echo "APT_CACHE_DIR=$cache/apt"
+  echo "CARGO_TARGET_DIR=$runner_cache/target"
+  echo "APT_CACHE_DIR=$runner_cache/apt"
   echo "npm_config_store_dir=$cache/pnpm-store"
-  echo "PLAYWRIGHT_BROWSERS_PATH=$cache/ms-playwright"
+  echo "PLAYWRIGHT_BROWSERS_PATH=$runner_cache/ms-playwright"
 } >> "${GITHUB_ENV:?}"
 
 export CARGO_HOME="$cache/cargo"
