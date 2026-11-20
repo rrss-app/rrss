@@ -36,6 +36,10 @@ function renderInlines(nodes: Inline[], onOpenUrl?: (href: string) => void): Rea
         return <strong key={i}>{renderInlines(n.children, onOpenUrl)}</strong>;
       case "e":
         return <em key={i}>{renderInlines(n.children, onOpenUrl)}</em>;
+      case "style": {
+        const Tag = n.style;
+        return <Tag key={i}>{renderInlines(n.children, onOpenUrl)}</Tag>;
+      }
       case "c":
         return <code key={i}>{n.text}</code>;
       case "a":

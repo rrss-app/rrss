@@ -14,7 +14,7 @@ pub use embed::{
     DirectMedia, EmbedClass, PresentedEmbed, attachment_embed, classify_for_read,
     direct_media_mime, present_embed,
 };
-pub use ir::{Block, Document, EmbedKind, IR_VERSION, Inline, TableTotal};
+pub use ir::{Block, Document, EmbedKind, IR_VERSION, Inline, InlineStyle, TableTotal};
 pub use text::{inlines_to_markdown, inlines_to_plain};
 pub use translate::{
     PatchError, TranslateUnit, TranslationPatch, TranslationPlan, already_target_lang, apply_units,
@@ -39,7 +39,7 @@ pub struct RenderOpts {
 
 /// Bump when HTML parsing, sanitization or normalization changes so stored
 /// documents and HTML caches are invalidated independently of the IR wire format.
-pub const HTML_RENDER_REVISION: u32 = 2;
+pub const HTML_RENDER_REVISION: u32 = 3;
 
 pub fn html_to_document(html: &str, opts: &RenderOpts) -> Document {
     let blocks = html::html_to_blocks(html, opts.base_url.as_ref());

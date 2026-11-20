@@ -5,13 +5,27 @@
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
 use crate::html::{html_to_blocks, normalize_code_language};
-use crate::ir::{Block, Inline};
+use crate::ir::{Block, Inline, InlineStyle};
+
+#[derive(PartialEq)]
+enum InlineEnd {
+    Markdown(TagEnd),
+    Html(InlineStyle),
+}
+
+type InlineStack = Vec<(InlineEnd, Inline)>;
 
 pub fn markdown_to_blocks(md: &str) -> Vec<Block> {
-    let parser = Parser::new_ext(md, Options::ENABLE_TABLES);
+    let parser = Parser::new_ext(
+        md,
+        Options::ENABLE_TABLES
+            | Options::ENABLE_STRIKETHROUGH
+            | Options::ENABLE_SUPERSCRIPT
+            | Options::ENABLE_SUBSCRIPT,
+    );
     let mut blocks = Vec::new();
     let mut inlines = Vec::new();
-    let mut inline_stack: Vec<Inline> = Vec::new();
+    let mut inline_stack = InlineStack::new();
     let mut heading: Option<u8> = None;
     let mut list_ordered: Vec<bool> = Vec::new();
     let mut ol_next: Vec<u32> = Vec::new();
@@ -46,7 +60,10 @@ pub fn markdown_to_blocks(md: &str) -> Vec<Block> {
                     ..Default::default()
                 });
             }
-            Event::End(TagEnd::TableCell) => row.push(std::mem::take(&mut inlines)),
+            Event::End(TagEnd::TableCell) => {
+                unwrap_inline_html(&mut inlines, &mut inline_stack);
+                row.push(std::mem::take(&mut inlines));
+            }
             Event::End(TagEnd::TableHead) => {
                 if let Some(table) = &mut table {
                     table.head = std::mem::take(&mut row);
@@ -64,6 +81,7 @@ pub fn markdown_to_blocks(md: &str) -> Vec<Block> {
             }
             Event::Start(Tag::Paragraph) => {}
             Event::End(TagEnd::Paragraph) => {
+                unwrap_inline_html(&mut inlines, &mut inline_stack);
                 if !list_ordered.is_empty() {
                     // 列表项里的段落留给 ListItem，不要先收成独立 p（否则父项结束时会再吐一个空 •）。
                     append_collapsed_space(&mut inlines);
@@ -75,6 +93,7 @@ pub fn markdown_to_blocks(md: &str) -> Vec<Block> {
                 heading = Some(level as u8);
             }
             Event::End(TagEnd::Heading(_)) => {
+                unwrap_inline_html(&mut inlines, &mut inline_stack);
                 let level = heading.take().unwrap_or(2);
                 let kids = std::mem::take(&mut inlines);
                 blocks.push(Block::Heading {
@@ -83,6 +102,7 @@ pub fn markdown_to_blocks(md: &str) -> Vec<Block> {
                 });
             }
             Event::Start(Tag::List(start)) => {
+                unwrap_inline_html(&mut inlines, &mut inline_stack);
                 if !list_ordered.is_empty() {
                     flush_list_item(&mut blocks, &mut inlines, &list_ordered, &mut ol_next);
                 }
@@ -95,6 +115,7 @@ pub fn markdown_to_blocks(md: &str) -> Vec<Block> {
             }
             Event::Start(Tag::Item) => {}
             Event::End(TagEnd::Item) => {
+                unwrap_inline_html(&mut inlines, &mut inline_stack);
                 flush_list_item(&mut blocks, &mut inlines, &list_ordered, &mut ol_next);
             }
             Event::Start(Tag::BlockQuote(_)) => in_quote = true,
@@ -125,21 +146,52 @@ pub fn markdown_to_blocks(md: &str) -> Vec<Block> {
                     text: std::mem::take(&mut code),
                 });
             }
-            Event::Start(Tag::Emphasis) => inline_stack.push(Inline::Emphasis {
-                children: Vec::new(),
-            }),
-            Event::End(TagEnd::Emphasis) => pop_wrap(&mut inlines, &mut inline_stack, "em"),
-            Event::Start(Tag::Strong) => inline_stack.push(Inline::Strong {
-                children: Vec::new(),
-            }),
-            Event::End(TagEnd::Strong) => pop_wrap(&mut inlines, &mut inline_stack, "strong"),
-            Event::Start(Tag::Link { dest_url, .. }) => {
-                inline_stack.push(Inline::Link {
-                    href: dest_url.to_string(),
+            Event::Start(Tag::Emphasis) => inline_stack.push((
+                InlineEnd::Markdown(TagEnd::Emphasis),
+                Inline::Emphasis {
                     children: Vec::new(),
-                });
+                },
+            )),
+            Event::Start(Tag::Strong) => inline_stack.push((
+                InlineEnd::Markdown(TagEnd::Strong),
+                Inline::Strong {
+                    children: Vec::new(),
+                },
+            )),
+            Event::Start(tag @ (Tag::Superscript | Tag::Subscript | Tag::Strikethrough)) => {
+                let style = match tag {
+                    Tag::Superscript => InlineStyle::Sup,
+                    Tag::Subscript => InlineStyle::Sub,
+                    _ => InlineStyle::Del,
+                };
+                inline_stack.push((
+                    InlineEnd::Markdown(tag.to_end()),
+                    Inline::Styled {
+                        style,
+                        children: Vec::new(),
+                    },
+                ));
             }
-            Event::End(TagEnd::Link) => pop_wrap(&mut inlines, &mut inline_stack, "a"),
+            Event::Start(Tag::Link { dest_url, .. }) => {
+                inline_stack.push((
+                    InlineEnd::Markdown(TagEnd::Link),
+                    Inline::Link {
+                        href: dest_url.to_string(),
+                        children: Vec::new(),
+                    },
+                ));
+            }
+            Event::End(
+                end @ (TagEnd::Link
+                | TagEnd::Emphasis
+                | TagEnd::Strong
+                | TagEnd::Superscript
+                | TagEnd::Subscript
+                | TagEnd::Strikethrough),
+            ) => {
+                unwrap_inline_html(&mut inlines, &mut inline_stack);
+                pop_wrap(&mut inlines, &mut inline_stack, InlineEnd::Markdown(end));
+            }
             Event::Text(t) => {
                 if in_code {
                     code.push_str(&t);
@@ -163,6 +215,20 @@ pub fn markdown_to_blocks(md: &str) -> Vec<Block> {
                 push_inline(&mut inlines, &mut inline_stack, Inline::HardBreak);
             }
             Event::Rule => blocks.push(Block::Rule),
+            Event::InlineHtml(ref html) if inline_style_tag(html).is_some() => {
+                let (style, closing) = inline_style_tag(html).unwrap();
+                if closing {
+                    pop_wrap(&mut inlines, &mut inline_stack, InlineEnd::Html(style));
+                } else {
+                    inline_stack.push((
+                        InlineEnd::Html(style),
+                        Inline::Styled {
+                            style,
+                            children: Vec::new(),
+                        },
+                    ));
+                }
+            }
             Event::Html(html) | Event::InlineHtml(html) => {
                 let nested = html_to_blocks(&html, None);
                 if table.is_some() {
@@ -180,6 +246,7 @@ pub fn markdown_to_blocks(md: &str) -> Vec<Block> {
             _ => {}
         }
     }
+    unwrap_inline_html(&mut inlines, &mut inline_stack);
     flush_p(&mut blocks, &mut inlines, in_quote);
     blocks
 }
@@ -235,23 +302,22 @@ fn flush_p(blocks: &mut Vec<Block>, inlines: &mut Vec<Inline>, quote: bool) {
     }
 }
 
-fn push_inline(inlines: &mut Vec<Inline>, stack: &mut [Inline], piece: Inline) {
+fn push_inline(inlines: &mut Vec<Inline>, stack: &mut [(InlineEnd, Inline)], piece: Inline) {
     inline_target(inlines, stack).push(piece);
 }
 
-fn push_soft_break(inlines: &mut Vec<Inline>, stack: &mut [Inline]) {
+fn push_soft_break(inlines: &mut Vec<Inline>, stack: &mut [(InlineEnd, Inline)]) {
     append_collapsed_space(inline_target(inlines, stack));
 }
 
-fn inline_target<'a>(inlines: &'a mut Vec<Inline>, stack: &'a mut [Inline]) -> &'a mut Vec<Inline> {
-    if let Some(
-        Inline::Strong { children } | Inline::Emphasis { children } | Inline::Link { children, .. },
-    ) = stack.last_mut()
-    {
-        children
-    } else {
-        inlines
-    }
+fn inline_target<'a>(
+    inlines: &'a mut Vec<Inline>,
+    stack: &'a mut [(InlineEnd, Inline)],
+) -> &'a mut Vec<Inline> {
+    stack
+        .last_mut()
+        .and_then(|(_, inline)| inline.children_mut())
+        .unwrap_or(inlines)
 }
 
 fn append_collapsed_space(target: &mut Vec<Inline>) {
@@ -264,19 +330,33 @@ fn append_collapsed_space(target: &mut Vec<Inline>) {
     }
 }
 
-fn pop_wrap(inlines: &mut Vec<Inline>, stack: &mut Vec<Inline>, _kind: &str) {
-    if let Some(frame) = stack.pop() {
-        if let Some(
-            Inline::Strong { children }
-            | Inline::Emphasis { children }
-            | Inline::Link { children, .. },
-        ) = stack.last_mut()
-        {
-            children.push(frame);
-        } else {
-            inlines.push(frame);
-        }
+fn pop_wrap(inlines: &mut Vec<Inline>, stack: &mut InlineStack, end: InlineEnd) {
+    if stack.last().is_some_and(|(kind, _)| *kind == end) {
+        let (_, inline) = stack.pop().unwrap();
+        push_inline(inlines, stack, inline);
     }
+}
+
+fn unwrap_inline_html(inlines: &mut Vec<Inline>, stack: &mut InlineStack) {
+    while matches!(stack.last(), Some((InlineEnd::Html(_), _))) {
+        let (_, Inline::Styled { children, .. }) = stack.pop().unwrap() else {
+            unreachable!();
+        };
+        inline_target(inlines, stack).extend(children);
+    }
+}
+
+fn inline_style_tag(html: &str) -> Option<(InlineStyle, bool)> {
+    let tag = html.strip_prefix('<')?.strip_suffix('>')?;
+    if tag.ends_with('/') {
+        return None;
+    }
+    let closing = tag.starts_with('/');
+    let name = tag
+        .trim_start_matches('/')
+        .split_ascii_whitespace()
+        .next()?;
+    InlineStyle::from_html_tag(&name.to_ascii_lowercase()).map(|style| (style, closing))
 }
 
 #[cfg(test)]
@@ -285,11 +365,38 @@ mod tests {
     use crate::ir::{Block, Inline};
     use crate::text::inlines_to_plain;
 
+    #[test]
+    fn renders_inline_styles_in_markdown_and_keeps_incomplete_html_text() {
+        let blocks = markdown_to_blocks(
+            "^raised^ ~lowered~ x<sup>2</sup> H<sub>2</sub>O ~~old~~ <u>**underlined**</u> <mark>highlighted</mark> *<sup>incomplete*\n\nPlain",
+        );
+        let [Block::Paragraph { inlines }, plain] = blocks.as_slice() else {
+            panic!("expected two paragraphs: {blocks:?}");
+        };
+        assert_eq!(
+            inlines_to_plain(inlines),
+            "raised lowered x2 H2O old underlined highlighted incomplete"
+        );
+        assert_eq!(crate::block_plain(plain), "Plain");
+        let styles: Vec<_> = inlines
+            .iter()
+            .filter_map(|inline| match inline {
+                Inline::Styled { style, .. } => Some(*style),
+                _ => None,
+            })
+            .collect();
+        use InlineStyle::*;
+        assert_eq!(styles, [Sup, Sub, Sup, Sub, Del, U, Mark]);
+        assert!(matches!(inlines.last(), Some(Inline::Emphasis { children })
+            if matches!(children.as_slice(), [Inline::Text { text }] if text == "incomplete")));
+    }
+
     fn has_hard_break(inlines: &[Inline]) -> bool {
         inlines.iter().any(|i| match i {
             Inline::HardBreak => true,
             Inline::Strong { children }
             | Inline::Emphasis { children }
+            | Inline::Styled { children, .. }
             | Inline::Link { children, .. } => has_hard_break(children),
             _ => false,
         })

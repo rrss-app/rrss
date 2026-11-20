@@ -254,6 +254,10 @@ button.reader-article-drawer-main:hover { background: transparent; color: inheri
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);
 }
+/* 正文行内样式：高亮用暖色令牌，和搜索命中的强调色区分；上下标不撑高行距。 */
+[data-reader-document] mark { background: color-mix(in srgb, var(--warn) 22%, transparent); color: inherit; border-radius: 2px; }
+[data-reader-document] sup, [data-reader-document] sub { line-height: 0; }
+[data-reader-document] u { text-decoration-thickness: 1px; text-underline-offset: .22em; }
 /* 只管正文块里的配图；阅读器 / 简报外壳（来源头像、卡片等）也带 .reader 类，不能被这条波及。 */
 [data-reader-document] img, .reader-img {
   display: block;

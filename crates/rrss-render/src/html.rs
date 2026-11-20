@@ -12,7 +12,7 @@
 
 use url::Url;
 
-use crate::ir::{Block, Inline};
+use crate::ir::{Block, Inline, InlineStyle};
 use crate::sanitize::clean_html;
 
 pub(crate) fn normalize_code_language(language: &str) -> Option<String> {
@@ -141,7 +141,7 @@ fn walk(html: &str, table_candidates: &[bool], code_languages: &[Option<String>]
         pos: 0,
         blocks: Vec::new(),
         inlines: Vec::new(),
-        inline_kind: Vec::new(),
+        inline_frames: Vec::new(),
         list_kind: Vec::new(),
         in_pre: false,
         pre_buf: String::new(),
@@ -170,7 +170,7 @@ struct Parser<'a> {
     pos: usize,
     blocks: Vec<Block>,
     inlines: Vec<Inline>,
-    inline_kind: Vec<&'static str>,
+    inline_frames: Vec<InlineFrame>,
     list_kind: Vec<ListKind>,
     in_pre: bool,
     pre_buf: String,
@@ -182,6 +182,30 @@ struct Parser<'a> {
     div_depth: u32,
     table_depth: usize,
     table_candidates: std::slice::Iter<'a, bool>,
+}
+
+struct InlineFrame {
+    tag: &'static str,
+    start: usize,
+    inline: Inline,
+}
+
+impl InlineFrame {
+    fn wrap(&self, inlines: &mut Vec<Inline>) {
+        if self.start >= inlines.len() {
+            return;
+        }
+        let children = inlines.split_off(self.start);
+        let mut inline = self.inline.clone();
+        if let Some(target) = inline.children_mut() {
+            *target = children;
+        } else {
+            inline = Inline::Code {
+                text: crate::inlines_to_plain(&children),
+            };
+        }
+        inlines.push(inline);
+    }
 }
 
 impl<'a> Parser<'a> {
@@ -250,7 +274,7 @@ impl<'a> Parser<'a> {
             }
             (true, "h1" | "h2" | "h3" | "h4" | "h5" | "h6") => {
                 let level = self.heading.take().unwrap_or(2);
-                let mut inlines = std::mem::take(&mut self.inlines);
+                let mut inlines = self.take_inlines();
                 strip_heading_anchors(&mut inlines);
                 if !inlines_empty(&inlines) {
                     self.blocks.push(Block::Heading { level, inlines });
@@ -293,7 +317,7 @@ impl<'a> Parser<'a> {
                 self.in_quote = true;
             }
             (true, "blockquote") => {
-                let inlines = std::mem::take(&mut self.inlines);
+                let inlines = self.take_inlines();
                 if !inlines_empty(&inlines) {
                     self.blocks.push(Block::Quote { inlines });
                 }
@@ -317,21 +341,53 @@ impl<'a> Parser<'a> {
                 self.div_depth = self.div_depth.saturating_sub(1);
             }
             (false, "a") => {
-                self.inline_kind.push("a");
                 if let Some(href) = attr(raw, "href") {
-                    self.inline_kind.pop();
-                    self.inline_kind.push("a");
-                    self.open_link(href);
+                    self.open_inline(
+                        "a",
+                        Inline::Link {
+                            href,
+                            children: Vec::new(),
+                        },
+                    );
                 }
             }
-            (true, "a") => self.close_link(),
-            (false, "em" | "i") => self.inline_kind.push("em"),
-            (true, "em" | "i") => self.wrap_inline("em"),
-            (false, "strong" | "b") => self.inline_kind.push("strong"),
-            (true, "strong" | "b") => self.wrap_inline("strong"),
-            (false, "code") if !self.in_pre => self.inline_kind.push("code"),
-            (true, "code") if !self.in_pre => self.wrap_code(),
-            _ => {}
+            (true, "a") => self.close_inline("a"),
+            (false, "em" | "i") => self.open_inline(
+                "em",
+                Inline::Emphasis {
+                    children: Vec::new(),
+                },
+            ),
+            (true, "em" | "i") => self.close_inline("em"),
+            (false, "strong" | "b") => self.open_inline(
+                "strong",
+                Inline::Strong {
+                    children: Vec::new(),
+                },
+            ),
+            (true, "strong" | "b") => self.close_inline("strong"),
+            (false, "code") => self.open_inline(
+                "code",
+                Inline::Code {
+                    text: String::new(),
+                },
+            ),
+            (true, "code") => self.close_inline("code"),
+            _ => {
+                if let Some(style) = InlineStyle::from_html_tag(&name) {
+                    if closing {
+                        self.close_inline(style.html_tag());
+                    } else {
+                        self.open_inline(
+                            style.html_tag(),
+                            Inline::Styled {
+                                style,
+                                children: Vec::new(),
+                            },
+                        );
+                    }
+                }
+            }
         }
     }
 
@@ -433,57 +489,34 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn open_link(&mut self, href: String) {
-        self.inlines.push(Inline::Link {
-            href,
-            children: Vec::new(),
-        });
-        self.inline_kind.push("a-open");
+    fn open_inline(&mut self, tag: &'static str, inline: Inline) {
+        if !self.in_pre {
+            self.inline_frames.push(InlineFrame {
+                tag,
+                start: self.inlines.len(),
+                inline,
+            });
+        }
     }
 
-    fn close_link(&mut self) {
-        while matches!(self.inline_kind.last(), Some(&"a-open") | Some(&"a")) {
-            self.inline_kind.pop();
-        }
-        // children already accumulated as following text; fold trailing texts into last Link
-        let mut children = Vec::new();
-        while let Some(inline) = self.inlines.pop() {
-            match inline {
-                Inline::Link { href, children: c } if c.is_empty() => {
-                    children.reverse();
-                    self.inlines.push(Inline::Link { href, children });
-                    return;
-                }
-                other => children.push(other),
-            }
-        }
-        children.reverse();
-        self.inlines.extend(children);
-    }
-
-    fn wrap_inline(&mut self, kind: &str) {
-        let mut children = Vec::new();
-        if let Some(k) = self.inline_kind.last().copied()
-            && k == kind
+    fn close_inline(&mut self, tag: &str) {
+        if !self.in_pre
+            && self
+                .inline_frames
+                .last()
+                .is_some_and(|frame| frame.tag == tag)
         {
-            self.inline_kind.pop();
+            self.inline_frames.pop().unwrap().wrap(&mut self.inlines);
         }
-        if let Some(Inline::Text { text }) = self.inlines.pop() {
-            children.push(Inline::text(text));
-        }
-        let wrapped = if kind == "strong" {
-            Inline::Strong { children }
-        } else {
-            Inline::Emphasis { children }
-        };
-        self.inlines.push(wrapped);
     }
 
-    fn wrap_code(&mut self) {
-        self.inline_kind.pop();
-        if let Some(Inline::Text { text }) = self.inlines.pop() {
-            self.inlines.push(Inline::Code { text });
+    fn take_inlines(&mut self) -> Vec<Inline> {
+        let mut inlines = std::mem::take(&mut self.inlines);
+        for frame in self.inline_frames.iter_mut().rev() {
+            frame.wrap(&mut inlines);
+            frame.start = 0;
         }
+        inlines
     }
 
     fn list_depth(&self) -> u8 {
@@ -495,7 +528,7 @@ impl<'a> Parser<'a> {
             self.flush_paragraph();
             return;
         }
-        let inlines = std::mem::take(&mut self.inlines);
+        let inlines = self.take_inlines();
         if inlines_empty(&inlines) {
             return;
         }
@@ -519,7 +552,7 @@ impl<'a> Parser<'a> {
         if self.heading.is_some() || self.in_pre || !self.list_kind.is_empty() {
             return;
         }
-        let inlines = std::mem::take(&mut self.inlines);
+        let inlines = self.take_inlines();
         if inlines_empty(&inlines) {
             return;
         }
@@ -534,8 +567,8 @@ impl<'a> Parser<'a> {
 fn table_inline_tag(name: &str) -> bool {
     matches!(
         name,
-        "a" | "b" | "br" | "code" | "del" | "em" | "i" | "s" | "span" | "strike" | "strong" | "u"
-    )
+        "a" | "b" | "br" | "code" | "em" | "i" | "span" | "strong"
+    ) || InlineStyle::from_html_tag(name).is_some()
 }
 
 /// 在清洗前读取结构与语言，避免被移除的容器和属性改变表格判断或代码语言。
@@ -869,6 +902,39 @@ fn html_unescape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preserves_nested_feed_inline_styles_and_text() {
+        let blocks = html_to_blocks(
+            "<p>Model<sup><a href='https://press.example/ref'><b>[1]</b></a></sup> H<sub>2</sub>O <s>old</s> <strike>older</strike> <del>removed</del> <u>underlined</u> <mark>highlighted</mark></p>",
+            None,
+        );
+        let [Block::Paragraph { inlines }] = blocks.as_slice() else {
+            panic!("expected one paragraph: {blocks:?}");
+        };
+        assert_eq!(
+            crate::inlines_to_plain(inlines),
+            "Model[1] H2O old older removed underlined highlighted"
+        );
+        let styles: Vec<_> = inlines
+            .iter()
+            .filter_map(|inline| match inline {
+                Inline::Styled { style, .. } => Some(*style),
+                _ => None,
+            })
+            .collect();
+        use InlineStyle::*;
+        assert_eq!(styles, [Sup, Sub, Del, Del, Del, U, Mark]);
+        assert!(matches!(&inlines[1], Inline::Styled { children, .. }
+            if matches!(children.as_slice(), [Inline::Link { children, .. }]
+                if matches!(children.as_slice(), [Inline::Strong { .. }]))));
+        let markdown = crate::inlines_to_markdown(inlines);
+        assert!(markdown.contains("<sup>[\\[1\\]](https://press.example/ref)</sup>"));
+        assert_eq!(
+            crate::document_to_plain(&crate::markdown_to_document(&markdown)),
+            crate::inlines_to_plain(inlines)
+        );
+    }
     use crate::ir::Block;
     use crate::text::inlines_to_plain;
 
@@ -877,6 +943,7 @@ mod tests {
             Inline::HardBreak => true,
             Inline::Strong { children }
             | Inline::Emphasis { children }
+            | Inline::Styled { children, .. }
             | Inline::Link { children, .. } => has_hard_break(children),
             _ => false,
         })

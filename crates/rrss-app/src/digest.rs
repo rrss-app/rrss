@@ -275,6 +275,7 @@ fn strip_inline_markers(inlines: &mut [rrss_render::Inline]) {
             rrss_render::Inline::Text { text } => *text = strip_input_markers(text),
             rrss_render::Inline::Strong { children }
             | rrss_render::Inline::Emphasis { children }
+            | rrss_render::Inline::Styled { children, .. }
             | rrss_render::Inline::Link { children, .. } => strip_inline_markers(children),
             _ => {}
         }

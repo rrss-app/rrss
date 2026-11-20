@@ -120,7 +120,9 @@ pub fn canonical_digest_items(doc: &Document) -> Option<Vec<(usize, String)>> {
 fn safe_inlines(inlines: &[Inline]) -> bool {
     inlines.iter().all(|inline| match inline {
         Inline::Text { .. } | Inline::Code { .. } => true,
-        Inline::Strong { children } | Inline::Emphasis { children } => safe_inlines(children),
+        Inline::Strong { children }
+        | Inline::Emphasis { children }
+        | Inline::Styled { children, .. } => safe_inlines(children),
         Inline::Link { href, children } => {
             matches!(
                 url::Url::parse(href)

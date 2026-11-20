@@ -4,7 +4,6 @@
 .chat-backchip:hover { background: var(--tint-hover); color: var(--text); }
 .chat-backchip > :not(em) { flex-shrink: 0; }
 .chat-backchip em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px/1.5 var(--font-read); }
-.chat-backchip kbd { font-size: 10px; }
 .chat-header h1 { grid-column: 2; margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center; font: 600 14px/1.5 var(--font-read); }
 .chat-pane { padding: 28px 0 40px; }
 /* 版心 840px，含两侧各 40px 内边距共 920px，与过程条、输入区同宽。 */

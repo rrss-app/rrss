@@ -73,6 +73,41 @@ test("外链阅读、收录与失败重试保留返回路径", async ({ page }) 
   await expect(reader).not.toBeVisible();
 });
 
+test("revisiting a web article unwinds the return path, even through an alias", async ({ page }) => {
+  const first = "https://reading.example/first";
+  const second = "https://reading.example/second";
+  const alias = "https://reading.example/first-alias";
+  const article = (id: number, title: string, href: string, label: string) => readerView(id, {
+    title,
+    document: { v: 1, blocks: [{ t: "p", inlines: [{ t: "a", href, children: [{ t: "t", text: label }] }] }] },
+  });
+  const web = (article_id: number, actual_url: string) => ({
+    article_id, actual_url, actual_host: "reading.example", temporary: true, layer: "General" as const, text_chars: 800, image_count: 0,
+  });
+  await installMockHost(page, {
+    focus: TWO_ARTICLE_PAGE,
+    settingValues: { web_first_tip: "0" },
+    readers: {
+      1: article(1, "甲文", first, "Open first"),
+      10: article(10, "First", second, "Open second"),
+      11: article(11, "Second", alias, "Revisit first"),
+    },
+    webLinks: { [first]: web(10, first), [second]: web(11, second), [alias]: web(10, first) },
+  });
+  await page.goto("/");
+  await page.getByRole("article", { name: "甲文", exact: true }).click();
+  const reader = page.locator(".drawer.reader");
+  const title = reader.locator(".reader-title");
+  await reader.getByRole("link", { name: "Open first" }).click();
+  await reader.getByRole("link", { name: "Open second" }).click();
+  await reader.getByRole("link", { name: "Revisit first" }).click();
+  await expect(title).toHaveText("First");
+  await reader.getByRole("button", { name: "返回", exact: true }).click();
+  await expect(title).toHaveText("甲文");
+  await page.goBack();
+  await expect(reader).not.toBeVisible();
+});
+
 test("安全拦截独立于首次提示，设置默认浏览器后仍需确认", async ({ page }) => {
   const href = "https://xn--pple-43d.com/story";
   await installMockHost(page, {

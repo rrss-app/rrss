@@ -7,10 +7,18 @@ import { i18n } from "../i18n";
 
 export const IR_VERSION = 1;
 
+const inlineStyles = ["sup", "sub", "del", "u", "mark"] as const;
+type InlineStyle = typeof inlineStyles[number];
+
+function isInlineStyle(value: unknown): value is InlineStyle {
+  return inlineStyles.some((style) => style === value);
+}
+
 export type Inline =
   | { t: "t"; text: string }
   | { t: "s"; children: Inline[] }
   | { t: "e"; children: Inline[] }
+  | { t: "style"; style: InlineStyle; children: Inline[] }
   | { t: "c"; text: string }
   | { t: "a"; href: string; children: Inline[] }
   | { t: "br" };
@@ -92,6 +100,8 @@ function parseInline(node: unknown): Inline | null {
       return { t: "s", children: parseInlines(node.children) };
     case "e":
       return { t: "e", children: parseInlines(node.children) };
+    case "style":
+      return isInlineStyle(node.style) ? { t: "style", style: node.style, children: parseInlines(node.children) } : null;
     case "a":
       return typeof node.href === "string" ? { t: "a", href: node.href, children: parseInlines(node.children) } : null;
     case "br":
@@ -154,6 +164,7 @@ function validInline(node: unknown): boolean {
     case "t": case "c": return typeof node.text === "string";
     case "br": return true;
     case "s": case "e": return Array.isArray(node.children) && node.children.every(validInline);
+    case "style": return isInlineStyle(node.style) && Array.isArray(node.children) && node.children.every(validInline);
     case "a": return typeof node.href === "string" && Array.isArray(node.children) && node.children.every(validInline);
     default: return false;
   }

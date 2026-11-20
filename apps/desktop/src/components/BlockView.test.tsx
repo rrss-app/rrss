@@ -85,6 +85,23 @@ describe("selection and links", () => {
     document.body.replaceChildren();
   });
 
+  it("keeps a reference link clickable inside superscript", () => {
+    const href = "https://press.example/references";
+    const opened: string[] = [];
+    const doc = { v: 1, blocks: [{ t: "p", inlines: [
+      { t: "t", text: "Reference" },
+      { t: "style", style: "sup", children: [
+        { t: "a", href, children: [{ t: "t", text: "[1]" }] },
+      ] },
+    ] }] };
+    const { host, unmount } = mount(<BlockView document={doc} onOpenUrl={(url) => opened.push(url)} />);
+    const link = host.querySelector<HTMLAnchorElement>("sup a");
+    expect(link?.textContent).toBe("[1]");
+    act(() => link!.click());
+    expect(opened).toEqual([href]);
+    unmount();
+  });
+
   it("opens a link via onOpenUrl and does not cite", () => {
     const opened: string[] = [];
     const cited: string[] = [];

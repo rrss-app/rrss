@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::ir::{Block, Document, Inline};
+use crate::ir::{Block, Document, Inline, InlineStyle};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TranslateUnit {
@@ -21,6 +21,7 @@ pub struct TranslateUnit {
 enum Wrapper {
     Strong,
     Emphasis,
+    Styled(InlineStyle),
     Link { href: String },
     Code { text: String },
 }
@@ -290,6 +291,13 @@ fn write_tagged(inlines: &[Inline], out: &mut String, wrappers: &mut Vec<Wrapper
                 write_tagged(children, out, wrappers);
                 push_close(out, id);
             }
+            Inline::Styled { style, children } => {
+                let id = wrappers.len();
+                wrappers.push(Wrapper::Styled(*style));
+                push_open(out, id);
+                write_tagged(children, out, wrappers);
+                push_close(out, id);
+            }
             Inline::Link { href, children } => {
                 let id = wrappers.len();
                 wrappers.push(Wrapper::Link { href: href.clone() });
@@ -393,7 +401,7 @@ fn lenient_inlines(text: &str, wrappers: &[Wrapper]) -> Option<(Vec<Inline>, &'s
                 push_space(&mut inlines);
                 inlines.push(Inline::Code { text: text.clone() });
             }
-            Wrapper::Strong | Wrapper::Emphasis | Wrapper::Link { .. } => dropped = true,
+            _ => dropped = true,
         }
     }
     if !has_content(&inlines) {
@@ -408,6 +416,7 @@ fn has_content(inlines: &[Inline]) -> bool {
         Inline::Code { .. } => true,
         Inline::Strong { children }
         | Inline::Emphasis { children }
+        | Inline::Styled { children, .. }
         | Inline::Link { children, .. } => has_content(children),
         Inline::HardBreak => false,
     })
@@ -436,6 +445,10 @@ fn wrap_inline(wrapper: &Wrapper, children: Vec<Inline>) -> Inline {
     match wrapper {
         Wrapper::Strong => Inline::Strong { children },
         Wrapper::Emphasis => Inline::Emphasis { children },
+        Wrapper::Styled(style) => Inline::Styled {
+            style: *style,
+            children,
+        },
         Wrapper::Link { href } => Inline::Link {
             href: href.clone(),
             children,
@@ -538,10 +551,7 @@ fn take_lenient<'a>(
             },
             LenientTag::Open
                 if !used.get(id).copied().unwrap_or(true)
-                    && matches!(
-                        wrappers.get(id),
-                        Some(Wrapper::Strong | Wrapper::Emphasis | Wrapper::Link { .. })
-                    ) =>
+                    && !matches!(wrappers[id], Wrapper::Code { .. }) =>
             {
                 used[id] = true;
                 let (children, next) = take_lenient(rest, wrappers, used, Some(id), structure);
@@ -623,16 +633,10 @@ fn parse_tag<'a>(s: &'a str, wrappers: &[Wrapper]) -> Result<(Inline, &'a str), 
     if !after.starts_with(&close) {
         return Err(PatchError::TagStructure);
     }
-    let inline = match wrapper {
-        Wrapper::Strong => Inline::Strong { children },
-        Wrapper::Emphasis => Inline::Emphasis { children },
-        Wrapper::Link { href } => Inline::Link {
-            href: href.clone(),
-            children,
-        },
-        Wrapper::Code { .. } => return Err(PatchError::TagStructure),
-    };
-    Ok((inline, &after[close.len()..]))
+    if matches!(wrapper, Wrapper::Code { .. }) {
+        return Err(PatchError::TagStructure);
+    }
+    Ok((wrap_inline(wrapper, children), &after[close.len()..]))
 }
 
 fn escape_text(s: &str) -> String {
@@ -666,6 +670,24 @@ fn plain_from_tagged(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn translation_keeps_styles_from_the_source() {
+        let doc = crate::markdown_to_document("Reference<sup>[1]</sup> <mark>highlighted</mark>");
+        let mut units = extract_units("Title", &doc);
+        units[1].t = units[1]
+            .t
+            .replace("Reference", "Referenz")
+            .replace("highlighted", "markiert");
+        let (_, translated) = apply_units("Title", &doc, &units);
+        assert_eq!(
+            translated,
+            crate::html_to_document(
+                "<p>Referenz<sup>[1]</sup> <mark>markiert</mark></p>",
+                &crate::RenderOpts::default(),
+            )
+        );
+    }
     use crate::ir::IR_VERSION;
 
     fn para(inlines: Vec<Inline>) -> Block {

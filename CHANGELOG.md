@@ -6,6 +6,8 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ### Changed
 
+- Reader Back now unwinds one step consistently across the toolbar, keyboard, and browser history. Returning to chat stays there, and revisiting an article removes duplicate reading steps.
+- Feed articles and Markdown now preserve superscripts, subscripts, strikethrough, underlines, and highlights.
 - The reader can play cached audio and video from WordPress posts, lazy-loaded players, and podcast feed attachments. When a codec is unavailable, a link opens the media in the browser. YouTube and Bilibili videos open on their original sites from cover cards.
 - The reader shows native audio and video controls before playback. Videos show a feed-supplied cover or a saved first frame when available, and the video itself downloads only when you press Play.
 - While you read in Focus, new articles below the screen appear quietly. Batches that affect your reading position share one button that brings the updates to the top of the list.

@@ -97,8 +97,8 @@
   },
   "chat": {
     "newThread": "新对话",
-    "backToArticle": "回到原文 ·",
-    "backToArticleTitle": "回到原文 · {{title}}",
+    "viewSource": "查看原文 ·",
+    "viewSourceTitle": "查看原文 · {{title}}",
     "archivedNotice": "这条会话已归档。发送新消息会自动取消归档。",
     "unarchive": "取消归档",
     "composerLabel": "对话消息",

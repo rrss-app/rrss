@@ -112,8 +112,8 @@
   },
   "chat": {
     "newThread": "New chat",
-    "backToArticle": "Back to article ·",
-    "backToArticleTitle": "Back to article · {{title}}",
+    "viewSource": "View source article ·",
+    "viewSourceTitle": "View source article · {{title}}",
     "archivedNotice": "This chat is archived. Sending a new message will unarchive it.",
     "unarchive": "Unarchive",
     "composerLabel": "Chat message",

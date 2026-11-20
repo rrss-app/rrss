@@ -519,7 +519,11 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   };
 
   const openWebLink = async (url: string, retry = false) => {
-    if (!retry && sessionRef.current && requests.owns(sessionRef.current.ticket)) returns.current.push(sessionRef.current);
+    const current = sessionRef.current;
+    if (!retry && current && requests.owns(current.ticket)) {
+      if (current.web?.url === url) return;
+      returns.current.push(current);
+    }
     readingSession.finish("back");
     translation.detach();
     const ticket = requests.open(0);
@@ -529,7 +533,15 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     setOpening({ ticket, id: 0, late: false });
     try {
       const info = await api.openWebLink(url);
-      if (requests.owns(ticket)) await openArticle(info.article_id, { skipNav: true }, { url, info });
+      if (!requests.owns(ticket)) return;
+      const existing = returns.current.findIndex(session => session.view.id === info.article_id);
+      if (existing < 0) {
+        await openArticle(info.article_id, { skipNav: true }, { url, info });
+        return;
+      }
+      restoreArticleAt(existing);
+      // 重新打开会再抓一次网页；已在返回路径上的这篇换上宿主刚存好的正文。
+      await refreshRestored(info.article_id, () => {});
     } catch (err) {
       if (requests.owns(ticket)) failWeb(url, err);
     }
@@ -537,10 +549,25 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
 
   const openExtracted = async (event: WebVerifyStateEvent) => {
     if (event.article_id == null) return;
+    const id = event.article_id;
     const previous = sessionRef.current;
+    const existing = returns.current.findIndex(session => session.view.id === id);
+    if (existing >= 0) restoreArticleAt(existing);
+    if (await refreshRestored(id, error => propsRef.current.notify({ message: formatNotice(i18n.t("host.extractFailedPrefix", { ns: "reader" }), error) }))) return;
     if (previous && requests.owns(previous.ticket)) returns.current.push(previous);
-    const web = previous?.view.id === event.article_id ? previous.web : undefined;
-    await openArticle(event.article_id, { skipNav: true }, web ?? { url: event.url });
+    await openArticle(id, { skipNav: true }, { url: event.url });
+  };
+  /** 当前会话正是这篇时就地换上宿主的最新正文；不是这篇时返回 false，交给调用方打开。 */
+  const refreshRestored = async (id: number, onError: (error: unknown) => void) => {
+    const current = sessionRef.current;
+    if (current?.view.id !== id || !requests.owns(current.ticket)) return false;
+    try {
+      const view = await api.reader(id);
+      if (requests.owns(current.ticket)) setView(id, () => view);
+    } catch (error) {
+      if (requests.owns(current.ticket)) onError(error);
+    }
+    return true;
   };
   const reextract = async () => {
     const cur = sessionRef.current;
@@ -562,16 +589,20 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   /** 打开文末的相关阅读：当前这篇进返回栈，Esc / 「回到上一篇」回到它的文末；上下篇仍按原来的列表走。 */
   const openRelated = (item: RelatedArticleView) => {
     const cur = sessionRef.current;
-    if (!cur || !requests.owns(cur.ticket)) return;
+    if (!cur || !requests.owns(cur.ticket) || cur.detour || cur.view.id === item.article_id) return;
+    const existing = returns.current.findIndex(session => session.view.id === item.article_id);
+    if (existing >= 0) {
+      restoreArticleAt(existing);
+      return;
+    }
     returns.current.push(cur);
     readingSession.finish("next");
     queryClient.setQueryData<RelatedArticleView[]>(relatedKey(cur.view.id), rows => rows?.map(row => row.article_id === item.article_id ? { ...row, read: true } : row));
     void openArticle(item.article_id, { skipNav: true, via: "related" });
   };
 
-  const back = () => {
-    const previous = returns.current.pop();
-    if (!previous) return false;
+  function restoreArticleAt(index: number) {
+    const [previous] = returns.current.splice(index);
     readingSession.finish("back");
     translation.detach();
     const next = { ...previous, ticket: requests.open(previous.view.id), openedAt: Date.now() };
@@ -581,8 +612,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     setOpening(null);
     setOps({});
     navRef.current.setCurrent?.(next.skipNav ? null : next.view.id);
-    return true;
-  };
+  }
 
   const markCollected = useCallback((id: number) => {
     const update = (cur: Session): Session => cur.view.id === id && cur.web?.info
@@ -644,7 +674,11 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     });
   };
 
-  const closeReader = () => {
+  const back = () => {
+    if (returns.current.length > 0) {
+      restoreArticleAt(returns.current.length - 1);
+      return true;
+    }
     requests.close();
     setOpening(null);
     readingSession.finish("back");
@@ -652,7 +686,11 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     const thread = cur?.fromThread;
     if (thread) propsRef.current.onReturnToThread?.(thread.threadId);
     else if (cur?.search) propsRef.current.onReturnToSearch?.(cur.view.id);
-    propsRef.current.onClose();
+    return false;
+  };
+
+  const closeReader = () => {
+    if (!back()) propsRef.current.onClose();
   };
 
   useImperativeHandle(ref, () => ({
@@ -717,7 +755,10 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   const openNeighbor = async (dir: -1 | 1) => {
     // 相关阅读的岔路里按 J / K：先回到原来那篇，再按原来的列表走。
     if (sessionRef.current?.detour) {
-      if (back()) await openNeighbor(dir);
+      if (returns.current.length > 0) {
+        restoreArticleAt(returns.current.length - 1);
+        await openNeighbor(dir);
+      }
       return;
     }
     const cur = sessionRef.current;
@@ -1019,7 +1060,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   if (opening?.late && !session) return <ReaderOpening onClose={closeReader} />;
   if (failure) return <div className="overlay reader-stage" style={style} {...(inert ? { inert: true } : {})}>
     <div className="drawer reader">
-      <WebReadingBar page={failure} returnTitle={returns.current.at(-1)?.view.title} onBack={() => { if (!back()) closeReader(); }} />
+      <WebReadingBar page={failure} returnTitle={returns.current.at(-1)?.view.title} onBack={closeReader} />
       <div className="drawer-body"><div className="reader-column web-column"><WebFailure page={failure} onRetry={() => void openWebLink(failure.url, true)} /></div></div>
     </div>
   </div>;
@@ -1035,7 +1076,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     <ReaderOverlay
       reader={reader}
       onOpenUrl={props.onOpenUrl}
-      webNav={session.web ? <WebReadingNav page={session.web} returnTitle={returns.current.at(-1)?.view.title} onBack={() => { if (!back()) closeReader(); }} /> : undefined}
+      webNav={session.web ? <WebReadingNav page={session.web} returnTitle={returns.current.at(-1)?.view.title} onBack={closeReader} /> : undefined}
       webActions={session.web ? <WebReadingActions page={session.web} onCollect={() => void collect()} collecting={!!ops.collect} /> : undefined}
       webTip={session.web ? <WebFirstTip key={session.ticket.session} page={session.web} /> : undefined}
       onCollect={session.web?.info?.temporary ? () => void collect() : undefined}
@@ -1045,7 +1086,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       onTrayEscape={props.onTrayEscape}
       returnThreadTitle={session.fromThread?.title}
       returnArticleTitle={session.detour ? returns.current.at(-1)?.view.title : undefined}
-      onReturnArticle={session.detour ? () => { if (!back()) closeReader(); } : undefined}
+      onReturnArticle={session.detour ? closeReader : undefined}
       related={related.data && related.data.length ? related.data : undefined}
       onOpenRelated={openRelated}
       onContinueAsking={session.fromThread ? props.onContinueAsking : undefined}

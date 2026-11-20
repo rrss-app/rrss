@@ -49,7 +49,7 @@ async function startRoundtrip(page: Page) {
   await scrollToBlock(page);
   await citeSpan(page);
   await send(page);
-  await expect(backchip(page)).toContainText(`回到原文 ·${articleTitle}`);
+  await expect(backchip(page)).toContainText(articleTitle);
 }
 async function returnToArticle(page: Page) {
   await backchip(page).click();
@@ -57,7 +57,7 @@ async function returnToArticle(page: Page) {
   await expect(reader(page).getByRole("button", { name: "对话", exact: true })).toBeVisible();
 }
 
-test("citation → tray → chat → original position, click/Escape roundtrip and draft preservation", async ({ page }) => {
+test("citation returns to the original position and Back unwinds to chat without reopening it", async ({ page }) => {
   await setup(page); await startRoundtrip(page);
   const thread = await page.locator('.thread-item[data-on="1"]').textContent();
   await returnToArticle(page);
@@ -66,7 +66,7 @@ test("citation → tray → chat → original position, click/Escape roundtrip a
   const back = reader(page).getByRole("button", { name: "对话", exact: true });
   await back.hover();
   await expect(page.getByRole("tooltip")).toHaveText(`回到对话「${question}」 · Esc`);
-  await page.keyboard.press("Escape");
+  await back.click();
   await expect(reader(page)).not.toBeVisible();
   await expect(page.locator('.thread-item[data-on="1"]')).toHaveText(thread!);
   const input = page.getByRole("textbox", { name: "对话消息" });
@@ -75,9 +75,14 @@ test("citation → tray → chat → original position, click/Escape roundtrip a
   await input.dispatchEvent("keydown", { key: "Escape", keyCode: 229 });
   await expect(reader(page)).not.toBeVisible();
   await input.press("Escape");
-  await expect(reader(page)).toBeVisible();
+  await expect(reader(page)).not.toBeVisible();
+  await returnToArticle(page);
   expect(Math.abs(await offset(page) - 120)).toBeLessThan(180);
   await page.keyboard.press("Backspace");
+  await expect(reader(page)).not.toBeVisible();
+  await expect(input).toHaveValue("未发出的草稿");
+  await returnToArticle(page);
+  await page.goBack();
   await expect(reader(page)).not.toBeVisible();
   await expect(input).toHaveValue("未发出的草稿");
 });
@@ -226,7 +231,8 @@ test("chat Escape without an origin does nothing; model menu wins and origins re
   await page.getByRole("textbox", { name: "对话消息" }).focus();
   await page.keyboard.press("Escape");
   await expect(menu).not.toBeVisible(); await expect(reader(page)).not.toBeVisible();
-  await page.keyboard.press("Escape"); await expect(reader(page)).toBeVisible();
+  await page.keyboard.press("Escape"); await expect(reader(page)).not.toBeVisible();
+  await returnToArticle(page);
   await page.reload();
   await page.getByRole("button", { name: MOCK_THREADS[0].title, exact: true }).click();
   await expect(backchip(page)).toHaveCount(0);

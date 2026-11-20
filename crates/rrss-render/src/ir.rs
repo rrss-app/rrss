@@ -84,6 +84,11 @@ pub enum Inline {
     Strong { children: Vec<Inline> },
     #[serde(rename = "e")]
     Emphasis { children: Vec<Inline> },
+    #[serde(rename = "style")]
+    Styled {
+        style: InlineStyle,
+        children: Vec<Inline>,
+    },
     #[serde(rename = "c")]
     Code { text: String },
     #[serde(rename = "a")]
@@ -92,8 +97,51 @@ pub enum Inline {
     HardBreak,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InlineStyle {
+    Sup,
+    Sub,
+    Del,
+    U,
+    Mark,
+}
+
+impl InlineStyle {
+    pub(crate) fn html_tag(self) -> &'static str {
+        match self {
+            Self::Sup => "sup",
+            Self::Sub => "sub",
+            Self::Del => "del",
+            Self::U => "u",
+            Self::Mark => "mark",
+        }
+    }
+
+    pub(crate) fn from_html_tag(tag: &str) -> Option<Self> {
+        match tag {
+            "sup" => Some(Self::Sup),
+            "sub" => Some(Self::Sub),
+            "del" | "s" | "strike" => Some(Self::Del),
+            "u" => Some(Self::U),
+            "mark" => Some(Self::Mark),
+            _ => None,
+        }
+    }
+}
+
 impl Inline {
     pub fn text(s: impl Into<String>) -> Self {
         Self::Text { text: s.into() }
+    }
+
+    pub(crate) fn children_mut(&mut self) -> Option<&mut Vec<Inline>> {
+        match self {
+            Self::Strong { children }
+            | Self::Emphasis { children }
+            | Self::Styled { children, .. }
+            | Self::Link { children, .. } => Some(children),
+            _ => None,
+        }
     }
 }

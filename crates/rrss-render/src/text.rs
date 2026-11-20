@@ -162,6 +162,16 @@ fn write_markdown(inlines: &[Inline], out: &mut String) {
                 write_markdown(children, out);
                 out.push('*');
             }
+            Inline::Styled { style, children } => {
+                let tag = style.html_tag();
+                out.push('<');
+                out.push_str(tag);
+                out.push('>');
+                write_markdown(children, out);
+                out.push_str("</");
+                out.push_str(tag);
+                out.push('>');
+            }
             Inline::Code { text } => {
                 let text = text.replace('`', "'");
                 out.push('`');
@@ -186,6 +196,7 @@ fn write_plain(inlines: &[Inline], out: &mut String) {
             Inline::Text { text } => out.push_str(text),
             Inline::Strong { children }
             | Inline::Emphasis { children }
+            | Inline::Styled { children, .. }
             | Inline::Link { children, .. } => write_plain(children, out),
             Inline::Code { text } => out.push_str(text),
             // 纯文本给分块 / Simhash，硬换行收成空格以免切碎词。
@@ -198,7 +209,7 @@ fn escape_md(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
-            '*' | '_' | '`' | '[' | ']' | '\\' => {
+            '*' | '_' | '`' | '[' | ']' | '\\' | '~' | '^' | '<' => {
                 out.push('\\');
                 out.push(c);
             }

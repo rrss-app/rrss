@@ -279,7 +279,7 @@ function DesktopShell() {
     return () => window.clearTimeout(timer);
   }, [hasWebHost]);
   const origin = readerCitations.origins.get(threadId || chatContext);
-  const backToArticle = () => {
+  const openOriginArticle = () => {
     if (origin) void openArticle(origin.id, { citationSource: conversationSource(), returnToList: true });
   };
   const returnToThread = (id: number) => {
@@ -345,14 +345,13 @@ function DesktopShell() {
     if (event.key === "Escape" && commandPaletteOpen) { event.preventDefault(); closeSearch(); return; }
     if (!event.defaultPrevented && event.key === "Backspace" && top === "reader" && !commandPaletteOpen && !pendingLeave
       && !event.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey && !isTypingTarget(document.activeElement)) {
-      event.preventDefault(); readerRef.current?.close(); return;
+      event.preventDefault(); closeTop(); return;
     }
     if (!event.defaultPrevented && event.key === "Escape") {
       if (stack.length > 0 || pendingLeave) {
         event.preventDefault();
-        if (top === "reader" && !pendingLeave) readerRef.current?.close(); else closeTop();
-      } else if (view === "chat" && origin) { event.preventDefault(); backToArticle(); }
-      else if (view === "feeds" && !isTypingTarget(document.activeElement)) { event.preventDefault(); setView(feedsReturn); }
+        closeTop();
+      } else if (view === "feeds" && !isTypingTarget(document.activeElement)) { event.preventDefault(); setView(feedsReturn); }
     }
   });
 
@@ -439,8 +438,8 @@ function DesktopShell() {
         onChange={focus.reload} onOpenUrl={openContentLink} onOpenArticle={openArticleFromMessage} onManagePool={managePool} onFixChat={openChatFix} notify={setToast} /> : null}
       {visited.has("chat") ? <MainViewFrame visible={view === "chat"}>
         <header className="chat-header" data-tauri-drag-region="deep">
-          {origin ? <button type="button" className="chat-backchip" onClick={backToArticle} title={t("chat.backToArticleTitle", { title: origin.title })}>
-            <Icon name="arrowLeft" size={13} /><span>{t("chat.backToArticle")}</span><em>{origin.title}</em><kbd>Esc</kbd>
+          {origin ? <button type="button" className="chat-backchip" onClick={openOriginArticle} title={t("chat.viewSourceTitle", { title: origin.title })}>
+            <Icon name="fileText" size={13} /><span>{t("chat.viewSource")}</span><em>{origin.title}</em>
           </button> : null}<h1 title={threadHeading.id === threadId ? threadHeading.title : t("chat.newThread")}>{threadHeading.id === threadId ? threadHeading.title : t("chat.newThread")}</h1></header>
         {threadHeading.id === threadId && threadHeading.archived ? <div className="notice chat-archived" role="status">
           <Icon name="inbox" size={14} /><span>{t("chat.archivedNotice")}</span>
@@ -465,7 +464,7 @@ function DesktopShell() {
       shortcuts={top === "reader" && !commandPaletteOpen && !pendingLeave} inert={trapBackground} style={layer("reader")}
       onAsk={(title, message, onOk) => { setConfirm({ title, message, onOk }); open("confirm"); }}
       onTranslateSettings={() => { setSettingsTab("translate"); open("settings"); }}
-      onRequestOpen={() => open("reader")} onClose={closeTop} onCite={readerCitations.add} citationTray={readerCitations.tray} onTrayEscape={readerCitations.escape} onContinueAsking={readerCitations.ask} onReturnToThread={returnToThread} onReturnToSearch={returnToSearch} notify={setToast} onRateArticle={rateArticle} onDislikeArticle={dislikeArticle} />
+      onRequestOpen={() => open("reader")} onClose={overlays.closeTopWithoutGuard} onCite={readerCitations.add} citationTray={readerCitations.tray} onTrayEscape={readerCitations.escape} onContinueAsking={readerCitations.ask} onReturnToThread={returnToThread} onReturnToSearch={returnToSearch} notify={setToast} onRateArticle={rateArticle} onDislikeArticle={dislikeArticle} />
     {stack.includes("settings") && <div className="overlay settings-overlay" style={layer("settings")} inert={top !== "settings" || commandPaletteOpen || !!pendingLeave}>
       <div ref={settingsRootRef} className="drawer settings settings-drawer" role="dialog" aria-modal={modalTop === "settings" && !commandPaletteOpen}
         aria-labelledby="settings-title" aria-describedby="settings-desc">

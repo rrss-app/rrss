@@ -122,6 +122,8 @@ pub fn generation_document(json: Option<&str>, html: Option<&str>) -> Option<Doc
 
 /// Keep legacy summary signatures stable; an invalidated feed IR must include
 /// the changed HTML rather than continuing to sign the obsolete stored blocks.
+/// A renderer-only change keeps the signature: the summary still describes the
+/// same source HTML, and stored blocks are not rewritten for existing articles.
 pub fn signature(json: Option<&str>, html: Option<&str>) -> String {
     #[derive(Deserialize)]
     struct Metadata {
@@ -137,10 +139,7 @@ pub fn signature(json: Option<&str>, html: Option<&str>) -> String {
     if json
         .and_then(|json| serde_json::from_str::<Metadata>(json).ok())
         .and_then(|s| s.rrss_source)
-        .is_some_and(|s| {
-            s.kind == "feed"
-                && (s.renderer != HTML_RENDER_REVISION || s.hash != hash(html.unwrap_or("")))
-        })
+        .is_some_and(|s| s.kind == "feed" && s.hash != hash(html.unwrap_or("")))
     {
         digest.update(HTML_RENDER_REVISION.to_le_bytes());
         digest.update(html.unwrap_or("").as_bytes());
@@ -286,7 +285,7 @@ mod tests {
     #[test]
     fn provenance_preserves_blocks_and_invalidates_content_base_and_renderer_changes() {
         let (_dir, _conn, mut article) = article();
-        let html = "<h2>Section</h2><p><a href='../ref'>reference</a></p><pre><code class='language-rust'>let a=1;</code></pre><img src='cover.png'><table><tr><td>cell</td></tr></table>";
+        let html = "<h2>Section</h2><p><a href='../ref'>reference<sup>[1]</sup></a></p><pre><code class='language-rust'>let a=1;</code></pre><img src='cover.png'><table><tr><td>cell</td></tr></table>";
         article.content_html = Some(html.into());
         article.blocks_json = Some(feed_json(html, article.canonical_url.as_deref()).unwrap());
         let expected = rrss_render::html_to_document(
@@ -305,7 +304,7 @@ mod tests {
         );
         let mut stale: serde_json::Value =
             serde_json::from_str(article.blocks_json.as_deref().unwrap()).unwrap();
-        stale["rrss_source"]["renderer"] = 0.into();
+        stale["rrss_source"]["renderer"] = (HTML_RENDER_REVISION - 1).into();
         stale["blocks"] =
             serde_json::to_value(rrss_render::markdown_to_document("stale").blocks).unwrap();
         article.blocks_json = Some(stale.to_string());
@@ -335,6 +334,25 @@ mod tests {
         assert_ne!(article_document(&article), expected);
         article.blocks_json = Some("broken".into());
         assert!(!article_document(&article).blocks.is_empty());
+    }
+
+    #[test]
+    fn renderer_revision_alone_keeps_the_summary_signature() {
+        let (_dir, _conn, mut article) = article();
+        let html = "<p>Model<sup>[1]</sup> text</p>";
+        article.content_html = Some(html.into());
+        let mut older: serde_json::Value =
+            serde_json::from_str(&feed_json(html, article.canonical_url.as_deref()).unwrap())
+                .unwrap();
+        older["rrss_source"]["renderer"] = (HTML_RENDER_REVISION - 1).into();
+        let older = older.to_string();
+        let plain = Sha256::digest(older.as_bytes());
+        let expected: String = plain[..8].iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(signature(Some(&older), Some(html)), expected);
+        assert_ne!(
+            signature(Some(&older), Some("<p>Model text, revised</p>")),
+            expected
+        );
     }
 
     #[test]
