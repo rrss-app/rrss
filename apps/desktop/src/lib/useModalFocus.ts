@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 
-export type ModalLayerId = "settings" | "confirm" | "search" | "web-warning" | "close-ask";
+export type ModalLayerId = "settings" | "feed-edit" | "confirm" | "search" | "web-warning" | "close-ask";
 
 const FOCUSABLE_SELECTOR = [
   "a[href]",

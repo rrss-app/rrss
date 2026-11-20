@@ -126,12 +126,12 @@ export function createFeedsSession(notify: (notice: FeedsNotice) => void) {
   }
 
   /** `scope` 给定时（从卡片来源名进入）用它取代保存的范围，列表范围仍读设置。 */
-  async function boot(gen: number, scope?: string) {
+  async function boot(gen: number, scope?: string, listScope?: string) {
     try {
       const schema = await api.settingsSchema();
       if (!current(gen)) return;
       const value = (id: string) => schema.values.find((item) => item.id === id)?.value || "all";
-      publish({ scope: scope ?? value("feeds_scope"), listScope: value("feeds_list_scope") });
+      publish({ scope: scope ?? value("feeds_scope"), listScope: listScope ?? value("feeds_list_scope") });
     } catch (err) {
       if (!current(gen)) return;
       notify({ message: formatNotice(i18n.t("session.loadFailed", { ns: "feeds" }), err) });
@@ -167,13 +167,14 @@ export function createFeedsSession(notify: (notice: FeedsNotice) => void) {
     return request;
   }
 
-  function setScope(scope: string) {
-    const gen = switchTo(scope, state.listScope);
+  function setScope(scope: string, listScope?: string) {
+    const gen = switchTo(scope, listScope ?? state.listScope);
     persist("feeds_scope", scope);
+    if (listScope !== undefined) persist("feeds_list_scope", listScope);
     if (started) return loadPage(gen);
     // 还没进过订阅模式：直接以这个范围启动，免得随后的 start 读回旧设置把它盖掉。
     started = true;
-    initialLoad = boot(gen, scope);
+    initialLoad = boot(gen, scope, listScope);
     return initialLoad;
   }
 

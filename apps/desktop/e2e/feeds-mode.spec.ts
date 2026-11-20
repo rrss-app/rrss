@@ -40,6 +40,39 @@ const sidebarTree = (page: Page) => page.getByRole("tree", { name: "订阅" });
 const treeRow = (page: Page, key: string) => page.locator(`.feeds-row[data-key="${key}"]`);
 const titles = (page: Page) => page.locator(".feeds-item-title").allTextContents();
 
+test("edit another feed from its row and cancel edits from the timeline gear", async ({ page }) => {
+  const articles = Array.from({ length: 42 }, (_, i) => row(500 + i, `Entry ${i}`, 11, "Compiler Notes", Date.now() - i * 60000));
+  await installMockHost(page, { feeds: TREE, timelineArticles: articles, settingValues: { feeds_scope: "feed:11" } });
+  await page.goto("/");
+  await page.locator(".sidebar").getByRole("button", { name: /^订阅/ }).click();
+  const scroll = page.locator(".feeds-scroll");
+  await expect(page.locator(".feeds-item").first()).toBeVisible();
+  await scroll.evaluate(el => { el.scrollTop = 450; });
+  await expect(scroll).toHaveJSProperty("scrollTop", 450);
+  const other = treeRow(page, "feed:30");
+  await other.hover();
+  await other.locator("button[aria-haspopup=menu]").click();
+  await page.locator(".feeds-row-menu [role=menuitem]").first().click();
+  const editor = page.locator(".quick-feed-dialog");
+  const name = editor.getByRole("textbox").first();
+  await expect(name).toHaveValue(TREE.uncategorized[0].title);
+  await name.fill("Estuary Notes");
+  await editor.getByRole("textbox").nth(1).fill("https://estuary.example/feed.xml");
+  await editor.locator(".form-actions .primary").click();
+  await expect(editor).toHaveCount(0);
+  await expect(other).toContainText("Estuary Notes");
+  expect((await lastArgs(page, "save_feed")).args).toMatchObject({ id: 30, title: "Estuary Notes", url: "https://estuary.example/feed.xml" });
+  await expect(treeRow(page, "feed:11")).toHaveAttribute("aria-selected", "true");
+  await expect(scroll).toHaveJSProperty("scrollTop", 450);
+  await page.locator(".feeds-head button").click();
+  await expect(name).toHaveValue("Compiler Notes");
+  await name.fill("Discard me");
+  await editor.locator(".form-actions .btn").nth(1).click();
+  await expect(editor).toHaveCount(0);
+  await page.locator(".feeds-head button").click();
+  await expect(name).toHaveValue("Compiler Notes");
+});
+
 test("entering, picking a folder with its subfolder and a single feed, and leaving with the back button and Esc", async ({ page }) => {
   await installMockHost(page, { feeds: TREE, timelineArticles: timeline() });
   await page.setViewportSize({ width: 1280, height: 800 });

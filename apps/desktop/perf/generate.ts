@@ -277,6 +277,7 @@ export function generateScene(name: SceneName, origin = PERF_ORIGIN): GeneratedS
   if (!longRow) throw new Error("scene has no articles");
   const longReader: ReaderView = {
     source_hash: `perf-${LONG_ARTICLE_ID}`,
+    feed_id: longRow.feed_id, feed_title: longRow.feed_title,
     id: LONG_ARTICLE_ID,
     title: longRow.title,
     meta: `${longRow.feed_title} · ${publishedLabel(longRow.published_at)}`, feed_icon_href: "",
@@ -464,6 +465,7 @@ export function shortReaderFor(scene: GeneratedScene, id: number): ReaderView {
   return {
     id,
     source_hash: `perf-${id}`,
+    feed_id: row.feed_id, feed_title: row.feed_title,
     title: row.title,
     meta: `${row.feed_title} · ${publishedLabel(row.published_at)}`, feed_icon_href: "",
     url: row.url,

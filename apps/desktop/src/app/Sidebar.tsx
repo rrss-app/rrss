@@ -32,6 +32,7 @@ export const Sidebar = memo(forwardRef<SidebarHandle, {
   feeds: FeedsSession;
   /** 进入订阅模式之前的视图；返回按钮回到这里。 */
   feedsReturn: MainView;
+  onEditFeed: (id: number) => void;
   onView: (view: MainView) => void;
   /** 选中会话；已有会话带上它保存的模型选择。 */
   onThread: (id: number, saved?: ThreadView) => void;
@@ -47,7 +48,7 @@ export const Sidebar = memo(forwardRef<SidebarHandle, {
   onOpenColumn: (id: string) => void;
   onColumnGone: () => void;
   notify: (notice: TreeNotice) => void;
-}>(function Sidebar({ view, threadId, inert, feeds, feedsReturn, onView, onThread, onThreadTitle, onSearch, onSettings, onTitleSettings, onAsk, onAbout, onAddFeed, columnId, onOpenColumn, onColumnGone, notify }, ref) {
+}>(function Sidebar({ view, threadId, inert, feeds, feedsReturn, onEditFeed, onView, onThread, onThreadTitle, onSearch, onSettings, onTitleSettings, onAsk, onAbout, onAddFeed, columnId, onOpenColumn, onColumnGone, notify }, ref) {
   const [list, setList] = useState<ThreadListView>(EMPTY_LIST);
   // 归档列表只在打开「已归档」、或当前会话不在主列表里（刚归档 / 从归档打开）时读取。
   const [archived, setArchived] = useState<ThreadView[] | null>(null);
@@ -98,7 +99,7 @@ export const Sidebar = memo(forwardRef<SidebarHandle, {
   const feedsState = useFeedsSession(feeds);
   // 「订阅」项的未读总数：离开订阅模式时也刷新，标已读与阅读后不会停在旧数。
   useEffect(() => { if (view !== "feeds") void feeds.refreshCounts(); }, [feeds, view]);
-  if (view === "feeds") return <FeedsSidebar feeds={feeds} inert={inert} feedsReturn={feedsReturn} onBack={() => onView(feedsReturn)} onAddFeed={onAddFeed} onSettings={onSettings} notify={notify} />;
+  if (view === "feeds") return <FeedsSidebar feeds={feeds} inert={inert} feedsReturn={feedsReturn} onBack={() => onView(feedsReturn)} onAddFeed={onAddFeed} onSettings={onSettings} onEditFeed={onEditFeed} notify={notify} />;
   if (archiveMode) return <aside className="sidebar thread-archive-mode" inert={inert} aria-label={t("sidebar.archivedLabel")}
     onKeyDown={(event) => { if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); setArchiveMode(false); } }}>
     <ArchivedThreads threads={archived} active={view === "chat" ? threadId : 0} onBack={() => setArchiveMode(false)}
@@ -169,8 +170,9 @@ function FocusColumns({ view, columnId, counts, onOpen, onGone, notify }: {
 }
 
 /** 订阅模式：整列侧栏换成订阅树，只在进入时滑入一次。 */
-function FeedsSidebar({ feeds, inert, feedsReturn, onBack, onAddFeed, onSettings, notify }: {
+function FeedsSidebar({ feeds, inert, feedsReturn, onBack, onAddFeed, onSettings, onEditFeed, notify }: {
   feeds: FeedsSession; inert: boolean; feedsReturn: MainView;
+  onEditFeed: (id: number) => void;
   onBack: () => void; onAddFeed: () => void; onSettings: () => void;
   notify: (notice: TreeNotice) => void;
 }) {
@@ -184,7 +186,7 @@ function FeedsSidebar({ feeds, inert, feedsReturn, onBack, onAddFeed, onSettings
       <button type="button" className="feeds-back" onClick={onBack} title={t("sidebar.back", { name: backName })}><Icon name="chevronLeft" size={14} />{backName}</button>
       <strong>{t("view.feeds")}</strong>
     </div>
-    {tree ? <FeedsTree tree={tree} counts={state.counts} scope={state.scope} notify={notify} onAddFeed={onAddFeed} onSettings={onSettings} onSelect={(scope) => { if (scope !== state.scope) void feeds.setScope(scope); }} />
+    {tree ? <FeedsTree tree={tree} counts={state.counts} scope={state.scope} notify={notify} onAddFeed={onAddFeed} onSettings={onSettings} onEditFeed={onEditFeed} onSelect={(scope) => { if (scope !== state.scope) void feeds.setScope(scope); }} />
       : <div className="feeds-tree-scroll" aria-busy="true" />}
   </aside>;
 }

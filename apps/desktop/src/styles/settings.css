@@ -638,6 +638,9 @@
 }
 .settings-dialog { width: min(560px, 100%); display: flex; flex-direction: column; gap: 12px; }
 .settings-dialog h3 { margin: 0; }
+.quick-feed-dialog { max-height: calc(100% - 32px); overflow: auto; }
+.quick-feed-fields { padding: 0; margin: 0; border: 0; min-width: 0; }
+.quick-feed-fields .field-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }
 .settings-dialog-body .field { margin-bottom: 16px; }
 .settings-dialog-body textarea.code { width: 100%; font-family: var(--font-mono); font-size: 12px; }
 .settings-dialog-actions { gap: 8px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--border); }

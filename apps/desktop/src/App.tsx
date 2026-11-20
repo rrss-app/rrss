@@ -30,6 +30,9 @@ import { rulesKeys, rulesQueryOptions } from "./settings/rulesQuery";
 import { memoryKeys, prefetchMemory } from "./settings/memoryQuery";
 import { diagnosticsKeys, prefetchDiagnostics } from "./settings/diagnosticsQuery";
 import { feedKeys, feedQueryOptions } from "./lib/feedQuery";
+import type { FeedView, FeedTree } from "./lib/api";
+import { findFeed } from "./features/feeds";
+import { QuickFeedSettings } from "./settings/SubscribePane";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { prefetchTranslateSettings, translateKeys } from "./settings/translateQuery";
 import { piKeys, prefetchPiSettings } from "./settings/piQuery";
@@ -75,7 +78,7 @@ function primeSettingsPages(client: QueryClient) {
   if (!client.isMutating({ mutationKey: backupKeys.write })) warm(backupKeys.page, () => client.prefetchQuery(backupQueryOptions()));
 }
 
-type Overlay = "web-warning" | "confirm" | "about" | "settings" | "reader" | "training" | "close-ask";
+type Overlay = "web-warning" | "confirm" | "about" | "settings" | "feed-edit" | "reader" | "training" | "close-ask";
 
 export function App() {
   const [queries] = useState(() => new QueryClient());
@@ -144,6 +147,7 @@ function DesktopShell() {
   current.current = { view, threadId };
   const [siteRuleSeed, setSiteRuleSeed] = useState<{ domain: string; url: string }>();
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>("subscribe");
+  const [editFeed, setEditFeed] = useState<FeedView | null>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   // 从搜索打开的文章还开着：浮层收起但保留会话，阅读器返回时回到搜索。
   const [searchAway, setSearchAway] = useState(false);
@@ -161,7 +165,7 @@ function DesktopShell() {
   const overlays = useOverlayStack<Overlay>({
     onBack: id => id === "reader" && (readerRef.current?.back() ?? false),
     guard: (id) => {
-      if (id !== "settings") return "ok";
+      if (id !== "settings" && id !== "feed-edit") return "ok";
       const edit = settingsEditState.current;
       return edit?.busy ? "busy" : edit?.dirty ? "dirty" : "ok";
     },
@@ -172,6 +176,7 @@ function DesktopShell() {
     onClosed: (id) => {
       if (id === "web-warning") webLinks.cancel();
       if (id === "settings") primeSettingsPages(queries);
+      if (id === "feed-edit") setEditFeed(null);
       // 阅读期间保留当前条目供上下篇定位，返回未读列表时按宿主范围重读。
       if (id === "reader") {
         webLinks.cancel();
@@ -205,6 +210,17 @@ function DesktopShell() {
   }, []);
   const openDigest = useCallback(() => setView("digest"), [setView]);
   const openSettings = useCallback(() => open("settings"), [open]);
+  const openFeedEdit = useCallback((id: number) => {
+    const show = (tree: FeedTree | undefined) => {
+      const feed = tree && findFeed(tree, id);
+      if (feed) { setEditFeed(feed); open("feed-edit"); }
+      return !!feed;
+    };
+    // 订阅树快照通常已在缓存；读失败或被回收时重读一次，不让齿轮和菜单点了没反应。
+    if (show(queries.getQueryData<FeedTree>(feedKeys.tree))) return;
+    queries.fetchQuery(feedQueryOptions()).then(show,
+      (err) => setToast({ message: formatNotice(i18n.t("session.loadFailed", { ns: "feeds" }), err) }));
+  }, [queries, open]);
   const openAbout = useCallback(() => open("about"), [open]);
   const openTraining = useCallback(() => open("training"), [open]);
   const readerCitations = useReaderCitations({ drafts, chat, getThreads: () => sidebarRef.current?.getThreads() ?? [],
@@ -325,16 +341,17 @@ function DesktopShell() {
   }, [focus, column]);
 
   const settingsRootRef = useRef<HTMLDivElement>(null);
+  const feedEditRootRef = useRef<HTMLDivElement>(null);
   const confirmRootRef = useRef<HTMLDivElement>(null);
   const searchRootRef = useRef<HTMLDivElement>(null);
   const webWarningRootRef = useRef<HTMLDivElement>(null);
   const closeAskRootRef = useRef<HTMLDivElement>(null);
-  const modalLayers: ModalLayerId[] = stack.filter((item): item is ModalLayerId & Overlay => item === "settings" || item === "confirm" || item === "web-warning" || item === "close-ask");
+  const modalLayers: ModalLayerId[] = stack.filter((item): item is ModalLayerId & Overlay => item === "settings" || item === "feed-edit" || item === "confirm" || item === "web-warning" || item === "close-ask");
   if (pendingLeave) modalLayers.push("confirm");
   if (commandPaletteOpen) modalLayers.push("search");
-  const modalTop = commandPaletteOpen ? "search" : pendingLeave ? "confirm" : top === "settings" || top === "confirm" || top === "web-warning" || top === "close-ask" ? top : null;
+  const modalTop = commandPaletteOpen ? "search" : pendingLeave ? "confirm" : top === "settings" || top === "feed-edit" || top === "confirm" || top === "web-warning" || top === "close-ask" ? top : null;
   useModalFocus({ layers: modalLayers, activeId: modalTop, suspended: false,
-    roots: { settings: settingsRootRef, confirm: confirmRootRef, search: searchRootRef, "web-warning": webWarningRootRef, "close-ask": closeAskRootRef },
+    roots: { settings: settingsRootRef, "feed-edit": feedEditRootRef, confirm: confirmRootRef, search: searchRootRef, "web-warning": webWarningRootRef, "close-ask": closeAskRootRef },
     initialFocus: { settings: "[data-settings-back]", confirm: "[data-confirm-cancel]", search: "input", "close-ask": "[data-close-tray]" },
   });
   const trapBackground = modalTop !== null;
@@ -423,7 +440,7 @@ function DesktopShell() {
 
   const webCovered = top !== "web-warning" || commandPaletteOpen || !!webLinks.menu || !!pendingLeave || stack.includes("confirm");
   return <WebLinksContext.Provider value={{ ...webLinks.context, editRule: (domain, url) => { setSiteRuleSeed({ domain, url }); setSettingsTab("web"); open("settings"); } }}><div className="shell" data-web-embedded={webLinks.windows.embedded ? "" : undefined}>
-    <Sidebar ref={sidebarRef} view={view} threadId={threadId} inert={trapBackground} feeds={feedsSession} feedsReturn={feedsReturn} onView={setView} onThread={selectThread} onThreadTitle={onThreadTitle}
+    <Sidebar ref={sidebarRef} view={view} threadId={threadId} inert={trapBackground} feeds={feedsSession} feedsReturn={feedsReturn} onEditFeed={openFeedEdit} onView={setView} onThread={selectThread} onThreadTitle={onThreadTitle}
       onSearch={openSearch} onSettings={openSettings} onTitleSettings={managePool} onAsk={askThreadAction} onAbout={openAbout} onAddFeed={openSubscribe}
       columnId={columnId} onOpenColumn={openColumn} onColumnGone={onColumnGone} notify={setToast} />
     <main className="main" inert={trapBackground}>
@@ -432,7 +449,7 @@ function DesktopShell() {
       {columnId ? <FocusColumnScreen feeds={feedsSession} session={column} active={view === "column"} scope={columnId} name={columnTitle || t("column.fallbackName")}
         shortcuts={view === "column" && stack.length === 0 && !commandPaletteOpen && !pendingLeave}
         onOpen={openColumnArticle} onCite={addCitation} onCiteGroup={citeGroup} onRate={rateArticle} onOpenDigest={openDigest} onOpenSearch={openSearch} onOpenFeed={openFeedFromCard} onManageModels={managePool} notify={setToast} /> : null}
-      {visited.has("feeds") ? <FeedsScreen session={feedsSession} active={view === "feeds"} onOpen={openFeedsArticle} onFetch={focus.refresh} /> : null}
+      {visited.has("feeds") ? <FeedsScreen session={feedsSession} active={view === "feeds"} onOpen={openFeedsArticle} onFetch={focus.refresh} onEditFeed={openFeedEdit} /> : null}
       {visited.has("digest") ? <DigestScreen active={view === "digest"} chat={chat} drafts={drafts} onContext={setDigestContext} discussionRevision={digestThreadRevision}
         topmost={stack.length === 0 && !commandPaletteOpen && !pendingLeave}
         onChange={focus.reload} onOpenUrl={openContentLink} onOpenArticle={openArticleFromMessage} onManagePool={managePool} onFixChat={openChatFix} notify={setToast} /> : null}
@@ -461,6 +478,7 @@ function DesktopShell() {
         meter={<ChatContextMeter value={chat.modelFor(threadId, chatContext)} usage={chat.contextFor(threadId)} />} /> : null}
     </main>
     <FocusReader onOpenUrl={openContentLink} ref={readerRef} focus={focus} column={column} columnName={columnTitle} feeds={feedsSession} list={readerList} open={stack.includes("reader")} dismissible={top === "reader"}
+      onShowFeed={id => { overlays.closeTopWithoutGuard(); void feedsSession.setScope(`feed:${id}`, "all"); setView("feeds"); }}
       shortcuts={top === "reader" && !commandPaletteOpen && !pendingLeave} inert={trapBackground} style={layer("reader")}
       onAsk={(title, message, onOk) => { setConfirm({ title, message, onOk }); open("confirm"); }}
       onTranslateSettings={() => { setSettingsTab("translate"); open("settings"); }}
@@ -478,6 +496,15 @@ function DesktopShell() {
         }} onEditStateChange={onSettingsEditStateChange} onAsk={(title, message, onOk, options) => {
           setConfirm({ title, message, onOk, ...options }); open("confirm");
         }} onOpenArticle={openArticle} />
+      </div>
+    </div>}
+    {editFeed && stack.includes("feed-edit") && <div className="settings-dialog-scrim" style={layer("feed-edit")} inert={modalTop !== "feed-edit"}>
+      <div ref={feedEditRootRef} className="panel settings-dialog quick-feed-dialog" role="dialog" aria-modal={modalTop === "feed-edit"} aria-labelledby="feed-edit-title">
+        <QuickFeedSettings feed={editFeed} active={modalTop === "feed-edit"} onAsk={askThreadAction} onEditStateChange={onSettingsEditStateChange}
+          onClose={overlays.closeTopWithoutGuard} onChanged={tree => {
+            void focus.feedsChanged(tree);
+            void feedsSession.refresh();
+          }} />
       </div>
     </div>}
     {stack.includes("about") && <AboutOverlay onClose={closeTop} style={layer("about")} />}

@@ -380,6 +380,10 @@ pub struct ReaderView {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub web_extracted_at: Option<i64>,
+    #[serde(default)]
+    pub feed_id: i64,
+    #[serde(default)]
+    pub feed_title: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]

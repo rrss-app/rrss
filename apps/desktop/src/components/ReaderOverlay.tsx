@@ -16,7 +16,7 @@ import { ThumbIcon } from "./ThumbIcon";
 import { keepsNativeContextMenu, type MenuAnchor } from "./FloatingMenu";
 import { ReaderContextMenu, READER_MODES } from "./ReaderContextMenu";
 import { Segmented } from "./Segmented";
-import { useSearchTermHighlight } from "./searchTermHighlight";
+import { revealSearchHit, useSearchTermHighlight } from "./searchTermHighlight";
 
 export function ReaderOverlay({
   reader,
@@ -67,6 +67,8 @@ export function ReaderOverlay({
   onFetchFulltext,
   onStar,
   drawerOpen = false,
+  sourcePanel,
+  onSourceToggle,
   drawerPinned = false,
   canPinDrawer = false,
   drawerRows = [],
@@ -119,12 +121,12 @@ export function ReaderOverlay({
   onRegenerate?: () => void;
   blockNotes?: ReadonlyMap<number, string>;
   readingPosition?: ReaderPosition;
-  /** `persist`：搜索命中段，高亮保持到离开这篇；否则短暂闪一下。 */
+  /** `persist`：文内搜索开启时持续高亮；否则短暂闪一下。 */
   anchor?: ReaderAnchor;
   /** 从搜索打开：返回回到搜索，正文里标出查询词。 */
   searchTerm?: string;
   /** 正文命中段导航：第几处（零起）、共几处、N / Shift+N。 */
-  searchHits?: { index: number; total: number; onStep: (dir: -1 | 1) => void };
+  searchHits?: { index: number; total: number; onStep: (dir: -1 | 1) => void; onDismiss: () => void };
   returnThreadTitle?: string;
   /** 从文末相关阅读岔出来时：上一篇的标题与返回；顶栏的返回改成「上一篇」。 */
   returnArticleTitle?: string;
@@ -155,6 +157,8 @@ export function ReaderOverlay({
   onFetchFulltext?: () => void;
   onStar?: () => void;
   drawerOpen?: boolean;
+  sourcePanel?: ReactNode;
+  onSourceToggle?: () => void;
   drawerPinned?: boolean;
   canPinDrawer?: boolean;
   drawerRows?: ArticleView[];
@@ -228,8 +232,13 @@ export function ReaderOverlay({
   if (drawerOpen) pinnedBeforeClose.current = drawerPinned;
   const scrimShown = drawerShown && !(drawerOpen ? drawerPinned : pinnedBeforeClose.current);
   // Esc 在事件发生时读当前抽屉状态；不能用副作用注册时的快照，否则刚钉住后的 Esc 会被当成收起浮层。
-  const drawerState = useRef({ open: drawerOpen, pinned: drawerPinned, close: onDrawerClose, trayEscape: onTrayEscape });
-  drawerState.current = { open: drawerOpen, pinned: drawerPinned, close: onDrawerClose, trayEscape: onTrayEscape };
+  const dismissHits = searchHits ? () => {
+    searchHits.onDismiss();
+    body?.focus({ preventScroll: true });
+  } : undefined;
+  const escapeState = { open: drawerOpen || !!sourcePanel, pinned: drawerPinned && !sourcePanel, close: sourcePanel ? onSourceToggle : onDrawerClose, trayEscape: onTrayEscape, dismissHits };
+  const escapeRef = useRef(escapeState);
+  escapeRef.current = escapeState;
   useEffect(() => {
     const dismiss = (event: PointerEvent) => {
       if (event.target instanceof Node && !tools.current?.contains(event.target)) closeTools();
@@ -243,7 +252,7 @@ export function ReaderOverlay({
         toolsTrigger.current?.focus();
         return;
       }
-      const drawer = drawerState.current;
+      const drawer = escapeRef.current;
       if (drawer.open && !drawer.pinned && drawer.close) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -251,6 +260,10 @@ export function ReaderOverlay({
       } else if (drawer.trayEscape?.()) {
         event.preventDefault();
         event.stopImmediatePropagation();
+      } else if (drawer.dismissHits) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        drawer.dismissHits();
       }
     };
     document.addEventListener("pointerdown", dismiss);
@@ -269,7 +282,7 @@ export function ReaderOverlay({
   const webReader = webNav != null || webActions != null;
 
   return (
-    <div ref={stageRef} className="overlay reader-stage" data-drawer-open={drawerOpen || undefined} data-drawer-pinned={drawerPinned || undefined} style={style} {...(inert ? { inert: true } : {})}>
+    <div ref={stageRef} className="overlay reader-stage" data-drawer-open={drawerOpen || !!sourcePanel || undefined} data-drawer-pinned={drawerPinned || (!!sourcePanel && canPinDrawer) || undefined} style={style} {...(inert ? { inert: true } : {})}>
       <div className={`drawer reader${reader.translation_ready ? " has-translation" : ""}`} data-citation-tray={!!citationTray || undefined} data-search-hits={(searchHits && !inert) || undefined}>
         <div className="drawer-head reader-head" data-tauri-drag-region="deep">
           <div className="reader-head-nav">
@@ -278,7 +291,7 @@ export function ReaderOverlay({
                 aria-label={t("head.returnPrev")} shortcut="Esc" className="reader-back" onClick={onReturnArticle}>
                 <Icon name="arrowLeft" size={16} />{t("head.prev")}
               </ReaderTool> : <ReaderTool label={returnThreadTitle ? t("head.returnToThread", { title: returnThreadTitle }) : searchTerm ? t("head.returnToSearch", { term: searchTerm }) : t("head.back")}
-                aria-label={returnThreadTitle ? t("head.thread") : searchTerm ? t("head.backToSearch") : t("head.back")} shortcut="Esc" className="reader-back" onClick={onClose}>
+                aria-label={returnThreadTitle ? t("head.thread") : searchTerm ? t("head.backToSearch") : t("head.back")} shortcut={searchHits ? "Backspace" : "Esc"} className="reader-back" onClick={onClose}>
                 <Icon name="arrowLeft" size={16} />{returnThreadTitle ? t("head.thread") : searchTerm ? t("head.search") : t("head.back")}
               </ReaderTool>}
               {onDrawerOpen ? <ReaderTool label={t("head.drawer")} shortcut="L" onClick={onDrawerOpen}><Icon name="list" size={16} /></ReaderTool> : null}
@@ -333,11 +346,11 @@ export function ReaderOverlay({
             ))}
           </div>
         ) : null}
-        <ReadingPosition key={`${reader.id}/${reader.source_hash}`} sourceHash={reader.source_hash} initial={readingPosition} anchor={anchor} onPosition={onReadingPosition} onBody={bindBody} onContextMenu={showContextMenu}>
+        <ReadingPosition key={`${reader.id}/${reader.source_hash}`} sourceHash={reader.source_hash} initial={readingPosition} restorePosition={!!sourcePanel} anchor={anchor} onPosition={onReadingPosition} onBody={bindBody} onContextMenu={showContextMenu}>
           {webTip}
           <div className={`reader-column${origin ? " web-column" : ""}`}>
             {origin}
-            <ReaderMasthead web={!!origin} reader={reader} article={article} title={title} originalTitle={translateMode === "bilingual" && reader.translated_title ? reader.title : undefined} />
+            <ReaderMasthead web={!!origin || webReader} reader={reader} article={article} title={title} onSource={onSourceToggle} sourceOpen={!!sourcePanel} originalTitle={translateMode === "bilingual" && reader.translated_title ? reader.title : undefined} />
             {fetchingFulltext ? <span className="reader-progress" role="status"><Icon name="spinner" size={14} className="spin" />{t("body.fetchingFulltext")}</span> : null}
             {reader.translation_note ? (
               <div className="reader-notice">
@@ -410,18 +423,28 @@ export function ReaderOverlay({
             </ErrorBoundary>
             {!origin ? <ReaderEnding reader={reader} onRate={onRate} onStar={onStar} onCite={onCiteArticle}
               showNext={showNextCard} hasNext={hasNext} nextArticle={nextArticle} onNext={onNext}
-              searchPosition={searchPosition} onReturnToSearch={onReturnToSearch}
+              searchPosition={searchPosition} onReturnToSearch={onReturnToSearch} returnShortcut={searchHits ? "Backspace" : "Esc"}
               related={related} onOpenRelated={onOpenRelated} /> : null}
           </div>
         </ReadingPosition>
         <BackToTop body={body} />
         {searchHits && !inert ? (
           <div className="reader-search-pill" role="status" aria-label={t("hits.label")}>
-            <span>{t("hits.position", { n: searchHits.index + 1, total: searchHits.total })}</span>
+            <Icon name="search" size={14} /><span className="reader-search-term" title={searchTerm}>{searchTerm}</span>
+            <button type="button" className="reader-search-count" title={t("hits.locate")}
+              aria-label={`${t("hits.locate")} · ${t("hits.position", { n: searchHits.index + 1, total: searchHits.total })}`}
+              onClick={event => {
+                const block = body?.querySelector<HTMLElement>(`${BLOCKS}.${SEARCH_HIT}`);
+                const pill = event.currentTarget.parentElement;
+                if (body && block && searchTerm && pill) revealSearchHit(body, block, searchTerm, pill.getBoundingClientRect());
+              }}>
+              <Icon name="focus" size={14} />{searchHits.index + 1} / {searchHits.total}
+            </button>
             {searchHits.total > 1 ? <>
-              <button type="button" onClick={() => searchHits.onStep(1)}><kbd>N</kbd>{t("hits.next")}</button>
-              <button type="button" onClick={() => searchHits.onStep(-1)}><kbd>⇧N</kbd>{t("hits.prev")}</button>
+              <button type="button" aria-label={t("hits.prev")} title={t("hits.prev")} onClick={() => searchHits.onStep(-1)}><Icon name="arrowUp" size={16} /></button>
+              <button type="button" aria-label={t("hits.next")} title={t("hits.next")} onClick={() => searchHits.onStep(1)}><Icon name="arrowUp" size={16} style={{ transform: "rotate(180deg)" }} /></button>
             </> : null}
+            <button type="button" className="reader-search-dismiss" aria-label={t("hits.close")} title={t("hits.close")} onClick={dismissHits}><Icon name="close" size={16} /></button>
           </div>
         ) : null}
         {citationTray}
@@ -432,7 +455,9 @@ export function ReaderOverlay({
           onTranslate={onTranslate} onRegenerate={onRegenerate ?? onTranslate} onSummarize={onSummarize}
           onCollect={onCollect} collecting={collecting} onContinueAsking={onContinueAsking} onCite={onCiteArticle} onStar={onStar} onTop={() => scrollReaderToTop(body)} /> : null}
       </div>
-      {onDrawerOpen ? <div className="reader-drawer-edge" onMouseEnter={onDrawerEdgeEnter} onMouseLeave={onDrawerEdgeLeave} aria-hidden="true" /> : null}
+      {sourcePanel && !canPinDrawer ? <button type="button" className="reader-drawer-scrim" aria-label={t("drawer.collapse")} onClick={onSourceToggle} /> : null}
+      {sourcePanel}
+      {onDrawerOpen && !sourcePanel ? <div className="reader-drawer-edge" onMouseEnter={onDrawerEdgeEnter} onMouseLeave={onDrawerEdgeLeave} aria-hidden="true" /> : null}
       {scrimShown && onDrawerClose ? <button type="button" className="reader-drawer-scrim" aria-label={t("drawer.collapse")} data-closing={drawerClosing || undefined}
         tabIndex={drawerClosing ? -1 : undefined} onClick={drawerClosing ? undefined : onDrawerClose} /> : null}
       {drawerShown && onDrawerClose ? <ReaderArticleDrawer
@@ -607,7 +632,7 @@ function BackToTop({ body }: { body: HTMLDivElement | null }) {
 export type ReaderPosition = { block: string | null; offset: number };
 type Anchor = ReaderPosition | null;
 export type ReaderAnchor = { blockId: number; persist?: boolean };
-type PositionProps = { sourceHash: string; children: ReactNode; initial?: ReaderPosition; anchor?: ReaderAnchor; onPosition?: (position: ReaderPosition) => void; onBody?: (body: HTMLDivElement | null) => void; onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void };
+type PositionProps = { sourceHash: string; children: ReactNode; initial?: ReaderPosition; restorePosition?: boolean; anchor?: ReaderAnchor; onPosition?: (position: ReaderPosition) => void; onBody?: (body: HTMLDivElement | null) => void; onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void };
 const BLOCKS = "[data-reader-document] > [data-block-id]";
 const SEARCH_HIT = "reader-search-hit";
 /** 块按文序排列，底边单调；二分只读 O(log n) 次布局，长文滚动和每次补丁都不逐块测量。 */
@@ -681,7 +706,7 @@ class ReadingPosition extends Component<PositionProps, Record<string, never>, An
     }
     return true;
   };
-  /** 搜索命中段的高亮保持到离开这篇；正文重绘（换译文视图、补图）后补回。 */
+  /** 文内搜索开启时，正文重绘（换译文视图、补图）后补回命中高亮。 */
   private keepHit = () => {
     const anchor = this.props.anchor;
     if (!anchor?.persist || (this.highlighted?.isConnected && this.highlighted.classList.contains(SEARCH_HIT))) return;
@@ -697,7 +722,10 @@ class ReadingPosition extends Component<PositionProps, Record<string, never>, An
     this.highlighted = null;
   };
   componentDidMount() {
-    if (!this.jump() && this.locate(this.props.initial)) this.hold(this.props.initial!);
+    if (this.props.restorePosition && this.props.initial) {
+      if (this.locate(this.props.initial)) this.hold(this.props.initial);
+      this.keepHit();
+    } else if (!this.jump() && this.locate(this.props.initial)) this.hold(this.props.initial!);
     this.props.onBody?.(this.body.current);
   }
   componentWillUnmount() {

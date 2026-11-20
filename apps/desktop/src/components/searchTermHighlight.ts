@@ -34,6 +34,21 @@ function rangesFor(root: Element, term: string): Range[] {
   return ranges;
 }
 
+/** 回到当前命中段里的词；翻译等视图可能只保留段落锚点。 */
+export function revealSearchHit(body: HTMLElement, block: HTMLElement, query: string, toolbar: DOMRect) {
+  const term = normalizeSearchTerm(query);
+  const ranges = term ? rangesFor(block, term) : [];
+  const rect = ranges.flatMap(range => Array.from(range.getClientRects())).find(r => r.height > 0 && r.width > 0)
+    ?? block.getBoundingClientRect();
+  const { top, bottom } = body.getBoundingClientRect();
+  const visibleBottom = rect.left < toolbar.right && rect.right > toolbar.left ? Math.min(bottom, toolbar.top) : bottom;
+  if (rect.top < top || rect.bottom > visibleBottom) {
+    body.scrollTop += rect.top - top - Math.max(0, (visibleBottom - top - rect.height) / 2);
+  } else if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    block.animate([{ backgroundColor: "var(--tint-press)" }, { backgroundColor: "transparent" }], 450);
+  }
+}
+
 /**
  * 在正文里标出搜索词（CSS Highlight API，不改 DOM）。正文重绘时随之更新；
  * 不支持该 API 的环境只保留命中段高亮。

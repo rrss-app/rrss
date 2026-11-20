@@ -74,6 +74,8 @@ pub fn reader_view(conn: &Connection, id: i64) -> rrss_core::Result<ReaderView> 
     );
     let view = ReaderView {
         id: article.id,
+        feed_id: article.feed_id,
+        feed_title: article.feed_title.clone(),
         web_extracted_at: conn.query_row(
             "SELECT web_extracted_at FROM articles WHERE id=?1",
             [id],

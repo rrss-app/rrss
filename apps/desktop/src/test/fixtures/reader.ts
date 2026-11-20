@@ -64,6 +64,7 @@ export function readerView(id: number, extra: Partial<ReaderView> = {}): ReaderV
   return {
     id,
     source_hash: `source-${id}`,
+    feed_id: 1, feed_title: "",
     title: articleTitle(id),
     meta: "示例信源 · 刚刚",
     feed_icon_href: "",

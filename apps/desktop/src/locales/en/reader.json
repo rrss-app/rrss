@@ -1,4 +1,5 @@
 {
+  "source": { "all": "View all articles", "empty": "No recent articles", "loading": "Loading articles…", "retry": "Retry loading articles" },
   "mode": {
     "original": "Original",
     "bilingual": "Bilingual",
@@ -52,7 +53,9 @@
     "label": "Search matches",
     "position": "Match {{n}} of {{total}}",
     "next": "Next match",
-    "prev": "Previous match"
+    "prev": "Previous match",
+    "close": "Close in-article search",
+    "locate": "Return to current match"
   },
   "top": {
     "title": "Back to top (Home)",

@@ -27,7 +27,7 @@ function RelatedReading({ items, onOpen }: { items: RelatedArticleView[]; onOpen
  * 文末只接阅读器现有动作；下一篇与 J 使用同一个导航回调。焦点列表与搜索结果共用一张卡：
  * 搜索多一行「第 n / 共 m 条」，读完时换成完成态（搜索另给「回到搜索」）。
  */
-export function ReaderEnding({ reader, onRate, onStar, onCite, showNext, hasNext, nextArticle, onNext, searchPosition, onReturnToSearch, related, onOpenRelated }: {
+export function ReaderEnding({ reader, onRate, onStar, onCite, showNext, hasNext, nextArticle, onNext, searchPosition, onReturnToSearch, returnShortcut, related, onOpenRelated }: {
   reader: ReaderView;
   onRate: (up: boolean) => void;
   onStar?: () => void;
@@ -38,6 +38,7 @@ export function ReaderEnding({ reader, onRate, onStar, onCite, showNext, hasNext
   onNext?: () => void;
   searchPosition?: { index: number; total: number };
   onReturnToSearch?: () => void;
+  returnShortcut: string;
   related?: RelatedArticleView[];
   onOpenRelated?: (item: RelatedArticleView) => void;
 }) {
@@ -68,7 +69,7 @@ export function ReaderEnding({ reader, onRate, onStar, onCite, showNext, hasNext
         </span>
         <span className={`reader-next-arrow${done ? " complete-icon" : ""}`}><Icon name={done ? "check" : "arrowRight"} size={16} /></span>
       </button>
-      {done && search && onReturnToSearch ? <button type="button" className="btn return-search" onClick={onReturnToSearch}><Icon name="arrowLeft" size={14} />{t("ending.returnToSearch")} <kbd>Esc</kbd></button> : null}
+      {done && search && onReturnToSearch ? <button type="button" className="btn return-search" onClick={onReturnToSearch}><Icon name="arrowLeft" size={14} />{t("ending.returnToSearch")} <kbd>{returnShortcut}</kbd></button> : null}
       <p className="reader-ending-hint">{hint}</p>
     </> : null}
     {related?.length && onOpenRelated ? <RelatedReading items={related} onOpen={onOpenRelated} /> : null}

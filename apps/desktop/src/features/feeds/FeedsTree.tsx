@@ -31,13 +31,14 @@ function Highlight({ text, query }: { text: string; query: string }) {
 }
 
 /** 订阅树（`role="tree"`）。展开状态只在本次进入订阅模式内有效。 */
-export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings, notify }: {
+export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings, onEditFeed, notify }: {
   tree: FeedTree;
   counts: FeedCountsView | null;
   scope: string;
   onSelect: (scope: string) => void;
   onAddFeed: () => void;
   onSettings: () => void;
+  onEditFeed?: (id: number) => void;
   notify: (notice: TreeNotice) => void;
 }) {
   const { t } = useTranslation("feeds");
@@ -449,6 +450,8 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
       <button type="button" onClick={onSettings}><Icon name="settings" size={15} />{t("tree.settings")}</button>
     </div>}
     {menu ? <FloatingMenu key={menu.mode + menu.key} anchor={menu.anchor} label={menu.mode === "add" ? t("tree.menu.add") : menu.mode === "move" || menu.mode === "bulk" ? t("tree.menu.moveFolder") : t("tree.menu.row")} className="feeds-row-menu" onClose={() => setMenu(null)}>
+      {menu.mode === "actions" && /^(?:pin:)?feed:\d+$/.test(menu.key) && onEditFeed && <button type="button" role="menuitem"
+        onClick={() => { setMenu(null); onEditFeed(Number(menu.key.split(":").at(-1))); }}><Icon name="settings" size={14} />{t("quickSettings")}</button>}
       {menu.key.startsWith("pin:") ? <>
         <button type="button" role="menuitem" onClick={() => { setMenu(null); void writeSetting("feeds_pinned", pinned.filter((item) => item !== menu.key.slice(4)).join(",")).catch((err) => notify({ message: formatNotice(t("tree.error.pin"), err) })); }}>{t("tree.menu.unpin")}</button>
         <button type="button" role="menuitem" onClick={() => reveal(menu.key.slice(4))}>{t("tree.menu.reveal")}</button>

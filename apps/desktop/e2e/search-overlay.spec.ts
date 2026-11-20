@@ -5,6 +5,62 @@ import { installMockHost, MOCK_FOCUS, MOCK_MESSAGES, MOCK_READER } from "./mockH
 const lastQuery = (page: import("@playwright/test").Page) =>
   page.evaluate(() => (window as any).__mockHost.args.search_articles?.query);
 
+test("browse a result's source, return to the article and open the feed timeline", async ({ page }) => {
+  const first = MOCK_FOCUS.articles.find(row => row.id === MOCK_READER.id)!;
+  const sibling = MOCK_FOCUS.articles.find(row => row.row_kind === 0 && row.id !== first.id && row.feed_id === first.feed_id)!;
+  await installMockHost(page, { settingValues: { feeds_list_scope: "starred" }, readers: {
+    [first.id]: { ...MOCK_READER, feed_id: first.feed_id, feed_title: first.feed_title },
+    [sibling.id]: { ...MOCK_READER, id: sibling.id, title: sibling.title, feed_id: sibling.feed_id, feed_title: sibling.feed_title },
+  } });
+  await page.goto("/");
+  await expect(page.getByRole("article").first()).toBeVisible();
+  const search = await openSearch(page, "sqlite");
+  await search.getByRole("option").filter({ hasText: first.title }).click();
+  const reader = page.locator(".reader-stage");
+  await reader.locator("button.reader-source").click();
+  const panel = reader.getByRole("complementary", { name: first.feed_title });
+  await panel.getByRole("button", { name: sibling.title, exact: false }).click();
+  await expect(reader.locator(".reader-title")).toHaveText(sibling.title);
+  await reader.locator(".reader-back").click();
+  await expect(reader.locator(".reader-title")).toHaveText(first.title);
+  await expect(panel).toBeVisible();
+  await page.setViewportSize({ width: 560, height: 800 });
+  await reader.locator(".reader-drawer-scrim").click({ position: { x: 500, y: 180 } });
+  await expect(panel).toHaveCount(0);
+  await expect(reader.locator("button.reader-source")).toBeFocused();
+  await reader.locator("button.reader-source").click();
+  await panel.locator(".reader-source-all").click();
+  await expect(reader).toHaveCount(0);
+  await expect(page.locator(".feeds-head h1")).toContainText(first.feed_title);
+  await expect(page.locator(`.feeds-item[data-article-id="${sibling.id}"]`)).toBeVisible();
+});
+
+test("reopening the original article from a sibling's source panel unwinds instead of stacking", async ({ page }) => {
+  const first = MOCK_FOCUS.articles.find(row => row.id === MOCK_READER.id)!;
+  const sibling = MOCK_FOCUS.articles.find(row => row.row_kind === 0 && row.id !== first.id && row.feed_id === first.feed_id)!;
+  await installMockHost(page, { readers: {
+    [first.id]: { ...MOCK_READER, feed_id: first.feed_id, feed_title: first.feed_title },
+    [sibling.id]: { ...MOCK_READER, id: sibling.id, title: sibling.title, feed_id: sibling.feed_id, feed_title: sibling.feed_title },
+  } });
+  await page.goto("/");
+  await expect(page.getByRole("article").first()).toBeVisible();
+  const search = await openSearch(page, "sqlite");
+  await search.getByRole("option").filter({ hasText: first.title }).click();
+  const reader = page.locator(".reader-stage");
+  const panel = reader.getByRole("complementary", { name: first.feed_title });
+  await reader.locator("button.reader-source").click();
+  await panel.getByRole("button", { name: sibling.title, exact: false }).click();
+  await expect(reader.locator(".reader-title")).toHaveText(sibling.title);
+  await reader.locator("button.reader-source").click();
+  await panel.getByRole("button", { name: first.title, exact: false }).click();
+  await expect(reader.locator(".reader-title")).toHaveText(first.title);
+  await expect(panel).toBeVisible();
+  // 原文回到返回路径最底层：浏览器后退直接回搜索，不再经过同源那篇。
+  await page.goBack();
+  await expect(reader).toHaveCount(0);
+  await expect(search.getByRole("option", { selected: true })).toContainText(first.title);
+});
+
 test("search overlay filters by scope, source and time, keeps recent searches and explains empty results", async ({ page }) => {
   await installMockHost(page);
   await page.goto("/");
@@ -97,6 +153,11 @@ test("preview lists body hits by section with a position strip, folds after four
   await expect(search).toHaveCount(0);
   await expect(page.locator(".reader-title")).toHaveText(MOCK_READER.title);
   await expect(page.locator('[data-block-id="8"]')).toBeInViewport();
+  await page.locator(".reader-search-dismiss").click();
+  await expect(page.locator(".reader-search-hit")).toHaveCount(0);
+  await expect(page.locator('[data-block-id="8"]')).toBeInViewport();
+  await page.locator(".reader-back").click();
+  await expect(search.getByRole("option", { selected: true })).toContainText(MOCK_READER.title);
 });
 
 const para = (text: string) => ({ t: "p" as const, inlines: [{ t: "t" as const, text }] });
@@ -117,7 +178,7 @@ async function openSearch(page: import("@playwright/test").Page, term: string) {
   return search;
 }
 
-test("opening a result lands on the first hit, N / Shift+N cycle hits, and Esc restores the search", async ({ page }) => {
+test("opening a result highlights hits, Escape dismisses them in place and then restores the search", async ({ page }) => {
   await installMockHost(page, { readers: { 1: { ...MOCK_READER, document: longDocument } } });
   await page.goto("/");
   await expect(page.getByRole("article").first()).toBeVisible();
@@ -130,22 +191,34 @@ test("opening a result lands on the first hit, N / Shift+N cycle hits, and Esc r
   const pill = stage.getByRole("status", { name: "搜索命中" });
   // 命中在第 0 块也能定位；高亮保持，不是一闪而过。
   await expect(stage.locator('[data-block-id="0"]')).toHaveClass(/reader-search-hit/);
-  await expect(pill).toHaveText(/第 1 处命中（共 3 处）/);
-  await page.waitForTimeout(1500);
-  await expect(stage.locator('[data-block-id="0"]')).toHaveClass(/reader-search-hit/);
+  await expect(pill).toContainText("1 / 3");
   await expect(stage.locator(".return-search")).toBeVisible();
 
   await page.keyboard.press("n");
-  await expect(pill).toHaveText(/第 2 处命中/);
+  await expect(pill).toContainText("2 / 3");
   await expect(stage.locator('[data-block-id="16"]')).toHaveClass(/reader-search-hit/);
   await expect(stage.locator('[data-block-id="16"]')).toBeInViewport();
   await expect(stage.locator('[data-block-id="0"]')).not.toHaveClass(/reader-search-hit/);
   await page.keyboard.press("n");
   await page.keyboard.press("n");
-  await expect(pill).toHaveText(/第 1 处命中/);
+  await expect(pill).toContainText("1 / 3");
   await page.keyboard.press("Shift+N");
-  await expect(pill).toHaveText(/第 3 处命中/);
+  await expect(pill).toContainText("3 / 3");
   await expect(stage.locator('[data-block-id="17"]')).toBeInViewport();
+
+  const body = stage.locator(".drawer-body");
+  await body.evaluate(el => { el.scrollTop = 0; });
+  await pill.locator(".reader-search-count").click();
+  await expect(stage.locator('[data-block-id="17"]')).toBeInViewport();
+  await expect(pill).toContainText("3 / 3");
+  const scrollTop = await body.evaluate(el => el.scrollTop);
+  await page.keyboard.press("Escape");
+  await expect(pill).toHaveCount(0);
+  await expect(stage.locator(".reader-search-hit")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => CSS.highlights.has("rrss-search-term"))).toBe(false);
+  await page.keyboard.press("n");
+  await expect(body).toBeFocused();
+  await expect(body).toHaveJSProperty("scrollTop", scrollTop);
 
   // 返回：浮层、查询、结果与选中行都在。
   await page.keyboard.press("Escape");
@@ -157,6 +230,36 @@ test("opening a result lands on the first hit, N / Shift+N cycle hits, and Esc r
   await expect(search).toHaveCount(0);
   await page.keyboard.press("Control+k");
   await expect(search.getByRole("searchbox")).toHaveValue("");
+});
+
+test("the single-match counter returns to the matched line inside a long paragraph", async ({ page }) => {
+  const term = "rainfall";
+  const document = { v: 1, blocks: [
+    para("The garden drains slowly after a storm. ".repeat(180) + term + " was recorded at dawn."),
+    ...Array.from({ length: 12 }, () => para("The next reading was taken at the footbridge. ".repeat(6))),
+  ] };
+  await installMockHost(page, { readers: { 1: { ...MOCK_READER, document } } });
+  await page.goto("/");
+  await expect(page.getByRole("article").first()).toBeVisible();
+  const search = await openSearch(page, term);
+  await search.getByRole("option").first().click();
+  const count = page.locator(".reader-search-count");
+  await expect(count).toHaveText("1 / 1");
+  const body = page.locator(".reader-stage .drawer-body");
+  const matchedLineVisible = () => body.evaluate(el => {
+    const range = CSS.highlights.get("rrss-search-term")?.values().next().value;
+    if (!(range instanceof Range)) return false;
+    const rect = range.getBoundingClientRect();
+    const view = el.getBoundingClientRect();
+    return rect.top >= view.top && rect.bottom <= view.bottom;
+  });
+  await body.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await expect.poll(matchedLineVisible).toBe(false);
+  await count.click();
+  await expect.poll(matchedLineVisible).toBe(true);
+  const restored = await body.evaluate(el => el.scrollTop);
+  await count.click();
+  await expect(body).toHaveJSProperty("scrollTop", restored);
 });
 
 test("title-only hits open from the top, a changed body version skips the jump, and j follows search order", async ({ page }) => {
@@ -189,7 +292,7 @@ test("title-only hits open from the top, a changed body version skips the jump, 
   const second = MOCK_FOCUS.articles.find((row) => row.title === titles[1])!.id;
   await page.keyboard.press("j");
   await expect.poll(() => page.evaluate(() => (window as any).__mockHost.args.open_article)).toEqual({ id: second });
-  await page.keyboard.press("Escape");
+  await stage.locator(".reader-back").click();
   await expect(search.getByRole("option").nth(1)).toHaveAttribute("aria-selected", "true");
 });
 

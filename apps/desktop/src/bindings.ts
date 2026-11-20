@@ -93,7 +93,7 @@ export type ReaderView = { id: number, source_hash: string, title: string, meta:
 /**
  * 本地缓存的网站图标（`rrss://`）；没有或已关闭时为空。
  */
-feed_icon_href: string, url: string, summary: string, score: number, feedback: number, document: unknown, reasons: Array<ReasonView>, media: Array<MediaRef>, embed_covers: Array<EmbedCoverView>, translated_title: string, translated_document: unknown | null, translation_ready: boolean, translation_note: string, truncated: boolean, starred: boolean, pruned: boolean, summary_stale: boolean, web_extracted_at?: number | null, };
+feed_icon_href: string, url: string, summary: string, score: number, feedback: number, document: unknown, reasons: Array<ReasonView>, media: Array<MediaRef>, embed_covers: Array<EmbedCoverView>, translated_title: string, translated_document: unknown | null, translation_ready: boolean, translation_note: string, truncated: boolean, starred: boolean, pruned: boolean, summary_stale: boolean, web_extracted_at?: number | null, feed_id: number, feed_title: string, };
 export type TranslationFailure = "timeout" | "network" | "invalid_output" | "authentication" | "quota" | "rate_limited" | "configuration" | "invalidated" | "storage" | "capacity" | "retry_unavailable";
 export type TranslationUnitState = "pending" | "inflight" | "done" | { "failed": TranslationFailure };
 export type TranslationPhase = "queued" | "running" | "completed" | "partial" | "failed" | "invalidated";

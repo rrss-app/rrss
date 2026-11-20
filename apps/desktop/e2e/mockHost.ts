@@ -513,6 +513,7 @@ export const MOCK_TRANSLATE: TranslatePage = translatePageFixture({
 });
 
 export const MOCK_READER: ReaderView = {
+  feed_id: MOCK_FOCUS.articles[0].feed_id, feed_title: MOCK_FOCUS.articles[0].feed_title,
   source_hash: "mock-reader-source",
   id: 1,
   title: "sqlite-vec 在桌面端单库里的取舍：WAL、FTS5 与向量检索如何共存",
@@ -694,8 +695,9 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
       const iconFor = (feedId: number | undefined) =>
         feedId !== undefined && state.settings.values.find(v => v.id === "feed_icons_enabled")?.value !== "0" ? feedIconHrefs[feedId] ?? "" : "";
       const readerFor = (id: number) => {
-        const base = readers[id] ?? { ...reader, id };
-        const view = { ...base, feed_icon_href: iconFor(state.focus.articles.find(row => row.id === id)?.feed_id) || base.feed_icon_href };
+        const row = state.focus.articles.find(article => article.id === id);
+        const base = readers[id] ?? { ...reader, id, feed_id: row?.feed_id ?? reader.feed_id, feed_title: row?.feed_title ?? reader.feed_title };
+        const view = { ...base, feed_icon_href: iconFor(row?.feed_id) || base.feed_icon_href };
         return brokenBlocks?.reader?.includes(id) ? { ...view, document: brokenDocument(view.document) } : view;
       };
       const normalizeSearch = (q: string) => {

@@ -302,6 +302,7 @@ export function readmeDemo(language: DemoLanguage): ReadmeDemo {
   const r = c.reader;
   const reader: ReaderView = {
     id: localFirst.id, source_hash: "readme-local-first", title: localFirst.title,
+    feed_id: localFirst.feed_id, feed_title: localFirst.feed_title,
     meta: "Byte Harbor", feed_icon_href: "", url: "https://example.org/local-first",
     summary: r.summary, score: 14, feedback: 0, starred: false,
     reasons: [
@@ -328,7 +329,7 @@ export function readmeDemo(language: DemoLanguage): ReadmeDemo {
   // 其余文章的正文：搜索命中各自的段落。
   const brief = (row: ArticleView, paragraphs: string[]): ReaderView => ({
     ...reader, id: row.id, source_hash: `readme-${row.id}`, title: row.title, url: row.url, summary: row.summary, score: row.score,
-    meta: row.feed_title, reasons: [], starred: row.starred,
+    feed_id: row.feed_id, feed_title: row.feed_title, meta: row.feed_title, reasons: [], starred: row.starred,
     document: { v: 1, blocks: paragraphs.map(text => ({ t: "p", inlines: [t(text)] })) },
   });
   const readers: Record<number, ReaderView> = Object.fromEntries(

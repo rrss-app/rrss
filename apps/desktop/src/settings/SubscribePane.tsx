@@ -1,5 +1,5 @@
-import { feedHealthKind, feedHealthLabel, feedHealthDetail, formatFeedError } from "../features/feeds";
-import { useRef, useState } from "react";
+import { findFeed, feedHealthKind, feedHealthLabel, feedHealthDetail, formatFeedError } from "../features/feeds";
+import { useEffect, useRef, useState } from "react";
 import { api, type AddFeedNotice, type FeedTree, type FeedView, type FolderView } from "../lib/api";
 import { formatError } from "../lib/errors";
 import { formatNotice } from "../lib/notice";
@@ -193,14 +193,36 @@ function FolderBlock({ folder, folders, onAsk, settings: s, missing = false }: {
   </div>;
 }
 
-function FeedItem({ feed, folders, onAsk, settings: s, missing = false }: {
-  feed: FeedView; folders: FolderView[]; onAsk: Ask; settings: SubscribeSettings; missing?: boolean;
+export function QuickFeedSettings({ feed, active, onAsk, onChanged, onClose, onEditStateChange }: {
+  active: boolean;
+  feed: FeedView; onAsk: Ask; onChanged: (tree?: FeedTree) => void; onClose: () => void;
+  onEditStateChange: (state: SettingsEditState | null) => void;
+}) {
+  const { t } = useTranslation("feeds");
+  const s = useSubscribeSettings(onChanged, onEditStateChange, feed);
+  const [finished, setFinished] = useState(false);
+  useEffect(() => { if (finished && active) onClose(); }, [finished, active, onClose]);
+  const tree = s.query.data;
+  const live = tree && findFeed(tree, feed.id);
+  return <>
+    <h3 id="feed-edit-title">{t("quickSettings")} · {feed.title}</h3>
+    <fieldset className="quick-feed-fields" disabled={s.busy} aria-busy={s.busy}>
+      <FeedItem feed={live ?? feed} folders={tree?.folders ?? []} onAsk={onAsk} settings={s}
+        missing={!live} onFinish={() => setFinished(true)} />
+    </fieldset>
+    {s.status && <p className="form-status" role="status" data-tone={s.status.tone}>{s.status.text}</p>}
+  </>;
+}
+
+function FeedItem({ feed, folders, onAsk, settings: s, missing = false, onFinish }: {
+  feed: FeedView; folders: FolderView[]; onAsk: Ask; settings: SubscribeSettings; missing?: boolean; onFinish?: () => void;
 }) {
   const { t } = useTranslation("settingsContent");
   const editor = s.feeds[feed.id];
   const [open, setOpen] = useState(false);
+  const finish = () => { s.editFeed(feed.id); onFinish?.(); };
   const unsubscribe = () => onAsk(t("subscribe.feed.deleteTitle"), t("subscribe.feed.deleteConfirm", { title: feed.title }), () => {
-    void s.run(t("subscribe.action.delete"), async () => { await api.unsubscribe(feed.id); return {}; }, () => s.editFeed(feed.id));
+    void s.run(t("subscribe.action.delete"), async () => { await api.unsubscribe(feed.id); return {}; }, finish);
   });
   if (!editor) return <div className="list-row feed-row" data-feed-health={feedHealthKind(feed.health) || undefined}>
     <SourceAvatar title={feed.title} size={20} iconHref={feed.icon_href} />
@@ -242,7 +264,7 @@ function FeedItem({ feed, folders, onAsk, settings: s, missing = false }: {
       </label>
       {retentionMode(draft.retention_days) === "custom" && <label className="field"><span>{t("subscribe.feed.retentionDays")}</span>
         <input type="number" min={1} inputMode="numeric" value={Number.isNaN(draft.retention_days) ? "" : draft.retention_days ?? ""}
-          onChange={(e) => change({ retention_days: e.target.value === "" ? Number.NaN : Math.trunc(Number(e.target.value)) })} />
+          onChange={(e) => { const days = e.target.valueAsNumber; change({ retention_days: Number.isInteger(days) && days > 0 ? days : Number.NaN }); }} />
       </label>}
     </div>
     <p className="hint">{t("subscribe.feed.retentionHint")}</p>
@@ -253,8 +275,8 @@ function FeedItem({ feed, folders, onAsk, settings: s, missing = false }: {
         tree: await api.saveFeed({ id: feed.id, title: draft.title.trim() !== baseline.title ? draft.title : null,
           url: draft.url !== baseline.url ? draft.url : null, folder_id: draft.folder_id !== baseline.folder_id ? draft.folder_id : null,
           retention: draft.retention_days !== baseline.retention_days ? retentionArg(draft.retention_days) : null }),
-      }), () => s.editFeed(feed.id))}>{t("subscribe.saveEdit")}</button>
-      <button type="button" className="btn sm" onClick={() => s.editFeed(feed.id)}>{t("subscribe.cancel")}</button>
+      }), finish)}>{t("subscribe.saveEdit")}</button>
+      <button type="button" className="btn sm" onClick={finish}>{t("subscribe.cancel")}</button>
       <span className="toolbar-spacer" />
       <button type="button" className="btn sm danger ghost" disabled={missing} onClick={unsubscribe}>{t("subscribe.delete")}</button>
     </div>

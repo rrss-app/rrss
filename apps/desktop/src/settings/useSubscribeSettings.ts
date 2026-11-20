@@ -12,6 +12,7 @@ type Operation = { label: string; write: () => Promise<WriteResult>; readOnly: b
 export function useSubscribeSettings(
   onChanged?: (tree?: FeedTree) => void,
   onEditStateChange?: (state: SettingsEditState | null) => void,
+  initialFeed?: FeedView,
 ) {
   const { t } = useTranslation("settingsContent");
   const client = useQueryClient();
@@ -44,7 +45,8 @@ export function useSubscribeSettings(
   const [url, setUrl] = useState("");
   const [folderName, setFolderName] = useState("");
   // 草稿放在分类中，订阅移动文件夹导致行组件重挂载时也不丢输入。
-  const [feeds, setFeeds] = useState<Record<number, Editor<FeedView>>>({});
+  const [feeds, setFeeds] = useState<Record<number, Editor<FeedView>>>(() => initialFeed
+    ? { [initialFeed.id]: { baseline: initialFeed, draft: initialFeed } } : {});
   const [folders, setFolders] = useState<Record<number, Editor<FolderView>>>({});
   const [status, setStatus] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const dirty = !!url || !!folderName || Object.values(feeds).some(({ baseline: b, draft: d }) =>

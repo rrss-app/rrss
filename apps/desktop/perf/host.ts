@@ -313,6 +313,7 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
     return {
       id,
       source_hash: `perf-${id}`,
+      feed_id: row.feed_id, feed_title: row.feed_title,
       title: row.title,
       meta: `${row.feed_title} · 固定时刻 ${new Date(row.published_at ?? 0).toISOString().slice(5, 16).replace("T", " ")}`,
       feed_icon_href: "",

@@ -95,6 +95,7 @@ beforeEach(() => {
   vi.mocked(api.sendMessage).mockResolvedValue(41);
   vi.mocked(api.citeDigestSelection).mockResolvedValue(digestCitations);
   vi.mocked(api.openArticle).mockImplementation(async (id) => ({
+    feed_id: 1, feed_title: "",
     id, source_hash: `digest-${id}`, title: "第二条对应原文", meta: "测试源", feed_icon_href: "", url: "https://example.test/article", summary: "", score: 0,
     feedback: 0, document: { v: 1, blocks: [] }, reasons: [], media: [], translated_title: "",
     translated_document: null, translation_ready: false, translation_note: "", truncated: false, pruned: false, summary_stale: false, starred: false,

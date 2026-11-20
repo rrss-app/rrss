@@ -6,6 +6,9 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ### Changed
 
+- Edit a feed’s name, URL, folder, or article retention from its timeline header or sidebar menu. You can also unsubscribe there after confirmation.
+- Click a subscription name above an article title to browse its three most recent articles in a sidebar. Return to the original article or open the subscription’s full timeline.
+- Search highlights fit the paragraph height. Click the match count to return to the matched line, even with a single result. Close the highlights with × or Escape to keep reading at the same spot, or use the reader’s back button to return to the results.
 - Reader Back now unwinds one step consistently across the toolbar, keyboard, and browser history. Returning to chat stays there, and revisiting an article removes duplicate reading steps.
 - Feed articles and Markdown now preserve superscripts, subscripts, strikethrough, underlines, and highlights.
 - The reader can play cached audio and video from WordPress posts, lazy-loaded players, and podcast feed attachments. When a codec is unavailable, a link opens the media in the browser. YouTube and Bilibili videos open on their original sites from cover cards.

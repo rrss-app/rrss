@@ -52,10 +52,11 @@ function MeasuredItem({ index, measure, observe, row, position, style, children 
 }
 
 /** 订阅时间线：按发布时间倒序，没有分数、原因与合辑，规则先过滤。 */
-export const FeedsScreen = memo(function FeedsScreen({ session, active, onOpen, onFetch }: {
+export const FeedsScreen = memo(function FeedsScreen({ session, active, onOpen, onFetch, onEditFeed }: {
   session: FeedsSession;
   active: boolean;
   onOpen: (id: number) => void;
+  onEditFeed?: (id: number) => void;
   /** 抓取全部订阅源；完成后重读时间线。 */
   onFetch: () => Promise<unknown>;
 }) {
@@ -172,7 +173,9 @@ export const FeedsScreen = memo(function FeedsScreen({ session, active, onOpen, 
       <div className="feeds-column">
         <header className="feeds-head">
           <div className="feeds-path">{title.path.length ? t("screen.pathNested", { path: title.path.join(" › ") }) : t("screen.path")}</div>
-          <h1>{title.name}<small>{t("screen.unreadLine", { count: unread })}</small></h1>
+          <h1>{title.name}{singleFeed && onEditFeed && <button type="button" className="tool-btn icon-only" title={t("quickSettings")} aria-label={t("quickSettings")}
+            onClick={() => onEditFeed(Number(state.scope.slice(5)))}><Icon name="settings" size={16} /></button>}
+            <small>{t("screen.unreadLine", { count: unread })}</small></h1>
         </header>
         <div className="feeds-sticky" aria-hidden="true">{sticky ? <div className="feeds-day" data-sticky="1">{sticky}</div> : null}</div>
         {state.articles.length === 0 && !state.loading ? <div className="feeds-empty">

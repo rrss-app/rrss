@@ -45,6 +45,7 @@ import type { FulltextError, WebVerifyStateEvent } from "../../bindings";
 import type { ReadSessionVia } from "../../bindings";
 import { i18n, useTranslation } from "../../i18n";
 import { inferReadingVia, useReadingSession } from "./useReadingSession";
+import { ReaderSourcePanel } from "./ReaderSourcePanel";
 
 function mergeReaderMedia(view: ReaderView, incoming: MediaRef): ReaderView {
   const exists = view.media.some((item) => item.src === incoming.src);
@@ -55,7 +56,7 @@ function mergeReaderMedia(view: ReaderView, incoming: MediaRef): ReaderView {
 export type ReaderOpenOptions = {
   /** 阅读器篇目抽屉切换，保留返回列表语义但单独记录入口。 */
   /** related：从文末「相关阅读」打开，作为岔路记入返回栈，顶栏显示「回到上一篇」。 */
-  via?: "drawer" | "related";
+  via?: "drawer" | "related" | "source";
   /** 引用发送的来源；thread 同时建立本次打开的对话返回目标。 */
   citationSource?: ReaderCitationSource;
   /** 消息摘录的原文块；失效时沿用按篇阅读位置。 */
@@ -139,6 +140,7 @@ export type ReaderHostProps = {
   onReturnToThread?: (id: number) => void;
   /** 从搜索打开的文章关闭时回到搜索浮层；参数是关闭时正在读的那篇。 */
   onReturnToSearch?: (id: number) => void;
+  onShowFeed?: (feedId: number) => void;
   onTranslateSettings?: () => void;
   notify: (notice: ReaderNotice) => void;
   onAsk: (title: string, message: string, onOk: () => void) => void;
@@ -158,7 +160,7 @@ export const READING_POSITION_LIMIT = 200;
 /** 阅读区宽度达到该值才真正钉住篇目抽屉；窄于此时钉住偏好仍保留，但按浮层显示。 */
 export const READER_DRAWER_PIN_MIN_WIDTH = 1100;
 
-type Session = { web?: WebPage; ticket: ReaderTicket; view: ReaderView; skipNav: boolean; returnToList: boolean; readingVia: ReadSessionVia; openedAt: number | null; fromThread?: Extract<ReaderCitationSource, { kind: "thread" }>; anchor?: ReaderOpenOptions["anchor"]; search?: SearchSession; detour?: boolean };
+type Session = { web?: WebPage; ticket: ReaderTicket; view: ReaderView; skipNav: boolean; returnToList: boolean; readingVia: ReadSessionVia; openedAt: number | null; fromThread?: Extract<ReaderCitationSource, { kind: "thread" }>; anchor?: ReaderOpenOptions["anchor"]; search?: SearchSession; detour?: boolean; sourceOpen?: boolean };
 
 /** 文末「相关阅读」最多几条（样板 A）。 */
 const RELATED_LIMIT = 3;
@@ -324,7 +326,9 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   const tr = translation.state;
   const readingOnBody = readingSession.onBody;
   const translationOnBody = translation.onBody;
+  const readerBody = useRef<HTMLDivElement | null>(null);
   const onReaderBody = useCallback((body: HTMLDivElement | null) => {
+    readerBody.current = body;
     translationOnBody(body);
     readingOnBody(body);
   }, [translationOnBody, readingOnBody]);
@@ -379,7 +383,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     userMode.current = false; pendingMode.current = null;
     setOps({});
     const next = { web, ticket, view, skipNav, returnToList, openedAt, readingVia: inferReadingVia(options, propsRef.current.listVia), anchor: options?.anchor,
-      detour: options?.via === "related" || undefined,
+      detour: options?.via === "related" || options?.via === "source" || undefined,
       search: options?.search ? searchSession(earlyHitBlocks.current?.ticket === ticket && !options.search.blocks
         ? { ...options.search, blocks: earlyHitBlocks.current.blocks } : options.search) : undefined,
       fromThread: options?.citationSource?.kind === "thread" ? options.citationSource
@@ -420,7 +424,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   };
 
   const openArticle = async (id: number, opts?: ReaderOpenOptions, web?: WebPage) => {
-    if (!web && opts?.via !== "related") returns.current = [];
+    if (!web && opts?.via !== "related" && opts?.via !== "source") returns.current = [];
     setFailure(null);
     const skipNav = opts?.skipNav ?? false;
     const returnToList = !skipNav && (opts?.returnToList ?? false);
@@ -481,6 +485,8 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
         const row = navRef.current.articles.find((a) => a.id === id);
         showReader(ticket, {
           id,
+          feed_id: row?.feed_id ?? 0,
+          feed_title: row?.feed_title ?? "",
           source_hash: `${PREVIEW_SOURCE}${id}`,
           title: row?.title ?? i18n.t("host.previewTitle", { ns: "reader" }),
           meta: [row?.feed_title, formatPublishedFull(row?.published_at)].filter(Boolean).join(" · "),
@@ -503,6 +509,8 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
         return;
       }
       setOpening(null);
+      // 来源侧栏换篇失败：原文仍在显示，撤回刚压进返回栈的那一层。
+      if (opts?.via === "source" && sessionRef.current?.ticket !== ticket && returns.current.length > 0) restoreArticleAt(returns.current.length - 1);
       if (!sessionRef.current && lateTicket.current === ticket) propsRef.current.onClose();
       propsRef.current.notify({ message: formatNotice(i18n.t("host.openFailedPrefix", { ns: "reader" }), err) });
     }
@@ -584,6 +592,20 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     } catch (error) {
       if (requests.owns(cur.ticket)) propsRef.current.notify({ message: formatNotice(i18n.t("host.extractFailedPrefix", { ns: "reader" }), error) });
     } finally { setExtractingSession(old => old === cur.ticket.session ? null : old); }
+  };
+
+  /** 来源侧栏换篇：当前这篇（连同打开的侧栏）进返回栈；目标已在返回路径上时回到那一层，不重复压栈。 */
+  const openFromSource = (id: number) => {
+    const cur = sessionRef.current;
+    if (!cur || !requests.owns(cur.ticket) || cur.view.id === id) return;
+    const existing = returns.current.findIndex(session => session.view.id === id);
+    if (existing >= 0) {
+      restoreArticleAt(existing);
+      return;
+    }
+    returns.current.push(cur);
+    readingSession.finish("next");
+    void openArticle(id, { skipNav: true, via: "source" });
   };
 
   /** 打开文末的相关阅读：当前这篇进返回栈，Esc / 「回到上一篇」回到它的文末；上下篇仍按原来的列表走。 */
@@ -788,6 +810,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   const closeDrawer = () => setDrawerOpen(false);
   const openDrawer = () => {
     if (sessionRef.current?.skipNav) return;
+    if (sessionRef.current?.sourceOpen) toggleSource();
     const id = sessionRef.current?.view.id;
     selectDrawerRow(id);
     setDrawerOpen(true);
@@ -798,6 +821,16 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   };
   const cancelDrawerOpen = () => {
     if (edgeTimer.current !== undefined) { window.clearTimeout(edgeTimer.current); edgeTimer.current = undefined; }
+  };
+  const toggleSource = () => {
+    const cur = sessionRef.current;
+    if (!cur) return;
+    cancelDrawerOpen();
+    closeDrawer();
+    const next = { ...cur, sourceOpen: !cur.sourceOpen };
+    sessionRef.current = next;
+    setSession(next);
+    if (!next.sourceOpen) readerBody.current?.querySelector<HTMLElement>("button.reader-source")?.focus({ preventScroll: true });
   };
   const openDrawerArticle = (id: number) => {
     if (!effectiveDrawerPinned) setDrawerOpen(false);
@@ -962,6 +995,14 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     setSession(next);
   };
 
+  const dismissSearchHits = () => {
+    const cur = sessionRef.current;
+    if (!cur?.search?.hits) return;
+    const next = { ...cur, search: { ...cur.search, hits: undefined } };
+    sessionRef.current = next;
+    setSession(next);
+  };
+
   const actions = { openNeighbor, stepSearchHit, cycleTranslateMode, fetchFulltext, toggleStar, markUnread, translate };
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
@@ -1071,10 +1112,19 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   const ids = session.search ? session.search.results : navRows.map((row) => row.id);
   const pos = ids.indexOf(reader.id);
   const pager = !session.skipNav || !!session.search;
+  const feedId = reader.feed_id;
+  const canShowSource = !!props.onShowFeed && feedId > 0 && !session.web;
 
   return (
     <ReaderOverlay
       reader={reader}
+      onSourceToggle={canShowSource ? toggleSource : undefined}
+      sourcePanel={canShowSource && session.sourceOpen ? <ReaderSourcePanel feedId={feedId} title={reader.feed_title} currentId={reader.id}
+        onClose={toggleSource} onOpen={openFromSource} onAll={() => {
+          readingSession.finish("back");
+          requests.close();
+          props.onShowFeed?.(feedId);
+        }} /> : undefined}
       onOpenUrl={props.onOpenUrl}
       webNav={session.web ? <WebReadingNav page={session.web} returnTitle={returns.current.at(-1)?.view.title} onBack={closeReader} /> : undefined}
       webActions={session.web ? <WebReadingActions page={session.web} onCollect={() => void collect()} collecting={!!ops.collect} /> : undefined}
@@ -1092,7 +1142,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       onContinueAsking={session.fromThread ? props.onContinueAsking : undefined}
       anchor={searchAnchor ?? session.anchor}
       searchTerm={session.search?.query}
-      searchHits={searchHits ? { index: Math.min(searchIndex, searchHits.length - 1), total: searchHits.length, onStep: stepSearchHit } : undefined}
+      searchHits={searchHits ? { index: Math.min(searchIndex, searchHits.length - 1), total: searchHits.length, onStep: stepSearchHit, onDismiss: dismissSearchHits } : undefined}
       article={navRows.find(row => row.id === reader.id)}
       showNextCard={session.returnToList || !!session.search}
       nextArticle={session.search ? session.search.resultRows.find(row => row.id === ids[pos + 1]) : pos >= 0 ? navRows[pos + 1] : undefined}

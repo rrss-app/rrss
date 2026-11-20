@@ -21,6 +21,7 @@ beforeAll(() => {
 
 const base: ReaderView = {
   source_hash: "reader-recovery-source",
+  feed_id: 0, feed_title: "",
   id: 1, title: "坏文章", meta: "测试源", feed_icon_href: "", url: "https://example.test/article", summary: "",
   score: 0, feedback: 0, starred: false, reasons: [], media: [],
   document: { v: 1, blocks: [{ t: "p", inlines: [{ t: "t", text: "正常正文" }] }] },
