@@ -6,15 +6,15 @@ import type { DraftStore, useConversationRuntime } from "../features/chat";
 import { ReaderCitationTray, citationTargetContext, type ReaderCitationSource } from "../features/reader";
 
 /** 根壳的跨域适配：阅读器只收集引用，对话运行层仍负责发送，唯一草稿在 drafts。 */
-export function useReaderCitations({ drafts, chat, getThreads, getSourceArticle, onSending, onDigestSent, notify, inert }: {
+export function useReaderCitations<Origin extends Readonly<{ id: number; title: string }>>({ drafts, chat, getThreads, getSourceArticle, onSending, onDigestSent, notify, inert }: {
   drafts: DraftStore; chat: ReturnType<typeof useConversationRuntime>; getThreads: () => ThreadView[];
-  getSourceArticle: () => Readonly<{ id: number; title: string }> | null;
+  getSourceArticle: (target: ReaderCitationSource) => Origin | null;
   onSending: (id: number, context: string) => (threadId: number) => void;
   onDigestSent: () => void;
   notify: (notice: { message: string }) => void;
   inert: boolean;
 }) {
-  const [origins, setOrigins] = useState<ReadonlyMap<number | string, Readonly<{ id: number; title: string }>>>(new Map());
+  const [origins, setOrigins] = useState<ReadonlyMap<number | string, Origin>>(new Map());
   const [focusRequest, setFocusRequest] = useState(0);
   const [target, setTarget] = useState<ReaderCitationSource>({ kind: "new" });
   const [source, setSource] = useState<ReaderCitationSource>({ kind: "new" });
@@ -64,7 +64,7 @@ export function useReaderCitations({ drafts, chat, getThreads, getSourceArticle,
   };
   const send = async (text: string, citations: CitationView[]) => {
     if (sendLock.current || chat.sending || chat.busyThreadId !== null) return false;
-    const origin = getSourceArticle();
+    const origin = getSourceArticle(target);
     sendLock.current = true; setResolving(true);
     const targetId = target.kind === "thread" ? target.threadId : 0;
     const digestId = target.kind === "digest" ? target.digestId : null;

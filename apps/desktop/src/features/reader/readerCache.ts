@@ -24,6 +24,8 @@ export function createReaderCache() {
       if (entry) entry.used = ticket.session;
       return entry?.view;
     },
+    /** 恢复返回路径时取数据，不把尚未显示的祖先文章记为最近打开。 */
+    peek(id: number) { return entries.get(id)?.view; },
     write,
     /** 只看有没有，不算一次使用（预取判断用）。 */
     has(id: number) {

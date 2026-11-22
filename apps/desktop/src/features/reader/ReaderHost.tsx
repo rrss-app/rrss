@@ -57,8 +57,10 @@ export type ReaderOpenOptions = {
   /** 阅读器篇目抽屉切换，保留返回列表语义但单独记录入口。 */
   /** related：从文末「相关阅读」打开，作为岔路记入返回栈，顶栏显示「回到上一篇」。 */
   via?: "drawer" | "related" | "source";
-  /** 引用发送的来源；thread 同时建立本次打开的对话返回目标。 */
+  /** 引用发送的来源；普通打开默认同时以该会话为返回目标。 */
   citationSource?: ReaderCitationSource;
+  /** 恢复阅读入口时独立指定返回会话；null 表示返回原来的主视图。 */
+  returnThread?: Extract<ReaderCitationSource, { kind: "thread" }> | null;
   /** 消息摘录的原文块；失效时沿用按篇阅读位置。 */
   anchor?: { blockId: number };
   /** 从简报 / 对话等非列表入口打开：不提供上下篇。 */
@@ -100,9 +102,12 @@ export type ReaderHostHandle = {
   markCollected: (id: number) => void;
   close: () => void;
   getSourceArticle: () => Readonly<{ id: number; title: string }> | null;
+  captureReturn: (ancestor?: ReaderReturnPoint["entry"]) => ReaderReturnPoint | null;
   getReturnArticleId: () => number | null;
   getDismissedArticleIds: () => number[];
 };
+
+export type ReaderReturnPoint = Readonly<{ id: number; title: string; entry: Readonly<ReturnEntry>; resume: (source?: ReaderCitationSource) => Promise<void> }>;
 
 export type ReaderNotice = { message: string; actionLabel?: string; onAction?: () => void };
 
@@ -160,7 +165,11 @@ export const READING_POSITION_LIMIT = 200;
 /** 阅读区宽度达到该值才真正钉住篇目抽屉；窄于此时钉住偏好仍保留，但按浮层显示。 */
 export const READER_DRAWER_PIN_MIN_WIDTH = 1100;
 
-type Session = { web?: WebPage; ticket: ReaderTicket; view: ReaderView; skipNav: boolean; returnToList: boolean; readingVia: ReadSessionVia; openedAt: number | null; fromThread?: Extract<ReaderCitationSource, { kind: "thread" }>; anchor?: ReaderOpenOptions["anchor"]; search?: SearchSession; detour?: boolean; sourceOpen?: boolean };
+type Session = { web?: WebPage; ticket: ReaderTicket; view: ReaderView; skipNav: boolean; returnToList: boolean; readingVia: ReadSessionVia; openedAt: number | null; fromThread?: Extract<ReaderCitationSource, { kind: "thread" }>; returnThread?: ReaderOpenOptions["returnThread"]; anchor?: ReaderOpenOptions["anchor"]; search?: SearchSession; detour?: boolean; sourceOpen?: boolean };
+type ReturnFrame = Omit<Session, "ticket" | "view" | "openedAt" | "anchor"> & { id: number };
+type ReturnEntry = Pick<ReturnFrame, "skipNav" | "returnToList" | "returnThread" | "search" | "detour"> & { parents: ReturnFrame[] };
+type RestoredEntry = { frame: ReturnFrame; parents: Session[] };
+const returnFrame = ({ ticket: _ticket, view, openedAt: _openedAt, anchor: _anchor, ...navigation }: Session): ReturnFrame => ({ ...navigation, id: view.id });
 
 /** 文末「相关阅读」最多几条（样板 A）。 */
 const RELATED_LIMIT = 3;
@@ -377,17 +386,21 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   }, [drawerOpen, nav.articles, nav.scope, nav.reset, session?.view.id, selectDrawerRow]);
 
   /** 显示一份阅读视图并把它记为当前会话；之前会话的工具 busy 状态随之作废。 */
-  const showReader = (ticket: ReaderTicket, view: ReaderView, skipNav: boolean, returnToList: boolean, options?: ReaderOpenOptions, openedAt: number | null = null, web?: WebPage) => {
+  const showReader = (ticket: ReaderTicket, view: ReaderView, skipNav: boolean, returnToList: boolean, options?: ReaderOpenOptions, openedAt: number | null = null, web?: WebPage, restored?: ReturnFrame) => {
     setOpening(null);
     setTranslateMode("original");
     userMode.current = false; pendingMode.current = null;
     setOps({});
+    const sameArticle = sessionRef.current?.view.id === view.id ? sessionRef.current : null;
+    const fromThread = options?.citationSource?.kind === "thread" ? options.citationSource
+      : options?.citationSource ? undefined : sameArticle?.fromThread;
+    const returnThread = options?.returnThread !== undefined ? options.returnThread
+      : options?.citationSource ? fromThread : sameArticle?.returnThread;
     const next = { web, ticket, view, skipNav, returnToList, openedAt, readingVia: inferReadingVia(options, propsRef.current.listVia), anchor: options?.anchor,
       detour: options?.via === "related" || options?.via === "source" || undefined,
       search: options?.search ? searchSession(earlyHitBlocks.current?.ticket === ticket && !options.search.blocks
         ? { ...options.search, blocks: earlyHitBlocks.current.blocks } : options.search) : undefined,
-      fromThread: options?.citationSource?.kind === "thread" ? options.citationSource
-        : sessionRef.current?.view.id === view.id ? sessionRef.current.fromThread : undefined };
+      ...restored, fromThread, returnThread };
     sessionRef.current = next;
     setSession(next);
     navRef.current.setCurrent?.(skipNav ? null : view.id);
@@ -423,8 +436,9 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     }
   };
 
-  const openArticle = async (id: number, opts?: ReaderOpenOptions, web?: WebPage) => {
-    if (!web && opts?.via !== "related" && opts?.via !== "source") returns.current = [];
+  const openArticle = async (id: number, opts?: ReaderOpenOptions, web?: WebPage, restored?: RestoredEntry) => {
+    if (restored) returns.current = restored.parents;
+    else if (!web && opts?.via !== "related" && opts?.via !== "source") returns.current = [];
     setFailure(null);
     const skipNav = opts?.skipNav ?? false;
     const returnToList = !skipNav && (opts?.returnToList ?? false);
@@ -434,7 +448,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     const early = prefetched.current.get(id);
     prefetched.current.delete(id);
     const cached = cache.read(ticket) ?? early;
-    if (cached) showReader(ticket, cached, skipNav, returnToList, opts, null, web);
+    if (cached) showReader(ticket, cached, skipNav, returnToList, opts, null, web, restored?.frame);
     else setOpening({ ticket, id, late: false });
     const search = opts?.search;
     if (search && search.bodyMatch && !search.blocks) {
@@ -463,7 +477,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
         const confirmed = { ...sessionRef.current!, openedAt };
         sessionRef.current = confirmed;
         setSession(confirmed);
-      } else showReader(ticket, r, skipNav, returnToList, opts, openedAt, web);
+      } else showReader(ticket, r, skipNav, returnToList, opts, openedAt, web, restored?.frame);
       if (needsEmbedCovers(r)) {
         void api.prefetchEmbeds(id).catch(() => {});
       }
@@ -505,7 +519,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
           truncated: false, pruned: false, summary_stale: false,
           starred: row?.starred ?? false,
           embed_covers: [],
-        }, skipNav, returnToList, opts);
+        }, skipNav, returnToList, opts, null, web, restored?.frame);
         return;
       }
       setOpening(null);
@@ -705,7 +719,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     setOpening(null);
     readingSession.finish("back");
     const cur = sessionRef.current;
-    const thread = cur?.fromThread;
+    const thread = cur?.returnThread;
     if (thread) propsRef.current.onReturnToThread?.(thread.threadId);
     else if (cur?.search) propsRef.current.onReturnToSearch?.(cur.view.id);
     return false;
@@ -725,6 +739,37 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     getSourceArticle: () => {
       const view = sessionRef.current?.view;
       return view ? { id: view.id, title: view.title } : null;
+    },
+    captureReturn: ancestor => {
+      const current = sessionRef.current;
+      if (!current || !requests.owns(current.ticket)) return null;
+      // 只保留导航元数据；正文仍由有界阅读缓存持有，淘汰的祖先按需只读重取。
+      let frame = returnFrame(current), parents = returns.current.map(returnFrame);
+      if (ancestor) {
+        const { parents: earlier, ...navigation } = ancestor;
+        if (parents.length) parents = [...earlier, { ...parents[0], ...navigation }, ...parents.slice(1)];
+        else { frame = { ...frame, ...navigation }; parents = [...earlier]; }
+        const path: ReturnFrame[] = [];
+        for (const next of [...parents, frame]) {
+          const existing = path.findIndex(item => item.id === next.id);
+          if (existing < 0) path.push(next);
+          else path.splice(existing + 1);
+        }
+        frame = path.at(-1)!;
+        parents = path.slice(0, -1);
+      }
+      const entry = { skipNav: frame.skipNav, returnToList: frame.returnToList, returnThread: frame.returnThread ?? null,
+        search: frame.search, detour: frame.detour, parents };
+      return { id: current.view.id, title: current.view.title, entry, resume: async source => {
+        const ticket = requests.open(frame.id);
+        let views: ReaderView[];
+        try { views = await Promise.all(parents.map(parent => cache.peek(parent.id) ?? api.reader(parent.id))); }
+        catch (error) { if (requests.owns(ticket)) throw error; return; }
+        if (!requests.owns(ticket)) return;
+        await openArticle(frame.id, { skipNav: frame.skipNav, returnToList: frame.returnToList,
+          citationSource: source, returnThread: frame.returnThread ?? null }, frame.web,
+          { frame, parents: parents.map((parent, index) => ({ ...parent, view: views[index], ticket, openedAt: null })) });
+      } };
     },
     getReturnArticleId: () => {
       // 岔路里关掉阅读器时，列表仍定位到岔开之前的那篇。
@@ -1134,7 +1179,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       origin={session.web?.info || reader.web_extracted_at != null ? <WebOrigin info={session.web?.info} extractedAt={reader.web_extracted_at} url={session.web?.info?.actual_url ?? session.web?.url ?? reader.url} onExtract={() => void reextract()} extracting={extractingSession === session.ticket.session} /> : undefined}
       citationTray={props.citationTray}
       onTrayEscape={props.onTrayEscape}
-      returnThreadTitle={session.fromThread?.title}
+      returnThreadTitle={session.returnThread?.title}
       returnArticleTitle={session.detour ? returns.current.at(-1)?.view.title : undefined}
       onReturnArticle={session.detour ? closeReader : undefined}
       related={related.data && related.data.length ? related.data : undefined}

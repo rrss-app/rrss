@@ -46,7 +46,6 @@ describe("ReaderHost standalone", () => {
     vi.restoreAllMocks();
     delete win.__TAURI_INTERNALS__;
     box.stub?.assertNoUnexpectedCalls();
-    expect(box.stub!.callCount("reader")).toBe(0);
   });
 
   function key(name: string) {
@@ -107,7 +106,9 @@ describe("ReaderHost standalone", () => {
     const url = "https://web.example.test/verified";
     const pending = deferred<WebVerifyStateEvent | null>();
     const extract = vi.fn(() => pending.promise);
-    box.stub!.handle("openArticle", id => readerView(id, id === ARTICLE_A ? { url, web_extracted_at: 1000 } : {}));
+    const currentSummary = "Current article summary";
+    box.stub!.handle("openArticle", id => readerView(id, { summary: currentSummary, ...(id === ARTICLE_A ? { url, web_extracted_at: 1000 } : {}) }));
+    box.stub!.handle("reader", id => readerView(id, { summary: "Unexpected late refresh" }));
     const { ref, host } = setup(false, [], { open: vi.fn(), menu: vi.fn(), hasWindow: () => true, extract });
     await open(ref, ARTICLE_A);
     act(() => [...host.querySelectorAll("button")].find(button => button.textContent === "重新抽取")!.click());
@@ -117,7 +118,7 @@ describe("ReaderHost standalone", () => {
     await harness.flush();
     expect(title(host)).toBe("乙文");
     expect(host.querySelector(".web-origin")).toBeNull();
-    expect(box.stub!.callCount("reader")).toBe(0);
+    expect(summary(host)).toContain(currentSummary);
   });
 
   function measureBlocks() {
@@ -565,6 +566,78 @@ describe("ReaderHost standalone", () => {
     act(() => ref.current!.close());
     expect(calls.onReturnToThread).toHaveBeenCalledTimes(1);
     expect(ref.current!.getSourceArticle()).toBeNull();
+  });
+
+  it("resumes a citation detour with its original parent instead of the citation target", async () => {
+    box.stub!.handle("openArticle", id => readerView(id));
+    box.stub!.handle("openWebLink", () => ({ article_id: ARTICLE_B, temporary: true,
+      actual_host: "return.example", actual_url: "https://return.example/story", layer: "General" as const, text_chars: 100, image_count: 0 }));
+    const { ref, calls } = setup();
+    await act(async () => { await ref.current!.openArticle(ARTICLE_A, { returnToList: true }); });
+    await act(async () => { await ref.current!.openWebLink("https://return.example/story"); });
+    const point = ref.current!.captureReturn()!;
+    act(() => ref.current!.close());
+    act(() => ref.current!.close());
+    await harness.flush();
+    await act(async () => { await point.resume({ kind: "thread", threadId: 9, title: "Citation conversation" }); });
+    expect(ref.current!.getSourceArticle()?.id).toBe(ARTICLE_B);
+    key("q");
+    expect(calls.onContinueAsking).toHaveBeenCalledOnce();
+    act(() => ref.current!.close());
+    expect(ref.current!.getSourceArticle()?.id).toBe(ARTICLE_A);
+    expect(ref.current!.getReturnArticleId()).toBe(ARTICLE_A);
+    act(() => ref.current!.close());
+    await harness.flush();
+    expect(ref.current!.getSourceArticle()).toBeNull();
+    expect(calls.onReturnToThread).not.toHaveBeenCalled();
+  });
+
+  it("keeps the original entry when a conversation citation opens a different article and a detour", async () => {
+    box.stub!.handle("openArticle", id => readerView(id));
+    box.stub!.handle("openWebLink", () => ({ article_id: 3, temporary: true,
+      actual_host: "return.example", actual_url: "https://return.example/story", layer: "General" as const, text_chars: 100, image_count: 0 }));
+    const { ref, calls } = setup();
+    await act(async () => { await ref.current!.openArticle(ARTICLE_A, { returnToList: true }); });
+    const original = ref.current!.captureReturn()!;
+    await act(async () => { await ref.current!.openArticle(ARTICLE_B, { citationSource: { kind: "thread", threadId: 9, title: "Citation conversation" } }); });
+    await act(async () => { await ref.current!.openWebLink("https://return.example/story"); });
+    const point = ref.current!.captureReturn(original.entry)!;
+    act(() => calls.onClose());
+    await harness.flush();
+    await act(async () => { await point.resume({ kind: "thread", threadId: 9, title: "Citation conversation" }); });
+    expect(ref.current!.getSourceArticle()?.id).toBe(3);
+    act(() => ref.current!.close());
+    expect(ref.current!.getSourceArticle()?.id).toBe(ARTICLE_B);
+    expect(ref.current!.getReturnArticleId()).toBe(ARTICLE_B);
+    act(() => ref.current!.close());
+    await harness.flush();
+    expect(ref.current!.getSourceArticle()).toBeNull();
+    expect(calls.onReturnToThread).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("ignores a superseded return-path load, including failure (%s)", async failure => {
+    box.stub!.handle("openArticle", id => readerView(id));
+    box.stub!.handle("openWebLink", () => ({ article_id: ARTICLE_B, temporary: true,
+      actual_host: "return.example", actual_url: "https://return.example/story", layer: "General" as const, text_chars: 100, image_count: 0 }));
+    const { ref } = setup();
+    await open(ref, ARTICLE_A);
+    await act(async () => { await ref.current!.openWebLink("https://return.example/story"); });
+    const point = ref.current!.captureReturn()!;
+    for (let id = 3; id <= 11; id++) await open(ref, id);
+    act(() => ref.current!.close());
+    await harness.flush();
+    const pending = box.stub!.deferNext("reader");
+    let restoring!: Promise<void>;
+    act(() => { restoring = point.resume(); });
+    await harness.flush();
+    await open(ref, 3);
+    await act(async () => {
+      if (failure) pending.reject(new Error("Return source unavailable"));
+      else pending.resolve(readerView(ARTICLE_A));
+      await restoring;
+    });
+    expect(ref.current!.getSourceArticle()?.id).toBe(3);
+    act(() => { expect(ref.current!.back()).toBe(false); });
   });
 
   it("does not replay a citation anchor after fulltext changes the body version", async () => {

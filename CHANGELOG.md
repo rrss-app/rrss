@@ -4,6 +4,10 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Fixed
+
+- Returning from a citation conversation restores the article's original navigation, so Back reaches the starting page instead of cycling between the article and chat.
+
 ### Changed
 
 - Choose how often feeds refresh. Set a default interval in minutes under Settings → Feeds → Fetching, or give a single feed its own interval in its editor, which also shows when the feed last refreshed and when it refreshes next. New intervals apply right away.

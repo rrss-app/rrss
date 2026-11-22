@@ -54,18 +54,81 @@ async function startRoundtrip(page: Page) {
 async function returnToArticle(page: Page) {
   await backchip(page).click();
   await expect(reader(page).locator(".reader-title")).toHaveText(articleTitle);
-  await expect(reader(page).getByRole("button", { name: "对话", exact: true })).toBeVisible();
+}
+async function openMessageArticle(page: Page) {
+  await page.locator('.chat-pane [data-article-id="1"] .citation-open').first().click();
+  await expect(reader(page).locator(".reader-title")).toHaveText(articleTitle);
 }
 
-test("citation returns to the original position and Back unwinds to chat without reopening it", async ({ page }) => {
+test("citation return restores the original main view instead of reopening chat", async ({ page }) => {
+  const otherTitle = fixture.readers[2].title;
+  await setup(page, { messages: { 401: [{ ...MOCK_MESSAGES[7][0], id: 800, text: "Another cited article",
+    citations: [{ ...MOCK_MESSAGES[7][0].citations[0], kind: "article", article_id: 2, title: otherTitle, block_id: 0 }] }] } });
+  await startRoundtrip(page);
+  const input = page.getByRole("textbox", { name: "对话消息" });
+  await input.fill("Unsent draft");
+  for (const method of ["toolbar", "Escape", "Backspace", "browser"]) {
+    await returnToArticle(page);
+    expect(Math.abs(await offset(page) - 120)).toBeLessThan(180);
+    if (method === "toolbar") await reader(page).locator(".reader-back").click();
+    else if (method === "browser") await page.goBack();
+    else {
+      await page.mouse.move(640, 400);
+      await body(page).focus();
+      await page.keyboard.press(method);
+    }
+    await expect(reader(page)).not.toBeVisible();
+    await expect(page.getByRole("article", { name: articleTitle, exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(reader(page)).not.toBeVisible();
+    await page.getByRole("button", { name: question, exact: true }).click();
+    await expect(input).toHaveValue("Unsent draft");
+  }
+  await openMessageArticle(page);
+  await body(page).focus();
+  await page.keyboard.press("q");
+  await send(page, "Follow up on the same citation");
+  await returnToArticle(page);
+  await reader(page).locator(".reader-back").click();
+  await expect(reader(page)).not.toBeVisible();
+  await expect(page.getByRole("article", { name: articleTitle, exact: true })).toBeVisible();
+  await page.getByRole("button", { name: question, exact: true }).click();
+  await page.locator(".chat-pane .citation-open").filter({ hasText: otherTitle }).first().click();
+  await expect(reader(page).locator(".reader-title")).toHaveText(otherTitle);
+  await body(page).focus();
+  await page.keyboard.press("q");
+  await send(page, "Follow up on another citation");
+  await backchip(page).click();
+  await expect(reader(page).locator(".reader-title")).toHaveText(otherTitle);
+  await reader(page).locator(".reader-back").click();
+  await expect(reader(page)).not.toBeVisible();
+  await expect(page.getByRole("article", { name: otherTitle, exact: true })).toBeVisible();
+});
+
+test("citation return preserves the original search before returning to the main view", async ({ page }) => {
+  await setup(page);
+  await page.keyboard.press("Control+k");
+  const query = page.getByRole("searchbox");
+  await query.fill(articleTitle);
+  await page.getByRole("option").first().click();
+  await expect(reader(page).locator(".reader-title")).toHaveText(articleTitle);
+  await citeFull(page); await send(page);
+  await returnToArticle(page);
+  await reader(page).locator(".reader-back").click();
+  await expect(reader(page)).not.toBeVisible();
+  await expect(query).toBeVisible();
+  await expect(query).toHaveValue(articleTitle);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("article", { name: articleTitle, exact: true })).toBeVisible();
+});
+
+test("message citations return to chat without reopening the reader on Escape", async ({ page }) => {
   await setup(page); await startRoundtrip(page);
   const thread = await page.locator('.thread-item[data-on="1"]').textContent();
-  await returnToArticle(page);
+  await openMessageArticle(page);
   // 允许一个块内的恢复误差；输入行 / 托盘高度变化不会把阅读位置带回顶部。
   expect(Math.abs(await offset(page) - 120)).toBeLessThan(180);
-  const back = reader(page).getByRole("button", { name: "对话", exact: true });
-  await back.hover();
-  await expect(page.getByRole("tooltip")).toHaveText(`回到对话「${question}」 · Esc`);
+  const back = reader(page).locator(".reader-back");
   await back.click();
   await expect(reader(page)).not.toBeVisible();
   await expect(page.locator('.thread-item[data-on="1"]')).toHaveText(thread!);
@@ -76,12 +139,12 @@ test("citation returns to the original position and Back unwinds to chat without
   await expect(reader(page)).not.toBeVisible();
   await input.press("Escape");
   await expect(reader(page)).not.toBeVisible();
-  await returnToArticle(page);
+  await openMessageArticle(page);
   expect(Math.abs(await offset(page) - 120)).toBeLessThan(180);
   await page.keyboard.press("Backspace");
   await expect(reader(page)).not.toBeVisible();
   await expect(input).toHaveValue("未发出的草稿");
-  await returnToArticle(page);
+  await openMessageArticle(page);
   await page.goBack();
   await expect(reader(page)).not.toBeVisible();
   await expect(input).toHaveValue("未发出的草稿");
@@ -159,9 +222,23 @@ for (const method of ["j", "drawer", "next", "ending", "dislike", "search"] as c
   await send(page, "换篇后的追加问题");
   await expect(backchip(page)).toContainText(fixture.readers[2].title);
   await expect(page.locator('.thread-item[data-on="1"]')).toHaveText(question);
-  // 新一轮从对话回来后再换篇，切回也不会复活这轮的返回目标。
   await backchip(page).click();
   await expect(reader(page).locator(".reader-title")).toHaveText(fixture.readers[2].title);
+  if (method === "search") {
+    // The saved search has one result; the roundtrip keeps that result set.
+    await body(page).focus();
+    await page.keyboard.press("j");
+    await expect(reader(page).locator(".reader-title")).toHaveText(fixture.readers[2].title);
+    await reader(page).locator(".reader-back").click();
+    await expect(reader(page)).not.toBeVisible();
+    const query = page.getByRole("searchbox");
+    await expect(query).toBeVisible();
+    await expect(query).toHaveValue(fixture.readers[2].title);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("article", { name: fixture.readers[2].title, exact: true })).toBeVisible();
+    return;
+  }
+  // 新一轮从对话回来后再换篇，切回也不会复活这轮的返回目标。
   await page.keyboard.press("j");
   await expect(reader(page).locator(".reader-title")).toHaveText(fixture.readers[3].title);
   await page.keyboard.press("k");
@@ -249,7 +326,7 @@ for (const theme of ["light", "dark"]) test(`roundtrip review screenshots ${them
   const shot = (name: string) => page.screenshot({ path: path.join(dir, `${name}-1280-${theme}.png`), animations: "disabled" });
   await page.mouse.move(1279, 799); await shot("chat-backchip");
   await returnToArticle(page);
-  await reader(page).getByRole("button", { name: "对话", exact: true }).hover();
+  await reader(page).locator(".reader-back").hover();
   await expect(page.getByRole("tooltip")).toBeVisible(); await shot("reader-from-chat");
   await page.mouse.move(1279, 799); await page.keyboard.press("q");
   await expect(tray(page).getByRole("textbox")).toBeFocused(); await shot("reader-ask-tray");

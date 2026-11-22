@@ -1,5 +1,5 @@
 export { ReaderHost } from "./ReaderHost";
-export type { ReaderHostHandle, ReaderHostProps, ReaderNotice, ReaderOpenOptions, ReaderSearchOpen } from "./ReaderHost";
+export type { ReaderHostHandle, ReaderHostProps, ReaderNotice, ReaderOpenOptions, ReaderReturnPoint, ReaderSearchOpen } from "./ReaderHost";
 
 export { ReaderCitationTray, citationTargetContext, type ReaderCitationSource } from "./ReaderCitationTray";
 

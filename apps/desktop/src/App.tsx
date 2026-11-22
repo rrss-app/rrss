@@ -44,7 +44,7 @@ import { retentionKeys, retentionQueryOptions } from "./settings/retentionQuery"
 import { backupKeys, backupQueryOptions } from "./settings/backupQuery";
 import { settingsChanged, type SettingsEditState } from "./settings/editState";
 import type { AskOptions, SettingsTabId } from "./settings/SettingsPanel";
-import type { ReaderHostHandle, ReaderOpenOptions } from "./features/reader";
+import type { ReaderCitationSource, ReaderHostHandle, ReaderOpenOptions, ReaderReturnPoint } from "./features/reader";
 import { CommandPalette } from "./features/search";
 import { ChatActivity, ChatContextMeter, ChatModelChip, ChatPane, Composer, JumpToLatest, LinkPreview, createDraftStore, createJumpController, useConversationRuntime } from "./features/chat";
 import { DigestScreen } from "./features/digest";
@@ -79,6 +79,7 @@ function primeSettingsPages(client: QueryClient) {
 }
 
 type Overlay = "web-warning" | "confirm" | "about" | "settings" | "feed-edit" | "reader" | "training" | "close-ask";
+type ReaderCitationOrigin = ReaderReturnPoint & { enter: () => void };
 
 export function App() {
   const [queries] = useState(() => new QueryClient());
@@ -136,6 +137,7 @@ function DesktopShell() {
   const chatContext = threadId > 0 ? drafts.threadContext(threadId) : newChatContext;
   const [jump] = useState(createJumpController);
   const readerRef = useRef<ReaderHostHandle>(null);
+  const readerLeavingForChat = useRef(false);
   const trainingRef = useRef<FocusTrainingHandle>(null);
   // 评分的所有写入方（训练条、阅读器 x / 篇目踩）共用一条按文章的写入顺序。
   const [ratings] = useState(createArticleWriteOrder);
@@ -180,8 +182,8 @@ function DesktopShell() {
       // 阅读期间保留当前条目供上下篇定位，返回未读列表时按宿主范围重读。
       if (id === "reader") {
         webLinks.cancel();
-        // 阅读器关了却没回到搜索（例如发出引用后去了对话）：保留的搜索会话作废。
-        setSearchAway(false);
+        // 引用对话仍可返回这次阅读入口，搜索结果要随这条返回路径保活。
+        if (!readerLeavingForChat.current) setSearchAway(false);
         readerCitations.end();
         void readerOwner.current.readerClosed(readerRef.current?.getReturnArticleId(), readerRef.current?.getDismissedArticleIds());
       }
@@ -223,12 +225,35 @@ function DesktopShell() {
   }, [queries, open]);
   const openAbout = useCallback(() => open("about"), [open]);
   const openTraining = useCallback(() => open("training"), [open]);
-  const readerCitations = useReaderCitations({ drafts, chat, getThreads: () => sidebarRef.current?.getThreads() ?? [],
-    getSourceArticle: () => readerRef.current?.getSourceArticle() ?? null,
+  const readerCitations = useReaderCitations<ReaderCitationOrigin>({ drafts, chat, getThreads: () => sidebarRef.current?.getThreads() ?? [],
+    getSourceArticle: (target): ReaderCitationOrigin | null => {
+      const captured = readerRef.current?.captureReturn();
+      if (!captured) return null;
+      // 从会话打开引用后再向它追问，沿用已有祖先，不能把会话自己记成返回入口。
+      const rootThread = (captured.entry.parents[0] ?? captured.entry).returnThread;
+      const previous = current.current.view === "chat" && target.kind === "thread" && target.threadId === current.current.threadId && rootThread?.threadId === target.threadId
+        ? readerCitationsRef.current.origins.get(target.threadId) : undefined;
+      const point = previous ? readerRef.current?.captureReturn(previous.entry) : captured;
+      if (!point) return null;
+      const location = { ...current.current, context: newChatContext, list: readerListRef.current, search: searchAwayRef.current };
+      const enter = previous?.enter ?? (() => {
+        if (location.view === "chat") selectChatLocation(location.threadId, location.context);
+        else setView(location.view);
+        chooseReaderList(location.list);
+        setSearchAway(location.search);
+        readerOwner.current = location.list === "column" ? column : focus;
+        readerOwner.current.readerOpened();
+      });
+      return { ...point, enter, resume: (source?: ReaderCitationSource) => { enter(); return point.resume(source); } };
+    },
     notify: setToast, inert: (top !== undefined && top !== "reader") || commandPaletteOpen || !!pendingLeave,
     onSending: (id, context) => {
       const selection = selectChatLocation(id, context);
-      if (top === "reader") overlays.closeTopWithoutGuard();
+      if (top === "reader") {
+        readerLeavingForChat.current = true;
+        overlays.closeTopWithoutGuard();
+        readerLeavingForChat.current = false;
+      }
       if (id > 0) {
         void chat.loadMessages(id).catch((err) => setToast({ message: formatNotice(t("notice.threadLoadFailed"), err) }));
       }
@@ -296,7 +321,10 @@ function DesktopShell() {
   }, [hasWebHost]);
   const origin = readerCitations.origins.get(threadId || chatContext);
   const openOriginArticle = () => {
-    if (origin) void openArticle(origin.id, { citationSource: conversationSource(), returnToList: true });
+    if (!origin) return;
+    const source = conversationSource() ?? defaultCitationSource();
+    readerCitations.begin(source);
+    void origin.resume(source).catch(err => setToast({ message: formatNotice(i18n.t("host.openFailedPrefix", { ns: "reader" }), err) }));
   };
   const returnToThread = (id: number) => {
     if (id === 0 || id === threadId) setView("chat");
