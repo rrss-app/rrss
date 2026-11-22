@@ -79,6 +79,9 @@ import type {
   DigestSummary,
   DigestView,
   FeatureView,
+  RatingUndoView,
+  RuleCandidateView,
+  RuleCandidateCaution,
   FeedTree,
   FeedView,
   FolderView,
@@ -217,6 +220,9 @@ export type {
   DigestSummary,
   DigestView,
   FeatureView,
+  RatingUndoView,
+  RuleCandidateView,
+  RuleCandidateCaution,
   FeedTree,
   FeedView,
   FolderView,
@@ -469,7 +475,9 @@ export const api = {
   deleteFolder: (id: number) => invoke("delete_folder", { id }),
   refresh: () => invoke<RefreshStarted>("refresh"),
   schedulerStatus: () => invoke<SchedulerSnapshot>("scheduler_status"),
-  rate: (id: number, up: boolean) => invoke("rate_article", { id, up }),
+  rate: (id: number, up: boolean) => invoke<RatingUndoView>("rate_article", { id, up }),
+  /** 把 `rate` 的返回原样带回：评分没再改过时恢复原评分。 */
+  undoRating: (id: number, undo: RatingUndoView) => invoke<void>("undo_rating", { id, undo }),
   citeArticle: (id: number) => invoke<CitationView>("cite_article", { id }),
   citeSelection: (articleId: number, excerpt: string, blockId: number) =>
     invoke<CitationView>("cite_selection", { articleId, excerpt, blockId }),
@@ -586,6 +594,8 @@ export const api = {
   resetFailed: () => invoke("reset_failed_embeds"),
   training: (articleId: number, excerpt?: string) =>
     invoke<FeatureView[]>("training_features", { articleId, excerpt: excerpt ?? null }),
+  /** 踩的「加一条规则…」：带近 30 天影响面、已按误伤风险排好序的候选。 */
+  ruleCandidates: (articleId: number) => invoke<RuleCandidateView[]>("rule_candidates", { articleId }),
   confirmFeature: (p: {
     articleId: number; feedId: number; dislike: boolean; feedScope: boolean; dimension: string; pattern: string;
   }) => invoke<number>("confirm_feature", p),

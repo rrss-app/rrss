@@ -220,7 +220,7 @@ test("disliking from the reader tools keeps J/K working in the unread scope", as
   await expect(title).toHaveText(`第 ${UNREAD_IDS[0]} 篇`);
   await reader.locator(".reader-tools > summary").click();
   await reader.locator(".reader-tools-panel").getByRole("button", { name: "踩", exact: true }).click();
-  await expect.poll(() => calls(page, "training_features")).toBe(1);
+  await expect(page.locator(".toast").getByRole("button", { name: "撤销", exact: true })).toBeVisible();
   await expect.poll(() => calls(page, "focus_stream")).toBeGreaterThan(1);
   await page.keyboard.press("j");
   await expect(title).toHaveText(`第 ${UNREAD_IDS[1]} 篇`);

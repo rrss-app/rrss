@@ -286,6 +286,49 @@ button.article-source:focus-visible { outline: 2px solid var(--accent); outline-
 .spot-check-options { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .spot-check-reveal small { color: var(--text-muted); font-size: 12px; }
 .spot-check-reveal[data-tone="ok"] { background: var(--focus-tint); border-color: transparent; }
+/* ---------- 点踩后的撤销窗口（阶段 11 · 踩的反馈） ---------- */
+.article[data-dismissed] { cursor: default; }
+.focus .article[data-dismissed]:hover h3 { text-decoration: none; }
+.dismiss-stage { position: relative; }
+.article[data-dismissed] .body { filter: blur(5px); opacity: 0.32; user-select: none; transition: filter 240ms var(--ease), opacity 240ms var(--ease); }
+.article[data-dismissed] .acts { visibility: hidden; }
+.dismiss-veil { position: absolute; inset: 0; display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-4); font-size: 14px; color: var(--text); outline: none; animation: dismiss-in 200ms var(--ease) both; }
+.dismiss-note { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 500; }
+.dismiss-note svg { color: var(--focus); }
+.dismiss-actions { display: inline-flex; align-items: center; gap: var(--space-3); }
+.dismiss-undo { display: inline-flex; align-items: center; min-height: 28px; padding: 0 12px; border-radius: 999px; background: var(--ink); color: var(--on-ink); font-size: 13px; font-weight: 500; }
+.dismiss-undo:hover { opacity: 0.88; }
+.dismiss-more { font-size: 12px; color: var(--text-muted); text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
+.dismiss-more:hover, .dismiss-more[aria-expanded="true"] { color: var(--text); }
+.dismiss-undo:focus-visible, .dismiss-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dismiss-countdown { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; overflow: hidden; pointer-events: none; }
+.dismiss-countdown i { display: block; height: 100%; background: var(--text-faint); transform-origin: left; animation-name: dismiss-countdown; animation-timing-function: linear; animation-fill-mode: both; }
+@keyframes dismiss-countdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.article[data-dismissed="leaving"] { opacity: 0; transition: opacity 200ms var(--ease); }
+@keyframes dismiss-in { from { opacity: 0; } }
+.dismiss-rules { margin-top: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-2); display: flex; flex-direction: column; gap: var(--space-2); font-size: 13px; animation: dismiss-in 180ms var(--ease) both; }
+.dismiss-rules-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
+.dismiss-rules-head strong { font-weight: 600; }
+.dismiss-rules-head small, .dismiss-rules .muted { color: var(--text-muted); font-size: 12px; margin: 0; }
+.dismiss-rules-foot { display: flex; justify-content: flex-end; }
+.rule-candidates { display: flex; flex-direction: column; gap: var(--space-2); }
+.rule-candidate-list { display: flex; flex-direction: column; }
+.rule-candidate { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3); padding: var(--space-2) 0; border-top: 1px solid var(--border); }
+.rule-candidate:first-child { border-top: 0; }
+.rule-candidate-what { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.rule-candidate-what small { display: block; margin-top: 2px; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.rule-candidate-what em { font-style: normal; color: var(--warn); }
+.rule-candidate-best { display: inline-flex; margin-left: var(--space-2); padding: 0 6px; border-radius: 999px; font-size: 11px; background: var(--focus-tint); color: var(--focus); vertical-align: 1px; }
+.rule-candidate-pick { display: flex; gap: var(--space-2); flex: none; }
+.rule-candidates-more { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--space-1); font-size: 12px; color: var(--text-muted); }
+.rule-candidates-more:hover { color: var(--text); }
+.rule-candidates-more svg { transition: transform 160ms var(--ease); }
+.rule-candidates-more[aria-expanded="true"] svg { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) {
+  .article[data-dismissed] .body, .article[data-dismissed="leaving"], .rule-candidates-more svg { transition: none; }
+  .dismiss-veil, .dismiss-rules { animation: none; }
+}
+
 .article .score {
   flex: none;
   font-size: 11.5px;

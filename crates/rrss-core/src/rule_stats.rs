@@ -2,7 +2,10 @@
 
 use rusqlite::{Connection, params};
 
+use crate::features::FeatureChip;
 use crate::feed_scope::FeedScope;
+use crate::rules::Dimension;
+use crate::score::{MatchInput, condition_hits, strip_html};
 use crate::{Result, articles, hidden};
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
@@ -60,6 +63,120 @@ pub fn list_rule_stats(conn: &Connection, now: i64) -> Result<Vec<RuleStats>> {
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// 训练条候选在近 30 天的影响面，不含这篇本身。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CandidateImpact {
+    /// 全部订阅里命中的文章数。
+    pub matched: i64,
+    /// 其中打开、赞、收藏、引用或追问过的。
+    pub read: i64,
+    /// 其中与这篇同源的。
+    pub matched_in_feed: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CandidateImpacts {
+    /// 与 `candidates` 一一对应。
+    pub impacts: Vec<CandidateImpact>,
+    /// 这篇的来源近 30 天的其他文章数。
+    pub feed_articles: i64,
+}
+
+/// 按近 30 天到达的长期文章统计每条候选的命中与读过数；只在用户展开候选时调用，不缓存。
+pub fn candidate_impacts(
+    conn: &Connection,
+    article_id: i64,
+    candidates: &[FeatureChip],
+    now: i64,
+) -> Result<CandidateImpacts> {
+    struct Row {
+        id: i64,
+        feed_id: i64,
+        author: Option<String>,
+        title: String,
+        url: Option<String>,
+        html: Option<String>,
+        read: bool,
+    }
+    let feed_id: i64 = conn.query_row(
+        "SELECT feed_id FROM articles WHERE id = ?1",
+        [article_id],
+        |row| row.get(0),
+    )?;
+    let body = candidates
+        .iter()
+        .any(|c| matches!(c.dimension, Dimension::BodyPhrase));
+    let since = now - 30 * DAY_MS;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT a.id, a.feed_id, a.author, a.title, a.canonical_url, {html},
+                a.starred = 1
+                OR EXISTS(SELECT 1 FROM feedback f WHERE f.article_id = a.id AND f.kind = 'up')
+                OR EXISTS(SELECT 1 FROM read_sessions s WHERE s.article_id = a.id)
+                OR EXISTS(SELECT 1 FROM article_events e WHERE e.article_id = a.id
+                          AND e.kind IN ('open', 'up', 'star', 'cite', 'ask', 'open_original'))
+         FROM articles a
+         WHERE a.created_at >= ?1 AND a.expires_at IS NULL AND a.id <> ?2",
+        html = if body { "a.content_html" } else { "NULL" },
+    ))?;
+    let rows = stmt
+        .query_map(params![since, article_id], |row| {
+            Ok(Row {
+                id: row.get(0)?,
+                feed_id: row.get(1)?,
+                author: row.get(2)?,
+                title: row.get(3)?,
+                url: row.get(4)?,
+                html: row.get(5)?,
+                read: row.get(6)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut tags: std::collections::HashMap<i64, Vec<String>> = std::collections::HashMap::new();
+    if candidates
+        .iter()
+        .any(|c| matches!(c.dimension, Dimension::Tag))
+    {
+        let mut stmt = conn.prepare(
+            "SELECT t.article_id, t.tag FROM article_tags t JOIN articles a ON a.id = t.article_id
+             WHERE a.created_at >= ?1 AND a.expires_at IS NULL AND a.id <> ?2",
+        )?;
+        for row in stmt.query_map(params![since, article_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })? {
+            let (id, tag) = row?;
+            tags.entry(id).or_default().push(tag);
+        }
+    }
+    let mut impacts = vec![CandidateImpact::default(); candidates.len()];
+    let mut feed_articles = 0;
+    let no_tags = Vec::new();
+    for row in &rows {
+        let same_feed = row.feed_id == feed_id;
+        feed_articles += i64::from(same_feed);
+        let body = row.html.as_deref().map(strip_html).unwrap_or_default();
+        let input = MatchInput {
+            feed_id: row.feed_id,
+            folder_ids: &[],
+            author: row.author.as_deref(),
+            tags: tags.get(&row.id).unwrap_or(&no_tags),
+            title: &row.title,
+            url: row.url.as_deref(),
+            body: &body,
+        };
+        for (impact, candidate) in impacts.iter_mut().zip(candidates) {
+            if condition_hits(candidate.dimension, &candidate.pattern, &input) {
+                impact.matched += 1;
+                impact.read += i64::from(row.read);
+                impact.matched_in_feed += i64::from(same_feed);
+            }
+        }
+    }
+    Ok(CandidateImpacts {
+        impacts,
+        feed_articles,
+    })
 }
 
 pub fn spot_check_stats(conn: &Connection, now: i64) -> Result<SpotCheckStats> {
@@ -287,5 +404,88 @@ mod tests {
             ),
             (50, 2, 2, false)
         );
+    }
+
+    #[test]
+    fn candidate_impacts_count_other_recent_articles_and_what_was_read() {
+        let (_dir, conn) = setup();
+        conn.execute(
+            "INSERT INTO feeds(id,url,created_at) VALUES(2,'https://other.invalid/feed',0)",
+            [],
+        )
+        .unwrap();
+        let insert = |id: i64, feed: i64, at: i64, author: &str, title: &str, tag: Option<&str>| {
+            conn.execute(
+                "INSERT INTO articles(id,feed_id,created_at,author,title,canonical_url)
+                 VALUES(?1,?2,?3,?4,?5,?6)",
+                params![
+                    id,
+                    feed,
+                    at,
+                    author,
+                    title,
+                    format!("https://deals.invalid/{id}")
+                ],
+            )
+            .unwrap();
+            if let Some(tag) = tag {
+                conn.execute(
+                    "INSERT INTO article_tags(article_id,tag) VALUES(?1,?2)",
+                    params![id, tag],
+                )
+                .unwrap();
+            }
+        };
+        insert(1, 1, NOW, "Mira", "Frame sale", Some("Deals"));
+        insert(2, 1, NOW - DAY_MS, "Mira", "Earbuds review", Some("deals"));
+        insert(3, 1, NOW - DAY_MS, "Mira", "Another frame sale", None);
+        insert(4, 2, NOW - DAY_MS, "Ken", "Frame history", Some("Deals"));
+        insert(
+            5,
+            1,
+            NOW - 31 * DAY_MS,
+            "Mira",
+            "Old frame sale",
+            Some("Deals"),
+        );
+        conn.execute("UPDATE articles SET expires_at = 1 WHERE id = 4", [])
+            .unwrap();
+        insert(6, 2, NOW - DAY_MS, "Ken", "Sale roundup", Some("Deals"));
+        conn.execute(
+            "INSERT INTO article_events(article_id,kind,at) VALUES(2,'open',?1)",
+            [NOW],
+        )
+        .unwrap();
+        // 只是标成已读不算读过；这篇本身读过也不计入。
+        conn.execute("UPDATE articles SET read = 1 WHERE id IN (3, 6)", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO article_events(article_id,kind,at) VALUES(1,'open',?1)",
+            [NOW],
+        )
+        .unwrap();
+        let chip = |dimension, pattern: &str| FeatureChip {
+            dimension,
+            pattern: pattern.into(),
+        };
+        let out = candidate_impacts(
+            &conn,
+            1,
+            &[
+                chip(Dimension::Tag, "Deals"),
+                chip(Dimension::Author, "mira"),
+                chip(Dimension::TitleKw, "sale"),
+                chip(Dimension::UrlPhrase, "deals.invalid"),
+            ],
+            NOW,
+        )
+        .unwrap();
+        assert_eq!(out.feed_articles, 2);
+        let counts: Vec<_> = out
+            .impacts
+            .iter()
+            .map(|i| (i.matched, i.read, i.matched_in_feed))
+            .collect();
+        assert_eq!(counts, [(2, 1, 1), (2, 1, 2), (2, 0, 1), (3, 1, 2)]);
     }
 }

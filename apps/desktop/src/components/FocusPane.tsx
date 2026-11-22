@@ -15,6 +15,7 @@ import { MenuButton, MenuCheck } from "./MenuSelect";
 import { Segmented } from "./Segmented";
 import { useDelayed } from "./Pending";
 import type { SpotAction, SpotReview } from "./SpotCheckReveal";
+import type { DislikeAction, DislikeState } from "./DislikeVeil";
 
 export type RankingToggle = "interest_boost" | "rerank" | "cluster_group" | "hide_noisy"
   | "rank_features" | "rank_source" | "rank_coverage" | "rank_freshness" | "rank_affinity" | "show_details";
@@ -196,6 +197,8 @@ export function FocusPane({
   onCite,
   onSource,
   onRate,
+  dislikes = {},
+  onDislikeAction,
   onStar,
   onOpenDigest,
   onOpenSearch,
@@ -241,6 +244,9 @@ export function FocusPane({
   onCite: (id: number) => void;
   onSource?: (feedId: number) => void;
   onRate: (row: ArticleView, up: boolean) => void;
+  /** 点踩后还在撤销窗口里的卡片（阶段 11 · 踩的反馈）。 */
+  dislikes?: Record<number, DislikeState>;
+  onDislikeAction?: (id: number, action: DislikeAction) => void;
   onStar?: (row: ArticleView) => void;
   onOpenDigest?: () => void;
   onOpenSearch?: () => void;
@@ -568,7 +574,7 @@ export function FocusPane({
                 slot={slot}
                 measure={virtual.measureElement}
                 observe={onObserveArticle}
-                remeasure={spotReviews[row.id]}
+                remeasure={spotReviews[row.id] ?? dislikes[row.id]?.rules}
                 style={{
                   position: "absolute",
                   top: 0,
@@ -596,6 +602,8 @@ export function FocusPane({
                     onCite={onCite}
                     onSource={onSource}
                     onRate={onRate}
+                    dislike={dislikes[row.id]}
+                    onDislikeAction={onDislikeAction ? (action) => onDislikeAction(row.id, action) : undefined}
                     onStar={onStar}
                   />
                 )}

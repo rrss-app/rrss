@@ -32,6 +32,39 @@ pub struct FeatureView {
     pub pattern: String,
 }
 
+// Why a dislike rule candidate is folded away by default; ordered from safest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum RuleCandidateCaution {
+    None,
+    // It also matches articles the user opened, liked, starred, cited or asked about.
+    Reads,
+    // It covers nearly every recent article of this article's feed.
+    WholeFeed,
+}
+
+// A rule suggestion for a disliked article, with its 30-day reach (this article excluded).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct RuleCandidateView {
+    pub dimension: String,
+    pub pattern: String,
+    pub matched_30d: i64,
+    pub read_30d: i64,
+    pub caution: RuleCandidateCaution,
+    // The first candidate without a caution that also reaches other articles.
+    pub best: bool,
+}
+
+// Returned by a rating and passed back unchanged to undo it.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct RatingUndoView {
+    pub up: bool,
+    // The rating before this one: 1 liked, -1 disliked, 0 none.
+    pub previous: i32,
+    pub previous_at: i64,
+    pub suggested_rule_id: Option<i64>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 pub enum RuleEffect {

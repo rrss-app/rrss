@@ -6,6 +6,8 @@ import { trainingFeaturesFixture } from "../src/test/fixtures/settings";
 const shots = "../../test-results/worker/rating-rules-copy";
 const calls = (page: Page, command: string) => page.evaluate(cmd =>
   (window as unknown as { __mockHost: { calls: string[] } }).__mockHost.calls.filter(c => c === cmd).length, command);
+const args = (page: Page, command: string) => page.evaluate(cmd =>
+  (window as unknown as { __mockHost: { args: Record<string, unknown> } }).__mockHost.args[cmd], command);
 
 async function appearances(page: Page, name: string, check?: () => Promise<void>) {
   for (const width of [1280, 560]) {
@@ -79,9 +81,12 @@ test("reader training stays below the middle and above the citation tray until c
   await reader.locator('summary[aria-label="更多"]').click();
   const before = await calls(page, "focus_stream");
   await reader.locator(".reader-tools-feedback").getByRole("button", { name: "踩", exact: true }).click();
+  // 踩不再自动弹训练条：提示里点「加一条规则…」才打开。
+  await expect(training).toHaveCount(0);
+  await page.locator(".toast").getByRole("button", { name: "加一条规则…", exact: true }).click();
   await expect(training).toBeVisible();
   await expect(page.locator(".training-stage")).toHaveAttribute("data-reader", "true");
-  expect(await calls(page, "focus_stream")).toBe(before);
+  await expect.poll(() => calls(page, "focus_stream")).toBe(before + 1);
   await page.keyboard.press("Tab");
   await expect(training.getByRole("button", { name: "关闭", exact: true })).toBeFocused();
   await appearances(page, "reader-training", async () => {
@@ -93,10 +98,50 @@ test("reader training stays below the middle and above the citation tray until c
   });
   await training.getByRole("button", { name: "仅此源", exact: true }).first().click();
   await expect(training).toHaveCount(0);
-  await expect.poll(() => calls(page, "focus_stream")).toBe(before + 1);
+  await expect.poll(() => calls(page, "focus_stream")).toBe(before + 2);
   expect(await page.evaluate(() => (window as unknown as { __mockHost: { args: Record<string, unknown> } }).__mockHost.args.confirm_feature))
     .toMatchObject({ articleId: 1, dislike: true, feedScope: true, dimension: "title_kw", pattern: "融资" });
   await expect(tray.getByRole("textbox")).toHaveValue("这条引用先保留");
   await reader.locator('summary[aria-label="更多"]').click();
   await expect(reader.locator(".reader-tools-feedback").getByRole("button", { name: "已踩", exact: true })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("a card dislike veils in place with undo, and offers ranked rules only on request", async ({ page }) => {
+  await installMockHost(page, { focusPageSize: 4, ruleCandidates: [
+    { dimension: "tag", pattern: "产品", matched_30d: 6, read_30d: 0, caution: "none", best: true },
+    { dimension: "author", pattern: "某某", matched_30d: 20, read_30d: 3, caution: "reads", best: false },
+  ] });
+  await page.clock.install();
+  await page.goto("/");
+  const card = (index: number) => page.getByRole("article").nth(index);
+  const first = await card(0).getAttribute("aria-label");
+  await card(0).hover();
+  await card(0).getByRole("button", { name: "踩", exact: true }).click();
+  await expect(card(0).locator(".dismiss-veil")).toBeVisible();
+  await expect(page.locator(".training-sheet")).toHaveCount(0);
+  await card(0).click({ position: { x: 4, y: 4 } });
+  await expect(page.locator(".drawer.reader")).toHaveCount(0);
+  await card(0).getByRole("button", { name: "撤销", exact: true }).click();
+  await expect(card(0).locator(".dismiss-veil")).toHaveCount(0);
+  expect(await args(page, "undo_rating")).toMatchObject({ undo: { up: false } });
+
+  await card(0).hover();
+  await card(0).getByRole("button", { name: "踩", exact: true }).click();
+  await card(0).getByRole("button", { name: "加一条规则…", exact: true }).click();
+  const rules = card(0).locator(".dismiss-rules");
+  // 可能误伤的候选先折叠；面板展开时不计时。
+  await expect(rules.locator(".rule-candidate")).toHaveCount(1);
+  await page.clock.runFor(10_000);
+  await expect(card(0)).toHaveAttribute("aria-label", first!);
+  await rules.getByRole("button", { name: "仅此源", exact: true }).click();
+  await expect.poll(() => args(page, "confirm_feature")).toMatchObject({ dislike: true, feedScope: true, dimension: "tag", pattern: "产品" });
+  await expect(card(0)).not.toHaveAttribute("aria-label", first!);
+
+  const second = await card(1).getAttribute("aria-label");
+  await card(1).hover();
+  await card(1).getByRole("button", { name: "踩", exact: true }).click();
+  await page.mouse.move(0, 0);
+  await page.clock.runFor(5_500);
+  await expect(card(1)).not.toHaveAttribute("aria-label", second!);
+  await expect(page.getByRole("article").filter({ has: page.locator(".dismiss-veil") })).toHaveCount(0);
 });

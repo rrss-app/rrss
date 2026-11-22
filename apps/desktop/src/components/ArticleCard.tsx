@@ -8,6 +8,7 @@ import { Icon } from "./Icon";
 import { RelativeTime } from "./RelativeTime";
 import { ThumbIcon } from "./ThumbIcon";
 import { SpotCheckReveal, type SpotAction, type SpotReview } from "./SpotCheckReveal";
+import { DislikeRulesPanel, DislikeVeil, type DislikeAction, type DislikeState } from "./DislikeVeil";
 
 export function SourceAvatar({ title, size = 16, iconHref = "" }: { title: string; size?: number; iconHref?: string }) {
   const [failedHref, setFailedHref] = useState("");
@@ -27,6 +28,7 @@ export function SourceAvatar({ title, size = 16, iconHref = "" }: { title: strin
 /** 一篇文章的完整卡片。相近报道的组头、成员行与组尾见 `FocusCluster`。 */
 export function ArticleCard({
   row, focused = false, representative = false, details = true, review, reviewBusy = false, hideThreshold = 0, onReview, onOpen, onCite, onRate, onStar, onSource,
+  dislike, onDislikeAction,
 }: {
   row: ArticleView;
   focused?: boolean;
@@ -43,6 +45,9 @@ export function ArticleCard({
   onSource?: (feedId: number) => void;
   onRate: (row: ArticleView, up: boolean) => void;
   onStar?: (row: ArticleView) => void;
+  /** 点踩后的撤销窗口：正文虚化、不能再打开，盖一行提示（阶段 11 · 踩的反馈）。 */
+  dislike?: DislikeState;
+  onDislikeAction?: (action: DislikeAction) => void;
 }) {
   const { t } = useTranslation("focus");
   const score = review?.article.score ?? row.score;
@@ -50,21 +55,9 @@ export function ArticleCard({
   const showReasons = details && (!row.spot_check || !!review);
   // 学来的原因只露加分最多的一条，其余放在悬停提示里。
   const learned = row.rank_reasons?.reduce<RankReasonView | undefined>((best, r) => r.points > 0 && r.points > (best?.points ?? 0) ? r : best, undefined);
-  return (
-    <article
-      className={`article${row.read ? "" : " unread"}${row.starred ? " starred" : ""}${focused ? " focused" : ""}`}
-      tabIndex={0}
-      aria-label={row.title}
-      onClick={() => onOpen(row.id)}
-      onKeyDown={(event) => {
-        if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
-          event.preventDefault();
-          event.stopPropagation();
-          onOpen(row.id);
-        }
-      }}
-    >
-      <div className="body">
+  const dismissed = dislike && onDislikeAction ? dislike : undefined;
+  const body = (
+      <div className="body" inert={!!dismissed} aria-hidden={dismissed ? true : undefined}>
         <h3>{row.title}</h3>
         {row.summary ? <p className="summary">{row.summary}</p> : null}
         <div className="article-footer">
@@ -101,6 +94,31 @@ export function ArticleCard({
         </div>
         {details && review && onReview ? <SpotCheckReveal review={review} threshold={hideThreshold} busy={reviewBusy} onAction={onReview} /> : null}
       </div>
+  );
+  return (
+    <article
+      className={`article${row.read ? "" : " unread"}${row.starred ? " starred" : ""}${focused ? " focused" : ""}`}
+      data-dismissed={dismissed ? (dismissed.leaving ? "leaving" : "veiled") : undefined}
+      tabIndex={0}
+      aria-label={row.title}
+      onClick={() => { if (!dismissed) onOpen(row.id); }}
+      onKeyDown={(event) => {
+        if (!dismissed && event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          event.stopPropagation();
+          onOpen(row.id);
+        }
+      }}
+    >
+      {dismissed && onDislikeAction ? <>
+        <div className="dismiss-stage" onClick={(event) => event.stopPropagation()}>
+          {body}
+          <DislikeVeil state={dismissed} onAction={onDislikeAction} />
+        </div>
+        {dismissed.rules ? <div onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+          <DislikeRulesPanel rules={dismissed.rules} onAction={onDislikeAction} />
+        </div> : null}
+      </> : body}
     </article>
   );
 }

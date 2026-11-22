@@ -52,8 +52,8 @@ use rusqlite::Connection;
 use std::path::Path;
 
 use crate::views::{
-    CitationView, PrefsImportView, PrefsScopeView, PrefsSkipView, SaveAiSettingsArgs,
-    SavePiSettingsArgs, UiError,
+    CitationView, PrefsImportView, PrefsScopeView, PrefsSkipView, RatingUndoView,
+    SaveAiSettingsArgs, SavePiSettingsArgs, UiError,
 };
 
 pub fn mark_read(conn: &Connection, id: i64, read: bool) -> rrss_core::Result<()> {
@@ -120,11 +120,7 @@ pub fn add_interest(conn: &Connection, label: &str) -> rrss_core::Result<i64> {
     interests::insert_interest(conn, label.trim(), "manual")
 }
 
-pub fn rate_article(
-    conn: &Connection,
-    id: i64,
-    up: bool,
-) -> rrss_core::Result<feedback::RateResult> {
+pub fn rate_article(conn: &Connection, id: i64, up: bool) -> rrss_core::Result<RatingUndoView> {
     let kind = if up {
         FeedbackKind::Up
     } else {
@@ -132,7 +128,43 @@ pub fn rate_article(
     };
     let result = feedback::rate_article(conn, id, kind)?;
     crate::jobs::rank::request(conn)?;
-    Ok(result)
+    let previous = result.previous;
+    Ok(RatingUndoView {
+        up,
+        previous: match previous.map(|p| p.kind) {
+            Some(FeedbackKind::Up) => 1,
+            Some(FeedbackKind::Down) => -1,
+            None => 0,
+        },
+        previous_at: previous.map_or(0, |p| p.created_at),
+        suggested_rule_id: result.suggested_rule_id,
+    })
+}
+
+/// 撤销 `rate_article`：评分没再改过时放回原评分，并撤掉那次新生成的待确认建议。
+pub fn undo_rating(conn: &Connection, id: i64, undo: &RatingUndoView) -> rrss_core::Result<()> {
+    let kind = |up| {
+        if up {
+            FeedbackKind::Up
+        } else {
+            FeedbackKind::Down
+        }
+    };
+    let previous = (undo.previous != 0).then(|| feedback::PreviousFeedback {
+        kind: kind(undo.previous > 0),
+        created_at: undo.previous_at,
+    });
+    feedback::undo_rating(
+        conn,
+        id,
+        feedback::RatingUndo {
+            kind: kind(undo.up),
+            previous,
+            suggested_rule_id: undo.suggested_rule_id,
+        },
+    )?;
+    crate::jobs::rank::request(conn)?;
+    Ok(())
 }
 
 /// Persist a rule change and its article scores atomically.
@@ -931,8 +963,21 @@ mod tests {
         )
         .unwrap();
         let pending = || db::get_setting(&conn, "rank_dirty_at").unwrap().is_some();
-        rate_article(&conn, 1, true).unwrap();
+        let liked = rate_article(&conn, 1, true).unwrap();
         assert!(pending());
+        conn.execute("DELETE FROM settings WHERE key='rank_dirty_at'", [])
+            .unwrap();
+        let disliked = rate_article(&conn, 1, false).unwrap();
+        assert_eq!((disliked.up, disliked.previous), (false, 1));
+        conn.execute("DELETE FROM settings WHERE key='rank_dirty_at'", [])
+            .unwrap();
+        undo_rating(&conn, 1, &disliked).unwrap();
+        assert!(pending());
+        assert_eq!(
+            feedback::feedback_for_article(&conn, 1).unwrap(),
+            Some(FeedbackKind::Up)
+        );
+        assert_eq!(liked.previous, 0);
         conn.execute("DELETE FROM settings WHERE key='rank_dirty_at'", [])
             .unwrap();
         record_article_events(

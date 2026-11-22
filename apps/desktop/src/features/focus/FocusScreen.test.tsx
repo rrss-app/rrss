@@ -6,6 +6,7 @@ import { api } from "../../lib/api";
 import { focusRow, TWO_ARTICLE_PAGE } from "../../test/fixtures/reader";
 import { createReactHarness } from "../../test/react";
 import { clickText, pressKey } from "../../test/fixtures/shell";
+import { createArticleWriteOrder } from "../../lib/articleWriteOrder";
 
 const harness = createReactHarness();
 afterEach(() => { harness.cleanup(); vi.restoreAllMocks(); });
@@ -25,7 +26,7 @@ it("owns keyboard navigation, resets it on equal-size scope changes and retains 
   function Screen() {
     const [active, setActive] = useState(true);
     return <><button onClick={() => setActive(!active)}>切页</button><FocusScreen session={session} active={active} shortcuts={active}
-      onOpen={onOpen} onCite={onCite} onRate={onRate} onOpenDigest={() => {}} onOpenSearch={() => {}} onOpenFeed={() => {}} notify={notify} /></>;
+      onOpen={onOpen} onCite={onCite} onRate={onRate} ratings={createArticleWriteOrder()} onOpenDigest={() => {}} onOpenSearch={() => {}} onOpenFeed={() => {}} notify={notify} /></>;
   }
   const { host } = harness.mount(<Screen />);
   await harness.flush();
@@ -68,7 +69,7 @@ it("keeps later pages and the scroll position when a cluster expands, then resto
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(800);
   vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(1024);
   const { host } = harness.mount(<FocusScreen session={session} active shortcuts
-    onOpen={() => {}} onCite={() => {}} onRate={() => {}} onOpenDigest={() => {}} onOpenSearch={() => {}} onOpenFeed={() => {}} notify={notify} />);
+    onOpen={() => {}} onCite={() => {}} onRate={() => {}} ratings={createArticleWriteOrder()} onOpenDigest={() => {}} onOpenSearch={() => {}} onOpenFeed={() => {}} notify={notify} />);
   await harness.flush();
   if (!session.getSnapshot().page?.articles.some((row) => row.id === later.id)) await session.loadMore();
   await harness.flush();

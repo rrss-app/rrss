@@ -1,4 +1,4 @@
-//! 赞踩只记 `feedback`，建议规则需确认。日志 target：`rrss_core::feedback`。
+//! 赞踩只记 `feedback`，建议规则需确认；评分可撤销。日志 target：`rrss_core::feedback`。
 
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -23,11 +23,35 @@ impl FeedbackKind {
             Self::Down => "down",
         }
     }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "up" => Some(Self::Up),
+            "down" => Some(Self::Down),
+            _ => None,
+        }
+    }
+}
+
+/// 这次评分之前的那条反馈；撤销时原样放回。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PreviousFeedback {
+    pub kind: FeedbackKind,
+    pub created_at: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RateResult {
     pub kind: FeedbackKind,
+    pub suggested_rule_id: Option<i64>,
+    pub previous: Option<PreviousFeedback>,
+}
+
+/// 撤销所需的全部信息：`rate_article` 的结果原样带回。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RatingUndo {
+    pub kind: FeedbackKind,
+    pub previous: Option<PreviousFeedback>,
     pub suggested_rule_id: Option<i64>,
 }
 
@@ -37,6 +61,7 @@ pub fn rate_article(conn: &Connection, article_id: i64, kind: FeedbackKind) -> R
         return Ok(RateResult {
             kind,
             suggested_rule_id: None,
+            previous: None,
         });
     }
     let exists: i64 = conn.query_row(
@@ -47,6 +72,7 @@ pub fn rate_article(conn: &Connection, article_id: i64, kind: FeedbackKind) -> R
     if exists == 0 {
         return Err(Error::ArticleNotFound);
     }
+    let previous = previous_feedback(conn, article_id)?;
     conn.execute(
         "INSERT INTO feedback (article_id, kind, created_at) VALUES (?1, ?2, ?3)
          ON CONFLICT(article_id) DO UPDATE SET kind = excluded.kind, created_at = excluded.created_at",
@@ -61,22 +87,56 @@ pub fn rate_article(conn: &Connection, article_id: i64, kind: FeedbackKind) -> R
     Ok(RateResult {
         kind,
         suggested_rule_id: suggested,
+        previous,
     })
 }
 
+/// 撤销一次评分。这篇的反馈仍是那次写入的种类时，换回之前的反馈（之前没有就删除）；
+/// 之后又改过评分就不动反馈。那次生成、仍未确认的作者建议一并删除。返回反馈是否改回。
+pub fn undo_rating(conn: &Connection, article_id: i64, undo: RatingUndo) -> Result<bool> {
+    let tx = conn
+        .is_autocommit()
+        .then(|| crate::db::write_transaction(conn))
+        .transpose()?;
+    let current = previous_feedback(conn, article_id)?.map(|f| f.kind);
+    let restored = current == Some(undo.kind);
+    if restored {
+        match undo.previous {
+            Some(previous) => conn.execute(
+                "UPDATE feedback SET kind = ?2, created_at = ?3 WHERE article_id = ?1",
+                params![article_id, previous.kind.as_str(), previous.created_at],
+            )?,
+            None => conn.execute("DELETE FROM feedback WHERE article_id = ?1", [article_id])?,
+        };
+    }
+    if let Some(rule_id) = undo.suggested_rule_id {
+        conn.execute(
+            "DELETE FROM rules WHERE id = ?1 AND source = 'suggested' AND enabled = 0",
+            [rule_id],
+        )?;
+    }
+    if let Some(tx) = tx {
+        tx.commit()?;
+    }
+    tracing::info!(article_id, restored, "feedback undone");
+    Ok(restored)
+}
+
 pub fn feedback_for_article(conn: &Connection, article_id: i64) -> Result<Option<FeedbackKind>> {
-    let kind: Option<String> = conn
+    Ok(previous_feedback(conn, article_id)?.map(|f| f.kind))
+}
+
+fn previous_feedback(conn: &Connection, article_id: i64) -> Result<Option<PreviousFeedback>> {
+    let row: Option<(String, i64)> = conn
         .query_row(
-            "SELECT kind FROM feedback WHERE article_id = ?1",
+            "SELECT kind, created_at FROM feedback WHERE article_id = ?1",
             [article_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
-    match kind.as_deref() {
-        Some("up") => Ok(Some(FeedbackKind::Up)),
-        Some("down") => Ok(Some(FeedbackKind::Down)),
-        _ => Ok(None),
-    }
+    Ok(row.and_then(|(kind, created_at)| {
+        FeedbackKind::parse(&kind).map(|kind| PreviousFeedback { kind, created_at })
+    }))
 }
 
 fn maybe_suggest_author(conn: &Connection, article_id: i64) -> Result<Option<i64>> {
@@ -203,6 +263,79 @@ mod tests {
         assert_eq!(rule.polarity, Polarity::Dislike);
         let again = rate_article(&conn, ids[0], FeedbackKind::Down).unwrap();
         assert!(again.suggested_rule_id.is_none());
+    }
+
+    fn undo_of(result: &RateResult) -> RatingUndo {
+        RatingUndo {
+            kind: result.kind,
+            previous: result.previous,
+            suggested_rule_id: result.suggested_rule_id,
+        }
+    }
+
+    #[test]
+    fn undo_restores_the_rating_before_the_dislike() {
+        let (_dir, conn) = open_temp();
+        let ids = insert_authored(&conn, 2);
+        let fresh = rate_article(&conn, ids[0], FeedbackKind::Down).unwrap();
+        assert!(undo_rating(&conn, ids[0], undo_of(&fresh)).unwrap());
+        assert_eq!(feedback_for_article(&conn, ids[0]).unwrap(), None);
+
+        rate_article(&conn, ids[1], FeedbackKind::Up).unwrap();
+        conn.execute(
+            "UPDATE feedback SET created_at = 42 WHERE article_id = ?1",
+            [ids[1]],
+        )
+        .unwrap();
+        let changed = rate_article(&conn, ids[1], FeedbackKind::Down).unwrap();
+        assert_eq!(
+            changed.previous,
+            Some(PreviousFeedback {
+                kind: FeedbackKind::Up,
+                created_at: 42
+            })
+        );
+        assert!(undo_rating(&conn, ids[1], undo_of(&changed)).unwrap());
+        let restored: (String, i64) = conn
+            .query_row(
+                "SELECT kind, created_at FROM feedback WHERE article_id = ?1",
+                [ids[1]],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(restored, ("up".into(), 42));
+    }
+
+    #[test]
+    fn undo_keeps_a_later_rating() {
+        let (_dir, conn) = open_temp();
+        let ids = insert_authored(&conn, 1);
+        let down = rate_article(&conn, ids[0], FeedbackKind::Down).unwrap();
+        rate_article(&conn, ids[0], FeedbackKind::Up).unwrap();
+        assert!(!undo_rating(&conn, ids[0], undo_of(&down)).unwrap());
+        assert_eq!(
+            feedback_for_article(&conn, ids[0]).unwrap(),
+            Some(FeedbackKind::Up)
+        );
+    }
+
+    #[test]
+    fn undo_drops_only_the_unconfirmed_suggestion_it_created() {
+        let (_dir, conn) = open_temp();
+        let ids = insert_authored(&conn, 6);
+        for id in &ids[..4] {
+            rate_article(&conn, *id, FeedbackKind::Down).unwrap();
+        }
+        let fifth = rate_article(&conn, ids[4], FeedbackKind::Down).unwrap();
+        let rule_id = fifth.suggested_rule_id.expect("suggestion");
+        undo_rating(&conn, ids[4], undo_of(&fifth)).unwrap();
+        assert!(get_rule(&conn, rule_id).is_err());
+
+        let again = rate_article(&conn, ids[4], FeedbackKind::Down).unwrap();
+        let rule_id = again.suggested_rule_id.expect("suggestion again");
+        crate::rules::confirm_rule(&conn, rule_id).unwrap();
+        undo_rating(&conn, ids[4], undo_of(&again)).unwrap();
+        assert!(get_rule(&conn, rule_id).unwrap().enabled);
     }
 
     #[test]

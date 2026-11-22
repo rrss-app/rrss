@@ -259,5 +259,23 @@
   "rankingNote": {
     "interest_boost_inactive": "兴趣加分未生效：还没有兴趣向量，排序只用规则分",
     "interest_not_ready": "兴趣未就绪：还没有可用的兴趣向量，当前按时间混合"
+  },
+  "dislike": {
+    "recorded": "已记下，会少推类似文章",
+    "undo": "撤销",
+    "addRule": "加一条规则…",
+    "undone": "已撤销，这篇的踩已清除",
+    "rulesTitle": "加一条规则（可选）",
+    "rulesHint": "按近 30 天的阅读排序，你没读过的在前",
+    "rulesLoading": "正在统计…",
+    "rulesEmpty": "这篇没有可用的规则条件",
+    "rulesFailed": "候选读取失败：",
+    "rulesClose": "收起",
+    "best": "最贴近",
+    "wholeFeed": "相当于整个来源",
+    "mayHit": "可能误伤",
+    "separator": " · ",
+    "reach_other": "近 30 天另有 {{count}} 篇 · 读过 {{read}} 篇",
+    "risky_other": "另有 {{count}} 条可能误伤常读内容"
   }
 }

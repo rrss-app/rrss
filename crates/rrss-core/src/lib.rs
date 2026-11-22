@@ -94,7 +94,10 @@ pub use digest::{
 };
 pub use error::{Error, Result};
 pub use features::{FeatureChip, extract_features};
-pub use feedback::{FeedbackKind, RateResult, feedback_for_article, rate_article};
+pub use feedback::{
+    FeedbackKind, PreviousFeedback, RateResult, RatingUndo, feedback_for_article, rate_article,
+    undo_rating,
+};
 pub use feeds::{
     FeedRow, FolderRow, FolderView, SubscribeRequest, create_folder, delete_folder, display_title,
     list_folder_views, list_folders, rename_feed, rename_folder, set_folder, subscribe,

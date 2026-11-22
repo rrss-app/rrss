@@ -8,11 +8,13 @@ import { isTauri, PREVIEW_FOCUS } from "../../lib/preview";
 import { FALLBACK_RANKING, type RankingToggle } from "../../components/FocusPane";
 import type { SpotAction, SpotResult, SpotReview } from "../../components/SpotCheckReveal";
 import { refreshProblem, waitForRefresh } from "./refreshOperation";
+import { createDislikes, type RatingWrite } from "./dislikes";
+import type { DislikeAction, DislikeState } from "../../components/DislikeVeil";
 
 // 约一张普通卡片的高度（px）；超过此距离视为已离开列表顶部。
 const BROWSING_SCROLL_THRESHOLD = 88;
 
-export type FocusNotice = { message: string; holdMs?: number; actionLabel?: string; onAction?: () => void };
+export type FocusNotice = { message: string; holdMs?: number; actionLabel?: string; onAction?: () => void; secondaryLabel?: string; onSecondary?: () => void };
 export type FocusSnapshot = {
   spotReviews: Record<number, SpotReview>;
   spotBusy: boolean;
@@ -30,6 +32,8 @@ export type FocusSnapshot = {
   /** 最近一次查询中可展示、尚未并进当前列表的文章数。 */
   pendingNew: number;
   readerReturn: { id: number; sequence: number } | null;
+  /** 点踩后还在撤销窗口里的卡片，按文章 id（阶段 11 · 踩的反馈）。 */
+  dislikes: Record<number, DislikeState>;
 };
 
 export type FocusSessionOptions = {
@@ -45,6 +49,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     spotReviews: {}, spotBusy: false,
     page: null, feeds: [], expandedCluster: null,
     loading: false, loadingMore: false, moreError: "", refreshing: false, revision: 0, dataRevision: 0, pendingNew: 0, readerReturn: null,
+    dislikes: {},
   };
   const listeners = new Set<() => void>();
   let generation = 0;
@@ -110,6 +115,37 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     listeners.forEach((listener) => listener());
   };
   const owns = (gen: number) => active && gen === generation;
+  const dislikes = createDislikes({
+    read: () => state.dislikes,
+    write: (next) => publish({ dislikes: next }),
+    async replacement(row) {
+      const page = state.page;
+      // 展开组里的成员只收起，不补位。
+      if (!page?.has_more || (row.cluster_id && row.cluster_id === state.expandedCluster)) return [];
+      const gen = generation;
+      const { excludeIds, excludeClusterIds } = focusExcludes(page.articles);
+      const more = await focusQuery(state.expandedCluster, { excludeIds, excludeClusterIds, more: true });
+      if (!owns(gen)) return [];
+      return focusBlocks(more.articles.filter((next) => next.row_kind !== 0 || !dismissedIds.has(next.id)))[0] ?? [];
+    },
+    replace(row, rows) {
+      dismissedIds.add(row.id);
+      const page = state.page;
+      if (!page) return;
+      const articles = page.articles;
+      const at = articles.findIndex((next) => next.row_kind === 0 && next.id === row.id);
+      if (at < 0) { publish({ page: visiblePage(page) }); return; }
+      // 收起的组：组头与代表一起换掉。
+      const header = articles[at - 1];
+      const start = row.cluster_id && row.cluster_id !== state.expandedCluster && header?.row_kind === 1 && header.cluster_id === row.cluster_id ? at - 1 : at;
+      const shown = new Set(articles.map(rowKey));
+      const fill = rows.filter((next) => !shown.has(rowKey(next)));
+      publish({ page: visiblePage({ ...page, articles: [...articles.slice(0, start), ...fill, ...articles.slice(at + 1)] }) });
+    },
+    dismiss: (id) => { dismissedIds.add(id); },
+    rulesChanged: () => void rulesChanged(),
+    notify: (notice) => { if (active) notify(notice); },
+  });
   const clusterHeader = (articles: ArticleView[], clusterId: number) =>
     articles.findIndex((row) => row.row_kind === 1 && row.cluster_id === clusterId);
   const shownRepresentative = (articles: ArticleView[], clusterId: number): ArticleView | null => {
@@ -192,6 +228,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
   }
 
   async function reload(resetBrowsing = true) {
+    dislikes.commitAll();
     const gen = ++generation;
     pendingPage = null;
     if (resetBrowsing) browsingStarted = false;
@@ -477,7 +514,14 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     getRanking: () => state.page?.ranking ?? FALLBACK_RANKING,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     start() { active = true; publish({ refreshing: false }); void reload(); void reloadFeeds(); if (isTauri() && !options?.scope) void refreshCurrent(true); },
-    stop() { active = false; refreshController?.abort(); ++generation; ++feedsGeneration; moreRequest = null; },
+    stop() { dislikes.commitAll(); active = false; refreshController?.abort(); ++generation; ++feedsGeneration; moreRequest = null; },
+    /** 卡片上的踩（阶段 11 · 踩的反馈）：原地虚化、可撤销，到时换成下一条候选。 */
+    dislike(row: ArticleView, write: RatingWrite) {
+      if (!active) return Promise.resolve(false);
+      if (row.spot_check) revealSpotCheck(row.id, false);
+      return dislikes.start(row, write);
+    },
+    dislikeAction: (id: number, action: DislikeAction) => dislikes.act(id, action),
     reload, reloadFeeds, feedsChanged, backgroundChanged, adoptLatest, loadMore, toggleStar, setRead, markAllRead, markGroupRead, refresh, revealSpotCheck, decideSpotCheck,
     startBrowsing, showNew: () => adoptPending(true),
     setVisibleEnd(index: number) { visibleEnd = index; },

@@ -149,6 +149,11 @@ pub fn match_rules(compiled: &[CompiledRule], input: &MatchInput<'_>) -> ScoreRe
     ScoreResult { score, reasons }
 }
 
+/// 不经规则表判断一个非正则条件是否命中；训练条候选的影响面统计用。正则维度一律不命中。
+pub(crate) fn condition_hits(dimension: Dimension, pattern: &str, input: &MatchInput<'_>) -> bool {
+    !dimension.is_regex() && hit(&dimension, pattern, None, input).is_some()
+}
+
 pub(crate) fn stored_reasons_json(result: &ScoreResult) -> String {
     #[derive(Serialize)]
     struct StoredRule<'a> {

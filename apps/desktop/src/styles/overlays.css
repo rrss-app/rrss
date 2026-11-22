@@ -108,6 +108,15 @@
 /* 原网页可见时，toast 贴在顶栏下、子 webview 占位之外，避免被原生层挡住。 */
 .shell[data-web-embedded] .toast { top: 56px; bottom: auto; }
 .toast > span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.toast-secondary {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+}
+.toast-secondary:hover { color: var(--text); }
 .toast-action {
   flex-shrink: 0;
   font-size: 12px;
@@ -184,3 +193,6 @@
   border-top: 1px solid var(--border);
 }
 .training-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.training-list .rule-candidate { padding-inline: 4px; }
+.training-list .rule-candidate:first-child { border-top: 1px solid var(--border); }
+.training-list .rule-candidates-more { margin: 4px; }

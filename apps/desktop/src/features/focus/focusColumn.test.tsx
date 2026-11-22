@@ -4,6 +4,7 @@ import { createFocusSession } from "./focusSession";
 import { api } from "../../lib/api";
 import { focusRow, TWO_ARTICLE_PAGE } from "../../test/fixtures/reader";
 import { createReactHarness, flushUpdates } from "../../test/react";
+import { createArticleWriteOrder } from "../../lib/articleWriteOrder";
 
 const surfaces = vi.hoisted(() => ({ seen: [] as string[] }));
 vi.mock("../../lib/useExposureTracker", () => ({
@@ -54,7 +55,7 @@ it("sends scope and focus_column exposure for a column session, and omits scope 
   expect(focus.mock.calls.slice(0, mainCalls).every((call) => call[1]?.scope === undefined)).toBe(true);
 
   const screen = {
-    active: true, shortcuts: true, onOpen: vi.fn(), onCite: vi.fn(), onRate: vi.fn(),
+    active: true, shortcuts: true, onOpen: vi.fn(), onCite: vi.fn(), onRate: vi.fn(), ratings: createArticleWriteOrder(),
     onOpenDigest: vi.fn(), onOpenSearch: vi.fn(), onOpenFeed: vi.fn(), notify,
   };
   harness.mount(<FocusScreen session={main} {...screen} />);

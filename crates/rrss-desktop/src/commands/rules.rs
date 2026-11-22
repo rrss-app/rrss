@@ -31,6 +31,9 @@ db_task!(rescore() -> u32 => rrss_app::actions::rescore);
 db_task!(training_features(article_id: i64, excerpt: Option<String>) -> Vec<FeatureView> =>
     |conn| queries::training_features(conn, article_id, excerpt.as_deref()));
 
+db_task!(rule_candidates(article_id: i64) -> Vec<RuleCandidateView> =>
+    |conn| queries::rule_candidates(conn, article_id));
+
 db_task!(hidden_page(scope: Option<String>, list_scope: Option<String>) -> HiddenPage =>
     |conn| queries::hidden_page(conn, scope.as_deref(), list_scope.as_deref()));
 
@@ -51,6 +54,7 @@ command_handler![
     unrelease_article,
     allow_rule_for_feed,
     training_features,
+    rule_candidates,
     create_rule,
     update_rule,
     set_rule_action,

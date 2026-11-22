@@ -274,5 +274,25 @@
   "rankingNote": {
     "interest_boost_inactive": "Interest boost isn’t active: no interest vectors yet, so ranking uses rule scores only",
     "interest_not_ready": "Interests aren’t ready: no interest vectors yet, so results are ordered by time for now"
+  },
+  "dislike": {
+    "recorded": "Got it. You’ll see fewer articles like this",
+    "undo": "Undo",
+    "addRule": "Add a rule…",
+    "undone": "Undone. The dislike was removed",
+    "rulesTitle": "Add a rule (optional)",
+    "rulesHint": "Sorted by your last 30 days, things you never read first",
+    "rulesLoading": "Counting…",
+    "rulesEmpty": "No rule conditions for this article",
+    "rulesFailed": "Couldn’t load suggestions:",
+    "rulesClose": "Close",
+    "best": "Closest",
+    "wholeFeed": "Covers the whole feed",
+    "mayHit": "May hide things you read",
+    "separator": " · ",
+    "reach_one": "{{count}} other in 30 days · you read {{read}}",
+    "reach_other": "{{count}} others in 30 days · you read {{read}}",
+    "risky_one": "{{count}} more that may hide things you read",
+    "risky_other": "{{count}} more that may hide things you read"
   }
 }

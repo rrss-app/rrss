@@ -330,7 +330,7 @@ function DesktopShell() {
     if (id === 0 || id === threadId) setView("chat");
     else selectChatLocation(id);
   };
-  const rateArticle = useCallback((row: ArticleView, up: boolean) => trainingRef.current?.rate(row, up), []);
+  const rateArticle = useCallback((row: ArticleView, up: boolean, undone?: (feedback: number) => void) => trainingRef.current?.rate(row, up, undone), []);
   // 阅读器 `x` / 篇目里的踩只记反馈，不弹规则建议，便于连续丢弃；规则建议留给阅读工具和列表里的踩。
   const dislikeArticle = useCallback(async (row: ArticleView) => {
     try { await ratings.write(row.id, () => api.rate(row.id, false)); trackEvent(row.id, "down"); return true; }
@@ -473,10 +473,10 @@ function DesktopShell() {
       columnId={columnId} onOpenColumn={openColumn} onColumnGone={onColumnGone} notify={setToast} />
     <main className="main" inert={trapBackground}>
       <FocusScreen session={focus} active={view === "focus"} shortcuts={view === "focus" && stack.length === 0 && !commandPaletteOpen && !pendingLeave}
-        onOpen={openFocusArticle} onCite={addCitation} onCiteGroup={citeGroup} onRate={rateArticle} onOpenDigest={openDigest} onOpenSearch={openSearch} onOpenFeed={openFeedFromCard} onManageModels={managePool} notify={setToast} />
+        onOpen={openFocusArticle} onCite={addCitation} onCiteGroup={citeGroup} onRate={rateArticle} ratings={ratings} onOpenDigest={openDigest} onOpenSearch={openSearch} onOpenFeed={openFeedFromCard} onManageModels={managePool} notify={setToast} />
       {columnId ? <FocusColumnScreen feeds={feedsSession} session={column} active={view === "column"} scope={columnId} name={columnTitle || t("column.fallbackName")}
         shortcuts={view === "column" && stack.length === 0 && !commandPaletteOpen && !pendingLeave}
-        onOpen={openColumnArticle} onCite={addCitation} onCiteGroup={citeGroup} onRate={rateArticle} onOpenDigest={openDigest} onOpenSearch={openSearch} onOpenFeed={openFeedFromCard} onManageModels={managePool} notify={setToast} /> : null}
+        onOpen={openColumnArticle} onCite={addCitation} onCiteGroup={citeGroup} onRate={rateArticle} ratings={ratings} onOpenDigest={openDigest} onOpenSearch={openSearch} onOpenFeed={openFeedFromCard} onManageModels={managePool} notify={setToast} /> : null}
       {visited.has("feeds") ? <FeedsScreen session={feedsSession} active={view === "feeds"} onOpen={openFeedsArticle} onFetch={focus.refresh} onEditFeed={openFeedEdit} /> : null}
       {visited.has("digest") ? <DigestScreen active={view === "digest"} chat={chat} drafts={drafts} onContext={setDigestContext} discussionRevision={digestThreadRevision}
         topmost={stack.length === 0 && !commandPaletteOpen && !pendingLeave}
@@ -569,7 +569,8 @@ function DesktopShell() {
     <LinkPreview onOpenArticle={openArticleFromMessage} onCite={addCitation} notify={setToast} />
     <WindowControls />
     {shownToast.value && <Toast message={shownToast.value.message} holdMs={shownToast.value.holdMs} actionLabel={shownToast.value.actionLabel}
-      onAction={shownToast.value.onAction} leaving={shownToast.leaving} onDismiss={() => setToast(null)} />}
+      onAction={shownToast.value.onAction} secondaryLabel={shownToast.value.secondaryLabel} onSecondary={shownToast.value.onSecondary}
+      leaving={shownToast.leaving} onDismiss={() => setToast(null)} />}
     <CommandPalette rootRef={searchRootRef} open={commandPaletteOpen} topmost={modalTop === "search"} keepAlive={searchAway} returnTo={searchReturnId}
       region={stack.length === 0 ? "main" : "window"} feeds={feeds}
       onClose={closeSearch} onSearch={focus.search} onHitBlocks={api.searchHitBlocks}

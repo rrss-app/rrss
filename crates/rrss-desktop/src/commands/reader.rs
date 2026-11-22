@@ -33,8 +33,11 @@ db_task!(related_articles(article_id: i64, limit: i64) -> Vec<RelatedArticleView
 db_task!(open_article(id: i64) -> ReaderView =>
     |conn| rrss_app::actions::open_article(conn, id));
 
-db_task!(rate_article(id: i64, up: bool) -> () =>
-    |conn| rrss_app::actions::rate_article(conn, id, up).map(|_| ()));
+db_task!(rate_article(id: i64, up: bool) -> RatingUndoView =>
+    |conn| rrss_app::actions::rate_article(conn, id, up));
+
+db_task!(undo_rating(id: i64, undo: RatingUndoView) -> () =>
+    |conn| rrss_app::actions::undo_rating(conn, id, &undo));
 
 db_task!(cite_article(id: i64) -> CitationView =>
     |conn| rrss_app::actions::cite_article(conn, id));
@@ -213,6 +216,7 @@ command_handler![
     set_site_rule_enabled,
     test_site_rule,
     rate_article,
+    undo_rating,
     cite_article,
     cite_selection,
     cite_digest_selection,

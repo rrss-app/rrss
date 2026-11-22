@@ -10,6 +10,7 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ### Changed
 
+- Disliking an article no longer opens a list of rule suggestions. In Focus, the card fades in place with an Undo button and is replaced by the next article after five seconds; in the reader, a short notice offers Undo. Rules are optional behind "Add a rule…", which shows how many recent articles each suggestion would affect and folds away the ones that would also hide articles you read.
 - Choose how often feeds refresh. Set a default interval in minutes under Settings → Feeds → Fetching, or give a single feed its own interval in its editor, which also shows when the feed last refreshed and when it refreshes next. New intervals apply right away.
 - Feeds that fail to refresh or whose site is rate-limiting requests now carry a badge in the sidebar, the feed list and the feed's timeline. The timeline explains the problem until it clears and offers Retry for a failed feed.
 - Edit a feed’s name, URL, folder, or article retention from its timeline header or sidebar menu. You can also unsubscribe there after confirmation.

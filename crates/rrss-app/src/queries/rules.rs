@@ -144,6 +144,56 @@ pub fn training_features(
     .collect())
 }
 
+/// 不感兴趣时的规则候选（阶段 11 · 踩的反馈）：带近 30 天影响面，按误伤风险排序。
+/// 没读过的在前、其中命中多的在前；会命中读过的文章或几乎等于整个来源的标出提醒。
+pub fn rule_candidates(
+    conn: &Connection,
+    article_id: i64,
+) -> rrss_core::Result<Vec<RuleCandidateView>> {
+    const WHOLE_FEED_MIN: i64 = 5;
+    let article = articles::get_article(conn, article_id)?;
+    let tags = rrss_core::tags_for_article(conn, article.id).unwrap_or_default();
+    let chips = rrss_core::extract_features(
+        article.author.as_deref(),
+        &tags,
+        &article.title,
+        article.canonical_url.as_deref(),
+        None,
+    );
+    let stats =
+        rrss_core::rule_stats::candidate_impacts(conn, article.id, &chips, feeds::now_ms())?;
+    let mut out: Vec<_> = chips
+        .into_iter()
+        .zip(stats.impacts)
+        .map(|(chip, impact)| {
+            let whole_feed = stats.feed_articles >= WHOLE_FEED_MIN
+                && impact.matched_in_feed * 10 >= stats.feed_articles * 9;
+            RuleCandidateView {
+                dimension: chip.dimension.as_str().into(),
+                pattern: chip.pattern,
+                matched_30d: impact.matched,
+                read_30d: impact.read,
+                caution: if whole_feed {
+                    RuleCandidateCaution::WholeFeed
+                } else if impact.read > 0 {
+                    RuleCandidateCaution::Reads
+                } else {
+                    RuleCandidateCaution::None
+                },
+                best: false,
+            }
+        })
+        .collect();
+    out.sort_by_key(|c| (c.caution, c.read_30d, std::cmp::Reverse(c.matched_30d)));
+    if let Some(best) = out
+        .iter_mut()
+        .find(|c| c.caution == RuleCandidateCaution::None && c.matched_30d > 0)
+    {
+        best.best = true;
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,6 +268,68 @@ mod tests {
                     .is_none()
             );
         }
+    }
+
+    #[test]
+    fn rule_candidates_put_never_read_reach_first_and_flag_whole_feed() {
+        let (_dir, conn) = open_temp();
+        let feed_id = subscribe(&conn, "https://deals.example/rss", None);
+        let entry = |i: usize, title: &str, tags: &[&str]| rrss_core::parse::ParsedEntry {
+            guid: format!("g{i}"),
+            canonical_url: Some(format!("https://deals.example/{i}")),
+            title: title.into(),
+            author: Some("Mira".into()),
+            published_at: Some(1),
+            content_html: Some("<p>x</p>".into()),
+            hash: format!("h{i}"),
+            tags: tags.iter().map(|t| t.to_string()).collect(),
+        };
+        let entries = [
+            entry(0, "Frame", &["Deals", "Gadgets"]),
+            entry(1, "Earbuds", &["Deals"]),
+            entry(2, "Phones", &["Deals", "Gadgets"]),
+            entry(3, "Laptops", &["Gadgets"]),
+            entry(4, "Kernel notes", &[]),
+            entry(5, "Database notes", &[]),
+        ];
+        rrss_core::ingest::upsert_entries(&conn, feed_id, &entries, 1).unwrap();
+        conn.execute("UPDATE articles SET created_at = ?1", [feeds::now_ms()])
+            .unwrap();
+        let id = |title: &str| -> i64 {
+            conn.query_row("SELECT id FROM articles WHERE title = ?1", [title], |r| {
+                r.get(0)
+            })
+            .unwrap()
+        };
+        conn.execute(
+            "INSERT INTO article_events(article_id,kind,at) VALUES(?1,'open',1)",
+            [id("Laptops")],
+        )
+        .unwrap();
+        let candidates = rule_candidates(&conn, id("Frame")).unwrap();
+        let rows: Vec<_> = candidates
+            .iter()
+            .map(|c| {
+                (
+                    c.pattern.as_str(),
+                    c.matched_30d,
+                    c.read_30d,
+                    c.caution,
+                    c.best,
+                )
+            })
+            .collect();
+        use RuleCandidateCaution::{None as Safe, Reads, WholeFeed};
+        assert_eq!(
+            rows,
+            [
+                ("Deals", 2, 0, Safe, true),
+                ("Frame", 0, 0, Safe, false),
+                ("Gadgets", 2, 1, Reads, false),
+                ("Mira", 5, 1, WholeFeed, false),
+                ("deals.example", 5, 1, WholeFeed, false),
+            ]
+        );
     }
 
     #[test]

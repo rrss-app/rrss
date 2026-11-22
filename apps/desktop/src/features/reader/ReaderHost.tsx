@@ -135,7 +135,8 @@ export type ReaderHostProps = {
   onReadChange: (id: number, read: boolean) => void;
   /** 收藏动作由应用层执行（列表与刷新随之更新）；返回是否成功。 */
   onToggleStar: (id: number, starred: boolean) => Promise<boolean>;
-  onRate: (article: ArticleView, up: boolean) => void | Promise<boolean>;
+  /** `undone`：撤销这次评分后的评分（1 赞、-1 踩、0 没有）。 */
+  onRate: (article: ArticleView, up: boolean, undone?: (feedback: number) => void) => void | Promise<boolean>;
   /** `x` 与篇目里的踩：只记反馈、不弹规则建议；未提供时退回 `onRate`。 */
   onDislike?: (article: ArticleView) => void | Promise<boolean>;
   onCite: (chip: CitationView) => void;
@@ -701,13 +702,13 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   }, [shownId, prefetchId, cache]);
 
   const rateArticle = (article: ArticleView, up: boolean, dismiss = false) => {
-    const result = dismiss && propsRef.current.onDislike ? propsRef.current.onDislike(article) : onRate(article, up);
-    void result?.then(saved => {
-      if (!saved) return;
-      const update = (view: ReaderView) => ({ ...view, feedback: up ? 1 : -1 });
+    const show = (feedback: number) => {
+      const update = (view: ReaderView) => ({ ...view, feedback });
       cache.update(article.id, update);
       setView(article.id, update);
-    });
+    };
+    const result = dismiss && propsRef.current.onDislike ? propsRef.current.onDislike(article) : onRate(article, up, show);
+    void result?.then(saved => { if (saved) show(up ? 1 : -1); });
   };
 
   const back = () => {

@@ -8,6 +8,8 @@ export function Toast({
   holdMs = 5000,
   actionLabel,
   onAction,
+  secondaryLabel,
+  onSecondary,
   leaving = false,
 }: {
   message: string;
@@ -15,6 +17,9 @@ export function Toast({
   holdMs?: number;
   actionLabel?: string;
   onAction?: () => void;
+  /** 次要动作（文字链样式）：点了就关掉提示。 */
+  secondaryLabel?: string;
+  onSecondary?: () => void;
   /** 已关掉、正在播退场（200ms 下沉淡出）：不再计时、不可交互。 */
   leaving?: boolean;
 }) {
@@ -32,6 +37,11 @@ export function Toast({
       {actionLabel && onAction ? (
         <button type="button" className="toast-action" onClick={onAction}>
           {actionLabel}
+        </button>
+      ) : null}
+      {secondaryLabel && onSecondary ? (
+        <button type="button" className="toast-secondary" onClick={() => { onSecondary(); onDismiss(); }}>
+          {secondaryLabel}
         </button>
       ) : null}
       <button type="button" className="toast-dismiss" aria-label={t("toast.dismiss")} onClick={onDismiss}>

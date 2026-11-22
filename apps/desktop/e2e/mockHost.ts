@@ -626,6 +626,8 @@ export type MockHostOptions = {
     messages?: number[];
   };
   trainingFeatures?: import("../src/bindings").FeatureView[];
+  /** 踩的「加一条规则…」候选；不传时由 `trainingFeatures` 生成无影响面的候选。 */
+  ruleCandidates?: import("../src/bindings").RuleCandidateView[];
   rules?: RulesPage;
   /** 订阅时间线文章。不传时用焦点文章里 row_kind 为 0 的行。 */
   timelineArticles?: ArticleView[];
@@ -642,7 +644,7 @@ export type MockHostOptions = {
 /** 在页面脚本之前注入模拟 IPC。返回的 `invoke` 同步产生结果，不涉及真实宿主。 */
 export async function installMockHost(page: Page, options: MockHostOptions = {}) {
   await page.addInitScript(
-    ({ webExtractions, webWindowError, clearWebDataError, siteRules, siteRuleReport, webLinks, linkSafety, systemLanguage, related, focus, feeds, threads, threadFolders, messages, digests, sendFailures, holdSend, ai, bindings, pool, presets, rules, memory, pi, probe, piConfig, networkProxy, generated, settings, diag, storage, retention, backup, translate, reader, readers, readerSequences, holdOpen, holdFocusPage, holdDigest, focusPageSize, clusterArticles, clusterSummaries, clusterGenerated, holdClusterSummary, clusterSummaryModelReady, holdSummary, summary, selectionTranslation, holdSelectionTranslation, refreshFails, piDelayMs, feedIconHrefs, brokenBlocks, trainingFeatures, vectorSpace, hidden, ruleStats, timelineArticles, feedsPageSize, feedsHiddenCount, feedTreeOrder, windowControls }) => {
+    ({ webExtractions, webWindowError, clearWebDataError, siteRules, siteRuleReport, webLinks, linkSafety, systemLanguage, related, focus, feeds, threads, threadFolders, messages, digests, sendFailures, holdSend, ai, bindings, pool, presets, rules, memory, pi, probe, piConfig, networkProxy, generated, settings, diag, storage, retention, backup, translate, reader, readers, readerSequences, holdOpen, holdFocusPage, holdDigest, focusPageSize, clusterArticles, clusterSummaries, clusterGenerated, holdClusterSummary, clusterSummaryModelReady, holdSummary, summary, selectionTranslation, holdSelectionTranslation, refreshFails, piDelayMs, feedIconHrefs, brokenBlocks, trainingFeatures, ruleCandidates, vectorSpace, hidden, ruleStats, timelineArticles, feedsPageSize, feedsHiddenCount, feedTreeOrder, windowControls }) => {
       const applyFeedTreeOrder = eval(`(${feedTreeOrder})`) as (tree: FeedTree, op: "move" | "restore", args: { items?: string[]; parentFolderId?: number | null; before?: string | null; layout?: { item: string; parent_folder_id: number | null; position: number }[] }) => { tree: FeedTree; layout: { item: string; parent_folder_id: number | null; position: number }[] };
       const collectWebArticle = (id: number) => {
         for (const value of Object.values(webLinks)) {
@@ -1732,10 +1734,14 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 state.focus = { ...state.focus, articles: state.focus.articles.map((a) => (a.id === args.id ? { ...a, starred: args.starred } : a)) };
                 return;
               case "rate_article":
+                return { up: args.up, previous: 0, previous_at: 0, suggested_rule_id: null };
+              case "undo_rating":
                 return;
               case "training_features":
                 if (trainingFeatures) return trainingFeatures;
                 return [];
+              case "rule_candidates":
+                return ruleCandidates ?? (trainingFeatures ?? []).map((f) => ({ ...f, matched_30d: 0, read_30d: 0, caution: "none", best: false }));
               case "mark_read":
                 return;
               case "cite_article": {
@@ -1965,6 +1971,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
       feedIconHrefs: options.feedIconHrefs ?? {},
       brokenBlocks: options.brokenBlocks ?? {},
       trainingFeatures: options.trainingFeatures,
+      ruleCandidates: options.ruleCandidates,
       vectorSpace: options.vectorSpace,
       hidden: options.hidden,
       ruleStats: options.ruleStats,

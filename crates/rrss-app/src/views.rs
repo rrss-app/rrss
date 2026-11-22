@@ -14,8 +14,9 @@ pub use reading_activity::{
 
 mod rules;
 pub use rules::{
-    FeatureView, NewRuleSpec, PresetView, RuleEffect, RuleStatsPage, RuleStatsView,
-    RuleSummaryView, RuleView, RulesPage, ScopeOption, SpotCheckStatsView,
+    FeatureView, NewRuleSpec, PresetView, RatingUndoView, RuleCandidateCaution, RuleCandidateView,
+    RuleEffect, RuleStatsPage, RuleStatsView, RuleSummaryView, RuleView, RulesPage, ScopeOption,
+    SpotCheckStatsView,
 };
 
 mod threads;

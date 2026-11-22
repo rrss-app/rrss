@@ -12,8 +12,9 @@ import { useExposureTracker } from "../../lib/useExposureTracker";
 import { HiddenListDialog, HiddenMenuItem, type HiddenScope } from "./HiddenListDialog";
 import { ClusterSummary } from "./ClusterSummary";
 import { createClusterSummaries, useClusterSummaries } from "./clusterSummaries";
+import type { ArticleWriteOrder } from "../../lib/articleWriteOrder";
 
-export const FocusScreen = memo(function FocusScreen({ session, active, shortcuts, onOpen, onCite, onCiteGroup, onRate, onOpenDigest, onOpenSearch, onOpenFeed, onManageModels, notify, surface = "focus", column }: {
+export const FocusScreen = memo(function FocusScreen({ session, active, shortcuts, onOpen, onCite, onCiteGroup, onRate, ratings, onOpenDigest, onOpenSearch, onOpenFeed, onManageModels, notify, surface = "focus", column }: {
   session: FocusSession;
   active: boolean;
   shortcuts: boolean;
@@ -25,7 +26,10 @@ export const FocusScreen = memo(function FocusScreen({ session, active, shortcut
   onCite: (citation: CitationView) => void;
   /** 相近报道组尾「引用整组到对话」：各篇作为文章引用，交给外层放进新对话。 */
   onCiteGroup?: (citations: CitationView[]) => void;
+  /** 赞与推荐详情下抽查卡的踩：交给外层的训练条。卡片上其余的踩由本域原地处理。 */
   onRate: (article: ArticleView, up: boolean) => void;
+  /** 评分写入顺序，与阅读器等其他评分入口共用。 */
+  ratings: ArticleWriteOrder;
   onOpenDigest: () => void;
   onOpenSearch: () => void;
   /** 卡片来源名：进入订阅模式并选中这个源。 */
@@ -111,7 +115,7 @@ export const FocusScreen = memo(function FocusScreen({ session, active, shortcut
       return;
     }
     const row = rows[focusedRowIndex];
-    if (!row || row.row_kind !== 0) return;
+    if (!row || row.row_kind !== 0 || state.dislikes[row.id]) return;
     if (key === "enter" || key === "o") { event.preventDefault(); clearFocus(); onOpen(row.id); }
     if (key === "s") { event.preventDefault(); void session.toggleStar(row.id, row.starred); }
   });
@@ -139,6 +143,11 @@ export const FocusScreen = memo(function FocusScreen({ session, active, shortcut
     }));
     rows.forEach((row) => trackEvent(row.id, "cite"));
     onCiteGroup(citations);
+  };
+
+  const rate = (row: ArticleView, up: boolean) => {
+    if (up || (row.spot_check && session.getRanking().show_details)) { onRate(row, up); return; }
+    void session.dislike(row, (request) => ratings.write(row.id, request));
   };
 
   const summarize = (clusterId: number) => {
@@ -172,6 +181,7 @@ export const FocusScreen = memo(function FocusScreen({ session, active, shortcut
     onLoadMore={session.loadMore} loadingMore={state.loadingMore} loading={state.loading} moreError={state.moreError} revision={state.revision}
     onVisibleEnd={session.setVisibleEnd} newCount={state.pendingNew} onShowNew={() => { clearFocus(); session.showNew(); }}
     focusedRowIndex={focusedRowIndex} returnFocus={focusedRowIndex >= 0 ? keyboard.returned : 0} onOpen={(id) => { clearFocus(); onOpen(id); }} onCite={(id) => void cite(id)}
-    onRate={onRate} onStar={(row) => void session.toggleStar(row.id, row.starred)} onOpenDigest={column ? undefined : onOpenDigest} onOpenSearch={onOpenSearch} onSource={(feedId) => { clearFocus(); onOpenFeed(feedId); }}
+    onRate={rate} dislikes={state.dislikes} onDislikeAction={(id, action) => void session.dislikeAction(id, action)}
+    onStar={(row) => void session.toggleStar(row.id, row.starred)} onOpenDigest={column ? undefined : onOpenDigest} onOpenSearch={onOpenSearch} onSource={(feedId) => { clearFocus(); onOpenFeed(feedId); }}
   /></>;
 });

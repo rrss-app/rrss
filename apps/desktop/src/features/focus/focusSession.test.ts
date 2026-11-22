@@ -372,3 +372,46 @@ it("keeps a browsed list and counts new articles when the resumed startup refres
   expect(snapshot.pendingNew).toBe(2);
   expect(snapshot.page?.articles.map(row => row.id)).toEqual(TWO_ARTICLE_PAGE.articles.map(row => row.id));
 });
+
+it("a card dislike veils in place, can be undone, pauses while held, then swaps in the next candidate", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  try {
+    const page = { ...TWO_ARTICLE_PAGE, articles: [focusRow(1, "甲"), focusRow(2, "乙"), focusRow(3, "丙")], has_more: true };
+    const focus = vi.spyOn(api, "focus").mockResolvedValueOnce(page)
+      .mockResolvedValue({ ...page, articles: [focusRow(4, "补位"), focusRow(5, "其后")] });
+    const token = { up: false, previous: 1, previous_at: 7, suggested_rule_id: null };
+    const rate = vi.spyOn(api, "rate").mockResolvedValue(token);
+    const undo = vi.spyOn(api, "undoRating").mockResolvedValue(undefined);
+    const order: string[] = [];
+    const write = <T,>(request: () => Promise<T>) => { order.push("write"); return request(); };
+    const ids = () => session.getSnapshot().page?.articles.map((row) => row.id);
+    session.start(); await flushUpdates();
+
+    await session.dislike(page.articles[0], write);
+    expect(rate).toHaveBeenCalledWith(1, false);
+    expect(session.getSnapshot().dislikes[1]).toBeDefined();
+    await session.dislikeAction(1, { kind: "undo" });
+    expect(undo).toHaveBeenCalledWith(1, token);
+    expect(order).toEqual(["write", "write"]);
+    expect(session.getSnapshot().dislikes[1]).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(ids()).toEqual([1, 2, 3]);
+
+    await session.dislike(page.articles[1], write);
+    await session.dislikeAction(2, { kind: "hold", held: true });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(ids()).toEqual([1, 2, 3]);
+    await session.dislikeAction(2, { kind: "hold", held: false });
+    await vi.advanceTimersByTimeAsync(5_500);
+    expect(ids()).toEqual([1, 4, 3]);
+    expect(focus.mock.calls.at(-1)?.[1]).toMatchObject({ excludeIds: [1, 2, 3], more: true });
+    expect(session.getSnapshot().dislikes).toEqual({});
+
+    // 窗口没结束就重读：直接生效，这篇不再显示。
+    focus.mockResolvedValue({ ...page, articles: [focusRow(1, "甲"), focusRow(3, "丙"), focusRow(4, "补位")] });
+    await session.dislike(focusRow(3, "丙"), write);
+    await session.reload();
+    expect(session.getSnapshot().dislikes).toEqual({});
+    expect(ids()).toEqual([1, 4]);
+  } finally { vi.useRealTimers(); }
+});

@@ -1,10 +1,11 @@
 import { ruleConditionLabel } from "../lib/ruleLabels";
 import { useLayoutEffect, useRef, type CSSProperties } from "react";
-import type { ArticleView, FeatureView } from "../lib/api";
+import type { ArticleView, FeatureView, RuleCandidateView } from "../lib/api";
 import { getFocusableElements, isFocusable } from "../lib/useModalFocus";
 import { useTranslation } from "../i18n";
 import { Icon } from "./Icon";
 import { ThumbIcon } from "./ThumbIcon";
+import { RuleCandidateList } from "./DislikeVeil";
 
 export function TrainingBar({
   item,
@@ -14,7 +15,8 @@ export function TrainingBar({
   busy = false,
   error = "",
 }: {
-  item: { article: ArticleView; features: FeatureView[]; dislike: boolean };
+  /** `candidates`：踩的「加一条规则…」，带影响面并已排序，可能误伤的折叠；否则列 `features`。 */
+  item: { article: ArticleView; features: FeatureView[]; candidates?: RuleCandidateView[]; dislike: boolean };
   onClose: () => void;
   onConfirm: (f: FeatureView, feedScope: boolean) => void;
   style?: CSSProperties;
@@ -84,7 +86,9 @@ export function TrainingBar({
           </button>
         </div>
         {error && <p className="notice error" role="alert">{error}</p>}
-        <div className="training-list">
+        {item.candidates ? <div className="training-list">
+          <RuleCandidateList candidates={item.candidates} busy={busy} onPick={(candidate, feedScope) => onConfirm(candidate, feedScope)} />
+        </div> : <div className="training-list">
           {item.features.map((f) => (
             <div key={f.dimension + f.pattern} className="training-row">
               <span className="training-label">{t(item.dislike ? "trainingBar.scoreDown" : "trainingBar.scoreUp", { label: ruleConditionLabel(f, "focus") })}</span>
@@ -98,7 +102,7 @@ export function TrainingBar({
               </div>
             </div>
           ))}
-        </div>
+        </div>}
       </div>
     </div>
   );
