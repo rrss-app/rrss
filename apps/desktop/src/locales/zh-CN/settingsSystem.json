@@ -556,6 +556,12 @@
       "hint": "同一网站的订阅最多同时下载几个。调高能更快刷新同站的大量订阅（如自建 RSSHub），太高可能被对方限流，限流后该网站会暂停一段时间。",
       "control": "每个网站同时下载几个订阅（1–8）"
     },
+    "feed_fetch_interval_minutes": {
+      "label": "刷新间隔",
+      "hint": "单独设了间隔的订阅除外。太短可能被网站限流。",
+      "control": "刷新间隔（分钟）",
+      "unit": "分钟"
+    },
     "theme_preference": {
       "label": "外观",
       "options": {

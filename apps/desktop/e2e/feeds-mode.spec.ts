@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import type { ArticleView, FeedTree, FeedView } from "../src/lib/api";
 import { expect, test } from "./fixtures";
-import { installMockHost, MOCK_FEEDS, MOCK_FOCUS } from "./mockHost";
+import { installMockHost, MOCK_FEEDS, MOCK_FOCUS, settingsTab } from "./mockHost";
 
 // 阶段 23 S1 订阅模式：侧栏订阅树 + 按时间的时间线（推荐系统规格 S1）。
 const lastArgs = (page: Page, command: string) => page.evaluate((name) => (window as any).__mockHost.args[name], command);
@@ -73,6 +73,82 @@ test("edit another feed from its row and cancel edits from the timeline gear", a
   await expect(name).toHaveValue("Compiler Notes");
 });
 
+test("a feed can override the refresh interval with free minutes and follow the global default again", async ({ page }) => {
+  const now = Date.now();
+  const timed = structuredClone(TREE);
+  Object.assign(timed.uncategorized[0], { last_fetched_at: now - 600_000, next_fetch_at: now + 3_000_000 });
+  await installMockHost(page, { feeds: timed, timelineArticles: timeline() });
+  await page.goto("/");
+  await page.locator(".sidebar").getByRole("button", { name: /^订阅/ }).click();
+  const target = treeRow(page, "feed:30");
+  const openEditor = async () => {
+    await target.hover();
+    await target.locator("button[aria-haspopup=menu]").click();
+    await page.locator(".feeds-row-menu [role=menuitem]").first().click();
+    return page.locator(".quick-feed-dialog");
+  };
+  // Selects in order: folder, article retention, refresh interval; options: follow, custom.
+  const pickInterval = async (editor: ReturnType<Page["locator"]>, option: number) => {
+    await editor.locator("button[aria-haspopup=menu]").nth(2).click();
+    await page.locator("[role=menuitemradio]").nth(option).click();
+  };
+  let editor = await openEditor();
+  const minutes = editor.locator("input[type=number]");
+  await expect(minutes).toHaveCount(0);
+  await expect(editor.locator(".feed-refresh")).toBeVisible();
+  await pickInterval(editor, 1);
+  await minutes.fill("0");
+  await expect(editor.locator(".form-actions .primary")).toBeDisabled();
+  await minutes.fill("5");
+  await editor.locator(".form-actions .primary").click();
+  await expect(editor).toHaveCount(0);
+  expect((await lastArgs(page, "save_feed")).args).toMatchObject({ id: 30, interval: "5", retention: null, title: null });
+
+  editor = await openEditor();
+  await expect(editor.locator("input[type=number]")).toHaveValue("5");
+  await pickInterval(editor, 0);
+  await expect(editor.locator("input[type=number]")).toHaveCount(0);
+  await editor.locator(".form-actions .primary").click();
+  await expect(editor).toHaveCount(0);
+  expect((await lastArgs(page, "save_feed")).args).toMatchObject({ id: 30, interval: "follow" });
+});
+
+test("the default refresh interval is typed directly and saved from the save bar", async ({ page }) => {
+  await installMockHost(page, { feeds: TREE, timelineArticles: timeline() });
+  await page.goto("/");
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "设置", exact: true });
+  await settingsTab(settings.getByRole("navigation", { name: "设置分类" }), "subscribe").click();
+  const fetch = page.locator("section[aria-labelledby=subscribe-fetch-title]");
+  const field = fetch.locator(".settings-number input");
+  await expect(field).toHaveValue("60");
+  await expect(fetch.locator(".settings-stepper")).toHaveCount(1);
+  await field.fill("15");
+  await page.locator(".settings-savebar .primary").click();
+  await expect.poll(() => lastArgs(page, "set_setting")).toMatchObject({ id: "feed_fetch_interval_minutes", value: "15" });
+  await expect(page.locator(".settings-savebar")).toHaveCount(0);
+});
+
+test("failed and rate-limited feeds carry badges, and a failed feed retries from its timeline", async ({ page }) => {
+  const limitedTree = structuredClone(TREE);
+  Object.assign(limitedTree.uncategorized[0], { limited_until: Date.now() + 3 * 3_600_000 });
+  await installMockHost(page, { feeds: limitedTree, timelineArticles: timeline(), settingValues: { feeds_scope: "feed:21" } });
+  await page.goto("/");
+  await page.locator(".sidebar").getByRole("button", { name: /^订阅/ }).click();
+  await expect(treeRow(page, "feed:21").locator(".feeds-row-badge")).toHaveAttribute("data-tone", "danger");
+  await expect(treeRow(page, "feed:30").locator(".feeds-row-badge")).toHaveAttribute("data-tone", "warn");
+  const banner = page.locator(".feeds-head .feeds-alert");
+  await expect(banner).toHaveAttribute("data-tone", "danger");
+  await banner.getByRole("button").click();
+  expect(await lastArgs(page, "refresh_feed")).toEqual({ id: 21 });
+  // The note is temporary: it leaves once the retry succeeds.
+  await expect(banner).toHaveCount(0);
+  await expect(treeRow(page, "feed:21").locator(".feeds-row-badge")).toHaveCount(0);
+  await treeRow(page, "feed:30").click();
+  await expect(banner).toHaveAttribute("data-tone", "warn");
+  await expect(banner.getByRole("button")).toHaveCount(0);
+});
+
 test("entering, picking a folder with its subfolder and a single feed, and leaving with the back button and Esc", async ({ page }) => {
   await installMockHost(page, { feeds: TREE, timelineArticles: timeline() });
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -87,7 +163,7 @@ test("entering, picking a folder with its subfolder and a single feed, and leavi
   // 文件夹默认收起；抓取失败的源名后有警示点。
   await expect(treeRow(page, "feed:21")).toHaveCount(0);
   await treeRow(page, "folder:20").locator(".feeds-twist").click();
-  await expect(treeRow(page, "feed:21").locator(".feeds-row-flag")).toHaveAttribute("title", "源暂时不可用（503）");
+  await expect(treeRow(page, "feed:21").locator(".feeds-row-badge")).toHaveAttribute("data-tone", "danger");
 
   // 文件夹含子文件夹的源；选中写进注册表。
   await treeRow(page, "folder:10").click();

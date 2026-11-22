@@ -1,6 +1,7 @@
 //! Subscription, folder and OPML write orchestration.
 
 use rrss_core::error::rules::RuleProblem;
+use rrss_core::error::settings::SettingProblem;
 use rrss_core::feeds::{self, SubscribeRequest};
 use rrss_core::{db, opml};
 use rusqlite::Connection;
@@ -45,6 +46,17 @@ pub fn save_feed(
             })?),
         };
         rrss_core::retention::set_feed_days(&tx, args.id, days)?;
+    }
+    if let Some(interval) = &args.interval {
+        let minutes = match interval.trim() {
+            "follow" => None,
+            n => Some(n.parse::<i64>().map_err(|_| {
+                rrss_core::Error::InvalidSetting(SettingProblem::IntegerRequired {
+                    value: n.into(),
+                })
+            })?),
+        };
+        rrss_core::fetch_interval::set_feed_minutes(&tx, args.id, minutes)?;
     }
     let tree = crate::queries::feed_tree(&tx)?;
     tx.commit()?;
@@ -213,6 +225,7 @@ mod tests {
                 url: None,
                 folder_id: None,
                 retention: Some("keep".into()),
+                interval: None,
             },
         )
         .unwrap();
@@ -233,7 +246,8 @@ mod tests {
                     title: None,
                     url: None,
                     folder_id: None,
-                    retention: Some("abc".into())
+                    retention: Some("abc".into()),
+                    interval: None,
                 }
             )
             .is_err()
@@ -246,10 +260,49 @@ mod tests {
                 url: None,
                 folder_id: None,
                 retention: Some("30".into()),
+                interval: None,
             },
         )
         .unwrap();
         assert_eq!(find_feed(&tree, 2).retention_days, Some(30));
+        assert_eq!(find_feed(&tree, 2).interval_minutes, None);
+
+        let interval = |value: &str| SaveFeedArgs {
+            id: 2,
+            title: Some("renamed".into()),
+            url: None,
+            folder_id: None,
+            retention: None,
+            interval: Some(value.into()),
+        };
+        let tree = save_feed(&conn, &interval("5")).unwrap();
+        assert_eq!(find_feed(&tree, 2).interval_minutes, Some(5));
+        for bad in ["0", "abc"] {
+            assert!(save_feed(&conn, &interval(bad)).is_err());
+        }
+        let tree = save_feed(&conn, &interval("follow")).unwrap();
+        assert_eq!(find_feed(&tree, 2).interval_minutes, None);
+        // Never fetched: no times yet. After a fetch both times are exposed.
+        assert_eq!(
+            (
+                find_feed(&tree, 2).last_fetched_at,
+                find_feed(&tree, 2).next_fetch_at
+            ),
+            (None, None)
+        );
+        conn.execute(
+            "UPDATE feeds SET last_fetched_at = 1000, next_fetch_at = 3601000 WHERE id = 2",
+            [],
+        )
+        .unwrap();
+        let tree = crate::queries::feed_tree(&conn).unwrap();
+        assert_eq!(
+            (
+                find_feed(&tree, 2).last_fetched_at,
+                find_feed(&tree, 2).next_fetch_at
+            ),
+            (Some(1000), Some(3_601_000))
+        );
 
         let tree = dismiss_feed_health(&conn, 1).unwrap();
         assert!(find_feed(&tree, 1).health.is_none());
@@ -270,6 +323,7 @@ mod tests {
                 url: Some("https://news.example.com/b.xml".into()),
                 folder_id: Some(folder),
                 retention: None,
+                interval: None,
             },
         )
         .unwrap();
@@ -288,6 +342,7 @@ mod tests {
                 url: None,
                 folder_id: Some(0),
                 retention: None,
+                interval: None,
             },
         )
         .unwrap();
@@ -310,6 +365,7 @@ mod tests {
                 url: Some("https://news.example.com/changed.xml".into()),
                 folder_id: Some(4040),
                 retention: None,
+                interval: None,
             },
         )
         .unwrap_err();
@@ -333,6 +389,7 @@ mod tests {
                 url: Some("https://news.example.com/taken.xml".into()),
                 folder_id: None,
                 retention: None,
+                interval: None,
             },
         )
         .unwrap_err();
@@ -356,6 +413,7 @@ mod tests {
                 url: None,
                 folder_id: None,
                 retention: None,
+                interval: None,
             },
         )
         .unwrap_err();

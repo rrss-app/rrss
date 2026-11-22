@@ -24,10 +24,13 @@ export type RegistryEntry = {
   control?: string;
   /**
    * 展示方式：`time` 把「零点起的分钟数」显示成时刻输入框；`minutes` 把秒数按分钟编辑；
-   * `multiline` 把文本显示成多行输入框；`wan` 把 token 数按「万 token / 天」编辑（可填小数）。
+   * `multiline` 把文本显示成多行输入框；`wan` 把 token 数按「万 token / 天」编辑（可填小数）；
+   * `number` 是不带加减钮的整数输入框，后面跟 `unit`。
    * 只影响展示，保存方式仍看描述符的 `apply`。
    */
-  display?: "time" | "minutes" | "multiline" | "wan";
+  display?: "time" | "minutes" | "multiline" | "wan" | "number";
+  /** 输入框后的单位文字（`number` 展示用）。 */
+  unit?: string;
   /** 开关两态的文字。 */
   on?: string;
   off?: string;
@@ -41,6 +44,7 @@ type RegistryShape = {
   hint?: true;
   control?: true;
   display?: RegistryEntry["display"];
+  unit?: true;
   on?: true;
   off?: true;
   /** 枚举各项的取值，文字在 `registry.<id>.options.<取值>`。 */
@@ -55,6 +59,7 @@ export const REGISTRY = {
   web_first_tip: {},
   allow_embedding_model_change: { hint: true },
   feed_icons_enabled: { hint: true },
+  feed_fetch_interval_minutes: { hint: true, control: true, display: "number", unit: true },
   feed_fetch_per_host: { hint: true, control: true },
   theme_preference: { options: ["system", "light", "dark"] },
   focus_filter: { options: ["focus", "hide_faded", "all"] },
@@ -109,6 +114,7 @@ export function registryEntry(id: string): RegistryEntry | undefined {
     hint: shape.hint ? text(id, "hint") : undefined,
     control: shape.control ? text(id, "control") : undefined,
     display: shape.display,
+    unit: shape.unit ? text(id, "unit") : undefined,
     on: shape.on ? text(id, "on") : undefined,
     off: shape.off ? text(id, "off") : undefined,
     optionHints: shape.optionHints && Object.fromEntries(shape.optionHints.map((value) => [value, optionHint(id, value)])),

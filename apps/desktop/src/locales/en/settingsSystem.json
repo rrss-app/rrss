@@ -570,6 +570,12 @@
       "hint": "How many feeds from the same site download at once. Raising it refreshes many feeds from one site faster (such as a self-hosted RSSHub), but may get rate-limited; a rate-limited site pauses for a while.",
       "control": "Feeds downloaded at once per site (1–8)"
     },
+    "feed_fetch_interval_minutes": {
+      "label": "Refresh interval",
+      "hint": "Feeds with their own interval are not affected. Very short intervals may get rate-limited.",
+      "control": "Refresh interval (minutes)",
+      "unit": "minutes"
+    },
     "theme_preference": {
       "label": "Appearance",
       "options": {

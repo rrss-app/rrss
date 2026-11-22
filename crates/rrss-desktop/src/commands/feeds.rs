@@ -5,7 +5,24 @@ use rrss_app::views::*;
 
 use crate::state::AppState;
 
-db_task!(feed_tree() -> FeedTree => queries::feed_tree);
+/// Trees carry each feed's rate-limit end, which lives in the scheduler, not the database.
+async fn tree_task(
+    state: &State<'_, AppState>,
+    name: &'static str,
+    task: impl FnOnce(&rrss_core::db::PooledConnection) -> rrss_core::Result<FeedTree> + Send + 'static,
+) -> Result<FeedTree, UiError> {
+    let mut tree = crate::state::with_db(name, state.db_path.clone(), move |conn| {
+        task(conn).map_err(UiError::from)
+    })
+    .await?;
+    state.scheduler.annotate_limits(&mut tree);
+    Ok(tree)
+}
+
+#[tauri::command]
+pub async fn feed_tree(state: State<'_, AppState>) -> Result<FeedTree, UiError> {
+    tree_task(&state, "feed_tree", |conn| queries::feed_tree(conn)).await
+}
 
 db_task!(feeds_page(scope: String, list_scope: String, cursor: Option<FeedsCursor>) -> FeedsPage =>
     |conn| queries::feeds_page(conn, &scope, &list_scope, cursor));
@@ -31,19 +48,53 @@ pub async fn add_feed(state: State<'_, AppState>, url: String) -> Result<AddFeed
     state.scheduler.add_feed(&url).await.map_err(UiError::from)
 }
 
-db_task!(save_feed(args: SaveFeedArgs) -> FeedTree =>
-    |conn| rrss_app::actions::save_feed(conn, &args));
+#[tauri::command]
+pub async fn save_feed(
+    state: State<'_, AppState>,
+    args: SaveFeedArgs,
+) -> Result<FeedTree, UiError> {
+    let interval_changed = args.interval.is_some();
+    let tree = tree_task(&state, "save_feed", move |conn| {
+        rrss_app::actions::save_feed(conn, &args)
+    })
+    .await?;
+    if interval_changed {
+        state.scheduler.reschedule();
+    }
+    Ok(tree)
+}
 
 db_task!(unsubscribe(id: i64) -> () => |conn| rrss_app::actions::unsubscribe(conn, id));
 
-db_task!(
-    /// 批量退订会删除这些源的文章和本地媒体，放到阻塞线程。
-    unsubscribe_feeds(ids: Vec<i64>) -> FeedTree =>
-        |conn| rrss_app::actions::unsubscribe_many(conn, &ids)
-);
+/// 批量退订会删除这些源的文章和本地媒体，放到阻塞线程。
+#[tauri::command]
+pub async fn unsubscribe_feeds(
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+) -> Result<FeedTree, UiError> {
+    tree_task(&state, "unsubscribe_feeds", move |conn| {
+        rrss_app::actions::unsubscribe_many(conn, &ids)
+    })
+    .await
+}
 
-db_task!(dismiss_feed_health(id: i64) -> FeedTree =>
-    |conn| rrss_app::actions::dismiss_feed_health(conn, id));
+#[tauri::command]
+pub async fn dismiss_feed_health(state: State<'_, AppState>, id: i64) -> Result<FeedTree, UiError> {
+    tree_task(&state, "dismiss_feed_health", move |conn| {
+        rrss_app::actions::dismiss_feed_health(conn, id)
+    })
+    .await
+}
+
+/// 手动重试单个订阅：等到结果写入后返回，前端随后重读订阅树。
+#[tauri::command]
+pub async fn refresh_feed(state: State<'_, AppState>, id: i64) -> Result<(), UiError> {
+    state
+        .scheduler
+        .refresh_feed(id)
+        .await
+        .map_err(UiError::from)
+}
 
 db_task!(create_folder(name: String, parent_folder_id: Option<i64>) -> i64 =>
     |conn| rrss_app::actions::create_folder(conn, &name, parent_folder_id));
@@ -71,6 +122,7 @@ command_handler![
     discover_feeds,
     mark_scope_read,
     add_feed,
+    refresh_feed,
     save_feed,
     unsubscribe,
     create_folder,

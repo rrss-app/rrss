@@ -458,6 +458,8 @@ export const api = {
     return result;
   },
   saveFeed: (args: SaveFeedArgs) => invoke<FeedTree>("save_feed", { args }),
+  /** 手动重试单个订阅，结果写入后返回；不绕过网站限流。 */
+  refreshFeed: (id: number) => invoke<null>("refresh_feed", { id }),
   createFolder: (name: string, parentFolderId?: number | null) =>
     invoke<number>("create_folder", { name, parentFolderId: parentFolderId ?? null }),
   renameFolder: (id: number, name: string) => invoke("rename_folder", { id, name }),

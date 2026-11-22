@@ -2,7 +2,7 @@ use rusqlite::Connection;
 
 use crate::error::{Error, Result};
 
-pub const SCHEMA_VERSION: i32 = 47;
+pub const SCHEMA_VERSION: i32 = 48;
 
 /// 低于此版本的库不能在当前程序里升级。
 pub const MIN_UPGRADE_VERSION: i32 = 33;
@@ -36,6 +36,7 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         (45, apply_v45),
         (46, apply_v46),
         (47, apply_v47),
+        (48, apply_v48),
     ];
     let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if !(0..=SCHEMA_VERSION).contains(&version) {
@@ -69,6 +70,19 @@ pub fn migrate(conn: &Connection) -> Result<()> {
     // 补全新增 prompt / task_bindings（如 digest_pick_*）。
     crate::ai_store::seed_defaults(conn)?;
     Ok(())
+}
+
+/// 刷新间隔可按源覆盖。旧库没有写入入口，非默认值只可能来自外部改写，按覆盖保留。
+fn apply_v48(conn: &Connection) -> Result<()> {
+    crate::db::atomic_write(conn, |conn| {
+        if !column_exists(conn, "feeds", "interval_custom")? {
+            conn.execute_batch(
+                "ALTER TABLE feeds ADD COLUMN interval_custom INTEGER NOT NULL DEFAULT 0;
+                 UPDATE feeds SET interval_custom = 1 WHERE interval_secs != 3600;",
+            )?;
+        }
+        Ok(())
+    })
 }
 
 fn apply_v47(conn: &Connection) -> Result<()> {
@@ -608,6 +622,26 @@ fn apply_v34(conn: &Connection) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn v48_marks_only_non_default_intervals_as_overrides() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE feeds (id INTEGER PRIMARY KEY, interval_secs INTEGER NOT NULL DEFAULT 3600);
+             INSERT INTO feeds(id, interval_secs) VALUES (1, 3600), (2, 900);",
+        )
+        .unwrap();
+        apply_v48(&conn).unwrap();
+        apply_v48(&conn).unwrap();
+        let rows: Vec<(i64, i64)> = conn
+            .prepare("SELECT id, interval_custom FROM feeds ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(rows, vec![(1, 0), (2, 1)]);
+    }
 
     #[test]
     fn v47_keeps_existing_titles_and_only_counts_new_threads() {

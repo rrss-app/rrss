@@ -233,7 +233,7 @@ export function readmeDemo(language: DemoLanguage): ReadmeDemo {
 
   // ── 订阅 ──
   const feed = (id: number, title: string, folder_id: number, url: string, extra: Partial<FeedView> = {}): FeedView => ({
-    id, title, url, folder_id, icon_href: "", error: null, noisy: false, retention_days: null,
+    id, title, url, folder_id, icon_href: "", error: null, noisy: false, retention_days: null, interval_minutes: null, last_fetched_at: null, next_fetch_at: null, limited_until: null,
     health: null, position: id, empty: false, ...extra,
   });
   const [f5, f6, f7, f8] = c.folderFeeds;

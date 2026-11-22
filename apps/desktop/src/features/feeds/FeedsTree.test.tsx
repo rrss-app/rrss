@@ -19,7 +19,7 @@ vi.mock("../../lib/api", async () => {
 
 const harness = createReactHarness();
 const feed = (id: number, title: string, position: number): FeedView => ({
-  id, title, icon_href: "", url: "", error: null, noisy: false, folder_id: 0, retention_days: null,
+  id, title, icon_href: "", url: "", error: null, noisy: false, folder_id: 0, retention_days: null, interval_minutes: null, last_fetched_at: null, next_fetch_at: null, limited_until: null,
   health: null, position, empty: false,
 });
 const TREE: FeedTree = { folders: [], uncategorized: [feed(1, "甲源", 0), feed(2, "乙源", 1), feed(3, "丙源", 2)], folder_combo: ["未分类"] };

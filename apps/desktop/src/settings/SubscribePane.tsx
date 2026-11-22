@@ -1,4 +1,4 @@
-import { findFeed, feedHealthKind, feedHealthLabel, feedHealthDetail, formatFeedError } from "../features/feeds";
+import { feedAlert, findFeed, feedHealthKind, feedHealthLabel, feedHealthDetail, formatFeedError, formatRefreshTime } from "../features/feeds";
 import { useEffect, useRef, useState } from "react";
 import { api, type AddFeedNotice, type FeedTree, type FeedView, type FolderView } from "../lib/api";
 import { formatError } from "../lib/errors";
@@ -22,6 +22,29 @@ function retentionMode(days: number | null): RetentionMode {
 }
 function retentionArg(days: number | null) {
   return days === null ? "follow" : days === 0 ? "keep" : String(days);
+}
+
+/** 刷新间隔的下拉值：跟随全局或自定义分钟数（下限 1，不设档位）。 */
+type IntervalMode = "follow" | "custom";
+const INTERVAL_MODES: IntervalMode[] = ["follow", "custom"];
+const DEFAULT_CUSTOM_MINUTES = 60;
+function intervalArg(minutes: number | null) {
+  return minutes === null ? "follow" : String(minutes);
+}
+
+/** 编辑框里的上次 / 下次刷新；从未排期（含手动收录源）时不显示。 */
+function refreshLine(feed: FeedView, rescheduled: boolean, now = Date.now()): string | null {
+  const { last_fetched_at: last, next_fetch_at: next } = feed;
+  if (last === null && next === null) return null;
+  const t = (key: "refreshTimes" | "refreshDue" | "refreshPending" | "refreshRescheduled" | "refreshLimited", params: { last?: string; next?: string; until?: string } = {}) =>
+    i18n.t(`subscribe.feed.${key}`, { ns: "settingsContent", ...params });
+  const due = next === null || next <= now;
+  if (last === null) return t("refreshPending");
+  if (rescheduled) return t("refreshRescheduled", { last: formatRefreshTime(last, now) });
+  const alert = feedAlert(feed, now);
+  if (alert?.kind === "limited") return t("refreshLimited", { last: formatRefreshTime(last, now), until: formatRefreshTime(alert.until, now) });
+  return due ? t("refreshDue", { last: formatRefreshTime(last, now) })
+    : t("refreshTimes", { last: formatRefreshTime(last, now), next: formatRefreshTime(next, now) });
 }
 
 /** 添加订阅后的抓取安排；延期或未安排时带上原因。 */
@@ -92,7 +115,7 @@ export function SubscribePane({ onAsk, onChanged, onEditStateChange }: {
           <p className="hint">{t("subscribe.fetch.hint")}</p>
         </div>
         <div className="settings-section-body">
-          <SettingsRows ids={["feed_fetch_per_host"]} label={t("subscribe.fetch.label")} disabled={s.busy} onEditStateChange={report("fetch")} />
+          <SettingsRows ids={["feed_fetch_interval_minutes", "feed_fetch_per_host"]} label={t("subscribe.fetch.label")} disabled={s.busy} onEditStateChange={report("fetch")} />
         </div>
       </section>
       <section className="settings-card settings-section" aria-labelledby="subscribe-folder-title">
@@ -220,16 +243,20 @@ function FeedItem({ feed, folders, onAsk, settings: s, missing = false, onFinish
   const { t } = useTranslation("settingsContent");
   const editor = s.feeds[feed.id];
   const [open, setOpen] = useState(false);
+  const [limitOpen, setLimitOpen] = useState(false);
   const finish = () => { s.editFeed(feed.id); onFinish?.(); };
   const unsubscribe = () => onAsk(t("subscribe.feed.deleteTitle"), t("subscribe.feed.deleteConfirm", { title: feed.title }), () => {
     void s.run(t("subscribe.action.delete"), async () => { await api.unsubscribe(feed.id); return {}; }, finish);
   });
+  const alert = feedAlert(feed);
+  const limited = alert?.kind === "limited" ? t("subscribe.feed.limitedDetail", { until: formatRefreshTime(alert.until) }) : "";
   if (!editor) return <div className="list-row feed-row" data-feed-health={feedHealthKind(feed.health) || undefined}>
     <SourceAvatar title={feed.title} size={20} iconHref={feed.icon_href} />
     <div>
       <span className="feed-title">{feed.title}</span>
       <span className="url" title={feed.url}>{feed.url}</span>
       {feed.health && open && <span className="feed-health-detail">{feedHealthDetail(feed)}</span>}
+      {limited && limitOpen && <span className="feed-health-detail">{limited}</span>}
     </div>
     <div className="feed-row-actions">
       {feed.health ? <>
@@ -239,12 +266,15 @@ function FeedItem({ feed, folders, onAsk, settings: s, missing = false, onFinish
       <button type="button" className="btn sm danger" onClick={unsubscribe}>{t("subscribe.feed.unsubscribe")}</button>
       {feed.health && <button type="button" className={`health-badge ${feed.health?.code === "feed_health_failing" ? "danger" : "warn"}`}
         aria-expanded={open} onClick={() => setOpen(!open)}>{feedHealthLabel(feed.health)}</button>}
-      {!feed.health && feed.error && <span className="health-badge danger" title={formatFeedError(feed.error)}>{t("subscribe.feed.refreshFailed")}</span>}
+      {alert?.kind === "limited" && <button type="button" className="health-badge warn" aria-expanded={limitOpen} onClick={() => setLimitOpen(!limitOpen)}>
+        {t("subscribe.feed.limited", { until: formatRefreshTime(alert.until) })}</button>}
+      {!feed.health && alert?.kind === "failed" && feed.error && <span className="health-badge danger" title={formatFeedError(feed.error)}>{t("subscribe.feed.refreshFailed")}</span>}
     </div>
   </div>;
   const { baseline, draft } = editor;
   const change = (patch: Partial<FeedView>) => s.editFeed(feed.id, { ...editor, draft: { ...draft, ...patch } });
   const badDays = draft.retention_days !== null && !(draft.retention_days >= 0);
+  const badInterval = draft.interval_minutes !== null && !(draft.interval_minutes >= 1);
   return <div className="feed-edit">
     <div className="field-grid">
       <label className="field"><span>{t("subscribe.feed.name")}</span><input value={draft.title} onChange={(e) => change({ title: e.target.value })} placeholder={t("subscribe.feed.namePlaceholder")} /></label>
@@ -268,13 +298,30 @@ function FeedItem({ feed, folders, onAsk, settings: s, missing = false, onFinish
       </label>}
     </div>
     <p className="hint">{t("subscribe.feed.retentionHint")}</p>
-    {feed.error && <p className="notice warn"><Icon name="info" size={14} />{formatFeedError(feed.error)}</p>}
+    <div className="field-grid">
+      <label className="field"><span>{t("subscribe.feed.interval")}</span>
+        <MenuSelect label={t("subscribe.feed.interval")} value={draft.interval_minutes === null ? "follow" : "custom"}
+          options={INTERVAL_MODES.map((value) => ({ value, label: t(`subscribe.intervalMode.${value}`) }))}
+          onChange={(mode) => change({ interval_minutes: mode === "follow" ? null : baseline.interval_minutes ?? DEFAULT_CUSTOM_MINUTES })} />
+      </label>
+      {draft.interval_minutes !== null && <label className="field"><span>{t("subscribe.feed.intervalMinutes")}</span>
+        <input type="number" min={1} inputMode="numeric" value={Number.isNaN(draft.interval_minutes) ? "" : draft.interval_minutes}
+          onChange={(e) => { const minutes = e.target.valueAsNumber; change({ interval_minutes: Number.isInteger(minutes) && minutes >= 1 ? minutes : Number.NaN }); }} />
+      </label>}
+    </div>
+    {(() => {
+      const line = refreshLine(feed, !badInterval && draft.interval_minutes !== baseline.interval_minutes);
+      return line && <p className="hint feed-refresh">{line}</p>;
+    })()}
+    {limited ? <p className="notice warn"><Icon name="info" size={14} />{limited}</p>
+      : feed.error && <p className="notice warn"><Icon name="info" size={14} />{formatFeedError(feed.error)}</p>}
     {missing && <p className="notice warn">{t("subscribe.feed.missing")}</p>}
     <div className="row form-actions">
-      <button type="button" className="btn primary sm" disabled={missing || badDays} onClick={() => void s.run(t("subscribe.action.save"), async () => ({
+      <button type="button" className="btn primary sm" disabled={missing || badDays || badInterval} onClick={() => void s.run(t("subscribe.action.save"), async () => ({
         tree: await api.saveFeed({ id: feed.id, title: draft.title.trim() !== baseline.title ? draft.title : null,
           url: draft.url !== baseline.url ? draft.url : null, folder_id: draft.folder_id !== baseline.folder_id ? draft.folder_id : null,
-          retention: draft.retention_days !== baseline.retention_days ? retentionArg(draft.retention_days) : null }),
+          retention: draft.retention_days !== baseline.retention_days ? retentionArg(draft.retention_days) : null,
+          interval: draft.interval_minutes !== baseline.interval_minutes ? intervalArg(draft.interval_minutes) : null }),
       }), finish)}>{t("subscribe.saveEdit")}</button>
       <button type="button" className="btn sm" onClick={finish}>{t("subscribe.cancel")}</button>
       <span className="toolbar-spacer" />

@@ -93,3 +93,56 @@ async fn quick_failures_keep_base_interval_slow_failures_back_off_and_manual_fet
     );
     assert!(scheduler.shutdown().await);
 }
+
+#[tokio::test]
+async fn loop_wakes_for_the_earliest_deadline_and_on_reschedule() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(304))
+        .mount(&server)
+        .await;
+    let (_dir, path) = fixture();
+    let conn = db::open_at(&path).unwrap();
+    let now = now_ms();
+    conn.execute(
+        "INSERT INTO feeds(id,url,created_at,last_fetched_at,next_fetch_at) VALUES(1,?1,0,?2,?3)",
+        rusqlite::params![server.uri(), now, now + 1_500],
+    )
+    .unwrap();
+    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let running = tokio::spawn({
+        let scheduler = scheduler.clone();
+        async move {
+            scheduler
+                .run_loop_with_interval(Duration::from_secs(3600))
+                .await
+        }
+    });
+    let requests = |count: usize| {
+        let server = &server;
+        async move {
+            tokio::time::timeout(Duration::from_secs(10), async {
+                while server.received_requests().await.unwrap().len() < count {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+            })
+            .await
+            .expect("feed was not fetched before the long loop bound");
+        }
+    };
+    requests(1).await;
+    // The completed fetch is next due an hour out; an outside change brings it forward.
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while rrss_core::feeds::get_feed(&conn, 1).unwrap().next_fetch_at <= now_ms() {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .unwrap();
+    conn.execute("UPDATE feeds SET next_fetch_at=0 WHERE id=1", [])
+        .unwrap();
+    scheduler.reschedule();
+    requests(2).await;
+    scheduler.stop();
+    running.await.unwrap();
+}

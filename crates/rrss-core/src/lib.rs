@@ -21,6 +21,7 @@ pub mod feed_icon;
 pub mod feed_scope;
 pub mod feedback;
 pub mod feeds;
+pub mod fetch_interval;
 pub mod hidden;
 pub mod image_size;
 pub mod ingest;

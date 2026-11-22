@@ -54,6 +54,15 @@
     "unreadLine_other": "{{count}} 篇未读 · 按时间",
     "empty": "这个范围没有文章",
     "troubled": "{{title}}：{{reason}}",
+    "alert": {
+      "failedBadge": "刷新失败",
+      "limitedBadge": "限流中 · {{until}} 恢复",
+      "failed": "最近一次刷新失败：{{error}}",
+      "limited": "这个网站要求暂停请求，{{until}} 后自动恢复。",
+      "retry": "重试",
+      "retrying": "重试中…",
+      "retryFailed": "重试没有完成：{{error}}"
+    },
     "read": "已读",
     "unread": "未读",
     "retryMore": "重试加载更多",
@@ -80,6 +89,11 @@
     "filterEmpty": "没有名称含「{{query}}」的文件夹或源",
     "rowActions": "{{name}} 的操作",
     "fetchError": "抓取失败：{{error}}",
+    "limited": "网站限流中，{{until}} 恢复",
+    "badge": {
+      "failed": "失败",
+      "limited": "限流"
+    },
     "picked_other": "已选 {{count}} 个",
     "done": "完成",
     "newFolderLabel": "新文件夹名称",

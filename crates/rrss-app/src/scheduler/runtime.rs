@@ -123,6 +123,8 @@ pub(super) struct Shared {
     pub completed: watch::Sender<u64>,
     pub background_status: watch::Sender<Vec<views::BackgroundJobView>>,
     pub loop_running: std::sync::atomic::AtomicBool,
+    // 刷新间隔改动后唤醒到期扫描。
+    pub due_changed: Notify,
     icons: watch::Sender<u64>,
     pub stop: watch::Sender<bool>,
     sink: Arc<dyn Fn(views::FeedUpdated) + Send + Sync>,
@@ -269,6 +271,7 @@ impl Scheduler {
             completed,
             background_status: watch::channel(Vec::new()).0,
             loop_running: std::sync::atomic::AtomicBool::new(false),
+            due_changed: Notify::new(),
             icons,
             stop: stop.clone(),
             sink: Arc::new(sink),

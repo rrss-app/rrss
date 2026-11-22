@@ -6,6 +6,8 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ### Changed
 
+- Choose how often feeds refresh. Set a default interval in minutes under Settings → Feeds → Fetching, or give a single feed its own interval in its editor, which also shows when the feed last refreshed and when it refreshes next. New intervals apply right away.
+- Feeds that fail to refresh or whose site is rate-limiting requests now carry a badge in the sidebar, the feed list and the feed's timeline. The timeline explains the problem until it clears and offers Retry for a failed feed.
 - Edit a feed’s name, URL, folder, or article retention from its timeline header or sidebar menu. You can also unsubscribe there after confirmation.
 - Click a subscription name above an article title to browse its three most recent articles in a sidebar. Return to the original article or open the subscription’s full timeline.
 - Search highlights fit the paragraph height. Click the match count to return to the matched line, even with a single result. Close the highlights with × or Escape to keep reading at the same spot, or use the reader’s back button to return to the results.

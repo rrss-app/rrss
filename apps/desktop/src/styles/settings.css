@@ -875,6 +875,9 @@ details.manage-section > summary { cursor: pointer; font-weight: 500; }
 .settings-stepper .stepper-plus { order: 2; }
 .settings-panel-content .settings-stepper input { order: 1; width: 56px; min-width: 0; padding-inline: 0; text-align: center; border: 0; background: transparent; font-variant-numeric: tabular-nums; }
 .settings-stepper:focus-within { border-color: var(--accent); }
+.settings-number { display: inline-flex; flex: none; align-items: center; gap: 8px; }
+.settings-number .hint { margin: 0; white-space: nowrap; }
+.settings-panel-content .settings-number input { width: 72px; text-align: right; font-variant-numeric: tabular-nums; }
 .rule-composer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px; background: var(--surface-sunken); border: 1px solid var(--settings-hair); border-radius: var(--radius); }
 .rule-composer > .menu-select { width: 112px; }
 .rule-composer > .rule-pattern { flex: 1 1 96px; width: 96px; }

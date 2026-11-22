@@ -56,6 +56,15 @@
     "unreadLine_other": "{{count}} unread · by time",
     "empty": "No articles in this scope",
     "troubled": "{{title}}: {{reason}}",
+    "alert": {
+      "failedBadge": "Refresh failed",
+      "limitedBadge": "Rate-limited · back {{until}}",
+      "failed": "The last refresh failed: {{error}}",
+      "limited": "This site asked for a pause. Refreshing resumes {{until}}.",
+      "retry": "Retry",
+      "retrying": "Retrying…",
+      "retryFailed": "The retry did not finish: {{error}}"
+    },
     "read": "Read",
     "unread": "Unread",
     "retryMore": "Retry loading more",
@@ -84,6 +93,11 @@
     "filterEmpty": "No folders or feeds match “{{query}}”",
     "rowActions": "Actions for {{name}}",
     "fetchError": "Fetch failed: {{error}}",
+    "limited": "Site rate-limited until {{until}}",
+    "badge": {
+      "failed": "Failed",
+      "limited": "Limited"
+    },
     "picked_one": "1 selected",
     "picked_other": "{{count}} selected",
     "done": "Done",

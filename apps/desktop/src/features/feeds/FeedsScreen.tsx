@@ -1,9 +1,10 @@
 import { feedHealthKind, feedHealthDetail, feedHealthLabel, formatFeedError } from "./feedHealth";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { ArticleView, FeedTree } from "../../lib/api";
-import { feedQueryOptions } from "../../lib/feedQuery";
+import { api, type ArticleView, type FeedTree } from "../../lib/api";
+import { feedKeys, feedQueryOptions } from "../../lib/feedQuery";
+import { formatError } from "../../lib/errors";
 import { formatDay, formatPublished, formatPublishedFull, useMinuteClock } from "../../lib/time";
 import { useRetainedScroll } from "../../lib/useRetainedScroll";
 import { useTranslation } from "../../i18n";
@@ -13,7 +14,9 @@ import { Icon } from "../../components/Icon";
 import { Segmented } from "../../components/Segmented";
 import { SourceAvatar } from "../../components/ArticleCard";
 import { HiddenListDialog } from "../focus";
-import { feedsInScope, scopeTitle, scopeUnread } from "./feedTree";
+import { feedsInScope, findFeed, scopeTitle, scopeUnread } from "./feedTree";
+import { feedAlert } from "./feedAlert";
+import { formatRefreshTime } from "./refreshTime";
 import { useFeedsSession, type FeedsSession } from "./feedsSession";
 
 const LIST_SCOPES = ["all", "unread", "starred"] as const;
@@ -70,6 +73,9 @@ export const FeedsScreen = memo(function FeedsScreen({ session, active, onOpen, 
   const [scrollMargin, setScrollMargin] = useState(0);
   const [hiddenOpen, setHiddenOpen] = useState(false);
   const [fetching, setFetching] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState("");
+  const client = useQueryClient();
   const observe = useExposureTracker({ surface: "feeds", root: scroll, active });
   const items = useMemo(() => timelineItems(state.articles, now), [state.articles, now]);
   const title = scopeTitle(tree, state.scope);
@@ -149,6 +155,19 @@ export const FeedsScreen = memo(function FeedsScreen({ session, active, onOpen, 
     try { await onFetch(); await session.refresh(); } finally { setFetching(false); }
   };
   const troubled = state.articles.length === 0 && !state.loading ? troubledFeeds(tree, state.scope) : [];
+  // 单个订阅失败或限流时，题头带徽标与一行说明；恢复正常后自动消失。
+  const scopedFeed = singleFeed && tree ? findFeed(tree, Number(state.scope.slice(5))) : undefined;
+  const alert = scopedFeed ? feedAlert(scopedFeed, now) : null;
+  const retry = async () => {
+    if (!scopedFeed || retrying) return;
+    setRetrying(true);
+    setRetryError("");
+    try {
+      await api.refreshFeed(scopedFeed.id);
+      await client.invalidateQueries({ queryKey: feedKeys.tree });
+      await session.refresh();
+    } catch (err) { setRetryError(formatError(err)); } finally { setRetrying(false); }
+  };
 
   return <div className="main-view feeds-view" ref={root} hidden={!active} inert={!active}>
     {hiddenOpen ? <HiddenListDialog scope={{ scope: state.scope, listScope: state.listScope, label: title.name }} onClose={() => setHiddenOpen(false)}
@@ -175,7 +194,15 @@ export const FeedsScreen = memo(function FeedsScreen({ session, active, onOpen, 
           <div className="feeds-path">{title.path.length ? t("screen.pathNested", { path: title.path.join(" › ") }) : t("screen.path")}</div>
           <h1>{title.name}{singleFeed && onEditFeed && <button type="button" className="tool-btn icon-only" title={t("quickSettings")} aria-label={t("quickSettings")}
             onClick={() => onEditFeed(Number(state.scope.slice(5)))}><Icon name="settings" size={16} /></button>}
+            {alert ? <span className="feeds-alert-badge" data-tone={alert.kind === "limited" ? "warn" : "danger"}>
+              {alert.kind === "limited" ? t("screen.alert.limitedBadge", { until: formatRefreshTime(alert.until, now) }) : t("screen.alert.failedBadge")}</span> : null}
             <small>{t("screen.unreadLine", { count: unread })}</small></h1>
+          {alert ? <div className="feeds-alert" data-tone={alert.kind === "limited" ? "warn" : "danger"} role="status">
+            <span>{alert.kind === "limited" ? t("screen.alert.limited", { until: formatRefreshTime(alert.until, now) })
+              : t("screen.alert.failed", { error: alert.error })}{retryError ? ` ${t("screen.alert.retryFailed", { error: retryError })}` : ""}</span>
+            {alert.kind === "failed" ? <button type="button" className="btn sm" disabled={retrying} aria-busy={retrying} onClick={() => void retry()}>
+              {t(retrying ? "screen.alert.retrying" : "screen.alert.retry")}</button> : null}
+          </div> : null}
         </header>
         <div className="feeds-sticky" aria-hidden="true">{sticky ? <div className="feeds-day" data-sticky="1">{sticky}</div> : null}</div>
         {state.articles.length === 0 && !state.loading ? <div className="feeds-empty">

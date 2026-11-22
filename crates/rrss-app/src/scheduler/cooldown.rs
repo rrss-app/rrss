@@ -1050,6 +1050,14 @@ impl super::runtime::Shared {
         Ok(())
     }
 
+    /// End of a server rate limit covering this source; local admission waits are not limits.
+    pub(super) fn limited_until(&self, id: i64, url: &str) -> Option<i64> {
+        self.deferred(id, url)
+            .filter(|deferred| {
+                deferred.reason == rrss_core::ingest::FetchDeferredReason::HostLimited
+            })
+            .and_then(|deferred| deferred.until)
+    }
     pub(super) fn deferred(&self, id: i64, url: &str) -> Option<Deferred> {
         self.cooldowns
             .lock()

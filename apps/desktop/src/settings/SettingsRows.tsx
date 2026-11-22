@@ -115,7 +115,8 @@ export function SettingsRows({ ids, label, title, className, disabled = false, o
           else change(row, value === "1" ? "0" : "1");
         }} />;
     }
-    const display = registryEntry(spec.id)?.display;
+    const entry = registryEntry(spec.id);
+    const display = entry?.display;
     if (kind.type === "enum") {
       const allowed = only?.[spec.id as SettingId];
       const listed = settingOptions(spec.id, kind.options);
@@ -140,6 +141,14 @@ export function SettingsRows({ ids, label, title, className, disabled = false, o
           const text = next.trim();
           change(row, text !== "" && Number.isFinite(Number(text)) ? String(Math.round(Number(text) * 60)) : text);
         }} />;
+    }
+    if (display === "number") {
+      return <span className="settings-number">
+        <input type="number" inputMode="numeric" aria-label={row.control} disabled={blocked} value={draft[spec.id] ?? value}
+          min={kind.type === "int" ? kind.min : undefined} max={kind.type === "int" ? kind.max : undefined}
+          onChange={(e) => change(row, e.target.value)} />
+        {entry?.unit && <span className="hint">{entry.unit}</span>}
+      </span>;
     }
     if (display === "wan") {
       return <WanInput label={row.control} tokens={draft[spec.id] ?? value} disabled={blocked} onChange={(next) => change(row, next)} />;

@@ -116,7 +116,54 @@ impl Scheduler {
             .await;
     }
 
-    async fn run_loop_with_interval(&self, interval: Duration) {
+    /// Fill each feed's rate-limit end from the in-memory cooldowns.
+    pub fn annotate_limits(&self, tree: &mut views::FeedTree) {
+        let feeds = tree
+            .uncategorized
+            .iter_mut()
+            .chain(tree.folders.iter_mut().flat_map(|folder| folder.feeds.iter_mut()));
+        for feed in feeds {
+            feed.limited_until = self.shared.limited_until(feed.id, &feed.url);
+        }
+    }
+
+    /// Manual retry of one source: bypasses local slow-failure backoff but not
+    /// server cooldowns, and returns once its result is recorded.
+    pub async fn refresh_feed(&self, id: i64) -> Result<()> {
+        self.submit(id)?.wait().await?;
+        Ok(())
+    }
+
+    /// Refresh intervals or deadlines changed outside a fetch; rescan now
+    /// instead of waiting for the previously computed wake.
+    pub fn reschedule(&self) {
+        self.shared.due_changed.notify_one();
+    }
+
+    /// Sleep until the earliest persisted deadline, bounded by `max_wait`. While
+    /// a due feed is still in flight or parked, its next deadline is unknown,
+    /// so recheck after a short pause instead of the full bound.
+    async fn next_wait(&self, max_wait: Duration) -> Duration {
+        const IN_FLIGHT_RECHECK: Duration = Duration::from_secs(60);
+        const MIN_WAIT: Duration = Duration::from_secs(1);
+        let earliest = crate::jobs::spawn_db(self.shared.path.clone(), |conn| {
+            rrss_core::fetch_interval::earliest_due(conn)
+        })
+        .await;
+        let now = self.shared.clock.now().utc;
+        match earliest {
+            Ok(Some(at)) if at <= now => IN_FLIGHT_RECHECK,
+            Ok(Some(at)) => Duration::from_millis((at - now) as u64).max(MIN_WAIT),
+            Ok(None) => max_wait,
+            Err(error) => {
+                tracing::warn!(%error, "reading next feed deadline failed");
+                max_wait
+            }
+        }
+        .min(max_wait)
+    }
+
+    async fn run_loop_with_interval(&self, max_wait: Duration) {
         use std::sync::atomic::Ordering;
         if self.shared.loop_running.swap(true, Ordering::AcqRel) {
             return;
@@ -136,7 +183,11 @@ impl Scheduler {
             _ = async {
                 loop {
                     if let Err(error) = self.enqueue_due().await { tracing::warn!(%error, "scheduled refresh failed"); }
-                    tokio::time::sleep(interval).await;
+                    let wait = self.next_wait(max_wait).await;
+                    tokio::select! {
+                        _ = tokio::time::sleep(wait) => {},
+                        _ = self.shared.due_changed.notified() => {},
+                    }
                 }
             } => {},
         }

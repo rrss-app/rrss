@@ -145,10 +145,15 @@ pub async fn set_setting(
     if id == rrss_app::window_close::SETTING {
         return crate::tray::save_close_setting(&app, state.db_path.clone(), value).await;
     }
-    with_db("set_setting", state.db_path.clone(), move |conn| {
+    let reschedule = id == rrss_core::fetch_interval::SETTING;
+    let saved = with_db("set_setting", state.db_path.clone(), move |conn| {
         rrss_app::actions::set_setting(conn, &id, &value).map_err(UiError::from)
     })
-    .await
+    .await?;
+    if reschedule {
+        state.scheduler.reschedule();
+    }
+    Ok(saved)
 }
 
 db_task!(digest(id: i64) -> DigestView => |conn| queries::digest(conn, id));

@@ -96,7 +96,7 @@ export const PREVIEW_FEEDS: FeedTree = {
       indent: 0,
       position: 0,
       feeds: [
-        { id: 1, title: "闲聊广场", url: "https://xianliao.example/index.xml", error: null, noisy: true, folder_id: 1, icon_href: "", retention_days: null, health: null, position: 0, empty: false },
+        { id: 1, title: "闲聊广场", url: "https://xianliao.example/index.xml", error: null, noisy: true, folder_id: 1, icon_href: "", retention_days: null, interval_minutes: null, last_fetched_at: null, next_fetch_at: null, limited_until: null, health: null, position: 0, empty: false },
       ],
     },
     {
@@ -106,12 +106,12 @@ export const PREVIEW_FEEDS: FeedTree = {
       indent: 0,
       position: 1,
       feeds: [
-        { id: 2, title: "Compiler Notes", url: "https://compiler-notes.example/feed.xml", error: null, noisy: false, folder_id: 2, icon_href: "", retention_days: null, health: null, position: 0, empty: false },
+        { id: 2, title: "Compiler Notes", url: "https://compiler-notes.example/feed.xml", error: null, noisy: false, folder_id: 2, icon_href: "", retention_days: null, interval_minutes: null, last_fetched_at: null, next_fetch_at: null, limited_until: null, health: null, position: 0, empty: false },
       ],
     },
   ],
   uncategorized: [
-    { id: 3, title: "gadgetwire", url: "http://192.0.2.10:1200/gadgetwire", error: { code: "feed_refresh_http", params: { status: 503 }, detail: "http status 503" }, noisy: false, folder_id: 0, icon_href: "", retention_days: null, health: null, position: 2, empty: false },
+    { id: 3, title: "gadgetwire", url: "http://192.0.2.10:1200/gadgetwire", error: { code: "feed_refresh_http", params: { status: 503 }, detail: "http status 503" }, noisy: false, folder_id: 0, icon_href: "", retention_days: null, interval_minutes: null, last_fetched_at: null, next_fetch_at: null, limited_until: null, health: null, position: 2, empty: false },
   ],
   folder_combo: ["中文", "English"],
 };

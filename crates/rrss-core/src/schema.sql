@@ -45,7 +45,9 @@ CREATE TABLE feeds (
     icon_checked_at     INTEGER,
     etag                TEXT,
     last_modified       TEXT,
+    -- 生效的刷新间隔；interval_custom=0 时跟随全局设置，改全局时一并改写
     interval_secs       INTEGER NOT NULL DEFAULT 3600,
+    interval_custom     INTEGER NOT NULL DEFAULT 0,
     folder_id           INTEGER REFERENCES folders (id) ON DELETE SET NULL,
     error               TEXT,
     rsshub_instance_id  INTEGER REFERENCES rsshub_instances (id) ON DELETE SET NULL,

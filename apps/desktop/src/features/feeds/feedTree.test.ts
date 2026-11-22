@@ -3,7 +3,7 @@ import type { FeedTree, FeedView } from "../../lib/api";
 import { folderMoveTargets, planDrop, planShift, planToTop, treeRows, type TreeRow } from "./feedTree";
 
 function feed(id: number, title: string, folder_id: number, position: number): FeedView {
-  return { id, title, icon_href: "", url: `https://example.test/${id}`, error: null, noisy: false, folder_id, retention_days: null, health: null, position, empty: false };
+  return { id, title, icon_href: "", url: `https://example.test/${id}`, error: null, noisy: false, folder_id, retention_days: null, interval_minutes: null, last_fetched_at: null, next_fetch_at: null, limited_until: null, health: null, position, empty: false };
 }
 
 const tree: FeedTree = {

@@ -297,6 +297,19 @@ const DEFS: &[Def] = &[
         write: None,
     },
     Def {
+        id: rrss_core::fetch_interval::SETTING,
+        domain: SettingDomain::Reader,
+        level: SettingLevel::L1,
+        kind: Kind::Int(
+            rrss_core::fetch_interval::RANGE_MINUTES.0,
+            rrss_core::fetch_interval::RANGE_MINUTES.1,
+        ),
+        default: "60",
+        apply: SettingApply::Draft,
+        affects_pi: false,
+        write: Some(write_fetch_interval),
+    },
+    Def {
         id: db::HIDE_THRESHOLD_KEY,
         domain: SettingDomain::Reader,
         level: SettingLevel::L0,
@@ -549,6 +562,16 @@ fn write_focus_auto_summary(conn: &Connection, key: &str, value: &str) -> rrss_c
         }
         Ok(())
     })
+}
+
+// 跟随全局的源在同一事务里改写间隔与下次到期。
+fn write_fetch_interval(conn: &Connection, _key: &str, value: &str) -> rrss_core::Result<()> {
+    let minutes = value.parse::<i64>().map_err(|_| {
+        rrss_core::Error::InvalidSetting(SettingProblem::IntegerRequired {
+            value: value.into(),
+        })
+    })?;
+    rrss_core::fetch_interval::set_default_minutes(conn, minutes)
 }
 
 fn write_rank_switch(conn: &Connection, key: &str, value: &str) -> rrss_core::Result<()> {

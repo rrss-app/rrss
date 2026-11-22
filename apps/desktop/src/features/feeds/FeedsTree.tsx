@@ -1,4 +1,5 @@
-import { formatFeedError } from "./feedHealth";
+import { feedAlert } from "./feedAlert";
+import { formatRefreshTime } from "./refreshTime";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -206,7 +207,7 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
     try {
       await serialWrite(async () => {
         if (row.kind === "folder") await api.renameFolder(Number(row.key.slice(7)), name);
-        else await api.saveFeed({ id: Number(row.key.slice(5)), title: name, url: null, folder_id: null, retention: null });
+        else await api.saveFeed({ id: Number(row.key.slice(5)), title: name, url: null, folder_id: null, retention: null, interval: null });
         await refreshTree();
       });
     } catch (err) {
@@ -424,7 +425,13 @@ export function FeedsTree({ tree, counts, scope, onSelect, onAddFeed, onSettings
                   if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setEditing(null); }
                 }} />
                 : <span className="feeds-row-name"><Highlight text={row.name} query={filter} /></span>}
-              {row.feed?.error ? <span className="feeds-row-flag" title={formatFeedError(row.feed.error)} aria-label={t("tree.fetchError", { error: formatFeedError(row.feed.error) })} /> : null}
+              {(() => {
+                const alert = row.feed ? feedAlert(row.feed) : null;
+                if (!alert) return null;
+                const detail = alert.kind === "limited" ? t("tree.limited", { until: formatRefreshTime(alert.until) }) : t("tree.fetchError", { error: alert.error });
+                return <span className="feeds-row-badge" data-tone={alert.kind === "limited" ? "warn" : "danger"} title={detail} aria-label={detail}>
+                  {t(alert.kind === "limited" ? "tree.badge.limited" : "tree.badge.failed")}</span>;
+              })()}
               <span className="feeds-row-count">{row.kind === "folder" && row.open ? "" : row.count || ""}</span>
               {row.kind === "all" || renaming ? null : <button type="button" className="feeds-row-more" aria-label={t("tree.rowActions", { name: row.name })} aria-haspopup="menu"
                 aria-expanded={menu?.key === row.key}

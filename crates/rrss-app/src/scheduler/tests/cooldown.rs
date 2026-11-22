@@ -202,6 +202,19 @@ async fn rate_limit_spreads_to_peers_is_restored_before_dispatch_and_manual_repo
     assert_eq!(saved["version"], 2);
     assert!(until >= clock.now().utc + 86_400_000);
     assert!(rrss_core::feeds::get_feed(&conn, 1).unwrap().next_fetch_at >= until);
+    // The feed tree shows the limit on every source of the cooled host, not on other hosts.
+    let mut tree = crate::queries::feed_tree(&conn).unwrap();
+    scheduler.annotate_limits(&mut tree);
+    let limited = |id: i64| {
+        tree.uncategorized
+            .iter()
+            .find(|feed| feed.id == id)
+            .unwrap()
+            .limited_until
+    };
+    assert!(limited(1).is_some_and(|at| at >= until - 1_000));
+    assert!(limited(2).is_some_and(|at| at >= until - 1_000));
+    assert_eq!(limited(3), None);
     assert_eq!(
         conn.query_row(
             "SELECT fail_count,slow_fail_count FROM feeds WHERE id=1",

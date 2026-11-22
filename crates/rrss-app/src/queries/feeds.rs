@@ -11,6 +11,7 @@ pub fn feed_tree(conn: &Connection) -> rrss_core::Result<FeedTree> {
     let views = feeds::list_folder_views(conn)?;
     let noisy = feeds::noisy_feed_ids(conn)?;
     let retention = feed_retention(conn)?;
+    let intervals = rrss_core::fetch_interval::feed_overrides(conn)?;
     let health = feed_health::feed_health(conn, feeds::now_ms())?;
     // 只有手动收录源要这个标记：没有文章时订阅树不显示它。
     let empty_manual: Option<i64> = conn
@@ -24,18 +25,25 @@ pub fn feed_tree(conn: &Connection) -> rrss_core::Result<FeedTree> {
     let mut combo = Vec::new();
     let rows: Vec<FeedView> = listed
         .into_iter()
-        .map(|feed| FeedView {
-            id: feed.id,
-            icon_href: icons.get(&feed.id).cloned().unwrap_or_default(),
-            title: feeds::display_title(feed.title.as_deref().unwrap_or(""), &feed.url),
-            url: feed.url,
-            error: feed.error.map(|e| crate::ui_error::feeds::stored_error(&e)),
-            noisy: noisy.contains(&feed.id),
-            folder_id: feed.folder_id.unwrap_or(0),
-            retention_days: retention.get(&feed.id).copied().flatten(),
-            health: health.get(&feed.id).map(health_notice),
-            position: feed.position,
-            empty: empty_manual == Some(feed.id),
+        .map(|feed| {
+            let scheduled = feed.kind != rrss_core::kind::FeedKind::Manual;
+            FeedView {
+                id: feed.id,
+                icon_href: icons.get(&feed.id).cloned().unwrap_or_default(),
+                title: feeds::display_title(feed.title.as_deref().unwrap_or(""), &feed.url),
+                url: feed.url,
+                error: feed.error.map(|e| crate::ui_error::feeds::stored_error(&e)),
+                noisy: noisy.contains(&feed.id),
+                folder_id: feed.folder_id.unwrap_or(0),
+                retention_days: retention.get(&feed.id).copied().flatten(),
+                interval_minutes: intervals.get(&feed.id).copied(),
+                last_fetched_at: feed.last_fetched_at.filter(|_| scheduled),
+                next_fetch_at: Some(feed.next_fetch_at).filter(|at| scheduled && *at > 0),
+                limited_until: None,
+                health: health.get(&feed.id).map(health_notice),
+                position: feed.position,
+                empty: empty_manual == Some(feed.id),
+            }
         })
         .collect();
     // `list_feeds` 已按 (position, id) 排好，筛出来的子列表保持这个顺序。

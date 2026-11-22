@@ -65,7 +65,7 @@ describe("SubscribePane feed edit", () => {
     expect(onEdit).toHaveBeenLastCalledWith({ label: "订阅设置", dirty: true, busy: false });
     act(() => button(host, "保存修改").click());
     await harness.flush();
-    expect(api.saveFeed).toHaveBeenCalledWith({ id: feed.id, title: "未保存名称", url: null, folder_id: null, retention: null });
+    expect(api.saveFeed).toHaveBeenCalledWith({ id: feed.id, title: "未保存名称", url: null, folder_id: null, retention: null, interval: null });
     expect(host.textContent).toContain("保存失败");
     expect(titleInput(host).value).toBe("未保存名称");
     act(() => button(host, "取消").click());
@@ -103,7 +103,7 @@ describe("SubscribePane feed edit", () => {
     act(() => { save.click(); save.click(); });
     await harness.flush();
     expect(api.saveFeed).toHaveBeenCalledTimes(1);
-    expect(api.saveFeed).toHaveBeenCalledWith({ id: saved.uncategorized[0].id, title: "改名后", url: null, folder_id: null, retention: null });
+    expect(api.saveFeed).toHaveBeenCalledWith({ id: saved.uncategorized[0].id, title: "改名后", url: null, folder_id: null, retention: null, interval: null });
     expect(api.feeds).toHaveBeenCalledTimes(feedLoads);
     expect(changed).toHaveBeenCalledTimes(1);
     expect(changed).toHaveBeenCalledWith(saved);

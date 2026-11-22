@@ -104,15 +104,16 @@ pub fn subscribe(conn: &Connection, req: SubscribeRequest) -> Result<i64> {
     crate::db::atomic_write(conn, |conn| {
         let position = crate::tree_order::end_position(conn, req.folder_id)?;
         match conn.execute(
-            "INSERT INTO feeds (url, kind, folder_id, rsshub_instance_id, position, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO feeds (url, kind, folder_id, rsshub_instance_id, position, created_at, interval_secs)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 url,
                 kind.as_str(),
                 req.folder_id,
                 instance_id,
                 position,
-                created
+                created,
+                crate::fetch_interval::default_secs(conn)?
             ],
         ) {
             Ok(_) => Ok(conn.last_insert_rowid()),

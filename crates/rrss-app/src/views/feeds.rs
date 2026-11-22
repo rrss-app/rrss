@@ -16,6 +16,13 @@ pub struct FeedView {
     pub folder_id: i64,
     // 保留天数：null 跟随全局，0 永久保留。
     pub retention_days: Option<i64>,
+    // 刷新间隔（分钟）：null 跟随全局设置。
+    pub interval_minutes: Option<i64>,
+    // 上次抓取与下次到期（UTC 毫秒）；手动收录源或从未排期时为 null。
+    pub last_fetched_at: Option<i64>,
+    pub next_fetch_at: Option<i64>,
+    // 所在网站限流到何时（UTC 毫秒）；来自调度器内存，宿主返回订阅树前填写，查询里恒为 null。
+    pub limited_until: Option<i64>,
     // 源健康：码与原始参数；null 表示没有提示（或已忽略）。
     pub health: Option<crate::ui_error::feeds::FeedHealthNotice>,
     // 与同级文件夹共用的顺序。
@@ -38,6 +45,9 @@ pub struct SaveFeedArgs {
     // 保留："follow" 跟随全局，"keep" 永久保留，其余为天数。
     #[serde(default)]
     pub retention: Option<String>,
+    // 刷新间隔："follow" 跟随全局，其余为分钟数。
+    #[serde(default)]
+    pub interval: Option<String>,
 }
 
 // OPML 导入结果的计数，提示文字由前端生成。

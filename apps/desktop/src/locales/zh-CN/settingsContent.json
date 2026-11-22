@@ -175,6 +175,10 @@
       "keep": "永久保留",
       "custom": "自定义天数"
     },
+    "intervalMode": {
+      "follow": "跟随全局设置",
+      "custom": "自定义间隔"
+    },
     "action": {
       "unsubscribe": "退订",
       "add": "添加",
@@ -219,7 +223,7 @@
     },
     "fetch": {
       "title": "抓取",
-      "hint": "刷新时怎样从各个网站下载订阅。",
+      "hint": "多久刷新一次，以及刷新时怎样从各个网站下载订阅。",
       "label": "抓取"
     },
     "organize": {
@@ -276,6 +280,15 @@
       "retention": "保留文章正文",
       "retentionDays": "保留天数",
       "retentionHint": "收录满这么多天的文章会清掉正文，只留标题、链接和阅读记录。所有源的默认值在「存储」里设置。",
+      "interval": "刷新间隔",
+      "intervalMinutes": "间隔（分钟）",
+      "refreshTimes": "上次刷新 {{last}} · 下次约 {{next}}",
+      "refreshDue": "上次刷新 {{last}} · 即将刷新",
+      "refreshPending": "尚未刷新 · 即将刷新",
+      "refreshRescheduled": "上次刷新 {{last}} · 保存后按新间隔重新排期",
+      "limited": "限流中 · {{until}} 恢复",
+      "limitedDetail": "这个网站要求暂停请求，同一网站的订阅都在等待；{{until}} 后自动恢复，手动刷新也要等到那时。",
+      "refreshLimited": "上次刷新 {{last}} · {{until}} 恢复后刷新",
       "missing": "此订阅已不在列表中，未保存的输入仍保留。"
     }
   },

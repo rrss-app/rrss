@@ -176,6 +176,10 @@
       "keep": "Keep forever",
       "custom": "Custom days"
     },
+    "intervalMode": {
+      "follow": "Use global setting",
+      "custom": "Custom interval"
+    },
     "action": {
       "unsubscribe": "Unsubscribe",
       "add": "Add",
@@ -222,7 +226,7 @@
     },
     "fetch": {
       "title": "Fetching",
-      "hint": "How feeds are downloaded from each site during refresh.",
+      "hint": "How often feeds refresh, and how they are downloaded from each site.",
       "label": "Fetching"
     },
     "organize": {
@@ -280,6 +284,15 @@
       "retention": "Keep article text",
       "retentionDays": "Days to keep",
       "retentionHint": "Once an article has been saved for this many days, its text is cleared, keeping only the title, link, and reading history. Set the default for all feeds in “Storage”.",
+      "interval": "Refresh interval",
+      "intervalMinutes": "Interval (minutes)",
+      "refreshTimes": "Last refreshed {{last}} · next around {{next}}",
+      "refreshDue": "Last refreshed {{last}} · refreshing soon",
+      "refreshPending": "Not refreshed yet · refreshing soon",
+      "refreshRescheduled": "Last refreshed {{last}} · saving reschedules the next refresh",
+      "limited": "Rate-limited · back {{until}}",
+      "limitedDetail": "This site asked for a pause, so every feed from it is waiting. Refreshing resumes {{until}}; a manual refresh waits too.",
+      "refreshLimited": "Last refreshed {{last}} · resumes {{until}}",
       "missing": "This feed is no longer in the list. Your unsaved input is kept."
     }
   },

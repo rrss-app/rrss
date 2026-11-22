@@ -167,7 +167,7 @@ export const MOCK_FEEDS: FeedTree = {
       label: "中文",
       indent: 0,
       position: 0,
-      feeds: [{ id: 1, title: "闲聊广场", url: "https://xianliao.example/index.xml", error: null, noisy: true, folder_id: 1, retention_days: null, icon_href: "", position: 0,
+      feeds: [{ id: 1, title: "闲聊广场", url: "https://xianliao.example/index.xml", error: null, noisy: true, folder_id: 1, retention_days: null, interval_minutes: null, last_fetched_at: null, next_fetch_at: null, limited_until: null, icon_href: "", position: 0,
         health: { code: "feed_health_noisy", params: { window_days: 14 } }, empty: false }],
     },
     {
@@ -177,14 +177,14 @@ export const MOCK_FEEDS: FeedTree = {
       indent: 0,
       position: 1,
       feeds: [
-        { id: 2, title: "Compiler Notes", url: "https://compiler-notes.example/feed.xml", error: null, noisy: false, folder_id: 2, retention_days: null, icon_href: "", health: null, position: 0, empty: false },
-        { id: 3, title: "Byte Harbor", url: "https://byte-harbor.example/rss", error: null, noisy: false, folder_id: 2, retention_days: 0, icon_href: "", position: 1, empty: false,
+        { id: 2, title: "Compiler Notes", url: "https://compiler-notes.example/feed.xml", error: null, noisy: false, folder_id: 2, retention_days: null, interval_minutes: null, last_fetched_at: null, next_fetch_at: null, limited_until: null, icon_href: "", health: null, position: 0, empty: false },
+        { id: 3, title: "Byte Harbor", url: "https://byte-harbor.example/rss", error: null, noisy: false, folder_id: 2, retention_days: 0, interval_minutes: null, last_fetched_at: null, next_fetch_at: null, limited_until: null, icon_href: "", position: 1, empty: false,
           health: { code: "feed_health_stale", params: { quiet_days: 47, avg_interval_days: 6, failed: false, last_article_at: new Date(new Date().getFullYear(), 7, 11, 9, 30).getTime(), last_success_at: new Date().setHours(8, 2, 0, 0) } } },
       ],
     },
   ],
   uncategorized: [
-    { id: 4, title: "Gadget Wire Tech Weekly Digest Long Name", url: "http://192.0.2.10:1200/gadgetwire", error: { code: "feed_refresh_http", params: { status: 503 }, detail: "http status 503" }, noisy: false, folder_id: 0, retention_days: null, icon_href: "", position: 2,
+    { id: 4, title: "Gadget Wire Tech Weekly Digest Long Name", url: "http://192.0.2.10:1200/gadgetwire", error: { code: "feed_refresh_http", params: { status: 503 }, detail: "http status 503" }, noisy: false, folder_id: 0, retention_days: null, interval_minutes: null, last_fetched_at: null, next_fetch_at: null, limited_until: null, icon_href: "", position: 2,
       health: { code: "feed_health_failing", params: { fail_count: 12, failing_days: 9, last_success_at: new Date(new Date().getFullYear(), 8, 18, 7, 40).getTime() } }, empty: false },
   ],
   folder_combo: ["中文", "English"],
@@ -1653,6 +1653,13 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 await wait(120);
                 Object.assign(state.retention, { preview: { code: "retention_preview_empty", params: {} }, preview_hint: { code: "retention_daily", params: {} }, can_run: false, first_run: false });
                 return { code: "retention_cleaned", params: { count: 12480, backed_up: true } };
+              case "refresh_feed": {
+                await wait(120);
+                const clear = (list: any[]) => list.map((f) => (f.id === args.id && !(f.limited_until > Date.now()) ? { ...f, error: null } : f));
+                state.feeds = { ...state.feeds, uncategorized: clear(state.feeds.uncategorized),
+                  folders: state.feeds.folders.map((folder: any) => ({ ...folder, feeds: clear(folder.feeds) })) };
+                return null;
+              }
               case "dismiss_feed_health":
               case "unsubscribe_feeds": {
                 const drop = new Set<number>(command === "unsubscribe_feeds" ? args.ids : []);
@@ -1791,10 +1798,14 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               }
               case "save_feed": {
                 const body = args.args ?? {};
-                const lists = [state.feeds.uncategorized, ...state.feeds.folders.map((folder: { feeds: { id: number; title: string }[] }) => folder.feeds)];
+                const lists = [state.feeds.uncategorized, ...state.feeds.folders.map((folder: { feeds: { id: number; title: string; interval_minutes: number | null }[] }) => folder.feeds)];
+                if (typeof body.interval === "string" && body.interval !== "follow" && !(Number(body.interval) >= 1)) {
+                  throw { code: "setting_out_of_range", params: { min: 1, max: 525600 }, detail: "setting is outside its allowed range" };
+                }
                 for (const list of lists) {
                   const feed = list.find((item) => item.id === body.id);
                   if (feed && typeof body.title === "string") feed.title = body.title;
+                  if (feed && typeof body.interval === "string") feed.interval_minutes = body.interval === "follow" ? null : Number(body.interval);
                 }
                 return state.feeds;
               }
@@ -1844,7 +1855,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 if (listed.some(feed => feed.url === args.url)) throw new Error("已订阅该地址");
                 const id = Math.max(0, ...listed.map(feed => feed.id)) + 1;
                 state.feeds.uncategorized.push({ id, url: args.url, title: args.url, folder_id: 0, position: id,
-                  retention_days: null, icon_href: "", error: null, noisy: false, health: null, empty: true });
+                  retention_days: null, interval_minutes: null, last_fetched_at: null, next_fetch_at: null, limited_until: null, icon_href: "", error: null, noisy: false, health: null, empty: true });
                 return { id, notice: { code: "fetching", params: {} } };
               }
               case "export_opml":
