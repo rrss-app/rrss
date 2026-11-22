@@ -6,6 +6,7 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ### Fixed
 
+- The lead story's title in Focus no longer cuts off the bottoms of letters such as g, y and p.
 - Returning from a citation conversation restores the article's original navigation, so Back reaches the starting page instead of cycling between the article and chat.
 
 ### Changed
