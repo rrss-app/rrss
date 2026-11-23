@@ -5,7 +5,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
-use crate::rank::reasons::{ReasonMessage, ReasonPrefix, StoredReason};
+use crate::reasons::{ReasonMessage, ReasonPrefix, StoredReason};
 use crate::rules::{Dimension, Rule, list_enabled_rules};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

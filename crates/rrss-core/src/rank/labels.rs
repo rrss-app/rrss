@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use super::engagement::{self, DailySession, Engagement, Profiles, SessionSummary};
+use crate::signals::engagement::{self, DailySession, Engagement, Profiles, SessionSummary};
 use crate::signals::{ArticleEvent, EventKind};
 
 // 阶段 23「在 B1 里的权重」：跳出可能只是误点，负证据取显式踩的四分之一；

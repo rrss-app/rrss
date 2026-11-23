@@ -235,7 +235,7 @@ fn perf_rank_45k() {
                 })
                 .collect();
             v[id % 8] += 1.0;
-            rrss_core::rank::affinity::normalized(&v).unwrap()
+            rrss_core::vector_math::normalized(&v).unwrap()
         })
         .collect();
     let tx = db::write_transaction(&conn).unwrap();

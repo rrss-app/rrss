@@ -41,6 +41,7 @@ pub mod presets;
 pub mod rag;
 pub mod rag_prepare;
 pub mod rank;
+pub mod reasons;
 pub mod retention;
 pub mod rule_stats;
 pub mod rules;
@@ -56,6 +57,7 @@ pub mod timeline;
 pub mod translations;
 pub mod tree_order;
 pub mod url_norm;
+pub mod vector_math;
 pub mod vector_space;
 
 #[cfg(test)]

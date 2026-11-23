@@ -3,7 +3,8 @@ use std::collections::{HashMap, HashSet};
 
 use rusqlite::{Connection, params};
 
-use super::{engagement, evidence::DAY_MS, labels, spot_check};
+use super::{evidence::DAY_MS, labels, spot_check};
+use crate::signals::engagement;
 use crate::{
     Result,
     articles::{self, ArticleCard},

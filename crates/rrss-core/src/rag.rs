@@ -844,7 +844,7 @@ pub(crate) fn normalized_title_vectors(
                 let (id, ordinal, vector) = row?;
                 if let Some(vector) = vector
                     .filter(|v| v.len() as i64 == space.dims)
-                    .and_then(crate::rank::affinity::normalized_owned)
+                    .and_then(crate::vector_math::normalized_owned)
                     && vectors.get(&id).is_none_or(|(old, _)| ordinal < *old)
                 {
                     vectors.insert(id, (ordinal, vector));

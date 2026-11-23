@@ -15,7 +15,7 @@ use crate::embed_fetch::{self, present_document};
 use crate::views::*;
 
 pub fn reading_speeds(conn: &Connection) -> rrss_core::Result<ReadingSpeedsView> {
-    use rrss_core::rank::engagement::{self, Language};
+    use rrss_core::signals::engagement::{self, Language};
     let until = chrono::Utc::now().timestamp_millis();
     let sessions = rrss_core::signals::load_session_summaries(
         conn,

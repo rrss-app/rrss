@@ -112,7 +112,7 @@ fn changed_semantic_spaces_and_memberships_keep_lexical_pagination() {
             |cards: &[crate::articles::ArticleCard]| cards.iter().map(|c| c.id).collect::<Vec<_>>();
         let first = ids(&page(&conn, 40, &[]).0);
         let next = ids(&page(&conn, 40, &first).0);
-        let switches = db::rank_switches(&conn).unwrap();
+        let switches = crate::rank::store::switches(&conn).unwrap();
         for topic in [&old, &new] {
             assert!(topic.allocation(switches, false).eligible());
             assert!(matches!(

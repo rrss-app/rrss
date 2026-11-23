@@ -119,7 +119,7 @@ pub(super) fn candidates(
         // in the same busy feed. This third lane only uses admitted members;
         // it does not expand the active pool or scan historical observations.
         if !evidence.is_empty() {
-            let on = crate::db::rank_switches(conn)?;
+            let on = crate::rank::store::switches(conn)?;
             let epochs: HashSet<_> = evidence.values().filter_map(|e| e.epoch()).collect();
             let mut lanes = HashMap::new();
             let mut topics = BinaryHeap::new();
@@ -241,7 +241,7 @@ pub(super) fn select(
     use_content: bool,
     group: bool,
 ) -> Result<Vec<ArticleCard>> {
-    let on = crate::db::rank_switches(conn)?;
+    let on = crate::rank::store::switches(conn)?;
     // Saved-item retrieval is exhaustive, unlike the bounded recommendation
     // pool. Keep its original cost and ordering even after thousands of pages.
     let window = same_feed_window();

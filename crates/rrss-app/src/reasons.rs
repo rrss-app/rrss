@@ -5,8 +5,8 @@ use rrss_core::rules::Dimension;
 
 rrss_core::reason_types!(ts_rs::TS);
 
-impl From<rrss_core::rank::reasons::ReasonMessage> for ReasonMessage {
-    fn from(message: rrss_core::rank::reasons::ReasonMessage) -> Self {
+impl From<rrss_core::reasons::ReasonMessage> for ReasonMessage {
+    fn from(message: rrss_core::reasons::ReasonMessage) -> Self {
         // The shared declaration guarantees identical wire shapes. Only string
         // data crosses the privacy boundary; enums/counts retain their types.
         let mut wire = serde_json::to_value(message).unwrap_or_default();
@@ -51,7 +51,7 @@ mod tests {
 
     #[test]
     fn reason_parameters_keep_whitespace_but_never_urls_or_credentials() {
-        use rrss_core::rank::reasons as core;
+        use rrss_core::reasons as core;
         let message = ReasonMessage::from(core::ReasonMessage::RankAuthor {
             habit: core::Habit::Read,
             pattern:

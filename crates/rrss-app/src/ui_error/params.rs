@@ -45,7 +45,7 @@ pub(super) fn file_name(value: &Path) -> Option<String> {
 // Reason content may deliberately contain whitespace. Preserve it, while using
 // the same privacy projection for URLs and credentials as other UI parameters.
 pub(crate) fn reason_text(value: &str) -> String {
-    rrss_core::rank::reasons::safe_text(value)
+    rrss_core::reasons::safe_text(value)
 }
 
 pub(crate) fn reason_legacy_text(value: &str) -> String {

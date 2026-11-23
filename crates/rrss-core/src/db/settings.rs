@@ -99,14 +99,3 @@ pub fn set_theme_preference(conn: &Connection, value: &str) -> Result<()> {
     };
     set_setting(conn, THEME_PREFERENCE_KEY, norm)
 }
-
-/// B1 / B2 五个分量默认开启；未写过的新旧库都使用相同默认值。
-pub fn rank_switches(conn: &Connection) -> Result<crate::rank::combine::Switches> {
-    Ok(crate::rank::combine::Switches {
-        features: setting_enabled(conn, RANK_FEATURES_ENABLED_KEY, true)?,
-        source: setting_enabled(conn, RANK_SOURCE_ENABLED_KEY, true)?,
-        coverage: setting_enabled(conn, RANK_COVERAGE_ENABLED_KEY, true)?,
-        freshness: setting_enabled(conn, RANK_FRESHNESS_ENABLED_KEY, true)?,
-        affinity: setting_enabled(conn, RANK_AFFINITY_ENABLED_KEY, true)?,
-    })
-}

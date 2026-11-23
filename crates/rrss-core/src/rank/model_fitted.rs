@@ -1,6 +1,7 @@
 //! Fitted read prediction; weekly profiles never observe a sample's own outcome.
 use super::*;
-use crate::rank::{engagement::SessionSummary, evidence::DAY_MS, labels::Evidence, read_model};
+use crate::rank::{evidence::DAY_MS, labels::Evidence, read_model};
+use crate::signals::engagement::SessionSummary;
 
 const WINDOW_MS: i64 = 60 * DAY_MS;
 /// Selected positives without a Focus showing receive half weight.

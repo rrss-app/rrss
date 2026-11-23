@@ -396,7 +396,7 @@ impl Model {
         fitted: bool,
         ids: &[i64],
     ) -> Result<(bool, BTreeMap<i64, [f64; 5]>)> {
-        let on = crate::db::rank_switches(conn)?;
+        let on = crate::rank::store::switches(conn)?;
         let model = Self::load_with_fitted(conn, now.saturating_add(1), on.affinity, None, fitted)?;
         let only = |k: usize| Switches {
             features: on.features && k == 0,

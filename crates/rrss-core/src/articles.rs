@@ -76,7 +76,7 @@ pub struct ArticleCard {
     #[serde(default)]
     pub cluster_members: Vec<i64>,
     pub interest_label: String,
-    pub interest_reason: Option<crate::rank::reasons::ReasonMessage>,
+    pub interest_reason: Option<crate::reasons::ReasonMessage>,
     pub noisy: bool,
     #[serde(default)]
     pub spot_check: bool,

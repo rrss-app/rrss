@@ -37,6 +37,17 @@ pub fn update(conn: &Connection, ids: &[i64], now: i64) -> Result<usize> {
 
 /// 设置成功时开关和全部排序结果一起生效；重计算通常不持写锁。
 /// 只接受独立调用，不能在已有写事务中重新包裹这条用户路径。
+/// B1 / B2 五个分量默认开启；未写过的新旧库都使用相同默认值。
+pub fn switches(conn: &Connection) -> Result<super::combine::Switches> {
+    Ok(super::combine::Switches {
+        features: db::setting_enabled(conn, db::RANK_FEATURES_ENABLED_KEY, true)?,
+        source: db::setting_enabled(conn, db::RANK_SOURCE_ENABLED_KEY, true)?,
+        coverage: db::setting_enabled(conn, db::RANK_COVERAGE_ENABLED_KEY, true)?,
+        freshness: db::setting_enabled(conn, db::RANK_FRESHNESS_ENABLED_KEY, true)?,
+        affinity: db::setting_enabled(conn, db::RANK_AFFINITY_ENABLED_KEY, true)?,
+    })
+}
+
 pub fn set_switch(conn: &Connection, key: &str, enabled: bool) -> Result<()> {
     set_switch_with(conn, key, enabled, || Ok(()))
 }
@@ -96,7 +107,7 @@ impl<'a> SwitchChange<'a> {
         let version = input_version(conn)?;
         // 每次重试在快照建立后取新的截止时间，覆盖等待期间刚入库的文章与行为。
         let now = crate::feeds::now_ms();
-        let mut switches = db::rank_switches(conn)?;
+        let mut switches = switches(conn)?;
         let mut fitted = fitted_enabled(conn)?;
         let selected = match key {
             FITTED_ENABLED_KEY => &mut fitted,
@@ -207,7 +218,7 @@ fn plan(conn: &Connection, ids: Option<&[i64]>, now: i64) -> Result<Plan> {
         conn,
         ids,
         now,
-        db::rank_switches(conn)?,
+        switches(conn)?,
         fitted_enabled(conn)?,
     )
 }
@@ -266,7 +277,7 @@ fn plan_with_switches(
 
 impl Plan {
     fn still_valid(&self, tx: &Connection) -> Result<bool> {
-        Ok(db::rank_switches(tx)? == self.switches
+        Ok(switches(tx)? == self.switches
             && fitted_enabled(tx)? == self.fitted
             && db::get_setting(tx, SWITCH_REVISION_KEY)? == self.switch_revision
             && db::get_setting(tx, REFRESHED_KEY)? == self.refreshed)
@@ -407,14 +418,14 @@ mod tests {
                 UPDATE articles SET read=1 WHERE id=2;",
             )?;
             assert!(
-                db::rank_switches(&other)?.freshness,
+                switches(&other)?.freshness,
                 "the new switch is not published during calculation"
             );
             Ok(change)
         })
         .unwrap();
         assert!(!db::atomic_write(&conn, |tx| change.commit(tx)).unwrap());
-        assert!(db::rank_switches(&conn).unwrap().freshness);
+        assert!(switches(&conn).unwrap().freshness);
         assert_eq!(
             conn.query_row(
                 "SELECT computed_at FROM article_rank WHERE article_id=1",
@@ -425,7 +436,7 @@ mod tests {
             86400000
         );
         set_switch(&conn, key, false).unwrap();
-        assert!(!db::rank_switches(&conn).unwrap().freshness);
+        assert!(!switches(&conn).unwrap().freshness);
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM article_rank", [], |row| row
                 .get::<_, i64>(0))
@@ -514,7 +525,7 @@ mod tests {
             10 + SNAPSHOT_ATTEMPTS as i64,
             "every snapshot conflicted"
         );
-        assert!(!db::rank_switches(&conn).unwrap().freshness);
+        assert!(!switches(&conn).unwrap().freshness);
         let count = |sql: &str| conn.query_row(sql, [], |row| row.get::<_, i64>(0)).unwrap();
         assert_eq!(
             count("SELECT COUNT(*) FROM article_rank"),
@@ -583,7 +594,7 @@ mod tests {
         set_switch(&conn, FITTED_ENABLED_KEY, false).unwrap();
         assert!(!old.still_valid(&conn).unwrap());
         assert!(!db::atomic_write(&conn, |tx| change.commit(tx)).unwrap());
-        assert!(db::rank_switches(&conn).unwrap().features);
+        assert!(switches(&conn).unwrap().features);
     }
 
     #[test]

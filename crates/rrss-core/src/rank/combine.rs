@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::reasons::{Habit, ReasonMessage, ReasonPrefix, safe_text};
+use crate::reasons::{Habit, ReasonMessage, ReasonPrefix, safe_text};
 use crate::{features::FeatureChip, rules::Dimension};
 pub const ALGO_VERSION: i64 = 16;
 

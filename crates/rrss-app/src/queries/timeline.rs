@@ -1,10 +1,13 @@
 use rusqlite::Connection;
 
-use rrss_core::articles::{self, ListScope};
+use rrss_core::articles::ListScope;
 use rrss_core::feed_scope::{self, FeedScope};
 use rrss_core::timeline::{self, TimelineCursor};
 
 use crate::views::*;
+
+/// Timeline page size, independent of Focus pagination.
+const PAGE_SIZE: i64 = 40;
 
 pub fn feeds_page(
     conn: &Connection,
@@ -22,7 +25,7 @@ pub fn feeds_page(
             at: cursor.at,
             id: cursor.id,
         }),
-        articles::FOCUS_PAGE_SIZE,
+        PAGE_SIZE,
     )?;
     let icons = super::feeds::feed_icon_hrefs(conn, cards.iter().map(|a| a.feed_id))?;
     let articles = cards
@@ -68,7 +71,7 @@ mod tests {
     fn open() -> (tempfile::TempDir, rrss_core::db::PooledConnection) {
         let dir = tempfile::tempdir().unwrap();
         let conn = rrss_core::db::open_at(&dir.path().join("feeds.db")).unwrap();
-        articles::set_hide_threshold(&conn, -10).unwrap();
+        rrss_core::articles::set_hide_threshold(&conn, -10).unwrap();
         (dir, conn)
     }
 
@@ -104,7 +107,7 @@ mod tests {
             [],
         )
         .unwrap();
-        let n = articles::FOCUS_PAGE_SIZE;
+        let n = PAGE_SIZE;
         conn.execute(
             "WITH RECURSIVE ids(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM ids WHERE id < ?1)
              INSERT INTO articles (id, feed_id, title, published_at, created_at)

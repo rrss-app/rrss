@@ -12,7 +12,7 @@ use crate::db::{
 use crate::error::{Error, Result};
 use crate::feeds::now_ms;
 use crate::rag::{SelectedArticle, cosine_distance, le_to_f32s, load_selected_article_vectors};
-use crate::rank::reasons::{ReasonMessage, ReasonPrefix, StoredReason};
+use crate::reasons::{ReasonMessage, ReasonPrefix, StoredReason};
 
 pub const INTEREST_DIST: f32 = 0.35;
 pub const DEFAULT_WEIGHT: i64 = 2;
@@ -322,7 +322,7 @@ pub(crate) fn calculate_boost(vec: &[f32], prototypes: &[Prototype]) -> (i64, Ve
             let scaled = ((proto.weight as f32) * (1.0 - dist / INTEREST_DIST)).round() as i64;
             let weight = scaled.max(1);
             boost += weight;
-            let pattern = crate::rank::reasons::safe_text(&proto.label);
+            let pattern = crate::reasons::safe_text(&proto.label);
             reasons.push(InterestReason {
                 interest_id: proto.id,
                 label: proto.label.clone(),

@@ -306,7 +306,7 @@ fn digest_lede(body: &str) -> String {
 }
 
 pub fn ranking_settings(conn: &Connection) -> rrss_core::Result<RankingSettings> {
-    let learned = db::rank_switches(conn)?;
+    let learned = rrss_core::rank::store::switches(conn)?;
     Ok(RankingSettings {
         show_details: db::setting_enabled(conn, db::FOCUS_SHOW_DETAILS_KEY, false)?,
         interest_boost: interests::boost_enabled(conn)?,

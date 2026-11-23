@@ -4,7 +4,9 @@ use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRe
 use rusqlite::{Connection, OptionalExtension, Row, ToSql, params};
 use serde::{Deserialize, Serialize};
 
-use crate::rank::engagement::{self, Language, SessionSummary};
+pub mod engagement;
+
+use engagement::{Language, SessionSummary};
 use crate::{Error, Result, db};
 
 pub const RETENTION_MS: i64 = 180 * 24 * 3600 * 1000;
