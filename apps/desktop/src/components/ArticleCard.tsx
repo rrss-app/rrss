@@ -73,6 +73,7 @@ export function ArticleCard({
             {showReasons && learned ? <span className="meta-tag learned" title={row.rank_reasons?.map(formatReason).join(t("card.reasonSeparator"))}>{formatReason(learned)}</span> : null}
             {showReasons && row.noisy ? <span className="meta-tag">{t("card.noisy")}</span> : null}
             {details && (row.spot_check || review) ? <span className="meta-tag" title={t("card.spotCheckTitle")}>{t("card.spotCheck")}</span> : null}
+            {details && row.explore ? <span className="meta-tag" title={t("card.exploreTitle")}>{t("card.explore")}</span> : null}
             {row.starred ? <span className="meta-tag starred"><Icon name="star" size={11} filled />{t("card.starred")}</span> : null}
           </div>
           {showReasons && score !== 0 ? <span className={`score ${scoreClass}`} title={t("card.scoreTitle")}>{score > 0 ? "+" : ""}{formatReasonNumber(score)}</span> : null}

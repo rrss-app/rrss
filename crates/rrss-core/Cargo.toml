@@ -6,6 +6,9 @@ license.workspace = true
 description = "Feeds, SQLite, rules, and OPML (no UI)"
 publish = false
 
+[features]
+evaluation-clock = []
+
 [dependencies]
 chrono.workspace = true
 directories.workspace = true
@@ -44,5 +47,5 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Globali
 tracing-subscriber.workspace = true
 # 代理矩阵测试里的本地 TLS 代理 / 目标；只用锁定里已有的 ring 后端。
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
-rusqlite.workspace = true
+rusqlite = { workspace = true, features = ["backup"] }
 tempfile = "3"

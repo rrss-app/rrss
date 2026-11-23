@@ -265,7 +265,7 @@ export function readmeDemo(language: DemoLanguage): ReadmeDemo {
   const article = (id: number, title: string, feed_id: number, published_at: number, extra: Partial<ArticleView> = {}): ArticleView => ({
     id, title, feed_id, feed_title: feedTitle(feed_id), feed_icon_href: "", published_at, url: `https://example.org/${id}`,
     read: false, starred: false, score: 0, summary: "", row_kind: 0, cluster_id: 0, cluster_size: 1, cluster_label: "",
-    cluster_span: "", interest_reason: null, rank_reasons: [], noisy: false, spot_check: false, ...extra,
+    cluster_span: "", interest_reason: null, rank_reasons: [], noisy: false, spot_check: false, explore: false, ...extra,
   });
   const interest = (pattern: string) => ({ code: "interest_match" as const, params: { pattern } });
 

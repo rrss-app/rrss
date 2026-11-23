@@ -93,7 +93,7 @@ const article = (
   interest_reason: null,
   rank_reasons: [],
   noisy: false,
-  spot_check: false,
+  spot_check: false, explore: false,
   ...extra,
 });
 
@@ -117,6 +117,7 @@ export const MOCK_FOCUS: FocusPage = {
     rank_coverage: true,
     rank_freshness: true,
     rank_affinity: true,
+    rank_fitted: false,
     show_details: false,
   },
   articles: [
@@ -1134,7 +1135,8 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 if (args.id === "list_scope") state.focus = { ...state.focus, list_scope: raw };
                 const rankingKey = { cluster_group_enabled: "cluster_group", interest_boost_enabled: "interest_boost",
                   focus_show_details: "show_details", focus_rerank_enabled: "rerank", focus_hide_noisy: "hide_noisy", rank_features_enabled: "rank_features",
-                  rank_source_enabled: "rank_source", rank_coverage_enabled: "rank_coverage", rank_freshness_enabled: "rank_freshness", rank_affinity_enabled: "rank_affinity" }[args.id as string];
+                  rank_source_enabled: "rank_source", rank_coverage_enabled: "rank_coverage", rank_freshness_enabled: "rank_freshness", rank_affinity_enabled: "rank_affinity",
+                  rank_fitted_enabled: "rank_fitted" }[args.id as string];
                 if (rankingKey) state.focus = { ...state.focus, ranking: { ...state.focus.ranking, [rankingKey]: raw === "1" } };
                 if (args.id === "hide_threshold") {
                   state.rules = { ...state.rules, hide_threshold: Number(raw) };

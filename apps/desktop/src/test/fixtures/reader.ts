@@ -26,7 +26,7 @@ export function focusRow(id: number, title: string): ArticleView {
     interest_reason: null,
   rank_reasons: [],
     noisy: false,
-    spot_check: false,
+    spot_check: false, explore: false,
   };
 }
 
@@ -50,6 +50,7 @@ export const TWO_ARTICLE_PAGE: FocusPage = {
     rank_coverage: true,
     rank_freshness: true,
     rank_affinity: true,
+    rank_fitted: false,
     show_details: false,
   },
   has_more: false,

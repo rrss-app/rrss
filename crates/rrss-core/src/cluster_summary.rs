@@ -80,13 +80,13 @@ pub struct StoredSummary {
     pub generated_at: i64,
 }
 
-/// 这组在范围内可见的成员（不足两篇为空），口径同焦点展开。
+/// 综述按范围与可见性取材，不随浏览时的未读 / 收藏过滤改变素材。
 pub fn visible_members(
     conn: &Connection,
     cluster_id: i64,
     scope: FeedScope,
 ) -> Result<Vec<ArticleCard>> {
-    articles::focus_cluster_members(conn, cluster_id, scope)
+    articles::cluster_members_in_scope(conn, cluster_id, scope, articles::ListScope::All)
 }
 
 /// 全部焦点范围内的自动综述候选；先处理还没有综述的组。

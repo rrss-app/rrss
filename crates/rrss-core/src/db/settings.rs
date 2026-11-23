@@ -17,6 +17,7 @@ pub const RANK_SOURCE_ENABLED_KEY: &str = "rank_source_enabled";
 pub const RANK_COVERAGE_ENABLED_KEY: &str = "rank_coverage_enabled";
 pub const RANK_FRESHNESS_ENABLED_KEY: &str = "rank_freshness_enabled";
 pub const RANK_AFFINITY_ENABLED_KEY: &str = "rank_affinity_enabled";
+pub const RANK_FITTED_ENABLED_KEY: &str = "rank_fitted_enabled";
 pub const FOCUS_SHOW_DETAILS_KEY: &str = "focus_show_details";
 pub const FOCUS_COLUMNS_KEY: &str = "focus_columns";
 pub const HIDDEN_SPOT_CHECK_RATE_KEY: &str = "hidden_spot_check_rate";

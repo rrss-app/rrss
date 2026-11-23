@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::reasons::{Habit, ReasonMessage, ReasonPrefix, safe_text};
 use crate::{features::FeatureChip, rules::Dimension};
-pub const ALGO_VERSION: i64 = 8;
+pub const ALGO_VERSION: i64 = 16;
 
 /// 文章级特征总和最多 ±4：长中文标题的二元组不能叠加压过一条 ±10 的明确规则。
 pub const MAX_FEATURE_SCORE: f64 = 4.0;
@@ -14,7 +14,36 @@ pub const MAX_FEATURE_SCORE: f64 = 4.0;
 /// 使学习信号可打破同规则分的并列，同时一般不压过一条明确规则。
 /// 向量相似满分约 +2，与源偏好、多源报道同量级，不压过 ±10 规则。
 pub const AFFINITY_WEIGHT: f64 = 2.0;
-pub const WEIGHTS: [f64; 5] = [1.0, 2.0, 2.0, -2.0, AFFINITY_WEIGHT];
+/// Manual points per unit of [features, source, coverage, freshness penalty, affinity].
+/// Coverage is a light popularity signal (0.5·ln sources) and freshness uses one fixed
+/// half-life, so stories carried by several feeds do not outrank today's news.
+pub const WEIGHTS: [f64; 5] = [1.0, 2.0, 0.5, -2.0, AFFINITY_WEIGHT];
+
+#[cfg(feature = "evaluation-clock")]
+thread_local! {
+    static WEIGHTS_OVERRIDE: std::cell::Cell<Option<[f64; 5]>> = const { std::cell::Cell::new(None) };
+}
+
+pub(super) fn weights() -> [f64; 5] {
+    #[cfg(feature = "evaluation-clock")]
+    if let Some(w) = WEIGHTS_OVERRIDE.with(std::cell::Cell::get) {
+        return w;
+    }
+    WEIGHTS
+}
+
+/// Evaluation only: scores with other manual weights on this thread.
+#[cfg(feature = "evaluation-clock")]
+pub fn with_weights<T>(weights: [f64; 5], f: impl FnOnce() -> T) -> T {
+    struct Restore(Option<[f64; 5]>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            WEIGHTS_OVERRIDE.with(|w| w.set(self.0));
+        }
+    }
+    let _restore = Restore(WEIGHTS_OVERRIDE.with(|w| w.replace(Some(weights))));
+    f()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Switches {
@@ -77,6 +106,7 @@ impl<'de> Deserialize<'de> for Reason {
 #[derive(Debug, PartialEq)]
 pub struct Boost {
     pub score: i64,
+    pub(crate) raw_score: f64,
     pub reasons: Vec<Reason>,
 }
 
@@ -91,6 +121,16 @@ pub struct Input<'a> {
 /// 学来的加分永远不参与隐藏判定；调用方先只用规则 score 过滤，再加此整数排序。
 /// 各项先相乘相加，最后统一四舍五入，避免小分量逐项取整丢失。
 pub fn combine(input: Input<'_>, on: Switches) -> Boost {
+    with_contributions(input, on, None)
+}
+
+/// Optional fitted contributions use the same switches, messages and rounding.
+pub(super) fn with_contributions(
+    input: Input<'_>,
+    on: Switches,
+    fitted: Option<[f64; 5]>,
+) -> Boost {
+    let affinity = input.affinity.0.clamp(-1.0, 1.0);
     let enabled = [
         on.features,
         on.source,
@@ -108,19 +148,23 @@ pub fn combine(input: Input<'_>, on: Switches) -> Boost {
         input.source,
         input.coverage.1,
         input.freshness,
-        input.affinity.0,
+        affinity,
     ];
-    let score = values
+    let weights = weights();
+    let points = fitted.unwrap_or_else(|| std::array::from_fn(|i| values[i] * weights[i]));
+    let mut raw_score = points
         .into_iter()
-        .zip(WEIGHTS)
         .zip(enabled)
         .filter(|(_, on)| *on)
-        .map(|((v, w), _)| v * w)
-        .sum::<f64>()
-        .round() as i64;
+        .map(|(v, _)| v)
+        .sum::<f64>();
+    if fitted.is_some() {
+        raw_score = raw_score.clamp(-8.0, 8.0);
+    }
+    let score = raw_score.round() as i64;
     let mut reasons = Vec::new();
-    let mut add = |component, message, value: f64, weight: f64| {
-        let points = (value * weight).round() as i64;
+    let mut add = |component, message, value: f64| {
+        let points = value.round() as i64;
         if points != 0 {
             reasons.push(Reason {
                 component,
@@ -144,8 +188,31 @@ pub fn combine(input: Input<'_>, on: Switches) -> Boost {
                 })
                 .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs()))
         };
-        for (chip, w) in [strongest(true), strongest(false)].into_iter().flatten() {
-            let habit = if *w > 0.0 { Habit::Read } else { Habit::Skip };
+        let picked = if fitted.is_some() {
+            [
+                input
+                    .features
+                    .iter()
+                    .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs())),
+                None,
+            ]
+        } else {
+            [strongest(true), strongest(false)]
+        };
+        if fitted.is_some() && picked[0].is_none() {
+            add(Component::Features, ReasonMessage::Unknown {}, points[0]);
+        }
+        for (chip, w) in picked.into_iter().flatten() {
+            let value = if fitted.is_some() {
+                points[0]
+            } else {
+                *w * weights[0]
+            };
+            let habit = if value > 0.0 {
+                Habit::Read
+            } else {
+                Habit::Skip
+            };
             let pattern = safe_text(&chip.pattern);
             let message = if pattern != chip.pattern {
                 // Preserve displayed content when a safe host projection would
@@ -162,50 +229,46 @@ pub fn combine(input: Input<'_>, on: Switches) -> Boost {
                     _ => ReasonMessage::RankDomain { habit, pattern },
                 }
             };
-            add(Component::Features, message, *w, WEIGHTS[0]);
+            add(Component::Features, message, value);
         }
     }
-    if on.source && input.source.abs() > f64::EPSILON {
+    if on.source && (fitted.is_some() || input.source.abs() > f64::EPSILON) {
         add(
             Component::Source,
             ReasonMessage::RankSource {
-                habit: if input.source > 0.0 {
+                habit: if points[1] > 0.0 {
                     Habit::Read
                 } else {
                     Habit::Skip
                 },
             },
-            input.source,
-            WEIGHTS[1],
+            points[1],
         );
     }
-    if on.coverage && input.coverage.0 > 1 {
+    if on.coverage && (fitted.is_some() || input.coverage.0 > 1) {
         add(
             Component::Coverage,
             ReasonMessage::RankCoverage {
                 count: input.coverage.0 as u64,
             },
-            input.coverage.1,
-            WEIGHTS[2],
+            points[2],
         );
     }
-    if on.freshness && input.freshness > 0.0 {
+    if on.freshness && (fitted.is_some() || input.freshness > 0.0) {
         add(
             Component::Freshness,
             ReasonMessage::RankFreshness {},
-            input.freshness,
-            WEIGHTS[3],
+            points[3],
         );
     }
-    if on.affinity
-        && input.affinity.0 * AFFINITY_WEIGHT >= 1.0
-        && let Some(title) = input.affinity.1
-    {
-        let short: String = title.chars().take(16).collect();
+    if on.affinity && (fitted.is_some() || affinity * AFFINITY_WEIGHT >= 1.0) {
+        let short: String = input.affinity.1.unwrap_or("").chars().take(16).collect();
         let pattern = safe_text(&short);
         add(
             Component::Affinity,
-            if pattern == short {
+            if input.affinity.1.is_none() {
+                ReasonMessage::Unknown {}
+            } else if pattern == short {
                 ReasonMessage::RankAffinity { pattern }
             } else {
                 ReasonMessage::LegacyText {
@@ -213,16 +276,47 @@ pub fn combine(input: Input<'_>, on: Switches) -> Boost {
                     prefix: Some(ReasonPrefix::RankAffinity),
                 }
             },
-            input.affinity.0,
-            AFFINITY_WEIGHT,
+            if input.affinity.1.is_some() || fitted.is_some() {
+                points[4]
+            } else {
+                0.0
+            },
         );
     }
-    Boost { score, reasons }
+    Boost {
+        score,
+        raw_score,
+        reasons,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vector_score_and_reason_share_the_same_two_point_bound() {
+        for (long, recent) in [(1.0, 1.0), (0.8, 1.0), (0.0, 1.0), (-1.0, -1.0)] {
+            let value = crate::rank::affinity::combined_score(long, recent);
+            let boost = combine(
+                Input {
+                    features: &[],
+                    source: 0.0,
+                    coverage: (0, 0.0),
+                    freshness: 0.0,
+                    affinity: (value, Some("Reference")),
+                },
+                Switches::ALL,
+            );
+            assert!(boost.score.abs() <= AFFINITY_WEIGHT as i64);
+            assert!(
+                boost
+                    .reasons
+                    .iter()
+                    .all(|reason| reason.points.abs() <= AFFINITY_WEIGHT as i64)
+            );
+        }
+    }
 
     #[test]
     fn fixed_input_snapshot_and_independent_switches() {
@@ -253,14 +347,14 @@ mod tests {
             affinity: (0.8, Some("Rust async runtime and task scheduling")),
         };
         let result = combine(input(), Switches::ALL);
-        assert_eq!(result.score, 8);
+        assert_eq!(result.score, 6);
         assert_eq!(
             serde_json::to_value(&result.reasons).unwrap(),
             serde_json::json!([
                 {"component":"features","code":"rank_title_kw","params":{"habit":"read","pattern":"Rust"},"points":2},
                 {"component":"features","code":"rank_title_kw","params":{"habit":"skip","pattern":"spam"},"points":-2},
                 {"component":"source","code":"rank_source","params":{"habit":"read"},"points":1},
-                {"component":"coverage","code":"rank_coverage","params":{"count":3},"points":2},
+                {"component":"coverage","code":"rank_coverage","params":{"count":3},"points":1},
                 {"component":"freshness","code":"rank_freshness","params":{},"points":-1},
                 {"component":"affinity","code":"rank_affinity","params":{"pattern":"Rust async runti"},"points":2},
             ])
@@ -314,7 +408,7 @@ mod tests {
             }
             let result = combine(input(), on);
             assert_eq!(result.reasons.len(), if i == 0 { 2 } else { 1 });
-            assert_eq!(result.score, [4, 1, 2, -1, 2][i]);
+            assert_eq!(result.score, [4, 1, 1, -1, 2][i]);
         }
     }
 

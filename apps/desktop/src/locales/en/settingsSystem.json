@@ -638,6 +638,9 @@
     "rank_affinity_enabled": {
       "label": "Similar to articles you read"
     },
+    "rank_fitted_enabled": {
+      "label": "Fitted model (experimental)"
+    },
     "focus_show_details": {
       "label": "Why this"
     },

@@ -17,8 +17,11 @@ fn temporary_articles_are_excluded_from_every_automatic_entry() {
     for (id, expiry) in [(1, Some(99999)), (2, None)] {
         conn.execute("INSERT INTO articles(id,feed_id,title,content_html,score,created_at,published_at,expires_at) VALUES(?1,?2,'Library AI news','<p>Library AI body</p>',10,1,1,?3)", params![id, feed, expiry]).unwrap();
     }
-    conn.execute("UPDATE articles SET created_at=?1", [feeds::now_ms()])
-        .unwrap();
+    conn.execute(
+        "UPDATE articles SET created_at=?1,published_at=?1",
+        [feeds::now_ms()],
+    )
+    .unwrap();
     articles::set_focus_filter(&conn, articles::FocusFilter::ShowAll).unwrap();
     interests::set_cluster_group_enabled(&conn, false).unwrap();
     assert_eq!(

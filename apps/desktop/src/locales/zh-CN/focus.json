@@ -135,6 +135,8 @@
     "reasonSeparator": "；",
     "noisy": "噪声源",
     "spotCheckTitle": "随机放回的一篇本该隐藏的文章，用来核对规则有没有误杀",
+    "explore": "试读",
+    "exploreTitle": "为你试一个较少出现的来源",
     "spotCheck": "抽查",
     "starred": "已收藏",
     "scoreTitle": "规则与兴趣评分",
@@ -215,7 +217,8 @@
       "rank_source": "常读的源",
       "rank_coverage": "多源报道",
       "rank_freshness": "新文章优先",
-      "rank_affinity": "和常读文章相似"
+      "rank_affinity": "和常读文章相似",
+      "rank_fitted": "拟合模型（实验）"
     },
     "search": "搜索",
     "searchTitle": "搜索文章（Ctrl+K）",

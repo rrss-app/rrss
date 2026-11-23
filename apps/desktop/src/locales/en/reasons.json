@@ -9,9 +9,9 @@
     "read": "often read",
     "skip": "often skip"
   },
-  "rank_source": "You often read this feed",
-  "rank_source_read": "You often read this feed",
-  "rank_source_skip": "You rarely open this feed",
+  "rank_source": "You often engage with this feed when shown in Focus",
+  "rank_source_read": "You often engage with this feed when shown in Focus",
+  "rank_source_skip": "You rarely engage with this feed when shown in Focus",
   "rank_coverage_one": "1 feed is covering this",
   "rank_coverage_other": "{{count}} feeds are covering this",
   "rank_freshness": "Older articles rank lower to match this feed’s reading pace",

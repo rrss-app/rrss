@@ -18,7 +18,7 @@ import type { SpotAction, SpotReview } from "./SpotCheckReveal";
 import type { DislikeAction, DislikeState } from "./DislikeVeil";
 
 export type RankingToggle = "interest_boost" | "rerank" | "cluster_group" | "hide_noisy"
-  | "rank_features" | "rank_source" | "rank_coverage" | "rank_freshness" | "rank_affinity" | "show_details";
+  | "rank_features" | "rank_source" | "rank_coverage" | "rank_freshness" | "rank_affinity" | "rank_fitted" | "show_details";
 
 /** B1 学来的排序分量（阶段 23）：只调先后，不影响隐藏。 */
 const LEARNED: { key: RankingToggle & `rank_${string}` }[] = [
@@ -27,6 +27,7 @@ const LEARNED: { key: RankingToggle & `rank_${string}` }[] = [
   { key: "rank_coverage" },
   { key: "rank_freshness" },
   { key: "rank_affinity" },
+  { key: "rank_fitted" },
 ];
 
 export const FILTERS = [
@@ -50,6 +51,7 @@ export const FALLBACK_RANKING: RankingSettings = {
   rank_coverage: true,
   rank_freshness: true,
   rank_affinity: true,
+  rank_fitted: false,
 };
 
 export const LIST_SCOPES = [
@@ -163,13 +165,13 @@ function MeasuredFocusRow({ row, index, position, headline, readerReturn, slot, 
   style: CSSProperties;
   children: ReactNode;
 }) {
-  const { id, row_kind: kind, spot_check: spotCheck } = row;
+  const { id, row_kind: kind, spot_check: spotCheck, explore } = row;
   const elementRef = useRef<HTMLDivElement | null>(null);
   const ref = useCallback((element: HTMLDivElement | null) => {
     elementRef.current = element;
     measure(element);
-    if (kind === 0) observe?.(element, id, position, spotCheck);
-  }, [measure, observe, kind, id, position, spotCheck]);
+    if (kind === 0) observe?.(element, id, position, spotCheck, explore);
+  }, [measure, observe, kind, id, position, spotCheck, explore]);
   useLayoutEffect(() => { measure(elementRef.current); }, [remeasure, measure]);
   const gap = slot ? { paddingTop: index === slot.first ? PANEL_GAP : 0, paddingBottom: index === slot.last ? PANEL_GAP : 0 } : null;
   return <div ref={ref} data-index={index} data-headline={headline ? "true" : undefined}

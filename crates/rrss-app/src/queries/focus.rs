@@ -322,6 +322,7 @@ pub fn ranking_settings(conn: &Connection) -> rrss_core::Result<RankingSettings>
         rank_coverage: learned.coverage,
         rank_freshness: learned.freshness,
         rank_affinity: learned.affinity,
+        rank_fitted: db::setting_enabled(conn, db::RANK_FITTED_ENABLED_KEY, false)?,
     })
 }
 
@@ -329,6 +330,17 @@ pub fn ranking_settings(conn: &Connection) -> rrss_core::Result<RankingSettings>
 mod tests {
     use super::*;
     use rrss_core::feed_scope::FeedScope;
+
+    // Preserve the fixtures' relative ordering while making them recent enough
+    // for ordinary focus admission. Archive behavior has separate coverage.
+    fn recent_articles(conn: &Connection) {
+        conn.execute(
+            "UPDATE articles SET created_at=?1,
+             published_at=CASE WHEN published_at IS NULL THEN NULL ELSE ?1+published_at END",
+            [rrss_core::feeds::now_ms() - 60_000],
+        )
+        .unwrap();
+    }
 
     #[test]
     fn ranking_defaults_require_successful_reads() {
@@ -361,6 +373,7 @@ mod tests {
         let reasons = r#"[{"rule_id":1,"dimension":"title_kw","snippet":"融资","weight":-10},{"rule_id":2,"dimension":"author","snippet":"作者","weight":5},{"rule_id":3,"dimension":"title_kw","snippet":"零分","weight":0},{"rule_id":4,"dimension":"title_kw","snippet":"广告","weight":-5}]"#;
         conn.execute("UPDATE articles SET reasons_json=?1", [reasons])
             .unwrap();
+        recent_articles(&conn);
         let page = focus_page(&conn, None, &[], &[], false, FeedScope::All).unwrap();
         assert_eq!(page.articles.iter().filter(|a| a.spot_check).count(), 2);
         assert!(
@@ -399,12 +412,10 @@ mod tests {
         // 旧快照没有这个字段时仍可读取。
         let mut old = serde_json::to_value(&page.articles[0]).unwrap();
         old.as_object_mut().unwrap().remove("spot_check");
+        old.as_object_mut().unwrap().remove("explore");
         old.as_object_mut().unwrap().remove("hide_reasons");
-        assert!(
-            !serde_json::from_value::<ArticleView>(old)
-                .unwrap()
-                .spot_check
-        );
+        let old = serde_json::from_value::<ArticleView>(old).unwrap();
+        assert!(!old.spot_check && !old.explore);
     }
 
     #[test]
@@ -421,6 +432,7 @@ mod tests {
             [r#"[{"component":"source","text":"old cached reason"},{"component":"source","code":"rank_source","params":{"habit":"read"},"points":2}]"#],
         )
         .unwrap();
+        recent_articles(&conn);
         let page = focus_page(&conn, None, &[], &[], false, FeedScope::All).unwrap();
         let wire = serde_json::to_value(page.articles[0].rank_reasons.as_ref().unwrap()).unwrap();
         assert_eq!(wire[0]["code"], "legacy_text");
@@ -502,6 +514,7 @@ mod tests {
              (4,1,'hidden',-100,2000,7,0),(3,1,'other',4,3000,NULL,0);",
         )
         .unwrap();
+        recent_articles(&conn);
         let views = focus_cluster_members(&conn, 7, FeedScope::All).unwrap();
         let page = articles::list_focus_page(&conn, 40, Some(7), &[], &[], FeedScope::All)
             .unwrap()
@@ -559,6 +572,7 @@ mod tests {
              (1,1,'in',5,10,7,0),(3,3,'child',5,20,7,0),(2,2,'out',5,30,7,0);",
         )
         .unwrap();
+        recent_articles(&conn);
         ai_store::insert_digest(&conn, "daily", 1, "栏目不显示。", "[]").unwrap();
         let page = focus_page(&conn, None, &[], &[], false, FeedScope::Folder(1)).unwrap();
         assert!(page.digest_banner.is_empty() && page.digest_lede.is_empty());

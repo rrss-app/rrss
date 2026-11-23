@@ -244,6 +244,10 @@ const DEFS: &[Def] = &[
     rank_switch(db::RANK_FRESHNESS_ENABLED_KEY),
     rank_switch(db::RANK_AFFINITY_ENABLED_KEY),
     Def {
+        default: "0",
+        ..rank_switch(db::RANK_FITTED_ENABLED_KEY)
+    },
+    Def {
         id: db::FOCUS_SHOW_DETAILS_KEY,
         domain: SettingDomain::Reader,
         level: SettingLevel::L0,
@@ -1059,24 +1063,45 @@ mod tests {
     }
 
     #[test]
-    fn rank_switches_default_on_and_apply_through_registry() {
+    fn rank_switch_defaults_and_apply_through_registry() {
         let dir = tempfile::tempdir().unwrap();
         let conn = db::open_at(&dir.path().join("rank.db")).unwrap();
         conn.execute_batch(
-            "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://rank.invalid/feed',0);
+            "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://rank.example/feed',0);
             INSERT INTO articles(id,feed_id,title,published_at,created_at) VALUES(1,1,'old',0,0);",
         )
         .unwrap();
+        let fitted = db::RANK_FITTED_ENABLED_KEY;
+        assert_eq!(value(&schema(&conn).unwrap(), fitted), "0");
+        assert!(set(&conn, fitted, "invalid").is_err());
+        assert_eq!(set(&conn, fitted, "true").unwrap().value, "1");
+        assert!(
+            crate::queries::focus::ranking_settings(&conn)
+                .unwrap()
+                .rank_fitted
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM article_rank", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
         for key in [
             db::RANK_FEATURES_ENABLED_KEY,
             db::RANK_SOURCE_ENABLED_KEY,
             db::RANK_COVERAGE_ENABLED_KEY,
             db::RANK_FRESHNESS_ENABLED_KEY,
             db::RANK_AFFINITY_ENABLED_KEY,
+            fitted,
         ] {
             assert_eq!(value(&schema(&conn).unwrap(), key), "1");
             assert_eq!(set(&conn, key, "false").unwrap().value, "0");
         }
+        assert!(
+            !crate::queries::focus::ranking_settings(&conn)
+                .unwrap()
+                .rank_fitted
+        );
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM article_rank", [], |r| r
                 .get::<_, i64>(0))

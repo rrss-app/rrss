@@ -843,12 +843,12 @@ mod tests {
                 canonical_url: Some(url.into()),
                 title: title.into(),
                 author: None,
-                published_at: Some(1),
+                published_at: Some(crate::feeds::now_ms() - 60_000),
                 content_html: Some("<p>body</p>".into()),
                 hash: crate::parse::entry_hash(title, Some(url), Some("<p>body</p>")),
                 tags: vec![],
             }],
-            1,
+            crate::feeds::now_ms(),
         )
         .unwrap();
         conn.query_row(

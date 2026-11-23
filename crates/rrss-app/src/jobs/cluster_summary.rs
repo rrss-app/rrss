@@ -400,15 +400,15 @@ mod tests {
             stale.fresh.iter().map(|m| m.article_id).collect::<Vec<_>>(),
             [3]
         );
-        let page = crate::queries::focus_page(
-            &db::open_at(&path).unwrap(),
-            None,
-            &[],
-            &[],
-            false,
-            FeedScope::All,
+        // Keep the reports in the ordinary focus window without changing their order.
+        let conn = db::open_at(&path).unwrap();
+        conn.execute(
+            "UPDATE articles SET created_at=?1, published_at=?1+published_at",
+            [rrss_core::feeds::now_ms() - 60_000],
         )
         .unwrap();
+        let page =
+            crate::queries::focus_page(&conn, None, &[], &[], false, FeedScope::All).unwrap();
         let header = page.articles.iter().find(|row| row.row_kind == 1).unwrap();
         assert_eq!(header.cluster_fresh, Some(1));
         assert_eq!(header.cluster_sources.as_ref().map(Vec::len), Some(2));

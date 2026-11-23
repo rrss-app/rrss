@@ -119,6 +119,13 @@ CREATE TABLE article_rank (
 
 CREATE INDEX idx_articles_expires ON articles(expires_at) WHERE expires_at IS NOT NULL;
 CREATE INDEX idx_articles_feed ON articles (feed_id);
+-- Admission ranges use first ingestion for unknown/future publication dates.
+CREATE INDEX idx_articles_focus_date ON articles (
+    feed_id,
+    (CASE WHEN published_at>0 THEN MIN(published_at,created_at) ELSE created_at END) DESC,
+    id DESC
+);
+
 CREATE INDEX idx_articles_published ON articles (published_at DESC);
 CREATE INDEX idx_articles_unread ON articles (read, published_at DESC);
 CREATE INDEX idx_articles_canonical ON articles (canonical_url);
@@ -565,6 +572,8 @@ CREATE TABLE exposures (
 );
 CREATE INDEX idx_exposures_time ON exposures(shown_at);
 CREATE INDEX idx_exposures_article ON exposures(article_id);
+CREATE INDEX idx_exposures_focus_article_time ON exposures(article_id,shown_at)
+    WHERE surface='focus' AND variant='baseline';
 
 CREATE TABLE article_events (
     id INTEGER PRIMARY KEY,

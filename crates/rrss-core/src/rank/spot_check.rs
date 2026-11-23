@@ -6,13 +6,26 @@ use crate::articles::{self, ArticleCard, FocusFilter};
 use crate::{Result, db};
 
 // 固定 FNV-1a：文章 id 的小端字节 + 本地日期 YYYYMMDD，不依赖进程种子。
-fn daily_hash(id: i64, day: &str) -> u64 {
+pub(super) fn daily_hash(id: i64, day: &str) -> u64 {
     id.to_le_bytes()
         .iter()
         .chain(day.as_bytes())
         .fold(0xcbf29ce484222325, |hash, byte| {
             (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
         })
+}
+
+pub(super) fn insert(
+    cards: &mut Vec<ArticleCard>,
+    mut card: ArticleCard,
+    hash: u64,
+    first: usize,
+    last: usize,
+) {
+    card.cluster_id = None;
+    card.feed_title = crate::feeds::display_title(&card.feed_title, "");
+    let position = (first + (hash % (last - first + 1) as u64) as usize).min(cards.len());
+    cards.insert(position, card);
 }
 
 pub(crate) fn inject(
@@ -72,10 +85,7 @@ pub(crate) fn inject(
     // 在排序、聚类投影之后插入，抽查按单篇处理，续查也不排除它原来的整个簇。
     for (hash, mut card) in selected {
         card.spot_check = true;
-        card.cluster_id = None;
-        card.feed_title = crate::feeds::display_title(&card.feed_title, "");
-        let position = 1 + (hash % (cards.len() - 1) as u64) as usize;
-        cards.insert(position, card);
+        insert(cards, card, hash, 1, cards.len() - 1);
     }
     Ok(())
 }

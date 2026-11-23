@@ -14,7 +14,6 @@ pub mod db;
 pub mod digest;
 pub mod digest_sources;
 pub mod error;
-pub mod eval;
 pub mod features;
 pub mod feed_health;
 pub mod feed_icon;
@@ -151,3 +150,5 @@ mod tests {
         assert_eq!(env!("CARGO_PKG_NAME"), "rrss-core");
     }
 }
+#[cfg(feature = "evaluation-clock")]
+pub mod evaluation_clock;

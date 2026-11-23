@@ -176,6 +176,16 @@ fn ingesting_solidot_snapshot_fills_focus() {
         }
         other => panic!("unexpected status {other:?}"),
     }
+    // Preserve the archived source and relative publication times, but replay
+    // this temporary database in the current recommendation window.
+    let latest: i64 = conn
+        .query_row("SELECT MAX(published_at) FROM articles", [], |r| r.get(0))
+        .unwrap();
+    conn.execute(
+        "UPDATE articles SET published_at=published_at+?1",
+        [rrss_core::feeds::now_ms() - 60_000 - latest],
+    )
+    .unwrap();
     let cards = articles::list_focus(&conn, 50).unwrap();
     assert!(cards.len() >= 10);
     assert!(cards.iter().any(|c| !c.title.is_empty()));

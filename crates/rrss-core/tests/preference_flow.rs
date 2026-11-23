@@ -47,6 +47,17 @@ fn subscribe_news(conn: &rusqlite::Connection) -> i64 {
     .unwrap()
 }
 
+fn replay_recent_dates(conn: &rusqlite::Connection) {
+    let latest: i64 = conn
+        .query_row("SELECT MAX(published_at) FROM articles", [], |r| r.get(0))
+        .unwrap();
+    conn.execute(
+        "UPDATE articles SET published_at=published_at+?1",
+        [rrss_core::feeds::now_ms() - 60_000 - latest],
+    )
+    .unwrap();
+}
+
 fn titles(conn: &rusqlite::Connection) -> Vec<String> {
     articles::list_focus(conn, 20)
         .unwrap()
@@ -60,6 +71,7 @@ fn ingest_train_rescore_slider_and_reasons() {
     let (_dir, conn) = open_temp();
     let feed_id = subscribe_news(&conn);
     let result = refresh_feed(&conn, &MockFeed, feed_id).unwrap();
+    replay_recent_dates(&conn);
     assert_eq!(
         result.status,
         RefreshStatus::Updated {
@@ -152,6 +164,7 @@ fn existing_rule_scores_on_ingest_without_rescore() {
     )
     .unwrap();
     refresh_feed(&conn, &MockFeed, feed_id).unwrap();
+    replay_recent_dates(&conn);
 
     articles::set_focus_filter(&conn, FocusFilter::FocusOnly).unwrap();
     let focus = articles::list_focus(&conn, 20).unwrap();

@@ -219,6 +219,7 @@ function articleView(
     interest_reason: extra.interest_reason ?? null,
     noisy: extra.noisy ?? false,
     spot_check: extra.spot_check ?? false,
+    explore: extra.explore ?? false,
   };
 }
 
@@ -337,6 +338,7 @@ export function generateScene(name: SceneName, origin = PERF_ORIGIN): GeneratedS
       rank_coverage: false,
       rank_freshness: false,
       rank_affinity: false,
+      rank_fitted: false,
       show_details: false,
       theme: "light",
     },

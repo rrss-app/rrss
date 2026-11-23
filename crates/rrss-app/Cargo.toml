@@ -6,6 +6,9 @@ license.workspace = true
 description = "UI-agnostic view models, actions, jobs, Pi runtime, and CLI"
 publish = false
 
+[features]
+evaluation-clock = ["rrss-core/evaluation-clock"]
+
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true

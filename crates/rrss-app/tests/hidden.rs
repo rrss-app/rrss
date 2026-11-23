@@ -27,6 +27,9 @@ fn insert(conn: &Connection, id: i64, feed: i64, score: i64, created: i64) {
 fn release_and_undo_change_focus_without_changing_scores_or_rules() {
     let (_dir, conn) = setup();
     insert(&conn, 1, 1, -10, feeds::now_ms());
+    // Focus only admits recent articles; release itself is date-independent.
+    conn.execute("UPDATE articles SET published_at=created_at WHERE id=1", [])
+        .unwrap();
     let ids = || {
         articles::list_focus(&conn, 10)
             .unwrap()

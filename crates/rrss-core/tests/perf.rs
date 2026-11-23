@@ -149,6 +149,14 @@ fn perf_baseline_5k() {
     if std::env::var_os("RRSS_PERF_INGEST_ONLY").is_some() {
         return;
     }
+    // Replay the fixed ingestion fixture in today's recommendation window.
+    // Shift both dates together, outside timings, preserving relative ages and
+    // all new/duplicate/mixed ingestion measurements above.
+    conn.execute(
+        "UPDATE articles SET published_at=published_at+?1,created_at=created_at+?1",
+        [feeds::now_ms() - NOW],
+    )
+    .unwrap();
     let (p50, max) = sample(|| {
         assert!(
             !rrss_core::articles::list_focus_page(&conn, 50, None, &[], &[], FeedScope::All)

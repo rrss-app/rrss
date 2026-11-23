@@ -75,6 +75,7 @@ export const REGISTRY = {
   rank_coverage_enabled: {},
   rank_freshness_enabled: {},
   rank_affinity_enabled: {},
+  rank_fitted_enabled: {},
   focus_show_details: {},
   hidden_spot_check_rate: {},
   focus_rerank_enabled: {},

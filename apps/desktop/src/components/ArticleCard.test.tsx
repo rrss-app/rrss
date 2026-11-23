@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { ArticleView } from "../lib/api";
 import { ArticleCard } from "./ArticleCard";
@@ -77,4 +77,21 @@ it("omits the time separator when the publish time is unknown", () => {
   const { host } = setup({ published_at: null });
   expect(host.querySelector(".article-time")).toBeNull();
   expect(host.querySelector(".meta-sep")).toBeNull();
+});
+
+it("shows the trial label only while recommendation details are enabled", () => {
+  const onOpen = vi.fn();
+  function Probe() {
+    const [details, setDetails] = useState(false);
+    return <><input type="checkbox" checked={details} onChange={e => setDetails(e.target.checked)} />
+      <ArticleCard row={{ ...focusRow(42, "Trial article"), score: 0, explore: true }} details={details} onOpen={onOpen} {...actions} /></>;
+  }
+  const { host } = harness.mount(<Probe />);
+  expect(host.querySelectorAll(".meta-tag")).toHaveLength(0);
+  click(host.querySelector("input"));
+  expect(host.querySelectorAll(".meta-tag")).toHaveLength(1);
+  click(host.querySelector(".meta-tag"));
+  expect(onOpen).toHaveBeenCalledWith(42);
+  click(host.querySelector("input"));
+  expect(host.querySelectorAll(".meta-tag")).toHaveLength(0);
 });

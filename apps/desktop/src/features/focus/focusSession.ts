@@ -581,7 +581,8 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
         const id = { cluster_group: "cluster_group_enabled", interest_boost: "interest_boost_enabled",
           show_details: "focus_show_details",
           rerank: "focus_rerank_enabled", hide_noisy: "focus_hide_noisy", rank_features: "rank_features_enabled",
-          rank_source: "rank_source_enabled", rank_coverage: "rank_coverage_enabled", rank_freshness: "rank_freshness_enabled", rank_affinity: "rank_affinity_enabled" } as const;
+          rank_source: "rank_source_enabled", rank_coverage: "rank_coverage_enabled", rank_freshness: "rank_freshness_enabled", rank_affinity: "rank_affinity_enabled",
+          rank_fitted: "rank_fitted_enabled" } as const;
         await api.setSetting(id[key], value ? "1" : "0");
         if (key === "cluster_group" && !value) requestedCluster = null;
       });

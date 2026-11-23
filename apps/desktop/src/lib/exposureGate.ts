@@ -12,6 +12,10 @@ export function createExposureGate({ onExpose }: ExposureOptions) {
   let active = true;
 
   return {
+    reset() {
+      rows.clear();
+      exposed.clear();
+    },
     update(articleId: number, position: number, ratio: number, now: number) {
       if (exposed.has(articleId)) return;
       const previous = rows.get(articleId);

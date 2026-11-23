@@ -624,6 +624,9 @@
     "rank_affinity_enabled": {
       "label": "和常读文章相似"
     },
+    "rank_fitted_enabled": {
+      "label": "拟合模型（实验）"
+    },
     "focus_show_details": {
       "label": "推荐详情"
     },

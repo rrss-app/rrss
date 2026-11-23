@@ -81,6 +81,10 @@ pub fn manual_feed(conn: &Connection) -> Result<i64> {
 }
 
 pub fn now_ms() -> i64 {
+    #[cfg(feature = "evaluation-clock")]
+    if let Some(now) = crate::evaluation_clock::now() {
+        return now;
+    }
     chrono::Utc::now().timestamp_millis()
 }
 

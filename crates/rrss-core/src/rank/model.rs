@@ -6,13 +6,13 @@ use crate::{
     rank::{
         affinity,
         combine::{self, Input, Switches},
-        coverage,
-        features::{Feedback, Profile},
+        coverage, evidence,
+        features::Profile,
         freshness,
         labels::{self, LabelExposure},
         source,
     },
-    signals::{ArticleEvent, EventKind, Surface, load_events, rows},
+    signals::{ArticleEvent, EventKind, load_events, rows},
 };
 
 use rusqlite::Connection;
@@ -24,15 +24,24 @@ struct Article {
     chips: Vec<FeatureChip>,
     published: Option<i64>,
     cluster: Option<i64>,
+    created: i64,
 }
 
 pub struct Model {
     affinity: affinity::Profile,
+    recent_affinity: affinity::Profile,
+    affinity_epoch: String,
     vectors: BTreeMap<i64, Vec<f32>>,
     articles: BTreeMap<i64, Article>,
     features: Profile,
     sources: BTreeMap<i64, f64>,
+    fitted: Option<super::read_model::Fit<5>>,
+    fitted_before: i64,
     half_lives: BTreeMap<i64, i64>,
+    /// Freshness policy and, under `Shelf`, per-feed shelf life and quiet feeds.
+    policy: freshness::Policy,
+    windows: BTreeMap<i64, i64>,
+    exempt: BTreeSet<i64>,
     cluster_feeds: BTreeMap<i64, Vec<i64>>,
 }
 
@@ -47,9 +56,29 @@ impl Model {
         enabled: bool,
         scope: Option<&[i64]>,
     ) -> Result<Self> {
+        Self::load_with_fitted(
+            conn,
+            before,
+            enabled,
+            scope,
+            super::store::fitted_enabled(conn)?,
+        )
+    }
+
+    pub(super) fn load_with_fitted(
+        conn: &Connection,
+        before: i64,
+        enabled: bool,
+        scope: Option<&[i64]>,
+        fitted_enabled: bool,
+    ) -> Result<Self> {
+        // From the requested model, not the stored setting: a switch computes its
+        // scores before it writes the setting. Too little data falls back to the
+        // exact manual model; the Focus pool still applies the shelf life.
+        let policy = freshness::policy(fitted_enabled);
         let mut articles: BTreeMap<i64, Article> = rows(
             conn,
-            "SELECT id,feed_id,author,COALESCE(title,''),canonical_url,published_at,cluster_id
+            "SELECT id,feed_id,author,COALESCE(title,''),canonical_url,published_at,cluster_id,created_at
              FROM articles WHERE expires_at IS NULL AND created_at<?2",
             0,
             before,
@@ -72,6 +101,7 @@ impl Model {
                         title,
                         published: r.get(5)?,
                         cluster: r.get(6)?,
+                        created: r.get(7)?,
                     },
                 ))
             },
@@ -98,62 +128,75 @@ impl Model {
                 ));
             }
         }
-        let start = before.saturating_sub(crate::signals::RETENTION_MS);
+        let start = if fitted_enabled {
+            i64::MIN
+        } else {
+            before.saturating_sub(crate::signals::RETENTION_MS)
+        };
         let sessions = crate::signals::load_session_summaries(conn, start, before)?;
-        // 订阅时间线与焦点栏目的曝光不是今日焦点的排序结果，未打开也不计入源打开率。
-        // 行为日志不按 surface 过滤，照常参与训练。
-        let exposure_sql = format!(
-            "SELECT e.id,e.article_id,e.position,e.shown_at,a.feed_id FROM exposures e
-             JOIN articles a ON a.id=e.article_id
-             WHERE a.expires_at IS NULL AND e.shown_at>=?1 AND e.shown_at<?2
-               AND e.surface<>'{}' AND e.surface<>'{}'
-             ORDER BY e.shown_at,e.id",
-            Surface::Feeds.as_str(),
-            Surface::FocusColumn.as_str()
-        );
-        let exposures = rows(conn, &exposure_sql, start, before, |r| {
-            Ok((
-                LabelExposure {
-                    id: r.get(0)?,
-                    article_id: r.get(1)?,
-                    position: r.get(2)?,
-                    shown_at: r.get(3)?,
-                },
-                r.get(4)?,
-            ))
-        })?;
-        let events = load_events(conn, start, before)?;
-        // B1 不需要位置权重；给无曝光但有行为的文章提供中性虚拟曝光，
-        // 仍由 labels::generate 统一显式优先、unstar 和阅读分档，不另定义正负。
-        let synthetic: Vec<_> = articles
-            .keys()
-            .map(|&id| LabelExposure {
-                id,
-                article_id: id,
-                position: 0,
-                shown_at: i64::MIN,
-            })
-            .collect();
-        let mut votes = labels::generate(&synthetic, &events, &sessions, &[], 0);
-        let legacy = rows(
+        // Source opportunities only come from the global ranked Focus stream.
+        let exposures = rows(
             conn,
-            "SELECT f.article_id,f.kind,f.created_at FROM feedback f JOIN articles a ON a.id=f.article_id WHERE a.expires_at IS NULL AND f.created_at<?2 AND NOT EXISTS (SELECT 1 FROM article_events e WHERE e.article_id=f.article_id AND e.at<?2) AND NOT EXISTS (SELECT 1 FROM read_sessions r WHERE r.article_id=f.article_id AND r.opened_at<?2)",
-            0,
+            "SELECT e.id,e.article_id,e.position,e.shown_at,a.feed_id FROM exposures e
+             JOIN articles a ON a.id=e.article_id WHERE a.expires_at IS NULL
+             AND e.shown_at>=?1 AND e.shown_at<?2 AND e.surface='focus' ORDER BY e.shown_at,e.id",
+            start,
             before,
             |r| {
-                Ok(ArticleEvent {
-                    article_id: r.get(0)?,
-                    kind: r.get(1)?,
-                    exposure_id: None,
-                    at: r.get(2)?,
-                })
+                Ok((
+                    LabelExposure {
+                        id: r.get(0)?,
+                        article_id: r.get(1)?,
+                        position: r.get(2)?,
+                        shown_at: r.get(3)?,
+                    },
+                    r.get(4)?,
+                ))
             },
         )?;
-        votes.extend(labels::generate(&synthetic, &legacy, &[], &[], 0));
+        let events = load_events(conn, start, before)?;
+        let legacy_sql = format!("SELECT f.article_id,f.kind,f.created_at FROM feedback f JOIN articles a ON a.id=f.article_id
+             WHERE a.expires_at IS NULL AND f.created_at>=?1 AND f.created_at<?2
+             {}", if fitted_enabled { "" } else {
+                "AND NOT EXISTS (SELECT 1 FROM article_events e WHERE e.article_id=f.article_id
+                 AND e.kind IN ('up','down','star','unstar','cite','ask') AND e.at<?2)"
+             });
+        let legacy = rows(conn, &legacy_sql, start, before, |r| {
+            Ok(ArticleEvent {
+                article_id: r.get(0)?,
+                kind: r.get(1)?,
+                exposure_id: None,
+                at: r.get(2)?,
+            })
+        })?;
+        let mut training_events = legacy;
+        training_events.extend(events.iter().cloned());
+        let mut votes = labels::evidence(&training_events, &sessions, &[], 0);
+        if fitted_enabled {
+            fitted::add_skips(&mut votes, &exposures, &sessions, &training_events);
+        }
         let wanted = scope.map(|ids| {
             ids.iter()
                 .copied()
                 .chain(votes.iter().map(|v| v.article_id))
+                .chain(
+                    exposures
+                        .iter()
+                        .filter(|_| fitted_enabled)
+                        .map(|(e, _)| e.article_id),
+                )
+                .chain(
+                    sessions
+                        .iter()
+                        .filter(|_| fitted_enabled)
+                        .map(|s| s.article_id),
+                )
+                .chain(
+                    training_events
+                        .iter()
+                        .filter(|_| fitted_enabled)
+                        .map(|e| e.article_id),
+                )
                 .collect::<BTreeSet<_>>()
                 .into_iter()
                 .collect::<Vec<_>>()
@@ -163,48 +206,95 @@ impl Model {
         } else {
             BTreeMap::new()
         };
-        let affinity_feedback: Vec<_> = votes
-            .iter()
-            .filter_map(|v| {
-                Some(affinity::Feedback {
-                    id: v.article_id,
-                    vector: vectors.get(&v.article_id)?,
-                    weight: v.feedback_weight,
-                })
-            })
-            .collect();
-        let affinity = affinity::Profile::learn(&affinity_feedback);
-        let corpus: Vec<_> = articles.values().map(|a| a.chips.clone()).collect();
-        let feedback: Vec<_> = votes
-            .iter()
-            .filter_map(|v| {
-                articles.get(&v.article_id).map(|a| Feedback {
-                    features: &a.chips,
-                    weight: v.feedback_weight,
-                    at: v.at,
-                })
-            })
-            .collect();
-        let mut first_open = BTreeMap::<i64, i64>::new();
-        for (id, at) in events
-            .iter()
-            .filter(|e| e.kind == EventKind::Open)
-            .map(|e| (e.article_id, e.at))
-            .chain(sessions.iter().map(|s| (s.article_id, s.opened_at)))
-        {
-            first_open
-                .entry(id)
-                .and_modify(|old| *old = (*old).min(at))
-                .or_insert(at);
-        }
-        let delays: Vec<_> = first_open
+        let fitted = if fitted_enabled {
+            let subscribed: BTreeMap<i64, i64> = rows(
+                conn,
+                "SELECT id,created_at FROM feeds WHERE created_at>=?1 AND created_at<?2",
+                before - fitted::SUBSCRIPTION_WINDOW,
+                before,
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?
             .into_iter()
-            .filter_map(|(id, at)| {
-                let a = articles.get(&id)?;
-                let published = a.published?;
-                (at >= published).then_some((a.feed, at.saturating_sub(published)))
+            .collect();
+            let fit = fitted::train(
+                &articles,
+                &vectors,
+                &exposures,
+                &sessions,
+                &training_events,
+                &subscribed,
+                before,
+                policy,
+            );
+            if fit.is_none() {
+                return Self::load_with_fitted(conn, before, enabled, scope, false);
+            }
+            fit
+        } else {
+            None
+        };
+        let (feature_profile, affinity, recent_affinity) =
+            fitted::profiles(&articles, &vectors, &votes, before);
+        let space_id = if enabled && !vectors.is_empty() {
+            crate::vector_space::active(conn)?.map(|space| space.id)
+        } else {
+            None
+        };
+        // Do not infer entry point from the frontend's launch-wide exposure map.
+        // Old sessions without a valid link remain useful for topic learning only.
+        let contexts: BTreeMap<(i64, i64), Option<i64>> = rows(conn,
+            "SELECT r.article_id,r.opened_at,CASE WHEN r.via='focus' AND e.surface='focus'
+                 AND e.shown_at<=r.opened_at AND r.opened_at-e.shown_at<=86400000
+                 THEN e.id ELSE NULL END
+             FROM read_sessions r LEFT JOIN exposures e ON e.id=r.exposure_id AND e.article_id=r.article_id
+             WHERE r.opened_at>=?1 AND r.opened_at<?2 ORDER BY r.opened_at,r.id",
+            start, before, |r| Ok(((r.get(0)?, r.get(1)?), r.get(2)?)))?.into_iter().collect();
+        let attributed = |article, at| {
+            contexts
+                .range((article, i64::MIN)..=(article, at))
+                .next_back()
+                .filter(|((_, opened), _)| at.saturating_sub(*opened) <= evidence::DAY_MS)
+                .and_then(|(_, id)| *id)
+        };
+        let source_sessions: Vec<_> = sessions
+            .iter()
+            .filter(|s| {
+                contexts
+                    .get(&(s.article_id, s.opened_at))
+                    .copied()
+                    .flatten()
+                    .is_some()
+            })
+            .cloned()
+            .collect();
+        // Resolve explicit state over the complete event sequence. Unstar/down
+        // from another entry point must revoke an earlier attributable reward.
+        let source_events: Vec<_> = events
+            .iter()
+            .filter(|e| {
+                e.kind != EventKind::OpenOriginal
+                    || (e.exposure_id.is_some() && attributed(e.article_id, e.at) == e.exposure_id)
+            })
+            .cloned()
+            .collect();
+        let source_votes = labels::evidence(&source_events, &source_sessions, &[], 0);
+        let source_feedback: Vec<_> = source_votes
+            .iter()
+            .filter_map(|v| {
+                let exposure_id = if v.explicit {
+                    let id = v.exposure_id?;
+                    (attributed(v.article_id, v.at) == Some(id)).then_some(id)?
+                } else {
+                    attributed(v.article_id, v.at)?
+                };
+                Some(source::Feedback {
+                    evidence: *v,
+                    exposure_id,
+                    features: &articles.get(&v.article_id)?.chips,
+                })
             })
             .collect();
+        let sources = source::learn(&exposures, &source_feedback, before);
         let mut cluster_feeds = BTreeMap::<i64, Vec<i64>>::new();
         for (cluster, feed) in rows(
             conn,
@@ -215,25 +305,74 @@ impl Model {
         )? {
             cluster_feeds.entry(cluster).or_default().push(feed);
         }
+        // Per-feed publishing rhythm, a fitted-only feature.
+        let half_lives = if fitted_enabled {
+            fitted::intervals(&articles, before)
+        } else {
+            BTreeMap::new()
+        };
+        let (windows, exempt) = if matches!(policy, freshness::Policy::Shelf { .. }) {
+            let rates = freshness::rates(
+                articles.values().map(|a| {
+                    (
+                        a.feed,
+                        a.published
+                            .filter(|p| *p > 0)
+                            .map_or(a.created, |p| p.min(a.created)),
+                    )
+                }),
+                before,
+            );
+            (
+                rates
+                    .iter()
+                    .map(|(f, r)| (*f, freshness::window_for_rate(*r)))
+                    .collect(),
+                rates
+                    .iter()
+                    .filter(|(_, r)| freshness::exempt(**r))
+                    .map(|(f, _)| *f)
+                    .collect(),
+            )
+        } else {
+            (BTreeMap::new(), BTreeSet::new())
+        };
         Ok(Self {
+            policy,
+            windows,
+            exempt,
+            affinity_epoch: affinity.signature(space_id),
             affinity,
+            recent_affinity,
+            features: feature_profile,
+            fitted,
+            fitted_before: before,
             vectors,
-            features: Profile::learn(&corpus, &feedback, before),
-            sources: source::learn(&exposures, &events, before),
-            half_lives: freshness::learn(&delays),
+            sources,
+            half_lives,
             cluster_feeds,
             articles,
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn article_boost(
         &self,
         id: i64,
         at: i64,
         switches: Switches,
     ) -> Option<combine::Boost> {
+        self.article_rank(id, at, switches).map(|(boost, _)| boost)
+    }
+
+    pub(crate) fn article_rank(
+        &self,
+        id: i64,
+        at: i64,
+        switches: Switches,
+    ) -> Option<(combine::Boost, Option<super::topics::Evidence>)> {
         let article = self.articles.get(&id)?;
-        Some(self.boost(
+        Some(self.boost_record(
             (id, article.feed),
             &article.chips,
             article.cluster,
@@ -247,7 +386,41 @@ impl Model {
         self.articles.keys().copied()
     }
 
-    pub(crate) fn boost(
+    /// Evaluation only: unrounded points per component in switch order
+    /// (features, source, coverage, freshness, affinity) from the model a full
+    /// rebuild at `now` loads with `fitted` requested; `true` when a fit was used.
+    #[cfg(feature = "evaluation-clock")]
+    pub fn evaluation_points(
+        conn: &Connection,
+        now: i64,
+        fitted: bool,
+        ids: &[i64],
+    ) -> Result<(bool, BTreeMap<i64, [f64; 5]>)> {
+        let on = crate::db::rank_switches(conn)?;
+        let model = Self::load_with_fitted(conn, now.saturating_add(1), on.affinity, None, fitted)?;
+        let only = |k: usize| Switches {
+            features: on.features && k == 0,
+            source: on.source && k == 1,
+            coverage: on.coverage && k == 2,
+            freshness: on.freshness && k == 3,
+            affinity: on.affinity && k == 4,
+        };
+        let points = ids
+            .iter()
+            .filter(|id| model.articles.contains_key(id))
+            .map(|&id| {
+                let part = |k| {
+                    model
+                        .article_rank(id, now, only(k))
+                        .map_or(0.0, |(b, _)| b.raw_score)
+                };
+                (id, std::array::from_fn(part))
+            })
+            .collect();
+        Ok((model.fitted.is_some(), points))
+    }
+
+    fn boost_record(
         &self,
         identity: (i64, i64),
         chips: &[FeatureChip],
@@ -255,42 +428,134 @@ impl Model {
         published: Option<i64>,
         at: i64,
         switches: Switches,
-    ) -> combine::Boost {
+    ) -> (combine::Boost, Option<super::topics::Evidence>) {
         let (id, feed) = identity;
-        let (affinity, representative) = self
+        let (affinity, representative, semantic) = self
             .vectors
             .get(&id)
             .filter(|_| switches.affinity)
-            .map(|v| self.affinity.score(v))
+            .map(|v| {
+                let long = self.affinity.score(v);
+                let recent = self.recent_affinity.score(v);
+                (
+                    affinity::combined_score(long.0, recent.0),
+                    long.1.or(recent.1),
+                    long.1
+                        .and_then(|id| self.affinity.semantic_representative(id))
+                        .filter(|_| {
+                            long.0
+                                * self
+                                    .fitted
+                                    .as_ref()
+                                    .map_or(combine::AFFINITY_WEIGHT, |f| f.report.beta[1])
+                                >= super::topics::MIN_SUPPORT
+                        }),
+                )
+            })
             .unwrap_or_default();
         let title = representative
             .and_then(|id| self.articles.get(&id))
             .map(|a| a.title.as_str());
         let features = self.features.weighted(chips);
         let feeds = cluster.and_then(|c| self.cluster_feeds.get(&c));
-        combine::combine(
-            Input {
-                affinity: (affinity, title),
-                features: &features,
-                source: self.sources.get(&feed).copied().unwrap_or(0.0),
-                coverage: coverage::score(feeds.map(Vec::as_slice).unwrap_or(&[])),
-                freshness: freshness::penalty(
-                    published,
-                    at,
-                    self.half_lives
-                        .get(&feed)
-                        .copied()
-                        .unwrap_or(freshness::DEFAULT_HALF_LIFE_MS),
-                ),
+        // Shelf life: quiet feeds never age; others pay an unbounded cost.
+        let shelf = match self.policy {
+            freshness::Policy::Shelf { quadratic } if !self.exempt.contains(&feed) => Some((
+                self.windows
+                    .get(&feed)
+                    .copied()
+                    .unwrap_or(30 * evidence::DAY_MS),
+                quadratic,
+            )),
+            _ => None,
+        };
+        let shelf_on = matches!(self.policy, freshness::Policy::Shelf { .. });
+        let input = Input {
+            affinity: (affinity, title),
+            features: &features,
+            source: self.sources.get(&feed).copied().unwrap_or(0.0),
+            coverage: coverage::score(feeds.map(Vec::as_slice).unwrap_or(&[])),
+            freshness: match shelf {
+                Some((window, quadratic)) => {
+                    freshness::shelf_cost(published, at, window, quadratic)
+                }
+                None if shelf_on => 0.0,
+                None => freshness::penalty(published, at, fitted::ABSOLUTE_HALF_LIFE),
             },
-            switches,
-        )
+        };
+        let mut topic_contributions = None;
+        let contributions = self.fitted.as_ref().map(|fit| {
+            let interval = self
+                .half_lives
+                .get(&feed)
+                .copied()
+                .unwrap_or(14 * evidence::DAY_MS);
+            let published = published.or_else(|| self.articles.get(&id).map(|a| a.created));
+            let raw = if shelf_on {
+                [
+                    self.features.raw_score(chips),
+                    affinity,
+                    shelf.map_or(0.0, |(window, quadratic)| {
+                        -freshness::shelf_cost(published, self.fitted_before, window, quadratic)
+                    }),
+                    input.coverage.1,
+                    0.0,
+                ]
+            } else {
+                [
+                    self.features.raw_score(chips),
+                    affinity,
+                    freshness::value(published, self.fitted_before, interval),
+                    input.coverage.1,
+                    freshness::value(published, self.fitted_before, fitted::ABSOLUTE_HALF_LIFE),
+                ]
+            };
+            let (c, source) = fit.contributions(feed, raw);
+            let source = source + fitted::source_draw(fit, feed, at);
+            topic_contributions = Some((c[0], c[1]));
+            [c[0], source, c[3], c[2] + c[4], c[1]]
+        });
+        let boost = combine::with_contributions(input, switches, contributions);
+        let mut evidence = super::topics::Evidence {
+            raw_score: boost.raw_score,
+            features: if switches.features {
+                features
+                    .iter()
+                    .map(|(_, w)| w)
+                    .sum::<f64>()
+                    .clamp(-combine::MAX_FEATURE_SCORE, combine::MAX_FEATURE_SCORE)
+            } else {
+                0.0
+            },
+            affinity: affinity * combine::AFFINITY_WEIGHT,
+            lexical: if switches.features {
+                self.features.reliable_keys(&features)
+            } else {
+                Vec::new()
+            },
+            semantic: semantic.map(|id| (self.affinity_epoch.clone(), id)),
+        };
+        if let Some((lexical, vector)) = topic_contributions {
+            evidence.features = if switches.features { lexical } else { 0.0 };
+            evidence.affinity = if switches.affinity { vector } else { 0.0 };
+            let slope = self.fitted.as_ref().unwrap().report.beta[0];
+            evidence.lexical.retain_mut(|(_, weight)| {
+                *weight *= slope;
+                *weight > 0.0
+            });
+        }
+        let evidence = evidence
+            .allocation(switches, true)
+            .eligible()
+            .then_some(evidence);
+        (boost, evidence)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::signals::Surface;
 
     fn affinity_article(
         conn: &Connection,
@@ -314,6 +579,49 @@ mod tests {
             conn.execute(feedback_sql, rusqlite::params![id, kind])
                 .unwrap();
         }
+    }
+
+    #[test]
+    fn default_learning_score_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = crate::db::open_at(&dir.path().join("snapshot.db")).unwrap();
+        conn.execute_batch("INSERT INTO feeds(id,url,created_at) VALUES(1,'https://snapshot.example/rss',0);
+            INSERT INTO vector_spaces(id,base_url,model,dims,prefix_version,normalized,state,created_at)
+            VALUES(1,'','fixture',2,1,0,'active',0);").unwrap();
+        for id in 1..=12 {
+            affinity_article(
+                &conn,
+                id,
+                if id <= 10 {
+                    "orbital mechanics"
+                } else {
+                    "harbor sailing"
+                },
+                ("fixture", 1),
+                if id <= 10 { &[1.0, 0.0] } else { &[0.0, 1.0] },
+                (id <= 10).then_some(if id <= 8 { "up" } else { "down" }),
+            );
+        }
+        conn.execute("UPDATE articles SET published_at=0", [])
+            .unwrap();
+        let model = Model::load(&conn, evidence::DAY_MS).unwrap();
+        let snapshot: Vec<_> = [1, 9, 11]
+            .into_iter()
+            .map(|id| {
+                let boost = model
+                    .article_boost(id, evidence::DAY_MS, Switches::ALL)
+                    .unwrap();
+                (id, boost.score, boost.raw_score.to_bits())
+            })
+            .collect();
+        assert_eq!(
+            snapshot,
+            vec![
+                (1, 3, 4614801218869968552),
+                (9, 3, 4614801218869968552),
+                (11, 0, 13824476378647119628),
+            ]
+        );
     }
 
     #[test]
@@ -468,14 +776,16 @@ mod tests {
         let model = Model::load(&conn, 2).unwrap();
         assert_eq!(
             model
-                .boost((1, 1), &chips, None, None, 2, Switches::ALL)
+                .boost_record((1, 1), &chips, None, None, 2, Switches::ALL)
+                .0
                 .score,
             4
         );
         let future = Model::load(&conn, 1).unwrap();
         assert_eq!(
             future
-                .boost((1, 1), &chips, None, None, 1, Switches::ALL)
+                .boost_record((1, 1), &chips, None, None, 1, Switches::ALL)
+                .0
                 .score,
             0
         );
@@ -489,15 +799,10 @@ mod tests {
         )
         .unwrap();
         let weighted = Model::load(&conn, 2).unwrap().features.weighted(&chips);
-        // 4 个细读、5 个跳出，另一个细读被显式踩覆盖；只衰减一次，不混入位置 IPW。
-        let decay = 2_f64.powf(-1.0 / crate::rank::features::HALF_LIFE_MS as f64);
-        let expected = ((8.0 * decay + 1.0) / (2.25 * decay + 1.0)).ln();
+        // The one-day implicit burst remains recent only. The explicit down
+        // stays independent, so it can outweigh the bounded short-term reading.
         assert_eq!(weighted.len(), 2);
-        assert!(
-            weighted
-                .iter()
-                .all(|(_, weight)| (*weight - expected).abs() < 1e-10)
-        );
+        assert!(weighted.iter().all(|(_, weight)| *weight < 0.0));
     }
 
     #[test]
@@ -547,3 +852,20 @@ mod tests {
         assert_eq!(Model::load(&conn, 3).unwrap().sources, baseline);
     }
 }
+
+#[cfg(test)]
+#[path = "learning_tests.rs"]
+mod learning_tests;
+
+#[cfg(test)]
+#[path = "behavioral_eval_tests.rs"]
+mod behavioral_eval_tests;
+
+#[cfg(test)]
+#[path = "fitted_tests.rs"]
+mod fitted_tests;
+
+#[path = "model_fitted.rs"]
+mod fitted;
+#[cfg(any(test, feature = "evaluation-clock"))]
+pub use fitted::{with_fine_positions, with_source_draw, with_source_penalty};

@@ -71,7 +71,7 @@ test("recommendation details default off, reveal ordinary reasons and keep spot 
   await expect(ordinary.locator(".meta-tag.interest")).toHaveText("本地优先");
   await expect(ordinary.getByText("噪声源", { exact: true })).toBeVisible();
   await expect(tag).toHaveText("3 个源在报道");
-  await expect(tag).toHaveAttribute("title", /你常读这个源/);
+  await expect(tag).toHaveAttribute("title", /你常关注这个源的焦点推荐/);
   await expect(tag).toHaveAttribute("title", /和你常读的『Rust async』相似/);
   await expect(spot.getByText("抽查", { exact: true })).toHaveAttribute("title", "随机放回的一篇本该隐藏的文章，用来核对规则有没有误杀");
   await expect(spot.locator(".score, .meta-tag.learned, .meta-tag.interest")).toHaveCount(0);
@@ -96,4 +96,27 @@ test("recommendation details default off, reveal ordinary reasons and keep spot 
   await expect(ordinary.locator(".score, .meta-tag.learned, .meta-tag.interest")).toHaveCount(0);
   await expect(spot.getByText("抽查", { exact: true })).toHaveCount(0);
   await expect(ordinary.getByText("已收藏", { exact: true })).toBeVisible();
+});
+
+test("fitted model defaults off, persists both toggles and reloads the focus list", async ({ page }) => {
+  const [first, second] = MOCK_FOCUS.articles;
+  await installMockHost(page, { systemLanguage: "en", focus: { ...MOCK_FOCUS, articles: [first, second] } });
+  await page.goto("/");
+  const rows = page.getByRole("article");
+  await expect(rows.first()).toHaveAttribute("aria-label", first.title);
+  await page.locator(".toolbar").getByRole("button", { name: "View", exact: true }).click();
+  const fitted = page.getByRole("menu", { name: "View" })
+    .getByRole("menuitemcheckbox", { name: "Fitted model (experimental)", exact: true });
+  await expect(fitted).toHaveAttribute("aria-checked", "false");
+  for (const [enabled, title] of [[true, second.title], [false, first.title]] as const) {
+    // Only a fresh focus_stream response can reveal this changed order.
+    await page.evaluate(() => (window as any).__mockHost.state.focus.articles.reverse());
+    await fitted.click();
+    await expect(fitted).toHaveAttribute("aria-checked", String(enabled));
+    expect(await lastArgs(page, "set_setting")).toEqual({ id: "rank_fitted_enabled", value: enabled ? "1" : "0" });
+    const saved = await page.evaluate(() => (window as any).__mockHost.state.settings.values
+      .find((setting: { id: string }) => setting.id === "rank_fitted_enabled").value);
+    expect(saved).toBe(enabled ? "1" : "0");
+    await expect(rows.first()).toHaveAttribute("aria-label", title);
+  }
 });

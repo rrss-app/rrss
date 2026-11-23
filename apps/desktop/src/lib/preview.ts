@@ -34,6 +34,7 @@ const sample = (
   interest_reason: extra.interest_reason ?? null,
   noisy: extra.noisy ?? false,
   spot_check: extra.spot_check ?? false,
+  explore: extra.explore ?? false,
 });
 
 export const PREVIEW_FOCUS: FocusPage = {
@@ -56,6 +57,7 @@ export const PREVIEW_FOCUS: FocusPage = {
     rank_coverage: true,
     rank_freshness: true,
     rank_affinity: true,
+    rank_fitted: false,
     show_details: false,
   },
   articles: [

@@ -172,10 +172,12 @@ mod tests {
     #[test]
     fn create_rule_rescores_existing_articles() {
         use rrss_core::articles::{self, FocusFilter};
-        use rrss_core::feeds::{SubscribeRequest, subscribe};
+        use rrss_core::feeds::{SubscribeRequest, now_ms, subscribe};
         use rrss_core::parse::ParsedEntry;
 
         let (_dir, conn) = open_temp();
+        // Focus only admits recent articles; the rescoring under test is date-independent.
+        let now = now_ms();
         let feed = subscribe(
             &conn,
             SubscribeRequest {
@@ -194,12 +196,12 @@ mod tests {
                 canonical_url: Some("https://news.example.com/rust".into()),
                 title: "Rust 1.80 shipped".into(),
                 author: None,
-                published_at: Some(1),
+                published_at: Some(now),
                 content_html: Some("<p>release</p>".into()),
                 hash: "h".into(),
                 tags: vec![],
             }],
-            1,
+            now,
         )
         .unwrap();
         articles::set_focus_filter(&conn, FocusFilter::FocusOnly).unwrap();

@@ -2,7 +2,7 @@ use rusqlite::Connection;
 
 use crate::error::{Error, Result};
 
-pub const SCHEMA_VERSION: i32 = 48;
+pub const SCHEMA_VERSION: i32 = 49;
 
 /// 低于此版本的库不能在当前程序里升级。
 pub const MIN_UPGRADE_VERSION: i32 = 33;
@@ -37,6 +37,7 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         (46, apply_v46),
         (47, apply_v47),
         (48, apply_v48),
+        (49, apply_v49),
     ];
     let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if !(0..=SCHEMA_VERSION).contains(&version) {
@@ -81,6 +82,24 @@ fn apply_v48(conn: &Connection) -> Result<()> {
                  UPDATE feeds SET interval_custom = 1 WHERE interval_secs != 3600;",
             )?;
         }
+        Ok(())
+    })
+}
+
+/// 焦点候选池按来源与有效日期取范围、按文章查焦点曝光的两个索引。
+/// 预发布版曾把这两个索引记作 48，那样的库没有 v48 的列，这里补做一次（幂等）。
+fn apply_v49(conn: &Connection) -> Result<()> {
+    apply_v48(conn)?;
+    crate::db::atomic_write(conn, |conn| {
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_articles_focus_date ON articles (
+                feed_id,
+                (CASE WHEN published_at>0 THEN MIN(published_at,created_at) ELSE created_at END) DESC,
+                id DESC
+             );
+             CREATE INDEX IF NOT EXISTS idx_exposures_focus_article_time ON exposures(article_id,shown_at)
+                WHERE surface='focus' AND variant='baseline';",
+        )?;
         Ok(())
     })
 }
@@ -622,6 +641,100 @@ fn apply_v34(conn: &Connection) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn v49_adds_admission_indexes_without_changing_articles_or_exposures() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = crate::db::open_at(&dir.path().join("upgrade.db")).unwrap();
+        let index_definitions = || {
+            conn.prepare(
+                "SELECT name,sql FROM sqlite_master WHERE name IN
+                ('idx_articles_focus_date','idx_exposures_focus_article_time') ORDER BY name",
+            )
+            .unwrap()
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+        };
+        let fresh = index_definitions();
+        conn.execute_batch(
+            "DROP INDEX idx_articles_focus_date;
+             DROP INDEX idx_exposures_focus_article_time;
+             PRAGMA user_version=48;
+             INSERT INTO feeds(id,url,created_at) VALUES(1,'https://archive.example/rss',0);
+             INSERT INTO articles(id,feed_id,published_at,created_at,read,starred)
+               VALUES(1,1,NULL,0,1,1),(2,1,42,100,0,0);
+             INSERT INTO exposures(article_id,surface,position,score,interest_boost,rank_score,
+               variant,session_id,shown_at) VALUES(1,'focus',0,0,0,0,'baseline','saved',43);",
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+        migrate(&conn).unwrap();
+        let normalize = |sql: &str| {
+            sql.split_whitespace()
+                .collect::<String>()
+                .replace("IFNOTEXISTS", "")
+        };
+        for ((fresh_name, fresh_sql), (name, sql)) in fresh.iter().zip(index_definitions()) {
+            assert_eq!(*fresh_name, name);
+            assert_eq!(normalize(fresh_sql), normalize(&sql));
+        }
+        assert_eq!(index_definitions().len(), 2);
+        assert_eq!(
+            conn.query_row(
+                "SELECT read,starred,published_at,created_at FROM articles WHERE id=1",
+                [],
+                |r| Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, Option<i64>>(2)?,
+                    r.get::<_, i64>(3)?
+                ))
+            )
+            .unwrap(),
+            (1, 1, None, 0)
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT count(*) FROM exposures WHERE shown_at=43",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            conn.pragma_query_value(None, "user_version", |r| r.get::<_, i32>(0))
+                .unwrap(),
+            SCHEMA_VERSION
+        );
+        let plan: String = conn.query_row(
+            "EXPLAIN QUERY PLAN SELECT id FROM articles a WHERE feed_id=1
+             AND (CASE WHEN a.published_at>0 THEN MIN(a.published_at,a.created_at) ELSE a.created_at END) BETWEEN 1 AND 200
+             ORDER BY (CASE WHEN a.published_at>0 THEN MIN(a.published_at,a.created_at) ELSE a.created_at END) DESC,a.id DESC LIMIT 256",
+            [], |r| r.get(3)).unwrap();
+        assert!(plan.contains("idx_articles_focus_date"), "{plan}");
+    }
+
+    #[test]
+    fn v49_repairs_a_prerelease_48_without_the_interval_column() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = crate::db::open_at(&dir.path().join("prerelease.db")).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE feeds DROP COLUMN interval_custom;
+             INSERT INTO feeds(id,url,interval_secs,created_at) VALUES(1,'https://a.example/rss',900,0);
+             PRAGMA user_version=48;",
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+        let custom: i64 = conn
+            .query_row("SELECT interval_custom FROM feeds WHERE id=1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(custom, 1);
+    }
 
     #[test]
     fn v48_marks_only_non_default_intervals_as_overrides() {

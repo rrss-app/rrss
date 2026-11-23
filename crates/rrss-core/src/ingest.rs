@@ -1524,6 +1524,8 @@ mod tests {
                 derived_degraded: false,
             }
         );
+        conn.execute("UPDATE articles SET starred=1", []).unwrap();
+        crate::articles::set_list_scope(&conn, crate::articles::ListScope::Starred).unwrap();
         let cards = crate::articles::list_focus(&conn, 10).unwrap();
         assert_eq!(cards.len(), 2);
         assert!(!cards[0].read);

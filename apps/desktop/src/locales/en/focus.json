@@ -153,6 +153,8 @@
     "reasonSeparator": "; ",
     "noisy": "Noisy feed",
     "spotCheckTitle": "An article that should have been hidden, brought back at random to check whether the rules got it wrong",
+    "explore": "Trying",
+    "exploreTitle": "Trying a source you rarely see",
     "spotCheck": "Spot check",
     "starred": "Starred",
     "scoreTitle": "Rule and interest score",
@@ -229,7 +231,8 @@
       "rank_source": "Feeds you read often",
       "rank_coverage": "Covered by multiple sources",
       "rank_freshness": "Newer articles first",
-      "rank_affinity": "Similar to articles you read often"
+      "rank_affinity": "Similar to articles you read often",
+      "rank_fitted": "Fitted model (experimental)"
     },
     "search": "Search",
     "searchTitle": "Search articles (Ctrl+K)",

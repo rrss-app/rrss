@@ -12,6 +12,13 @@ use crate::error::settings::SettingProblem;
 use crate::{Result, db};
 use rusqlite::{Connection, params};
 
+/// Experimental opt-in; absent means the existing manual scorer.
+pub use db::RANK_FITTED_ENABLED_KEY as FITTED_ENABLED_KEY;
+
+pub(crate) fn fitted_enabled(conn: &Connection) -> Result<bool> {
+    db::setting_enabled(conn, FITTED_ENABLED_KEY, false)
+}
+
 /// 最近一次整表刷新的时间；整表刷新与它在同一写事务里更新。
 pub const REFRESHED_KEY: &str = "rank_refreshed_at";
 // 开关切换的代次：即使 A → B → A，也不能让切换前算出的后台结果重新覆盖缓存。
@@ -90,7 +97,9 @@ impl<'a> SwitchChange<'a> {
         // 每次重试在快照建立后取新的截止时间，覆盖等待期间刚入库的文章与行为。
         let now = crate::feeds::now_ms();
         let mut switches = db::rank_switches(conn)?;
+        let mut fitted = fitted_enabled(conn)?;
         let selected = match key {
+            FITTED_ENABLED_KEY => &mut fitted,
             db::RANK_FEATURES_ENABLED_KEY => &mut switches.features,
             db::RANK_SOURCE_ENABLED_KEY => &mut switches.source,
             db::RANK_COVERAGE_ENABLED_KEY => &mut switches.coverage,
@@ -107,12 +116,14 @@ impl<'a> SwitchChange<'a> {
             key,
             enabled,
             version,
-            plan: plan_with_switches(conn, None, now, switches)?,
+            plan: plan_with_switches(conn, None, now, switches, fitted)?,
         })
     }
 
     fn commit(&self, tx: &Connection) -> Result<bool> {
-        if input_version(tx)? != self.version {
+        if input_version(tx)? != self.version
+            || db::get_setting(tx, SWITCH_REVISION_KEY)? != self.plan.switch_revision
+        {
             return Ok(false);
         }
         self.apply(tx)?;
@@ -181,6 +192,7 @@ pub fn refresh(
 /// 在某个快照上算好的写回内容。
 struct Plan {
     switches: Switches,
+    fitted: bool,
     switch_revision: Option<String>,
     refreshed: Option<String>,
     // 整表重算时为快照里的最大文章 ID：只替换它及以下的行，
@@ -191,7 +203,13 @@ struct Plan {
 }
 
 fn plan(conn: &Connection, ids: Option<&[i64]>, now: i64) -> Result<Plan> {
-    plan_with_switches(conn, ids, now, db::rank_switches(conn)?)
+    plan_with_switches(
+        conn,
+        ids,
+        now,
+        db::rank_switches(conn)?,
+        fitted_enabled(conn)?,
+    )
 }
 
 fn plan_with_switches(
@@ -199,10 +217,12 @@ fn plan_with_switches(
     ids: Option<&[i64]>,
     now: i64,
     switches: Switches,
+    fitted: bool,
 ) -> Result<Plan> {
     let refreshed = db::get_setting(conn, REFRESHED_KEY)?;
     let mut plan = Plan {
         switches,
+        fitted,
         switch_revision: db::get_setting(conn, SWITCH_REVISION_KEY)?,
         refreshed,
         replace_through: None,
@@ -220,11 +240,12 @@ fn plan_with_switches(
         |r| r.get(0),
     )?;
     let all = ids.is_none() || outdated;
-    let model = Model::load_with_affinity(
+    let model = Model::load_with_fitted(
         conn,
         now.saturating_add(1),
         on.affinity,
         if all { None } else { ids },
+        fitted,
     )?;
     let targets: Vec<_> = if all {
         plan.replace_through =
@@ -234,11 +255,10 @@ fn plan_with_switches(
         ids.unwrap_or_default().to_vec()
     };
     for id in targets {
-        let Some(boost) = model.article_boost(id, now, on) else {
+        let Some((boost, topics)) = model.article_rank(id, now, on) else {
             continue;
         };
-        let reasons = serde_json::to_string(&boost.reasons)
-            .map_err(|e| crate::Error::Parse(e.to_string()))?;
+        let reasons = super::cache::encode(&boost.reasons, topics)?;
         plan.rows.push((id, boost.score, reasons));
     }
     Ok(plan)
@@ -247,6 +267,7 @@ fn plan_with_switches(
 impl Plan {
     fn still_valid(&self, tx: &Connection) -> Result<bool> {
         Ok(db::rank_switches(tx)? == self.switches
+            && fitted_enabled(tx)? == self.fitted
             && db::get_setting(tx, SWITCH_REVISION_KEY)? == self.switch_revision
             && db::get_setting(tx, REFRESHED_KEY)? == self.refreshed)
     }
@@ -339,7 +360,7 @@ mod tests {
             .collect::<rusqlite::Result<_>>()
             .unwrap();
         for json in cached {
-            let reasons: serde_json::Value = serde_json::from_str(&json).unwrap();
+            let reasons = serde_json::to_value(super::super::cache::reasons(&json)).unwrap();
             for reason in reasons.as_array().unwrap() {
                 assert!(reason.get("code").is_some());
                 assert!(reason.get("params").is_some());
@@ -427,47 +448,49 @@ mod tests {
 
     #[test]
     fn switch_and_cache_rollback_together_and_old_background_plans_stay_invalid() {
-        let (_dir, conn) = fixture();
-        rebuild(&conn, 86400000).unwrap();
-        let old = plan(&conn, Some(&[1]), 86400000).unwrap();
-        conn.execute_batch("CREATE TEMP TRIGGER fail_rank BEFORE INSERT ON article_rank BEGIN SELECT RAISE(FAIL,'injected'); END;").unwrap();
-        let key = db::RANK_FRESHNESS_ENABLED_KEY;
-        assert!(set_switch(&conn, key, false).is_err());
-        assert!(db::rank_switches(&conn).unwrap().freshness);
-        assert!(old.still_valid(&conn).unwrap());
-        assert_eq!(
-            conn.query_row(
-                "SELECT COUNT(*) FROM article_rank WHERE computed_at=86400000",
-                [],
-                |row| row.get::<_, i64>(0)
-            )
-            .unwrap(),
-            2
-        );
-        conn.execute_batch("DROP TRIGGER fail_rank;").unwrap();
-        set_switch(&conn, key, false).unwrap();
-        set_switch(&conn, key, true).unwrap();
-        assert!(
-            !old.still_valid(&conn).unwrap(),
-            "switching back cannot revive stale background work"
-        );
-
-        let change = db::read_snapshot(&conn, |snapshot| {
-            SwitchChange::prepare(snapshot, key, false)
-        })
-        .unwrap();
-        conn.execute("DELETE FROM articles WHERE id=2", []).unwrap();
-        assert!(
-            !db::atomic_write(&conn, |tx| change.commit(tx)).unwrap(),
-            "same-connection changes also invalidate the plan"
-        );
-        set_switch(&conn, key, false).unwrap();
-        assert_eq!(
-            conn.query_row("SELECT COUNT(*) FROM article_rank", [], |row| row
-                .get::<_, i64>(0))
+        for key in [db::RANK_FRESHNESS_ENABLED_KEY, FITTED_ENABLED_KEY] {
+            let (_dir, conn) = fixture();
+            db::set_setting_enabled(&conn, key, true).unwrap();
+            rebuild(&conn, 86400000).unwrap();
+            let old = plan(&conn, Some(&[1]), 86400000).unwrap();
+            conn.execute_batch("CREATE TEMP TRIGGER fail_rank BEFORE INSERT ON article_rank BEGIN SELECT RAISE(FAIL,'injected'); END;").unwrap();
+            assert!(set_switch(&conn, key, false).is_err());
+            assert!(db::setting_enabled(&conn, key, true).unwrap());
+            assert!(old.still_valid(&conn).unwrap());
+            assert_eq!(
+                conn.query_row(
+                    "SELECT COUNT(*) FROM article_rank WHERE computed_at=86400000",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
                 .unwrap(),
-            1
-        );
+                2
+            );
+            conn.execute_batch("DROP TRIGGER fail_rank;").unwrap();
+            set_switch(&conn, key, false).unwrap();
+            set_switch(&conn, key, true).unwrap();
+            assert!(
+                !old.still_valid(&conn).unwrap(),
+                "switching back cannot revive stale background work"
+            );
+
+            let change = db::read_snapshot(&conn, |snapshot| {
+                SwitchChange::prepare(snapshot, key, false)
+            })
+            .unwrap();
+            conn.execute("DELETE FROM articles WHERE id=2", []).unwrap();
+            assert!(
+                !db::atomic_write(&conn, |tx| change.commit(tx)).unwrap(),
+                "same-connection changes also invalidate the plan"
+            );
+            set_switch(&conn, key, false).unwrap();
+            assert_eq!(
+                conn.query_row("SELECT COUNT(*) FROM article_rank", [], |row| row
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                1
+            );
+        }
     }
 
     #[test]
@@ -539,6 +562,31 @@ mod tests {
     }
 
     #[test]
+    fn fitted_switch_defaults_off_rebuilds_and_invalidates_pending_switches() {
+        let (_dir, conn) = fixture();
+        assert!(!fitted_enabled(&conn).unwrap());
+        rebuild(&conn, 86400000).unwrap();
+        let old = plan(&conn, Some(&[1]), 86400000).unwrap();
+        let change = SwitchChange::prepare(&conn, db::RANK_FEATURES_ENABLED_KEY, false).unwrap();
+        set_switch(&conn, FITTED_ENABLED_KEY, true).unwrap();
+        assert!(fitted_enabled(&conn).unwrap());
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM article_rank WHERE computed_at<>86400000",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            2
+        );
+        assert!(!old.still_valid(&conn).unwrap());
+        set_switch(&conn, FITTED_ENABLED_KEY, false).unwrap();
+        assert!(!old.still_valid(&conn).unwrap());
+        assert!(!db::atomic_write(&conn, |tx| change.commit(tx)).unwrap());
+        assert!(db::rank_switches(&conn).unwrap().features);
+    }
+
+    #[test]
     fn independent_switches_and_all_off_clear_the_cache() {
         let (_dir, conn) = fixture();
         assert_eq!(rebuild(&conn, 86400000).unwrap(), 2);
@@ -559,7 +607,8 @@ mod tests {
             0
         );
         db::set_setting_enabled(&conn, db::RANK_FRESHNESS_ENABLED_KEY, true).unwrap();
-        assert_eq!(rebuild(&conn, 86400000).unwrap(), 2);
+        // One fixed half-life (3 days) after publication: one penalty point.
+        assert_eq!(rebuild(&conn, 3 * 86400000).unwrap(), 2);
         assert_eq!(
             conn.query_row(
                 "SELECT boost FROM article_rank WHERE article_id=1",

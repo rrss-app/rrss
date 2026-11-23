@@ -10,6 +10,8 @@ use crate::error::{Error, Result};
 use crate::feed_scope::FeedScope;
 use crate::feeds::now_ms;
 use crate::interests::{self, parse_interest_reasons};
+mod focus_order;
+mod focus_pool;
 
 // Replace the threshold marker with the query's bound placeholder.
 pub(crate) const FOCUS_VISIBLE_SQL: &str =
@@ -18,9 +20,6 @@ pub(crate) const FOCUS_VISIBLE_SQL: &str =
 pub const DEFAULT_HIDE_THRESHOLD: i64 = -10;
 pub const ROW_CARD: i32 = 0;
 pub const ROW_HEADER: i32 = 1;
-const MMR_LAMBDA: f32 = 0.7;
-const FEED_MIX_CAP: usize = 3;
-const FEED_MIX_OVERFETCH: i64 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -81,6 +80,8 @@ pub struct ArticleCard {
     pub noisy: bool,
     #[serde(default)]
     pub spot_check: bool,
+    #[serde(default)]
+    pub explore: bool,
     pub row_kind: i32,
 }
 
@@ -177,8 +178,10 @@ pub fn list_preload_article_ids(conn: &Connection) -> Result<Vec<i64>> {
         &[],
         &[],
         FeedScope::All,
+        None,
+        None,
     )?;
-    for card in focus {
+    for (card, _) in focus {
         if seen.insert(card.id) {
             ids.push(card.id);
         }
@@ -194,8 +197,10 @@ pub fn list_preload_article_ids(conn: &Connection) -> Result<Vec<i64>> {
             &[],
             &[],
             FeedScope::All,
+            None,
+            None,
         )?;
-        for card in extra {
+        for (card, _) in extra {
             if seen.insert(card.id) {
                 ids.push(card.id);
             }
@@ -310,58 +315,65 @@ pub fn list_focus_page(
     };
     let want = limit.max(1);
     let first_page = exclude_ids.is_empty() && exclude_cluster_ids.is_empty();
-    let fetch = if first_page {
-        (want * FEED_MIX_OVERFETCH).max(want) + 1
-    } else {
-        want + 1
-    };
-    let mut cards = query_focus_cards(
-        conn,
-        filter,
-        threshold,
-        boost_on,
-        fetch,
-        exclude_ids,
-        exclude_cluster_ids,
-        &exclude_feeds,
-        scope,
-    )?;
-    let fetched = cards.len();
-    if first_page {
-        cards = mix_by_feed(cards, want as usize, FEED_MIX_CAP);
-    } else if cards.len() > want as usize {
-        cards.truncate(want as usize);
-    }
-    let has_more = fetched > want as usize;
-    let rerank_effective = rerank_on
-        && (interests::interest_ready(conn).unwrap_or(false)
-            || cards.iter().any(|c| c.score + c.interest_boost > 0));
-    if rerank_effective {
-        cards = mmr_rerank(conn, cards)?;
-    }
-    if group_on {
-        cards = project_clusters(
+    crate::db::read_snapshot(conn, |conn| {
+        let exploring = first_page
+            && scope == FeedScope::All
+            && list_scope(conn)? != ListScope::Starred
+            && crate::rank::store::fitted_enabled(conn)?;
+        let mut explore_pool = Vec::new();
+        let candidates = query_focus_cards(
             conn,
-            cards,
-            expanded_cluster_id,
-            threshold,
-            boost_on,
-            exclude_cluster_ids,
-            scope,
-        )?;
-    }
-    if scope == FeedScope::All {
-        crate::rank::spot_check::inject(
-            conn,
-            &mut cards,
             filter,
             threshold,
+            boost_on,
+            want.saturating_add(1),
+            exclude_ids,
+            if group_on { exclude_cluster_ids } else { &[] },
             &exclude_feeds,
-            first_page,
+            scope,
+            Some(group_on),
+            exploring.then_some(&mut explore_pool),
         )?;
-    }
-    attach_noise(conn, &mut cards)?;
-    Ok((cards, has_more))
+        let has_more = candidates.len() > want as usize;
+        let rerank_effective = rerank_on
+            && (interests::interest_ready(conn).unwrap_or(false)
+                || candidates
+                    .iter()
+                    .any(|(c, _)| c.score > 0 || (boost_on && c.interest_boost > 0)));
+        let mut cards = focus_order::select(
+            conn,
+            candidates,
+            want as usize,
+            exclude_ids,
+            rerank_effective,
+            group_on,
+        )?;
+        if group_on {
+            cards = project_clusters(
+                conn,
+                cards,
+                expanded_cluster_id,
+                threshold,
+                exclude_cluster_ids,
+                scope,
+            )?;
+        }
+        if scope == FeedScope::All {
+            crate::rank::spot_check::inject(
+                conn,
+                &mut cards,
+                filter,
+                threshold,
+                &exclude_feeds,
+                first_page,
+            )?;
+        }
+        if exploring && focus_order::exploration_enabled() {
+            crate::rank::explore::inject(conn, &mut cards, &explore_pool, threshold, now_ms())?;
+        }
+        attach_noise(conn, &mut cards)?;
+        Ok((cards, has_more))
+    })
 }
 
 fn query_focus_cards(
@@ -374,39 +386,23 @@ fn query_focus_cards(
     exclude_cluster_ids: &[i64],
     exclude_feed_ids: &[i64],
     scope: FeedScope,
-) -> Result<Vec<ArticleCard>> {
+    group_for_page: Option<bool>,
+    explore_pool: Option<&mut Vec<i64>>,
+) -> Result<Vec<(ArticleCard, i64)>> {
     let boost = i64::from(boost_on);
-    let exclude_sql = if exclude_ids.is_empty() {
-        String::new()
-    } else {
-        let marks: String = (0..exclude_ids.len())
-            .map(|i| format!("?{}", 4 + i))
-            .collect::<Vec<_>>()
-            .join(",");
-        format!(" AND a.id NOT IN ({marks})")
-    };
-    let cluster_sql = if exclude_cluster_ids.is_empty() {
-        String::new()
-    } else {
-        let start = 4 + exclude_ids.len();
-        let marks: String = (0..exclude_cluster_ids.len())
-            .map(|i| format!("?{}", start + i))
-            .collect::<Vec<_>>()
-            .join(",");
-        format!(" AND (a.cluster_id IS NULL OR a.cluster_id NOT IN ({marks}))")
-    };
     let noisy_sql = if exclude_feed_ids.is_empty() {
         String::new()
     } else {
-        let start = 4 + exclude_ids.len() + exclude_cluster_ids.len();
+        let start = 4;
         let marks: String = (0..exclude_feed_ids.len())
             .map(|i| format!("?{}", start + i))
             .collect::<Vec<_>>()
             .join(",");
         format!(" AND a.feed_id NOT IN ({marks})")
     };
-    let list_sql = list_scope(conn)?.filter_sql();
-    let scope_index = 4 + exclude_ids.len() + exclude_cluster_ids.len() + exclude_feed_ids.len();
+    let list_scope = list_scope(conn)?;
+    let list_sql = list_scope.filter_sql();
+    let scope_index = 4 + exclude_feed_ids.len();
     let (feed_sql, feed_id) = numbered_scope_sql(scope, scope_index);
     let rank_score = crate::rank::focus::SCORE_SQL;
     let member_score = crate::rank::focus::MEMBER_SQL;
@@ -416,66 +412,69 @@ fn query_focus_cards(
         FocusFilter::HideFaded => visible,
         FocusFilter::ShowAll => "1".into(),
     };
-    let sql = format!(
-        "SELECT a.id, a.title, COALESCE(f.title, f.url), a.published_at, a.canonical_url,
-                a.read, a.starred, a.score, a.interest_boost, COALESCE(a.summary, ''),
-                a.feed_id, a.cluster_id, a.interest_reasons_json, COALESCE(r.boost, 0), r.reasons_json
-         FROM articles a
-         JOIN feeds f ON f.id = a.feed_id
-         LEFT JOIN article_rank r ON r.article_id = a.id
-         WHERE a.expires_at IS NULL AND {filter_sql}
+    let eligible = format!(
+        "a.expires_at IS NULL AND {filter_sql}
            {list_sql}
            {feed_sql}
-           {exclude_sql}
-           {cluster_sql}
-           {noisy_sql}
-         ORDER BY {rank_score} DESC,
-                  COALESCE(a.published_at, 0) DESC, a.id DESC
-         LIMIT ?1"
+           {noisy_sql}"
     );
     let mut bind = vec![limit, threshold, boost];
-    bind.extend_from_slice(exclude_ids);
-    bind.extend_from_slice(exclude_cluster_ids);
     bind.extend_from_slice(exclude_feed_ids);
     if let Some(id) = feed_id {
         bind.push(id);
     }
+    if let Some(group) = group_for_page {
+        // Candidate selection and card loading used to be one SQL statement.
+        // Preserve that snapshot even when a background writer changes articles.
+        return crate::db::read_snapshot(conn, |conn| {
+            let picked = focus_order::candidates(
+                conn,
+                &eligible,
+                group,
+                list_scope,
+                &bind,
+                exclude_ids,
+                exclude_cluster_ids,
+                explore_pool,
+            )?;
+            query_ranked_cards(
+                conn,
+                "SELECT json_extract(value,'$[0]') AS id,
+                        json_extract(value,'$[1]') AS priority,CAST(key AS INTEGER) AS position FROM json_each(?1)",
+                [serde_json::to_string(&picked).expect("integer candidate pairs serialize")],
+            )
+        });
+    }
+    let ranked = format!(
+        "SELECT a.id, {rank_score} AS priority,0 AS position FROM articles a
+         LEFT JOIN article_rank r ON r.article_id=a.id WHERE {eligible}
+         ORDER BY priority DESC, COALESCE(a.published_at,0) DESC, a.id DESC LIMIT ?1"
+    );
+    query_ranked_cards(conn, &ranked, params_from_iter(bind))
+}
+
+pub(crate) fn query_ranked_cards(
+    conn: &Connection,
+    ranked: &str,
+    bind: impl rusqlite::Params,
+) -> Result<Vec<(ArticleCard, i64)>> {
+    let sql = format!(
+        "WITH picked AS ({ranked})
+         SELECT a.id, a.title, COALESCE(f.title, f.url), a.published_at, a.canonical_url,
+                a.read, a.starred, a.score, a.interest_boost, COALESCE(a.summary, ''),
+                a.feed_id, a.cluster_id, a.interest_reasons_json, COALESCE(r.boost, 0),
+                r.reasons_json, picked.priority
+         FROM picked JOIN articles a ON a.id=picked.id JOIN feeds f ON f.id=a.feed_id
+         LEFT JOIN article_rank r ON r.article_id=a.id
+         ORDER BY picked.priority DESC,picked.position,COALESCE(a.published_at,0) DESC,a.id DESC"
+    );
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params_from_iter(bind), map_card)?;
-    let mut cards: Vec<ArticleCard> = rows.collect::<rusqlite::Result<_>>()?;
-    for card in &mut cards {
+    let rows = stmt.query_map(bind, |r| Ok((map_card(r)?, r.get(15)?)))?;
+    let mut cards: Vec<(ArticleCard, i64)> = rows.collect::<rusqlite::Result<_>>()?;
+    for (card, _) in &mut cards {
         card.feed_title = crate::feeds::display_title(&card.feed_title, "");
     }
     Ok(cards)
-}
-
-/// 每个源先留 `cap` 条（保持原序），窗口未满再按分数从溢出里补。
-fn mix_by_feed(cards: Vec<ArticleCard>, limit: usize, cap: usize) -> Vec<ArticleCard> {
-    if limit == 0 || cards.len() <= limit {
-        return cards;
-    }
-    let mut kept = Vec::new();
-    let mut overflow = Vec::new();
-    let mut counts: HashMap<i64, usize> = HashMap::new();
-    for card in cards {
-        let n = counts.entry(card.feed_id).or_insert(0);
-        if *n < cap {
-            *n += 1;
-            kept.push(card);
-            if kept.len() == limit {
-                return kept;
-            }
-        } else {
-            overflow.push(card);
-        }
-    }
-    for card in overflow {
-        if kept.len() >= limit {
-            break;
-        }
-        kept.push(card);
-    }
-    kept
 }
 
 pub(crate) fn map_card(row: &rusqlite::Row<'_>) -> rusqlite::Result<ArticleCard> {
@@ -494,7 +493,7 @@ pub(crate) fn map_card(row: &rusqlite::Row<'_>) -> rusqlite::Result<ArticleCard>
         rank_boost: row.get(13)?,
         rank_reasons: row
             .get::<_, Option<String>>(14)?
-            .and_then(|s| serde_json::from_str(&s).ok())
+            .map(|s| crate::rank::cache::reasons(&s))
             .unwrap_or_default(),
         summary: row.get(9)?,
         feed_id: row.get(10)?,
@@ -508,68 +507,9 @@ pub(crate) fn map_card(row: &rusqlite::Row<'_>) -> rusqlite::Result<ArticleCard>
         interest_reason: reasons.first().map(|reason| reason.message.clone()),
         noisy: false,
         spot_check: false,
+        explore: false,
         row_kind: ROW_CARD,
     })
-}
-
-fn mmr_rerank(conn: &Connection, cards: Vec<ArticleCard>) -> Result<Vec<ArticleCard>> {
-    if cards.len() <= 1 {
-        return Ok(cards);
-    }
-    struct Item {
-        card: ArticleCard,
-        rel: f32,
-        vec: Option<Vec<f32>>,
-        tokens: Vec<String>,
-    }
-    fn sim(a: &Item, b: &Item) -> f32 {
-        if let (Some(va), Some(vb)) = (a.vec.as_deref(), b.vec.as_deref()) {
-            return (1.0 - crate::rag::cosine_distance(va, vb)).clamp(0.0, 1.0);
-        }
-        jaccard(&a.tokens, &b.tokens)
-    }
-    let max_rel = cards
-        .iter()
-        .map(|c| (c.score + c.interest_boost).max(0) as f32)
-        .fold(1.0f32, f32::max);
-    let mut rest: Vec<Item> = Vec::new();
-    for card in cards {
-        let vec = crate::rag::title_embedding(conn, card.id)?;
-        let tokens = crate::simhash::tokenize(&format!("{} {}", card.title, card.summary));
-        let rel = (card.score + card.interest_boost).max(0) as f32 / max_rel;
-        rest.push(Item {
-            card,
-            rel,
-            vec,
-            tokens,
-        });
-    }
-    let mut selected: Vec<Item> = Vec::new();
-    while !rest.is_empty() {
-        let mut best_i = 0usize;
-        let mut best_s = f32::NEG_INFINITY;
-        for (i, item) in rest.iter().enumerate() {
-            let sim_sel = selected.iter().map(|s| sim(item, s)).fold(0.0f32, f32::max);
-            let score = MMR_LAMBDA * item.rel - (1.0 - MMR_LAMBDA) * sim_sel;
-            if score > best_s {
-                best_s = score;
-                best_i = i;
-            }
-        }
-        selected.push(rest.remove(best_i));
-    }
-    Ok(selected.into_iter().map(|i| i.card).collect())
-}
-
-fn jaccard(a: &[String], b: &[String]) -> f32 {
-    if a.is_empty() || b.is_empty() {
-        return 0.0;
-    }
-    let sa: HashSet<&str> = a.iter().map(String::as_str).collect();
-    let sb: HashSet<&str> = b.iter().map(String::as_str).collect();
-    let inter = sa.intersection(&sb).count() as f32;
-    let union = sa.union(&sb).count() as f32;
-    if union == 0.0 { 0.0 } else { inter / union }
 }
 
 fn project_clusters(
@@ -577,7 +517,6 @@ fn project_clusters(
     cards: Vec<ArticleCard>,
     expanded: Option<i64>,
     threshold: i64,
-    boost_on: bool,
     exclude_cluster_ids: &[i64],
     scope: FeedScope,
 ) -> Result<Vec<ArticleCard>> {
@@ -596,7 +535,8 @@ fn project_clusters(
         }
     }
     let metas = crate::cluster::get_clusters(conn, &wanted)?;
-    let members_map = visible_cluster_cards_map(conn, &wanted, threshold, scope)?;
+    let members_map =
+        visible_cluster_cards_map(conn, &wanted, threshold, scope, list_scope(conn)?)?;
     let mut out = Vec::new();
     let mut seen = HashSet::new();
     for card in cards {
@@ -630,9 +570,8 @@ fn project_clusters(
             out.extend(members);
         } else {
             let best = members
-                .iter()
-                .max_by_key(|c| (c.rank_score(boost_on), c.published_at.unwrap_or(0)))
-                .cloned()
+                .into_iter()
+                .find(|m| m.id == card.id)
                 .unwrap_or(card);
             // 折叠时只放代表文章；展开 / 收起只走标题行，不再另给「还有 N 篇」入口。
             out.push(best);
@@ -657,9 +596,18 @@ pub fn focus_cluster_members(
     cluster_id: i64,
     scope: FeedScope,
 ) -> Result<Vec<ArticleCard>> {
+    cluster_members_in_scope(conn, cluster_id, scope, list_scope(conn)?)
+}
+
+pub(crate) fn cluster_members_in_scope(
+    conn: &Connection,
+    cluster_id: i64,
+    scope: FeedScope,
+    list_scope: ListScope,
+) -> Result<Vec<ArticleCard>> {
     let scope = focus_column_scope(scope);
     let threshold = hide_threshold(conn)?;
-    let mut members = visible_cluster_cards_map(conn, &[cluster_id], threshold, scope)?
+    let mut members = visible_cluster_cards_map(conn, &[cluster_id], threshold, scope, list_scope)?
         .remove(&cluster_id)
         .unwrap_or_default();
     if members.len() < 2 {
@@ -680,6 +628,7 @@ fn visible_cluster_cards_map(
     cluster_ids: &[i64],
     threshold: i64,
     scope: FeedScope,
+    list_scope: ListScope,
 ) -> Result<HashMap<i64, Vec<ArticleCard>>> {
     let mut out: HashMap<i64, Vec<ArticleCard>> = HashMap::new();
     if cluster_ids.is_empty() {
@@ -692,6 +641,7 @@ fn visible_cluster_cards_map(
     let threshold_idx = cluster_ids.len() + 1;
     let (feed_sql, feed_id) = numbered_scope_sql(scope, threshold_idx + 1);
     let visible = FOCUS_VISIBLE_SQL.replace("$threshold", &format!("?{threshold_idx}"));
+    let list_sql = list_scope.filter_sql();
     let sql = format!(
         "SELECT a.id, a.title, COALESCE(f.title, f.url), a.published_at, a.canonical_url,
                 a.read, a.starred, a.score, a.interest_boost, COALESCE(a.summary, ''),
@@ -699,7 +649,7 @@ fn visible_cluster_cards_map(
          FROM articles a
          JOIN feeds f ON f.id = a.feed_id
          LEFT JOIN article_rank r ON r.article_id = a.id
-         WHERE a.cluster_id IN ({marks}) AND {visible}{feed_sql}
+         WHERE a.cluster_id IN ({marks}) AND {visible}{feed_sql}{list_sql}
          ORDER BY a.cluster_id, COALESCE(a.published_at, 0) ASC, a.id ASC"
     );
     let mut bind = cluster_ids.to_vec();
@@ -751,6 +701,7 @@ fn cluster_header(meta: &crate::cluster::ClusterMeta, members: &[ArticleCard]) -
         interest_reason: None,
         noisy: false,
         spot_check: false,
+        explore: false,
         row_kind: ROW_HEADER,
     }
 }
@@ -761,9 +712,10 @@ pub fn mark_cluster_read(conn: &Connection, cluster_id: i64, scope: FeedScope) -
     let scope = focus_column_scope(scope);
     let visible = FOCUS_VISIBLE_SQL.replace("$threshold", "?2");
     let (feed_sql, feed_id) = numbered_scope_sql(scope, 3);
+    let list_sql = list_scope(conn)?.filter_sql();
     let sql = format!(
         "UPDATE articles SET read = 1 WHERE id IN (
-            SELECT a.id FROM articles a WHERE a.cluster_id = ?1 AND a.read = 0 AND {visible}{feed_sql}
+            SELECT a.id FROM articles a WHERE a.cluster_id = ?1 AND a.read = 0 AND {visible}{feed_sql}{list_sql}
          ) RETURNING id"
     );
     let mut bind = vec![cluster_id, hide_threshold(conn)?];
@@ -1177,7 +1129,7 @@ mod tests {
             canonical_url: Some(url.into()),
             title: title.into(),
             author: None,
-            published_at: Some(1),
+            published_at: Some(now_ms() - 60_000),
             content_html: Some("<p>x</p>".into()),
             hash: crate::parse::entry_hash(title, Some(url), Some("<p>x</p>")),
             tags: vec![],
@@ -1200,7 +1152,8 @@ mod tests {
         set_hide_threshold(&conn, 0).unwrap();
         set_focus_summary_neutral_limit(&conn, 10).unwrap();
         let check = |expected: &[i64], count| {
-            let map = visible_cluster_cards_map(&conn, &[7], 0, FeedScope::All).unwrap();
+            let map =
+                visible_cluster_cards_map(&conn, &[7], 0, FeedScope::All, ListScope::All).unwrap();
             assert_eq!(map[&7].iter().map(|a| a.id).collect::<Vec<_>>(), expected);
             assert_eq!(due_focus_summaries(&conn, 10).unwrap().len() as i64, count);
         };
@@ -1220,6 +1173,9 @@ mod tests {
         conn.execute_batch("INSERT INTO feeds(id,url,created_at) VALUES(1,'https://rank.invalid/feed',0);
             INSERT INTO articles(id,feed_id,title,score,interest_boost,created_at,starred) VALUES
             (1,1,'hidden',-10,0,0,0),(2,1,'neutral',0,0,0,0),(3,1,'liked',10,0,0,1),(4,1,'liked second',10,0,0,1);").unwrap();
+        conn.execute("UPDATE articles SET created_at=?1", [now_ms()])
+            .unwrap();
+        crate::db::set_setting(&conn, crate::db::HIDDEN_SPOT_CHECK_RATE_KEY, "0").unwrap();
         let ids = || {
             list_focus_page(&conn, 40, None, &[], &[], FeedScope::All)
                 .unwrap()
@@ -1350,8 +1306,10 @@ mod tests {
         )
         .unwrap();
         let url = "https://news.example.com/library";
-        crate::ingest::upsert_entries(&conn, a, &[entry("市政厅新图书馆开放", url)], 1).unwrap();
-        crate::ingest::upsert_entries(&conn, b, &[entry("市政厅开放新图书馆", url)], 1).unwrap();
+        crate::ingest::upsert_entries(&conn, a, &[entry("市政厅新图书馆开放", url)], now_ms())
+            .unwrap();
+        crate::ingest::upsert_entries(&conn, b, &[entry("市政厅开放新图书馆", url)], now_ms())
+            .unwrap();
         set_focus_filter(&conn, FocusFilter::ShowAll).unwrap();
         let rows = list_focus(&conn, 10).unwrap();
         assert!(
@@ -1440,27 +1398,27 @@ mod tests {
                     &format!("loud {i:02}"),
                     &format!("https://loud.example.com/{i}"),
                 );
-                e.published_at = Some(1_000 + i);
+                e.published_at = Some(now_ms() - 60_000 + 1_000 + i);
                 e
             })
             .collect();
-        crate::ingest::upsert_entries(&conn, loud, &loud_entries, 1).unwrap();
+        crate::ingest::upsert_entries(&conn, loud, &loud_entries, now_ms()).unwrap();
         crate::ingest::upsert_entries(
             &conn,
             quiet,
             &[
                 {
                     let mut e = entry("quiet alpha", "https://quiet.example.com/a");
-                    e.published_at = Some(1);
+                    e.published_at = Some(now_ms() - 60_000 + 1);
                     e
                 },
                 {
                     let mut e = entry("quiet beta", "https://quiet.example.com/b");
-                    e.published_at = Some(2);
+                    e.published_at = Some(now_ms() - 60_000 + 2);
                     e
                 },
             ],
-            1,
+            now_ms(),
         )
         .unwrap();
 
@@ -1494,12 +1452,12 @@ mod tests {
                     canonical_url: Some(url.clone()),
                     title: title.clone(),
                     author: None,
-                    published_at: Some(10 + i),
+                    published_at: Some(now_ms() - 30_000 + i),
                     content_html: Some("<p>x</p>".into()),
                     hash: crate::parse::entry_hash(&title, Some(&url), Some("<p>x</p>")),
                     tags: vec![],
                 }],
-                1,
+                now_ms(),
             )
             .unwrap();
         }
@@ -1585,6 +1543,11 @@ mod tests {
              (4,12,'丙一',5,4000,7,0,1),(5,11,'被隐藏',-100,5000,7,0,1);",
         )
         .unwrap();
+        conn.execute(
+            "UPDATE articles SET published_at=?1+published_at,created_at=?2",
+            params![now_ms() - 60_000, now_ms()],
+        )
+        .unwrap();
         let header = |scope| {
             list_focus_page(&conn, 40, None, &[], &[], scope)
                 .unwrap()
@@ -1642,6 +1605,11 @@ mod tests {
              (1,10,'in parent',5,3000,7,1),(2,11,'in child',5,2000,7,1),
              (3,12,'outside cluster',5,4000,7,1),(4,10,'solo in',5,1000,8,1),
              (5,12,'solo out',5,5000,8,1),(6,12,'plain out',5,6000,NULL,1);",
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE articles SET published_at=?1+published_at,created_at=?2",
+            params![now_ms() - 60_000, now_ms()],
         )
         .unwrap();
         crate::db::set_setting(&conn, crate::db::HIDDEN_SPOT_CHECK_RATE_KEY, "5").unwrap();

@@ -102,6 +102,8 @@ pub struct ArticleView {
     #[serde(default)]
     pub spot_check: bool,
     #[serde(default)]
+    pub explore: bool,
+    #[serde(default)]
     #[ts(optional)]
     pub hide_reasons: Option<Vec<ReasonView>>,
     // 只在相近报道标题行上：这组可见成员的来源，按成员先后去重。组头收起时也能写来源数、叠放头像。
@@ -903,6 +905,8 @@ pub struct RankingSettings {
     pub rank_coverage: bool,
     pub rank_freshness: bool,
     pub rank_affinity: bool,
+    #[serde(default)]
+    pub rank_fitted: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -1991,6 +1995,7 @@ pub fn article_from_card(card: rrss_core::ArticleCard) -> ArticleView {
         ),
         noisy: card.noisy,
         spot_check: card.spot_check,
+        explore: card.explore,
         hide_reasons: None,
         cluster_fresh: None,
         cluster_sources: (card.row_kind == rrss_core::articles::ROW_HEADER).then(|| {
