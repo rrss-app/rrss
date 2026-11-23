@@ -126,6 +126,31 @@ pub fn feedback_for_article(conn: &Connection, article_id: i64) -> Result<Option
     Ok(previous_feedback(conn, article_id)?.map(|f| f.kind))
 }
 
+/// 一批文章各自的评分；没有评分的不在结果里。列表卡片据此标出已赞 / 已踩。
+pub fn feedback_for_articles(
+    conn: &Connection,
+    article_ids: &[i64],
+) -> Result<std::collections::HashMap<i64, FeedbackKind>> {
+    if article_ids.is_empty() {
+        return Ok(Default::default());
+    }
+    let ids = serde_json::to_string(article_ids).expect("integer ids serialize");
+    let mut stmt = conn.prepare_cached(
+        "SELECT article_id, kind FROM feedback WHERE article_id IN (SELECT value FROM json_each(?1))",
+    )?;
+    let rows = stmt.query_map([ids], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut out = std::collections::HashMap::new();
+    for row in rows {
+        let (id, kind) = row?;
+        if let Some(kind) = FeedbackKind::parse(&kind) {
+            out.insert(id, kind);
+        }
+    }
+    Ok(out)
+}
+
 fn previous_feedback(conn: &Connection, article_id: i64) -> Result<Option<PreviousFeedback>> {
     let row: Option<(String, i64)> = conn
         .query_row(
@@ -304,6 +329,9 @@ mod tests {
             )
             .unwrap();
         assert_eq!(restored, ("up".into(), 42));
+        let kinds = feedback_for_articles(&conn, &ids).unwrap();
+        assert_eq!(kinds.get(&ids[1]), Some(&FeedbackKind::Up));
+        assert!(!kinds.contains_key(&ids[0]));
     }
 
     #[test]

@@ -74,6 +74,7 @@ export function ArticleCard({
             {showReasons && row.noisy ? <span className="meta-tag">{t("card.noisy")}</span> : null}
             {details && (row.spot_check || review) ? <span className="meta-tag" title={t("card.spotCheckTitle")}>{t("card.spotCheck")}</span> : null}
             {details && row.explore ? <span className="meta-tag" title={t("card.exploreTitle")}>{t("card.explore")}</span> : null}
+            {row.feedback === 1 ? <span className="meta-tag liked"><ThumbIcon filled size={11} />{t("card.liked")}</span> : null}
             {row.starred ? <span className="meta-tag starred"><Icon name="star" size={11} filled />{t("card.starred")}</span> : null}
           </div>
           {showReasons && score !== 0 ? <span className={`score ${scoreClass}`} title={t("card.scoreTitle")}>{score > 0 ? "+" : ""}{formatReasonNumber(score)}</span> : null}
@@ -89,8 +90,10 @@ export function ArticleCard({
                 onClick={() => onStar(row)}><Icon name="star" size={15} filled={row.starred} /></button>
             ) : null}
             <button type="button" className="cite-btn" title={t("card.citeTitle")} onClick={() => onCite(row.id)}><Icon name="quote" size={14} />{t("card.cite")}</button>
-            <button type="button" className="rate up" title={t("card.like")} aria-label={t("card.like")} onClick={() => onRate(row, true)}><ThumbIcon /></button>
-            <button type="button" className="rate down" title={t("card.dislike")} aria-label={t("card.dislike")} onClick={() => onRate(row, false)}><ThumbIcon down /></button>
+            <button type="button" className="rate up" title={t(row.feedback === 1 ? "card.unlike" : "card.like")} aria-label={t(row.feedback === 1 ? "card.unlike" : "card.like")}
+              aria-pressed={row.feedback === 1} onClick={() => onRate(row, true)}><ThumbIcon filled={row.feedback === 1} /></button>
+            <button type="button" className="rate down" title={t("card.dislike")} aria-label={t("card.dislike")} aria-pressed={row.feedback === -1}
+              onClick={() => onRate(row, false)}><ThumbIcon down filled={row.feedback === -1} /></button>
           </div>
         </div>
         {details && review && onReview ? <SpotCheckReveal review={review} threshold={hideThreshold} busy={reviewBusy} onAction={onReview} /> : null}

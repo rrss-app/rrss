@@ -330,12 +330,14 @@ function DesktopShell() {
     if (id === 0 || id === threadId) setView("chat");
     else selectChatLocation(id);
   };
-  const rateArticle = useCallback((row: ArticleView, up: boolean, undone?: (feedback: number) => void) => trainingRef.current?.rate(row, up, undone), []);
+  const rateArticle = useCallback((row: ArticleView, up: boolean, changed?: (feedback: number) => void) => trainingRef.current?.rate(row, up, changed), []);
+  // 两个焦点列表都可能显示这篇：评分标记一起改。
+  const syncFeedback = useCallback((id: number, feedback: number) => { focus.setFeedback(id, feedback); column.setFeedback(id, feedback); }, [focus, column]);
   // 阅读器 `x` / 篇目里的踩只记反馈，不弹规则建议，便于连续丢弃；规则建议留给阅读工具和列表里的踩。
   const dislikeArticle = useCallback(async (row: ArticleView) => {
-    try { await ratings.write(row.id, () => api.rate(row.id, false)); trackEvent(row.id, "down"); return true; }
+    try { await ratings.write(row.id, () => api.rate(row.id, false)); trackEvent(row.id, "down"); syncFeedback(row.id, -1); return true; }
     catch (err) { setToast({ message: formatNotice(t("notice.rateFailed"), err) }); return false; }
-  }, [ratings, t]);
+  }, [ratings, t, syncFeedback]);
   const addCitation = useCallback((citation: CitationView) => {
     drafts.addCitations(current.current.view === "digest" ? digestContext.current : drafts.threadContext(current.current.threadId), [citation]);
   }, [drafts]);
@@ -536,7 +538,7 @@ function DesktopShell() {
       </div>
     </div>}
     {stack.includes("about") && <AboutOverlay onClose={closeTop} style={layer("about")} />}
-    <FocusTraining ref={trainingRef} session={focus} ratings={ratings} open={stack.includes("training")} style={layer("training")} onOpen={openTraining} onClose={closeTop} notify={setToast} />
+    <FocusTraining ref={trainingRef} session={focus} ratings={ratings} onFeedback={syncFeedback} open={stack.includes("training")} style={layer("training")} onOpen={openTraining} onClose={closeTop} notify={setToast} />
     {stack.includes("confirm") && confirm && <ConfirmBar rootRef={confirmRootRef} inert={commandPaletteOpen} title={confirm.title} message={confirm.message}
       okLabel={confirm.okLabel} cancelLabel={confirm.cancelLabel} style={layer("confirm")}
       secondary={confirm.secondary && { label: confirm.secondary.label, onClick: () => { confirm.secondary!.onClick(); closeTop(); } }}

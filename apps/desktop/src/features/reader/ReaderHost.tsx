@@ -135,8 +135,8 @@ export type ReaderHostProps = {
   onReadChange: (id: number, read: boolean) => void;
   /** 收藏动作由应用层执行（列表与刷新随之更新）；返回是否成功。 */
   onToggleStar: (id: number, starred: boolean) => Promise<boolean>;
-  /** `undone`：撤销这次评分后的评分（1 赞、-1 踩、0 没有）。 */
-  onRate: (article: ArticleView, up: boolean, undone?: (feedback: number) => void) => void | Promise<boolean>;
+  /** `changed`：撤销这次评分或取消赞之后的评分（1 赞、-1 踩、0 没有）。返回 `true` 表示已按 `up` 记下。 */
+  onRate: (article: ArticleView, up: boolean, changed?: (feedback: number) => void) => void | Promise<boolean>;
   /** `x` 与篇目里的踩：只记反馈、不弹规则建议；未提供时退回 `onRate`。 */
   onDislike?: (article: ArticleView) => void | Promise<boolean>;
   onCite: (chip: CitationView) => void;
@@ -1229,7 +1229,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       onDismissNote={() => setView(reader.id, (cur) => ({ ...cur, translation_note: "" }))}
       onTranslateMode={changeMode}
       stageRef={observeStage}
-      onRate={(up) => rateArticle(articleForRate(reader), up)}
+      onRate={(up) => rateArticle({ ...articleForRate(reader), feedback: reader.feedback || undefined }, up)}
       drawerOpen={drawerOpen && !session.skipNav}
       drawerPinned={drawerOpen && effectiveDrawerPinned}
       canPinDrawer={canPinDrawer}

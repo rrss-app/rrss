@@ -157,6 +157,7 @@
     "exploreTitle": "Trying a source you rarely see",
     "spotCheck": "Spot check",
     "starred": "Starred",
+    "liked": "Liked",
     "scoreTitle": "Rule and interest score",
     "actions": "Article actions",
     "unstar": "Unstar",
@@ -164,6 +165,7 @@
     "citeTitle": "Cite to chat",
     "cite": "Cite",
     "like": "Like",
+    "unlike": "Remove like",
     "dislike": "Dislike"
   },
   "trainingBar": {
@@ -277,6 +279,11 @@
   "rankingNote": {
     "interest_boost_inactive": "Interest boost isn’t active: no interest vectors yet, so ranking uses rule scores only",
     "interest_not_ready": "Interests aren’t ready: no interest vectors yet, so results are ordered by time for now"
+  },
+  "like": {
+    "recorded": "Got it. You’ll see more articles like this",
+    "undone": "Undone. The like was removed",
+    "removed": "Like removed"
   },
   "dislike": {
     "recorded": "Got it. You’ll see fewer articles like this",

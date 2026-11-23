@@ -367,8 +367,10 @@ button.article-source:focus-visible { outline: 2px solid var(--accent); outline-
 }
 .article .acts button:hover { color: var(--text); background: var(--tint-hover); box-shadow: none; }
 .article .acts .rate, .article .acts .star-btn { width: 28px; padding: 0; }
-.article .acts .rate.up:hover { color: var(--focus); }
-.article .acts .rate.down:hover { color: var(--danger); }
+.article .acts .rate.up:hover, .article .acts .rate.up[aria-pressed="true"] { color: var(--focus); }
+.article .acts .rate.down:hover, .article .acts .rate.down[aria-pressed="true"] { color: var(--danger); }
+/* 已赞常显在来源一行，与「已收藏」同位置（阶段 11 · 赞的反馈）。 */
+.meta-tag.liked { color: var(--focus); background: transparent; }
 .star-btn.on { color: var(--accent); }
 .article.starred h3::after { content: none; }
 

@@ -4,14 +4,18 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-23
+
 ### Fixed
 
+- Minimizing the window no longer makes the page flash, and the maximize button keeps showing Restore while a maximized window is minimized.
 - The lead story's title in Focus no longer cuts off the bottoms of letters such as g, y and p.
 - Returning from a citation conversation restores the article's original navigation, so Back reaches the starting page instead of cycling between the article and chat.
 
 ### Changed
 
 - Disliking an article no longer opens a list of rule suggestions. In Focus, the card fades in place with an Undo button and is replaced by the next article after five seconds; in the reader, a short notice offers Undo. Rules are optional behind "Add a rule…", which shows how many recent articles each suggestion would affect and folds away the ones that would also hide articles you read.
+- Liking an article no longer opens rule suggestions either. A short notice offers Undo, and "Add a rule…" shows the same author, tag, domain and title-word suggestions as before. Liked articles keep a "Liked" mark in Focus and in Focus columns, and clicking Like again removes the like.
 - Choose how often feeds refresh. Set a default interval in minutes under Settings → Feeds → Fetching, or give a single feed its own interval in its editor, which also shows when the feed last refreshed and when it refreshes next. New intervals apply right away.
 - Feeds that fail to refresh or whose site is rate-limiting requests now carry a badge in the sidebar, the feed list and the feed's timeline. The timeline explains the problem until it clears and offers Retry for a failed feed.
 - Focus ranks today's articles above stories that are days old. Articles lose relevance at the same steady rate in every feed, and stories carried by several feeds get only a small boost, so they no longer push fresher articles down.
@@ -28,7 +32,7 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 - Feed articles and Markdown now preserve superscripts, subscripts, strikethrough, underlines, and highlights.
 - The reader can play cached audio and video from WordPress posts, lazy-loaded players, and podcast feed attachments. When a codec is unavailable, a link opens the media in the browser. YouTube and Bilibili videos open on their original sites from cover cards.
 - The reader shows native audio and video controls before playback. Videos show a feed-supplied cover or a saved first frame when available, and the video itself downloads only when you press Play.
-- While you read in Focus, new articles below the screen appear quietly. Batches that affect your reading position share one button that brings the updates to the top of the list.
+- While you read in Focus, articles that arrive after the list was loaded appear quietly below your reading position, which also counts the furthest article you reached in the reader. Older articles that rise in the ranking, for example after you read a few, are no longer inserted into the list; they show up further down as you scroll. New articles that would land above your reading position share one button that brings them to the top and keeps the rest of the list as it was.
 - Chat suggests lasting preferences from your own words and uses them across conversations after you confirm them. Conversation summaries stay with their original thread and are deleted with it. Clearing all memories also forgets which suggestions you already saw. Older summaries with no known thread remain available in memory settings.
 - Sending a question from the reader opens the conversation immediately with your question and citations visible. The usual chat progress appears as the engine starts, and a failed send keeps the draft ready to retry.
 - Chat titles can now be generated on demand from the conversation menu or automatically after the second successful reply in a new conversation. Automatic titles are off by default. Choose a title model in Settings to use either option.

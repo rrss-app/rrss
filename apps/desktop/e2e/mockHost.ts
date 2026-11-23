@@ -103,6 +103,7 @@ export const MOCK_FOCUS: FocusPage = {
   digest_banner: "今日简报 · 9月19日",
   digest_lede: "单库向量检索：sqlite-vec 与 FTS5 共存的取舍，十万篇以内不需要外部向量库。",
   has_more: false,
+  ingested_through: 0,
   ranking: {
     interest_boost: true,
     rerank: false,
@@ -697,10 +698,12 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
       // 与宿主一致：阅读视图和搜索结果带同一份本地图标，关掉「显示网站图标」后都为空。
       const iconFor = (feedId: number | undefined) =>
         feedId !== undefined && state.settings.values.find(v => v.id === "feed_icons_enabled")?.value !== "0" ? feedIconHrefs[feedId] ?? "" : "";
+      // 与宿主一致：评分存一份，阅读视图和焦点卡片都按它标出已赞 / 已踩。
+      const ratings = new Map<number, number>();
       const readerFor = (id: number) => {
         const row = state.focus.articles.find(article => article.id === id);
         const base = readers[id] ?? { ...reader, id, feed_id: row?.feed_id ?? reader.feed_id, feed_title: row?.feed_title ?? reader.feed_title };
-        const view = { ...base, feed_icon_href: iconFor(row?.feed_id) || base.feed_icon_href };
+        const view = { ...base, feed_icon_href: iconFor(row?.feed_id) || base.feed_icon_href, ...(ratings.has(id) ? { feedback: ratings.get(id) } : {}) };
         return brokenBlocks?.reader?.includes(id) ? { ...view, document: brokenDocument(view.document) } : view;
       };
       const normalizeSearch = (q: string) => {
@@ -765,7 +768,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
         chatAcceptanceDelayMs: 0, chatReplyDelayMs: 0,
         holdHistory: false, holdDigestThread: false,
         /** 窗口三键的效果：最小化次数、最大化状态、是否已关闭。 */
-        window: { minimized: 0, maximized: false, closed: false, hidden: false, trayLabels: null as unknown, closeChoices: [] as Array<{ choice: string; remember: boolean }> },
+        window: { minimized: 0, iconic: false, maximized: false, closed: false, hidden: false, trayLabels: null as unknown, closeChoices: [] as Array<{ choice: string; remember: boolean }> },
         /** 外部工具检测的结果（按服务名覆盖，没写的用 `default`）；浏览器登录挂起到 `finishMcpLogin`。 */
         mcpProbe: {
           default: { ok: true, elapsed_ms: 420, error: "", hint: "", output: "", tools: [
@@ -935,9 +938,13 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                   return true;
                 });
                 const remaining = rows.filter(row => !(args.excludeIds ?? []).includes(row.id));
-                const articles = (focusPageSize ? remaining.slice(0, focusPageSize) : rows).map(row => ({ ...row, feed_icon_href: iconsOn ? feedIconHrefs[row.feed_id] ?? row.feed_icon_href : "" }));
+                const articles = (focusPageSize ? remaining.slice(0, focusPageSize) : rows).map(row => ({ ...row, feed_icon_href: iconsOn ? feedIconHrefs[row.feed_id] ?? row.feed_icon_href : "",
+                  ...(row.row_kind === 0 && ratings.get(row.id) ? { feedback: ratings.get(row.id) } : {}) }));
                 const scoped = column.ids !== null;
-                return { ...state.focus, articles,
+                // 宿主的水位是全库最大的文章 id；模拟库按焦点行与组成员算，测试里新到的文章取更大的 id。
+                const ingested = [...state.focus.articles, ...Object.values(clusterArticles).flat()]
+                  .reduce((max, row) => row.row_kind === 0 ? Math.max(max, row.id) : max, 0);
+                return { ...state.focus, articles, ingested_through: ingested,
                   digest_banner: scoped ? "" : state.focus.digest_banner,
                   digest_lede: scoped ? "" : state.focus.digest_lede,
                   has_more: focusPageSize ? remaining.length > focusPageSize : state.focus.has_more };
@@ -1295,14 +1302,18 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 return;
               }
               case "plugin:window|minimize":
+                // 与 Windows 一致：最小化时尺寸事件报 0×0，期间「是否最大化」为假。
                 harness.window.minimized += 1;
+                harness.window.iconic = true;
+                harness.emit("tauri://resize", { width: 0, height: 0 });
                 return;
               case "plugin:window|toggle_maximize":
+                harness.window.iconic = false;
                 harness.window.maximized = !harness.window.maximized;
                 harness.emit("tauri://resize", { width: 1280, height: 800 });
                 return;
               case "plugin:window|is_maximized":
-                return harness.window.maximized;
+                return harness.window.maximized && !harness.window.iconic;
               case "plugin:window|close": {
                 // 宿主拦下关闭后按设置「关闭窗口时」处理（后台驻留）。
                 const action = state.settings.values.find((v: { id: string }) => v.id === "close_action")?.value ?? "ask";
@@ -1735,9 +1746,13 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               case "star_article":
                 state.focus = { ...state.focus, articles: state.focus.articles.map((a) => (a.id === args.id ? { ...a, starred: args.starred } : a)) };
                 return;
-              case "rate_article":
-                return { up: args.up, previous: 0, previous_at: 0, suggested_rule_id: null };
+              case "rate_article": {
+                const previous = ratings.get(args.id) ?? 0;
+                ratings.set(args.id, args.up ? 1 : -1);
+                return { up: args.up, previous, previous_at: 0, suggested_rule_id: null };
+              }
               case "undo_rating":
+                if (ratings.get(args.id) === (args.undo.up ? 1 : -1)) ratings.set(args.id, args.undo.previous);
                 return;
               case "training_features":
                 if (trainingFeatures) return trainingFeatures;

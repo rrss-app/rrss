@@ -43,6 +43,7 @@ export const PREVIEW_FOCUS: FocusPage = {
   digest_banner: "今日简报 · 9月16日",
   digest_lede: "",
   has_more: false,
+  ingested_through: 0,
   ranking: {
     interest_boost: true,
     rerank: false,

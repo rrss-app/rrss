@@ -300,16 +300,18 @@ it("returns next to the last article when it was disliked right before closing",
   expect(session.getSnapshot().readerReturn?.id).toBe(2);
 });
 
-it("background updates refresh shown rows in place and only count new articles until the user asks", async () => {
+it("background updates refresh shown rows in place and only count articles ingested after the list was read", async () => {
   const rows = [1, 2, 3].map(id => focusRow(id, `文章 ${id}`));
-  const focus = vi.spyOn(api, "focus").mockResolvedValue({ ...TWO_ARTICLE_PAGE, articles: rows });
+  // 库里还有 4–8 这几篇旧文章没显示。
+  const focus = vi.spyOn(api, "focus").mockResolvedValue({ ...TWO_ARTICLE_PAGE, articles: rows, ingested_through: 8 });
   session.start(); await flushUpdates();
   session.readerOpened();
   session.setRead(2, true);
   session.setVisibleEnd(2);
   const revision = session.getSnapshot().revision;
-  // 排序变了、第 1 篇有了摘要、来了一篇新文章；后台的旧已读状态不覆盖本地。
-  focus.mockResolvedValueOnce({ ...TWO_ARTICLE_PAGE, articles: [focusRow(9, "新文章"), focusRow(3, "文章 3"), { ...rows[0], summary: "刚写好的摘要" }, rows[1]] });
+  // 排序变了、第 1 篇有了摘要、来了一篇新文章、一篇旧文章排上来；后台的旧已读状态不覆盖本地。
+  focus.mockResolvedValueOnce({ ...TWO_ARTICLE_PAGE, ingested_through: 9,
+    articles: [focusRow(9, "新文章"), focusRow(5, "旧文章"), focusRow(3, "文章 3"), { ...rows[0], summary: "刚写好的摘要" }, rows[1]] });
   await session.backgroundChanged();
   const snapshot = session.getSnapshot();
   expect(snapshot.revision).toBe(revision);
@@ -317,14 +319,49 @@ it("background updates refresh shown rows in place and only count new articles u
   expect(snapshot.page?.articles[0].summary).toBe("刚写好的摘要");
   expect(snapshot.page?.articles[1].read).toBe(true);
   expect(snapshot.pendingNew).toBe(1);
-  focus.mockResolvedValueOnce({ ...TWO_ARTICLE_PAGE, articles: [rows[2], focusRow(9, "First"), focusRow(10, "Second"), ...rows.slice(0, 2)] });
+  focus.mockResolvedValueOnce({ ...TWO_ARTICLE_PAGE, ingested_through: 10,
+    articles: [rows[2], focusRow(9, "First"), focusRow(6, "旧文章"), focusRow(10, "Second"), ...rows.slice(0, 2)] });
   await session.backgroundChanged();
   expect(session.getSnapshot().pendingNew).toBe(2);
   session.showNew();
   expect(session.getSnapshot().revision).toBe(revision + 1);
   expect(session.getSnapshot().pendingNew).toBe(0);
-  expect(session.getSnapshot().page?.articles.map(row => row.id)).toEqual([9, 10, 3, 1, 2]);
+  // 新文章在前，其余保持原来的先后；排序上升的旧文章不跟着上来。
+  expect(session.getSnapshot().page?.articles.map(row => row.id)).toEqual([9, 10, 1, 2, 3]);
   expect(session.findArticle(2)?.read).toBe(true);
+});
+
+it("adopts a re-ranked first page only when something new arrived before browsing", async () => {
+  const rows = [1, 2, 3].map(id => focusRow(id, `文章 ${id}`));
+  const focus = vi.spyOn(api, "focus").mockResolvedValue({ ...TWO_ARTICLE_PAGE, articles: rows, ingested_through: 8 });
+  session.start(); await flushUpdates();
+  focus.mockResolvedValueOnce({ ...TWO_ARTICLE_PAGE, ingested_through: 8, articles: [focusRow(5, "旧文章"), rows[2], rows[0], rows[1]] });
+  await session.backgroundChanged();
+  expect(session.getSnapshot().page?.articles.map(row => row.id)).toEqual([1, 2, 3]);
+  expect(session.getSnapshot().pendingNew).toBe(0);
+  focus.mockResolvedValueOnce({ ...TWO_ARTICLE_PAGE, ingested_through: 9, articles: [focusRow(9, "新文章"), focusRow(5, "旧文章"), rows[2], rows[0]] });
+  await session.backgroundChanged();
+  expect(session.getSnapshot().page?.articles.map(row => row.id)).toEqual([9, 5, 3, 1]);
+  // 采用后水位跟着前移：同一篇不会再被当成新文章。
+  session.startBrowsing();
+  focus.mockResolvedValueOnce({ ...TWO_ARTICLE_PAGE, ingested_through: 9, articles: [focusRow(7, "旧文章"), focusRow(9, "新文章"), rows[2], rows[0]] });
+  await session.backgroundChanged();
+  expect(session.getSnapshot().pendingNew).toBe(0);
+});
+
+it("merges lower arrivals below the furthest article read in the reader, not just the list viewport", async () => {
+  const rows = [1, 2, 3, 4, 5, 6].map(id => focusRow(id, `文章 ${id}`));
+  const focus = vi.spyOn(api, "focus").mockResolvedValue({ ...TWO_ARTICLE_PAGE, articles: rows, ingested_through: 10 });
+  session.start(); await flushUpdates();
+  session.setVisibleEnd(1);
+  session.readerOpened();
+  // 阅读器里从第 2 篇翻到第 4 篇，列表不跟着滚。
+  session.readerAt(2); session.readerAt(3); session.readerAt(4);
+  focus.mockResolvedValueOnce({ ...TWO_ARTICLE_PAGE, ingested_through: 12,
+    articles: [rows[0], rows[1], focusRow(11, "排在读过的位置之上"), rows[2], rows[3], focusRow(12, "排在读到的位置之下"), focusRow(9, "旧文章"), rows[4], rows[5]] });
+  await session.backgroundChanged();
+  expect(session.getSnapshot().page?.articles.map(row => row.id)).toEqual([1, 2, 3, 4, 12, 5, 6]);
+  expect(session.getSnapshot().pendingNew).toBe(1);
 });
 
 it("finishes a successful manual refresh silently when none of the inserted articles are in this list", async () => {

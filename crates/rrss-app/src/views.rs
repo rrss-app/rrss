@@ -114,6 +114,10 @@ pub struct ArticleView {
     #[serde(default)]
     #[ts(optional)]
     pub cluster_fresh: Option<i64>,
+    // 文章卡片的评分：1 赞、-1 踩；没有评分时不带。卡片据此常显「已赞」。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub feedback: Option<i8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -920,6 +924,10 @@ pub struct FocusPage {
     pub has_more: bool,
     #[serde(default = "default_list_scope")]
     pub list_scope: String,
+    // 读这一页之前库里最大的文章 id。之后入库的文章 id 更大；后台更新只把它们当新文章，
+    // 排序上升的旧文章不打断当前列表（阶段 17 · 后台更新不动阅读位置）。
+    #[serde(default)]
+    pub ingested_through: i64,
 }
 
 fn default_list_scope() -> String {
@@ -1998,6 +2006,7 @@ pub fn article_from_card(card: rrss_core::ArticleCard) -> ArticleView {
         explore: card.explore,
         hide_reasons: None,
         cluster_fresh: None,
+        feedback: None,
         cluster_sources: (card.row_kind == rrss_core::articles::ROW_HEADER).then(|| {
             card.cluster_feeds
                 .into_iter()

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { api, type ArticleView, type FeedTree, type FeedView, type FocusPage, type SearchQuery } from "../../lib/api";
 import { trackEvent } from "../../lib/signals";
-import { applyStarToFocusPage, flattenFeeds, focusBlocks, focusExcludes, mergeFocusPage, mergeLowerArrivals, refreshFocusRows, rowKey } from "../../lib/focusUtils";
+import { applyStarToFocusPage, flattenFeeds, focusBlocks, focusExcludes, mergeFocusPage, mergeLowerArrivals, promoteArrivals, refreshFocusRows, rowKey } from "../../lib/focusUtils";
 import { i18n } from "../../i18n";
 import { formatNotice } from "../../lib/notice";
 import { isTauri, PREVIEW_FOCUS } from "../../lib/preview";
@@ -66,6 +66,13 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
   let backgroundTicket = 0;
   let pendingPage: FocusPage | null = null;
   let pendingIds = new Set<number>();
+  // 当前列表读出时库里最大的文章 id：后台更新只把更大的（之后入库的）当新内容。
+  let ingestedThrough = Number.MAX_SAFE_INTEGER;
+  // 这份列表里在阅读器读过的文章：阅读器里翻到下一篇时列表不跟着滚，阅读位置以读到的最远一篇为准。
+  const readerVisited = new Set<number>();
+  const readingEnd = (articles: ArticleView[]) => articles.reduce(
+    (end, row, index) => row.row_kind === 0 && readerVisited.has(row.id) ? Math.max(end, index) : end, visibleEnd);
+  const adoptBase = (page: FocusPage) => { ingestedThrough = page.ingested_through; readerVisited.clear(); };
   let viewport: { readTop: () => number; resetTop: () => void } | undefined;
   function startBrowsing() {
     if (active && !state.loading && state.page) browsingStarted = true;
@@ -231,7 +238,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     dislikes.commitAll();
     const gen = ++generation;
     pendingPage = null;
-    if (resetBrowsing) browsingStarted = false;
+    if (resetBrowsing) { browsingStarted = false; readerVisited.clear(); }
     moreRequest = null;
     publish({ readerReturn: null, loading: true, loadingMore: false, moreError: "", revision: state.revision + 1 });
     // 筛选存于宿主设置：先等本实例排队的写入完成，再读取实际生效范围。
@@ -241,6 +248,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
       const page = await focusQuery(requestedCluster);
       if (owns(gen)) {
         pageGeneration = gen;
+        ingestedThrough = page.ingested_through;
         publish({ page: visiblePage(keepReading(page, state.page)), expandedCluster: requestedCluster });
       }
     } catch (err) {
@@ -323,9 +331,11 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     latest = visiblePage(latest)!;
     let page = refreshFocusRows(state.page, latest);
     const shown = new Set(page.articles.filter(row => row.row_kind === 0).map(row => row.id));
-    pendingIds = new Set(latest.articles.filter(row => row.row_kind === 0 && !shown.has(row.id) && !dismissedIds.has(row.id)).map(row => row.id));
+    // 只有这份列表读出之后入库的文章算新内容。已读降权、排序刷新让旧文章进了第一页时不插进来，
+    // 它们按排序出现在续页里，即已加载内容之后。
+    pendingIds = new Set(latest.articles.filter(row => row.row_kind === 0 && row.id > ingestedThrough && !shown.has(row.id) && !dismissedIds.has(row.id)).map(row => row.id));
     if (browsingStarted && pendingIds.size) {
-      page = mergeLowerArrivals(page, latest, pendingIds, visibleEnd);
+      page = mergeLowerArrivals(page, latest, pendingIds, readingEnd(page.articles));
       if (readingId !== null && !page.articles.some(row => row.row_kind === 0 && row.id === readingId)) {
         page = keepReading(page, state.page);
       }
@@ -344,19 +354,18 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
 
   function adoptPending(returnToTop = false) {
     if (!active || !pendingPage || !state.page) return;
-    const local = new Map(state.page.articles.filter(row => row.row_kind === 0).map(row => [row.id, row]));
-    const page = visiblePage({ ...pendingPage, articles: pendingPage.articles.map(row => {
-      const shown = row.row_kind === 0 ? local.get(row.id) : undefined;
-      return shown ? { ...row, read: shown.read, starred: shown.starred } : row;
-    }) })!;
+    let page: FocusPage;
     if (returnToTop) {
-      const updated: ArticleView[] = [];
-      const rest: ArticleView[] = [];
-      for (const block of focusBlocks(page.articles)) {
-        const target = block.some(row => row.row_kind === 0 && pendingIds.has(row.id)) ? updated : rest;
-        target.push(...block);
-      }
-      page.articles = updated.concat(rest);
+      // 新文章放到最前，其余保持当前列表；水位不变，这之后排序上升的旧文章仍不插进来。
+      page = visiblePage(promoteArrivals(state.page, pendingPage, pendingIds))!;
+      readerVisited.clear();
+    } else {
+      const local = new Map(state.page.articles.filter(row => row.row_kind === 0).map(row => [row.id, row]));
+      page = visiblePage({ ...pendingPage, articles: pendingPage.articles.map(row => {
+        const shown = row.row_kind === 0 ? local.get(row.id) : undefined;
+        return shown ? { ...row, read: shown.read, starred: shown.starred } : row;
+      }) })!;
+      adoptBase(pendingPage);
     }
     pageGeneration = ++generation;
     moreRequest = null;
@@ -381,6 +390,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     pageGeneration = ++generation;
     moreRequest = null;
     pendingPage = null;
+    adoptBase(latest);
     viewport?.resetTop();
     publish({ page: visiblePage(latest), dataRevision: state.dataRevision + 1, loadingMore: false, moreError: "" });
   }
@@ -594,6 +604,14 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
       publish({ page: { ...page, articles: page.articles.map((row) => row.row_kind === 1 && row.cluster_id === clusterId ? { ...row, cluster_fresh: undefined } : row) } });
     },
     findArticle: (id: number): ArticleView | undefined => state.page?.articles.find((row) => row.row_kind === 0 && row.id === id),
+    /** 评分变了（赞、踩、撤销、取消赞）：就地改卡片上的标记，不重读列表。`0` 表示没有评分。 */
+    setFeedback(id: number, feedback: number) {
+      const page = state.page;
+      const value = feedback || undefined;
+      if (page?.articles.some((row) => row.row_kind === 0 && row.id === id && row.feedback !== value)) {
+        publish({ page: { ...page, articles: page.articles.map((row) => row.row_kind === 0 && row.id === id ? { ...row, feedback: value } : row) } });
+      }
+    },
     setStarred(id: number, starred: boolean) {
       const page = state.page;
       if (page?.articles.some((row) => row.id === id && row.starred !== starred)) {
@@ -615,7 +633,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     readerClosed,
     readerOpened() { startBrowsing(); ++returnSequence; publish({ readerReturn: null }); },
     /** 阅读器显示了列表里的某篇；`null` 表示当前篇不来自列表（简报、对话）。 */
-    readerAt(id: number | null) { readingId = id; },
+    readerAt(id: number | null) { readingId = id; if (id !== null) readerVisited.add(id); },
     clearReaderReturn() { publish({ readerReturn: null }); },
     async search(query: SearchQuery) {
       try { return await api.searchArticles(query); }

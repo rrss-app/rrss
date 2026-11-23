@@ -24,6 +24,11 @@ test("the window keys minimize, maximize and restore, and close the window", asy
   // 最大化后按窗口实际状态换成「还原」，再按一次回到「最大化」。
   await expect(keys.getByRole("button", { name: "还原" })).toBeVisible();
   expect((await host(page)).maximized).toBe(true);
+  // 最大化时最小化：尺寸事件报 0×0，按钮仍是「还原」，不在最小化期间翻成「最大化」。
+  await keys.getByRole("button", { name: "最小化" }).click();
+  expect((await host(page)).minimized).toBe(2);
+  await page.waitForTimeout(100);
+  await expect(keys.getByRole("button", { name: "还原" })).toBeVisible();
   await keys.getByRole("button", { name: "还原" }).click();
   await expect(keys.getByRole("button", { name: "最大化" })).toBeVisible();
   // 关闭先由宿主拦下；默认「每次询问」，选「退出程序」才关。

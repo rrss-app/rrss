@@ -1,8 +1,9 @@
-export function ThumbIcon({ down = false }: { down?: boolean }) {
+/** `filled`：已赞 / 已踩时实心显示。 */
+export function ThumbIcon({ down = false, filled = false, size = 14 }: { down?: boolean; filled?: boolean; size?: number }) {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+    <svg viewBox="0 0 16 16" width={size} height={size} aria-hidden="true">
       <g
-        fill="none"
+        fill={filled ? "currentColor" : "none"}
         stroke="currentColor"
         strokeWidth="1.3"
         strokeLinejoin="round"

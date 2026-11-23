@@ -18,10 +18,10 @@ function setup() {
   vi.spyOn(api, "rate").mockImplementation(async (_id, up) => ({ up, previous: 0, previous_at: 0, suggested_rule_id: null }));
   vi.spyOn(api, "training").mockResolvedValue(trainingFeaturesFixture());
   const confirm = vi.spyOn(api, "confirmFeature").mockResolvedValue(0);
-  const onOpen = vi.fn(), onClose = vi.fn(), notify = vi.fn();
+  const onOpen = vi.fn(), onClose = vi.fn(), notify = vi.fn(), onFeedback = vi.fn();
   const ref = createRef<FocusTrainingHandle>();
-  const { host } = harness.mount(<FocusTraining ref={ref} session={session} ratings={createArticleWriteOrder()} open style={{}} onOpen={onOpen} onClose={onClose} notify={notify} />);
-  return { reload, confirm, onOpen, onClose, notify, ref, host };
+  const { host } = harness.mount(<FocusTraining ref={ref} session={session} ratings={createArticleWriteOrder()} onFeedback={onFeedback} open style={{}} onOpen={onOpen} onClose={onClose} notify={notify} />);
+  return { reload, confirm, onOpen, onClose, notify, onFeedback, ref, host };
 }
 
 it("serializes confirmation and refreshes only after a successful save, retaining failed suggestions", async () => {
@@ -29,6 +29,9 @@ it("serializes confirmation and refreshes only after a successful save, retainin
   const pending = deferred<number>();
   confirm.mockReturnValueOnce(pending.promise);
   await act(async () => { await ref.current!.rate(focusRow(1, "甲文"), true); });
+  // 赞不自动弹训练条：从提示里的「加一条规则…」打开。
+  expect(host.querySelector(".training-row")).toBeNull();
+  await act(async () => { notify.mock.calls[0][0].onSecondary(); });
   const global = [...host.querySelectorAll(".training-row button")][0] as HTMLButtonElement;
   await act(async () => { global.click(); global.click(); });
   expect(confirm).toHaveBeenCalledTimes(1);
@@ -43,23 +46,50 @@ it("serializes confirmation and refreshes only after a successful save, retainin
   expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({ articleId: 1, dislike: false, feedScope: false }));
   expect(onClose).toHaveBeenCalledOnce();
   expect(reload).toHaveBeenCalledOnce();
-  expect(notify).not.toHaveBeenCalled();
+  expect(notify).toHaveBeenCalledOnce();
 });
 
-it("retains successful feedback when feature extraction fails, but never reports success on failed rating", async () => {
-  const { ref, notify, reload, onOpen } = setup();
-  vi.mocked(api.training).mockRejectedValue(new Error("无法提取"));
-  await act(async () => { expect(await ref.current!.rate(focusRow(1, "甲文"), true)).toBe(true); });
-  expect(notify).toHaveBeenCalledWith({ message: "已记录偏好", holdMs: 2500 });
+it("a like is kept quietly: undo restores the earlier rating, and rules open only on request", async () => {
+  const { ref, notify, reload, onOpen, onFeedback } = setup();
+  const undo = vi.spyOn(api, "undoRating").mockResolvedValue(undefined);
+  vi.mocked(api.rate).mockResolvedValueOnce({ up: true, previous: -1, previous_at: 42, suggested_rule_id: null });
+  const changed = vi.fn();
+  await act(async () => { expect(await ref.current!.rate(focusRow(1, "甲文"), true, changed)).toBe(true); });
+  expect(api.training).not.toHaveBeenCalled();
   expect(onOpen).not.toHaveBeenCalled();
-  expect(reload).toHaveBeenCalledOnce();
+  expect(onFeedback).toHaveBeenLastCalledWith(1, 1);
+  await act(async () => { notify.mock.calls[0][0].onAction(); });
+  expect(undo).toHaveBeenCalledWith(1, expect.objectContaining({ up: true, previous: -1, previous_at: 42 }));
+  expect(changed).toHaveBeenCalledWith(-1);
+  expect(onFeedback).toHaveBeenLastCalledWith(1, -1);
+  // 赞不动列表，撤销也不重读。
+  expect(reload).not.toHaveBeenCalled();
+
+  // 规则候选读不到时只提示，评分照旧保留。
+  notify.mockClear();
+  vi.mocked(api.training).mockRejectedValue(new Error("无法提取"));
+  await act(async () => { await ref.current!.rate(focusRow(1, "甲文"), true); });
+  await act(async () => { notify.mock.calls[0][0].onSecondary(); });
+  expect(onOpen).not.toHaveBeenCalled();
+  expect(notify).toHaveBeenCalledTimes(2);
+
   vi.mocked(api.rate).mockRejectedValue(new Error("写入失败"));
   notify.mockClear();
   await act(async () => { expect(await ref.current!.rate(focusRow(1, "甲文"), true)).toBe(false); });
   expect(notify).toHaveBeenCalledOnce();
   expect(notify.mock.calls[0][0]).not.toHaveProperty("holdMs");
-  expect(api.training).toHaveBeenCalledOnce();
-  expect(reload).toHaveBeenCalledOnce();
+});
+
+it("liking a liked article removes the like instead of rating it again", async () => {
+  const { ref, notify, onFeedback } = setup();
+  const undo = vi.spyOn(api, "undoRating").mockResolvedValue(undefined);
+  const changed = vi.fn();
+  await act(async () => { expect(await ref.current!.rate({ ...focusRow(1, "甲文"), feedback: 1 }, true, changed)).toBe(false); });
+  expect(api.rate).not.toHaveBeenCalled();
+  expect(undo).toHaveBeenCalledWith(1, { up: true, previous: 0, previous_at: 0, suggested_rule_id: null });
+  expect(changed).toHaveBeenCalledWith(0);
+  expect(onFeedback).toHaveBeenCalledWith(1, 0);
+  expect(notify.mock.calls[0][0]).not.toHaveProperty("onAction");
 });
 
 it("submits a later rating of the same article only after the earlier one is stored", async () => {

@@ -151,17 +151,17 @@ test("lower arrivals stay quiet and successive upper arrivals share one return t
   const pill = page.getByTestId("focus-new-content");
   const list = page.locator(".article-list");
   const initialHeight = await list.evaluate(el => el.clientHeight);
-  await arrive(900, 48);
+  await arrive(2900, 48);
   await expect.poll(() => list.evaluate(el => el.clientHeight)).toBeGreaterThan(initialHeight);
   await expect(pill).toHaveCount(0);
-  await arrive(901, 5);
+  await arrive(2901, 5);
   await expect(pill).toContainText("1");
-  await arrive(902, 3);
+  await arrive(2902, 3);
   await expect(pill).toContainText("2");
   expect((await panes(page)).focus.top).toBe(1200);
   await pill.click();
   await expect(page.getByTestId("focus-scroll")).toHaveJSProperty("scrollTop", 0);
-  await expect(page.getByRole("article", { name: "Arrival 902", exact: true })).toBeInViewport();
+  await expect(page.getByRole("article", { name: "Arrival 2902", exact: true })).toBeInViewport();
   await expect(page.locator(".focus .article.focused")).toHaveCount(0);
   await expect(pill).toHaveCount(0);
 });
@@ -184,8 +184,8 @@ test("background updates adopt new articles until browsing starts, including whi
     host.emit("feed:updated", { run_id: "bg", feed_id: row.feed_id, generation: row.id, status: "ok", inserted: 1, error: null, derived_degraded: false });
   }, { ...template, id, cluster_id: 0, title: `New article ${id}` });
 
-  await arrive(900);
-  await expect(page.getByRole("article", { name: "New article 900", exact: true })).toBeVisible();
+  await arrive(2900);
+  await expect(page.getByRole("article", { name: "New article 2900", exact: true })).toBeVisible();
   await expect(pill).toHaveCount(0);
   await expect(scroll).toHaveJSProperty("scrollTop", 0);
   await expect(scroll).toHaveAttribute("aria-busy", "false");
@@ -195,16 +195,16 @@ test("background updates adopt new articles until browsing starts, including whi
   await scrollTo(page, '[data-testid="focus-scroll"]', 1200);
   await scrollTo(page, '[data-testid="focus-scroll"]', 0);
   await go(page, "简报");
-  await arrive(902);
+  await arrive(2902);
   await expect(pill).toBeAttached();
   await go(page, "今日焦点");
   await expect(pill).toBeVisible();
-  await expect(page.getByRole("article", { name: "New article 902", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("article", { name: "New article 2902", exact: true })).toHaveCount(0);
   await expect(scroll).toHaveJSProperty("scrollTop", 0);
 
   await pill.click();
-  await expect(page.getByRole("article", { name: "New article 902", exact: true })).toBeInViewport();
-  await arrive(903);
+  await expect(page.getByRole("article", { name: "New article 2902", exact: true })).toBeInViewport();
+  await arrive(2903);
   await expect(pill).toBeVisible();
-  await expect(page.getByRole("article", { name: "New article 902", exact: true })).toBeInViewport();
+  await expect(page.getByRole("article", { name: "New article 2902", exact: true })).toBeInViewport();
 });

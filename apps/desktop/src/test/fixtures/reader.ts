@@ -35,6 +35,7 @@ export const TWO_ARTICLE_PAGE: FocusPage = {
   articles: [focusRow(ARTICLE_A, "甲文"), focusRow(ARTICLE_B, "乙文")],
   digest_banner: "",
   digest_lede: "",
+  ingested_through: ARTICLE_B,
   filter: "all",
   ranking: {
     interest_boost: false,

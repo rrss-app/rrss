@@ -18,6 +18,20 @@ pub use events::TauriChatSink;
 pub use protocol::media_payload;
 pub use state::{AppState, tool_path};
 
+/// 让主页面铺满窗口客户区。只在窗口有实际尺寸时调用，最小化的 0×0 不传进来。
+fn fit_main_webview(window: &tauri::Window, size: tauri::PhysicalSize<u32>) {
+    let Some(webview) = window.get_webview("main") else {
+        return;
+    };
+    let bounds = tauri::Rect {
+        position: tauri::Position::Physical(tauri::PhysicalPosition::new(0, 0)),
+        size: tauri::Size::Physical(size),
+    };
+    if let Err(error) = webview.set_bounds(bounds) {
+        tracing::warn!(%error, "resize main webview");
+    }
+}
+
 /// 启动桌面宿主。
 /// 沙箱配置与日志初始化在二进制入口完成。
 pub fn run() -> anyhow::Result<()> {
@@ -59,6 +73,10 @@ pub fn run() -> anyhow::Result<()> {
                 tray::close_requested(window.app_handle());
             }
             tauri::WindowEvent::Destroyed => window.app_handle().exit(0),
+            // 主页面自己跟随窗口尺寸，跳过最小化时的 0×0（见 setup 里关掉的自动缩放）。
+            tauri::WindowEvent::Resized(size) if size.width > 0 && size.height > 0 => {
+                fit_main_webview(window, *size);
+            }
             _ => {}
         }
     })
@@ -215,6 +233,14 @@ pub fn run() -> anyhow::Result<()> {
         )?;
         if let Some(main) = app.get_webview_window("main") {
             webview_native::window_icons(&main);
+        }
+        // 开了多 webview（`unstable`）后，主页面是按窗口比例自动缩放的子 webview。Windows 最小化时
+        // 窗口报 0×0，自动缩放会把整页缩成 0×0、还原时再撑开，表现为最小化 / 还原时闪一下，
+        // 页面也会按 0 宽重排。改由 `on_window_event` 跟随窗口，并跳过 0 尺寸。
+        if let Some(main) = app.get_webview("main") {
+            if let Err(error) = main.set_auto_resize(false) {
+                tracing::warn!(%error, "main webview keeps automatic resizing");
+            }
         }
         app.manage(AppState {
             db_path,

@@ -268,6 +268,7 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
     ranking: RankingSettings;
     has_more: boolean;
     list_scope: string;
+    ingested_through: number;
   } {
     const feedIdRaw = pick(args, "feedId", "feed_id");
     const feedId = feedIdRaw === null || feedIdRaw === undefined ? null : asNumber(feedIdRaw, 0) || null;
@@ -298,6 +299,7 @@ export function createPerfHostFactory(payload: HostPayload): PerfHost {
       ranking: clone(state.ranking),
       has_more,
       list_scope: state.listScope,
+      ingested_through: state.articles.reduce((max, row) => Math.max(max, row.id), 0),
     };
   }
 

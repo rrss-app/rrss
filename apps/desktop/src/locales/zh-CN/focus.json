@@ -139,6 +139,7 @@
     "exploreTitle": "为你试一个较少出现的来源",
     "spotCheck": "抽查",
     "starred": "已收藏",
+    "liked": "已赞",
     "scoreTitle": "规则与兴趣评分",
     "actions": "文章操作",
     "unstar": "取消收藏",
@@ -146,6 +147,7 @@
     "citeTitle": "引用到对话",
     "cite": "引用",
     "like": "赞",
+    "unlike": "取消赞",
     "dislike": "踩"
   },
   "trainingBar": {
@@ -262,6 +264,11 @@
   "rankingNote": {
     "interest_boost_inactive": "兴趣加分未生效：还没有兴趣向量，排序只用规则分",
     "interest_not_ready": "兴趣未就绪：还没有可用的兴趣向量，当前按时间混合"
+  },
+  "like": {
+    "recorded": "已记下，会多推类似文章",
+    "undone": "已撤销，这篇的赞已清除",
+    "removed": "已取消赞"
   },
   "dislike": {
     "recorded": "已记下，会少推类似文章",

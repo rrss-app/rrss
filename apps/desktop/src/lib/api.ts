@@ -751,5 +751,8 @@ export const windowControls = {
   toggleMaximize: () => getCurrentWindow().toggleMaximize(),
   close: () => getCurrentWindow().close(),
   isMaximized: () => getCurrentWindow().isMaximized(),
-  onResized: (changed: () => void): Promise<UnlistenFn> => isTauri() ? getCurrentWindow().onResized(() => changed()) : Promise.resolve(() => {}),
+  /** 最小化时窗口报 0×0，不算尺寸变化：此时「是否最大化」为假，按它换按钮会让还原键翻成最大化。 */
+  onResized: (changed: () => void): Promise<UnlistenFn> => isTauri()
+    ? getCurrentWindow().onResized(({ payload }) => { if (payload.width > 0 && payload.height > 0) changed(); })
+    : Promise.resolve(() => {}),
 };

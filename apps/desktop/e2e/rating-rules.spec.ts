@@ -22,32 +22,38 @@ async function appearances(page: Page, name: string, check?: () => Promise<void>
 }
 
 // 文案是本路径的产品契约，只核对这一条反馈和后端返回的摘要，不依赖行内 DOM 文案拼接。
-test("rating without features announces success, expires, and rules use host summaries", async ({ page }) => {
+test("a like is kept quietly with a lasting mark, a second click removes it, and rules use host summaries", async ({ page }) => {
   await installMockHost(page);
   await page.clock.install();
   await page.goto("/");
-  await page.getByRole("article").first().hover();
-  await page.getByRole("article").first().getByRole("button", { name: "赞", exact: true }).click();
+  const card = page.getByRole("article").first();
+  await card.hover();
+  await card.getByRole("button", { name: "赞", exact: true }).click();
   const toast = page.locator('.toast[role="status"]');
-  await expect(toast).toContainText("已记录偏好");
+  await expect(toast).toContainText("已记下，会多推类似文章");
   await expect(page.locator(".training-sheet")).toHaveCount(0);
-  await expect(toast.locator(".toast-action")).toHaveCount(0);
-  await expect(toast).toHaveCount(0, { timeout: 4000 });
-
-  await page.getByRole("article").first().click();
+  await page.clock.runFor(6500);
+  await expect(toast).toHaveCount(0);
+  // 提示消失后，已赞仍标在卡片上；阅读器里同一篇是「已赞」，再点一次取消。
+  await expect(card.locator(".meta-tag.liked")).toBeVisible();
+  await card.click();
   const reader = page.locator(".drawer.reader");
   await reader.locator('summary[aria-label="更多"]').click();
-  await reader.locator(".reader-tools-feedback").getByRole("button", { name: "赞", exact: true }).click();
-  await expect(toast).toContainText("已记录偏好");
-  await page.clock.pauseAt(new Date());
+  const liked = reader.locator(".reader-tools-feedback").getByRole("button", { name: "已赞", exact: true });
+  await expect(liked).toHaveAttribute("aria-pressed", "true");
+  await liked.click();
+  await expect(toast).toContainText("已取消赞");
+  // 前面快进过页面时钟，暂停点按页面里的时间取。
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 10));
   await appearances(page, "rating-toast");
   await page.clock.resume();
   await expect(toast).toHaveCount(0, { timeout: 4000 });
   await reader.locator('summary[aria-label="更多"]').click();
-  await expect(reader.locator('.reader-tools-feedback button[aria-pressed="true"]')).toHaveCount(1);
+  await expect(reader.locator('.reader-tools-feedback button[aria-pressed="true"]')).toHaveCount(0);
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   await expect(reader).toHaveCount(0);
+  await expect(card.locator(".meta-tag.liked")).toHaveCount(0);
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await settingsTab(page, "rules").click();
   const rules = page.locator(".rules-pane");
@@ -69,6 +75,9 @@ test("reader training stays below the middle and above the citation tray until c
   await reader.locator('summary[aria-label="更多"]').click();
   await reader.locator(".reader-tools-feedback").getByRole("button", { name: "赞", exact: true }).click();
   const training = page.locator('.training-sheet[role="dialog"]');
+  // 赞也不自动弹训练条：提示里点「加一条规则…」才打开。
+  await expect(training).toHaveCount(0);
+  await page.locator(".toast").getByRole("button", { name: "加一条规则…", exact: true }).click();
   await expect(training).toBeVisible();
   await expect(page.locator(".toast")).toHaveCount(0);
   await expect(training).toBeFocused();

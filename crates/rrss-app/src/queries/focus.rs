@@ -17,6 +17,8 @@ pub fn focus_page(
     scope: FeedScope,
 ) -> rrss_core::Result<FocusPage> {
     let scope = articles::focus_column_scope(scope);
+    // 先读水位再读列表：期间入库的文章即使进了这一页，也只会被当成新文章，不会漏掉。
+    let ingested_through = articles::newest_article_id(conn)?;
     let (cards, has_more) = rrss_focus::list_focus_page(
         conn,
         rrss_focus::FOCUS_PAGE_SIZE,
@@ -49,6 +51,7 @@ pub fn focus_page(
         list_scope: articles::list_scope(conn)?.as_str().to_string(),
         ranking: ranking_settings(conn)?,
         has_more,
+        ingested_through,
     })
 }
 
@@ -229,6 +232,12 @@ fn article_views(
         .filter_map(|card| Some((card.cluster_id?, card.cluster_members.clone())))
         .collect();
     let fresh = rrss_core::cluster_summary::fresh_counts(conn, &groups)?;
+    let ids: Vec<i64> = cards
+        .iter()
+        .filter(|card| card.row_kind == articles::ROW_CARD)
+        .map(|card| card.id)
+        .collect();
+    let ratings = rrss_core::feedback::feedback_for_articles(conn, &ids)?;
     cards
         .into_iter()
         .map(|card| {
@@ -236,6 +245,11 @@ fn article_views(
             let mut article = article_from_card(card);
             if header {
                 article.cluster_fresh = fresh.get(&article.cluster_id).copied();
+            } else {
+                article.feedback = ratings.get(&article.id).map(|kind| match kind {
+                    rrss_core::feedback::FeedbackKind::Up => 1,
+                    rrss_core::feedback::FeedbackKind::Down => -1,
+                });
             }
             article.feed_icon_href = icons.get(&article.feed_id).cloned().unwrap_or_default();
             for source in article.cluster_sources.iter_mut().flatten() {
@@ -374,7 +388,19 @@ mod tests {
         conn.execute("UPDATE articles SET reasons_json=?1", [reasons])
             .unwrap();
         recent_articles(&conn);
+        rrss_core::feedback::rate_article(&conn, 1, rrss_core::feedback::FeedbackKind::Up).unwrap();
         let page = focus_page(&conn, None, &[], &[], false, FeedScope::All).unwrap();
+        // 水位按全库算，含被规则隐藏的文章。
+        assert_eq!(page.ingested_through, 2100);
+        // 卡片带评分，没评分的不带这个字段。
+        let rated = |id: i64| page.articles.iter().find(|a| a.id == id).unwrap().feedback;
+        assert_eq!((rated(1), rated(2)), (Some(1), None));
+        assert!(
+            serde_json::to_value(page.articles.iter().find(|a| a.id == 2).unwrap())
+                .unwrap()
+                .get("feedback")
+                .is_none()
+        );
         assert_eq!(page.articles.iter().filter(|a| a.spot_check).count(), 2);
         assert!(
             page.articles

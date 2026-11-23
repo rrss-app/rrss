@@ -403,6 +403,7 @@ export function focusPageFrom(
     ranking: cloneJson(scene.ranking),
     has_more,
     list_scope: query.listScope,
+    ingested_through: scene.articles.reduce((max, row) => Math.max(max, row.id), 0),
   };
 }
 

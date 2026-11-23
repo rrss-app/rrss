@@ -40,7 +40,13 @@ export function focusBlocks(rows: ArticleView[]): ArticleView[][] {
 }
 
 export function mergeLowerArrivals(current: FocusPage, latest: FocusPage, newIds: Set<number>, visibleEnd: number): FocusPage {
-  if (!latest.articles.slice(visibleEnd + 1).some(row => row.row_kind === 0 && newIds.has(row.id))) return current;
+  // 位置只按已显示的行和新文章算：不会插进来的旧文章不能把新文章挤到阅读位置之下。
+  const shownKeys = new Set(current.articles.map(rowKey));
+  const ranked = focusBlocks(latest.articles)
+    .map(block => block.filter(row => row.row_kind !== 0 || shownKeys.has(rowKey(row)) || newIds.has(row.id)))
+    .filter(block => block.some(row => row.row_kind === 0));
+  const placed = ranked.flat();
+  if (!placed.slice(visibleEnd + 1).some(row => row.row_kind === 0 && newIds.has(row.id))) return current;
   const blocks = focusBlocks(current.articles);
   let offset = 0;
   let firstSafe = 0;
@@ -50,8 +56,7 @@ export function mergeLowerArrivals(current: FocusPage, latest: FocusPage, newIds
     if (start <= visibleEnd) firstSafe = index + 1;
     return [rowKey(block[0]), { block, start }];
   }));
-  const ranked = focusBlocks(latest.articles);
-  let start = latest.articles.length;
+  let start = placed.length;
   let anchor = blocks.length;
   let changed = false;
   for (const block of ranked.reverse()) {
@@ -75,6 +80,26 @@ export function mergeLowerArrivals(current: FocusPage, latest: FocusPage, newIds
     changed = true;
   }
   return changed ? { ...current, articles: blocks.flat() } : current;
+}
+
+/**
+ * 「查看 N 篇新内容」：本次提示的新文章连同所属报道组按推荐先后放到最前，
+ * 其余行保持当前列表的先后，排序上升的旧文章不借机挤到前面。已显示的行沿用本地的已读、收藏。
+ */
+export function promoteArrivals(current: FocusPage, latest: FocusPage, newIds: Set<number>): FocusPage {
+  const local = new Map(current.articles.map(row => [rowKey(row), row]));
+  const moved = focusBlocks(latest.articles)
+    .filter(block => block.some(row => row.row_kind === 0 && newIds.has(row.id)))
+    .map(block => block.map(row => {
+      const shown = local.get(rowKey(row));
+      return shown && row.row_kind === 0 ? { ...row, read: shown.read, starred: shown.starred } : row;
+    }));
+  if (!moved.length) return current;
+  const movedKeys = new Set(moved.flat().map(rowKey));
+  const rest = focusBlocks(current.articles)
+    .filter(block => !movedKeys.has(rowKey(block[0])))
+    .flatMap(block => block.filter(row => !movedKeys.has(rowKey(row))));
+  return { ...current, articles: [...moved.flat(), ...rest] };
 }
 
 export function mergeFocusPage(prev: FocusPage | null, more: FocusPage): FocusPage {

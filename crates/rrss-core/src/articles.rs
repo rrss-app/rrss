@@ -206,6 +206,12 @@ pub fn focus_column_scope(scope: FeedScope) -> FeedScope {
     }
 }
 
+/// 库里最大的文章 id，空库为 0。文章 id 是 SQLite 的行号，新入库的总比已有的大
+/// （只有最大的那篇被删后才可能复用它的 id）。
+pub fn newest_article_id(conn: &Connection) -> Result<i64> {
+    Ok(conn.query_row("SELECT COALESCE(MAX(id), 0) FROM articles", [], |r| r.get(0))?)
+}
+
 /// `scope_sql` 的占位符是匿名 `?`。焦点查询用编号参数，换成这次绑定的序号。
 pub fn numbered_scope_sql(scope: FeedScope, index: usize) -> (String, Option<i64>) {
     let (sql, id) = crate::feed_scope::scope_sql(scope);
