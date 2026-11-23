@@ -205,7 +205,7 @@ mod tests {
         )
         .unwrap();
         articles::set_focus_filter(&conn, FocusFilter::FocusOnly).unwrap();
-        assert!(articles::list_focus(&conn, 20).unwrap().is_empty());
+        assert!(rrss_focus::list_focus(&conn, 20).unwrap().is_empty());
 
         create_rule(
             &conn,
@@ -220,7 +220,7 @@ mod tests {
         )
         .unwrap();
 
-        let focus = articles::list_focus(&conn, 20).unwrap();
+        let focus = rrss_focus::list_focus(&conn, 20).unwrap();
         assert_eq!(focus.len(), 1);
         assert_eq!(focus[0].title, "Rust 1.80 shipped");
         assert_eq!(focus[0].score, 10);

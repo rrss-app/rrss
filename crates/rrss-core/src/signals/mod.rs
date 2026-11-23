@@ -189,7 +189,7 @@ pub fn record_read_sessions(conn: &Connection, rows: &[ReadSession]) -> Result<u
 }
 
 /// 数据转换失败（空值、未知枚举等）跳过该行，SQL / I/O 错误仍返回。
-pub(crate) fn rows<T>(
+pub fn rows<T>(
     conn: &Connection,
     sql: &str,
     since: i64,
@@ -203,7 +203,7 @@ pub(crate) fn rows<T>(
         .collect())
 }
 
-pub(crate) fn load_events(conn: &Connection, since: i64, until: i64) -> Result<Vec<ArticleEvent>> {
+pub fn load_events(conn: &Connection, since: i64, until: i64) -> Result<Vec<ArticleEvent>> {
     rows(
         conn,
         "SELECT article_id,kind,exposure_id,at FROM article_events
@@ -374,19 +374,20 @@ mod tests {
         };
         assert_eq!(read("on"), (4, 5, 9.0));
         conn.execute(
+            // 曝光记录不看排序版本，任意版本号都行。
             "INSERT INTO article_rank(article_id,boost,reasons_json,algo_version,computed_at)
-             VALUES(1,3,'[]',?1,?2)",
-            params![crate::rank::combine::ALGO_VERSION, NOW],
+             VALUES(1,3,'[]',1,?1)",
+            params![NOW],
         )
         .unwrap();
         assert_eq!(
             read("rank"),
-            (4, 5, crate::rank::focus::score(4, 5, true, 3) as f64)
+            (4, 5, crate::rank_score::score(4, 5, true, 3) as f64)
         );
         crate::interests::set_boost_enabled(&conn, false).unwrap();
         assert_eq!(
             read("off"),
-            (4, 5, crate::rank::focus::score(4, 5, false, 3) as f64)
+            (4, 5, crate::rank_score::score(4, 5, false, 3) as f64)
         );
     }
 

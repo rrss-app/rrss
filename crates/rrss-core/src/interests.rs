@@ -1022,44 +1022,15 @@ mod tests {
             )
             .unwrap();
         assert!(boost_kept > 0, "toggle must not wipe stored boost");
-        crate::articles::set_focus_filter(&conn, crate::articles::FocusFilter::ShowAll).unwrap();
-        let cards = crate::articles::list_focus_stream(&conn, 20, None).unwrap();
-        let card = cards.iter().find(|c| c.id == focus).expect("focus card");
+        let (card, _) = crate::articles::query_ranked_cards(
+            &conn,
+            "SELECT id, 0 AS priority, 0 AS position FROM articles WHERE id=?1",
+            [focus],
+        )
+        .unwrap()
+        .remove(0);
         assert_eq!(card.interest_boost, boost_kept);
         assert_eq!(card.rank_score(false), card.score);
-    }
-
-    #[test]
-    fn toggling_boost_changes_order_without_clearing_column() {
-        let (_dir, conn) = open_temp();
-        let low = seed_article(&conn, "alpha rust", "https://lab.example/low", true);
-        let high = seed_article(&conn, "beta rust", "https://lab.example/high", true);
-        conn.execute(
-            "UPDATE articles SET score = 10, interest_boost = 100 WHERE id = ?1",
-            [low],
-        )
-        .unwrap();
-        conn.execute(
-            "UPDATE articles SET score = 20, interest_boost = 0 WHERE id = ?1",
-            [high],
-        )
-        .unwrap();
-        crate::articles::set_focus_filter(&conn, crate::articles::FocusFilter::ShowAll).unwrap();
-        set_cluster_group_enabled(&conn, false).unwrap();
-        set_boost_enabled(&conn, true).unwrap();
-        let on = crate::articles::list_focus_stream(&conn, 20, None).unwrap();
-        assert_eq!(on[0].id, low, "boost on: 10+100 should beat 20");
-        set_boost_enabled(&conn, false).unwrap();
-        let stored: i64 = conn
-            .query_row(
-                "SELECT interest_boost FROM articles WHERE id = ?1",
-                [low],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(stored, 100);
-        let off = crate::articles::list_focus_stream(&conn, 20, None).unwrap();
-        assert_eq!(off[0].id, high, "boost off: sort by score only");
     }
 
     #[test]

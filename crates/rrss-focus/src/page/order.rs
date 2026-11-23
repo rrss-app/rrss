@@ -2,8 +2,8 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use rusqlite::{Connection, params_from_iter};
 
-use super::{ArticleCard, ListScope};
-use crate::{Result, rank::focus::SCORE_SQL};
+use rrss_core::articles::{ArticleCard, ListScope};
+use rrss_core::{Result, rank_score::SCORE_SQL};
 
 #[cfg(test)]
 mod interest_tests;
@@ -41,22 +41,22 @@ fn with_flag<V: Copy + 'static, T>(
     f()
 }
 
+/// Evaluation only: applies on this thread and restores even during unwind.
 #[cfg(feature = "evaluation-clock")]
-impl ListScope {
-    /// Evaluation only: applies on this thread and restores even during unwind.
-    pub fn with_topic_calibration<T>(enabled: bool, f: impl FnOnce() -> T) -> T {
-        with_flag(&TOPIC_CALIBRATION, enabled, f)
-    }
+pub fn with_topic_calibration<T>(enabled: bool, f: impl FnOnce() -> T) -> T {
+    with_flag(&TOPIC_CALIBRATION, enabled, f)
+}
 
-    /// Evaluation only: turns the daily exploration trial off on this thread.
-    pub fn with_exploration<T>(enabled: bool, f: impl FnOnce() -> T) -> T {
-        with_flag(&EXPLORATION, enabled, f)
-    }
+/// Evaluation only: turns the daily exploration trial off on this thread.
+#[cfg(feature = "evaluation-clock")]
+pub fn with_exploration<T>(enabled: bool, f: impl FnOnce() -> T) -> T {
+    with_flag(&EXPLORATION, enabled, f)
+}
 
-    /// Evaluation only: how many preceding cards the same-feed cost counts.
-    pub fn with_same_feed_window<T>(window: usize, f: impl FnOnce() -> T) -> T {
-        with_flag(&FEED_WINDOW, window, f)
-    }
+/// Evaluation only: how many preceding cards the same-feed cost counts.
+#[cfg(feature = "evaluation-clock")]
+pub fn with_same_feed_window<T>(window: usize, f: impl FnOnce() -> T) -> T {
+    with_flag(&FEED_WINDOW, window, f)
 }
 
 fn same_feed_window() -> usize {
@@ -100,7 +100,7 @@ pub(super) fn candidates(
         })?;
         shortlist(rows, limit, group, exclude_ids, exclude_clusters)
     } else {
-        let (members, evidence) = super::focus_pool::members(conn, eligible, group, bind)?;
+        let (members, evidence) = super::pool::members(conn, eligible, group, bind)?;
         if let Some(pool) = explore_pool {
             pool.extend(members.iter().map(|m| m.0));
         }
@@ -119,7 +119,7 @@ pub(super) fn candidates(
         // in the same busy feed. This third lane only uses admitted members;
         // it does not expand the active pool or scan historical observations.
         if !evidence.is_empty() {
-            let on = crate::rank::store::switches(conn)?;
+            let on = crate::store::switches(conn)?;
             let epochs: HashSet<_> = evidence.values().filter_map(|e| e.epoch()).collect();
             let mut lanes = HashMap::new();
             let mut topics = BinaryHeap::new();
@@ -225,7 +225,7 @@ struct Content {
 impl Content {
     fn similarity(&self, other: &Self) -> f64 {
         if let (Some(a), Some(b)) = (&self.vector, &other.vector) {
-            return f64::from((1.0 - crate::rag::cosine_distance(a, b)).clamp(0.0, 1.0));
+            return f64::from((1.0 - rrss_core::rag::cosine_distance(a, b)).clamp(0.0, 1.0));
         }
         let common = self.tokens.intersection(&other.tokens).count();
         let union = self.tokens.len() + other.tokens.len() - common;
@@ -241,11 +241,11 @@ pub(super) fn select(
     use_content: bool,
     group: bool,
 ) -> Result<Vec<ArticleCard>> {
-    let on = crate::rank::store::switches(conn)?;
+    let on = crate::store::switches(conn)?;
     // Saved-item retrieval is exhaustive, unlike the bounded recommendation
     // pool. Keep its original cost and ordering even after thousands of pages.
     let window = same_feed_window();
-    let calibrate = super::list_scope(conn)? != ListScope::Starred;
+    let calibrate = rrss_core::articles::list_scope(conn)? != ListScope::Starred;
     #[cfg(feature = "evaluation-clock")]
     let calibrate = calibrate && TOPIC_CALIBRATION.get();
     let ids: Vec<_> = if calibrate {
@@ -270,10 +270,10 @@ pub(super) fn select(
             let feed: i64 = row.get(1)?;
             let cluster: Option<i64> = row.get(2)?;
             let version: Option<i64> = row.get(4)?;
-            let evidence = if calibrate && version == Some(crate::rank::combine::ALGO_VERSION) {
+            let evidence = if calibrate && version == Some(crate::combine::ALGO_VERSION) {
                 row.get::<_, Option<String>>(3)?
                     .as_deref()
-                    .and_then(crate::rank::cache::topics)
+                    .and_then(crate::cache::topics)
             } else {
                 None
             };
@@ -317,8 +317,8 @@ pub(super) fn select(
     for (card, priority) in candidates {
         let content = if use_content {
             Some(Content {
-                vector: crate::rag::title_embedding(conn, card.id)?,
-                tokens: crate::simhash::tokenize(&format!("{} {}", card.title, card.summary))
+                vector: rrss_core::rag::title_embedding(conn, card.id)?,
+                tokens: rrss_core::simhash::tokenize(&format!("{} {}", card.title, card.summary))
                     .into_iter()
                     .collect(),
             })

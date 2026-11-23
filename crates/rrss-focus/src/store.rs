@@ -8,8 +8,8 @@ use super::{
     combine::{ALGO_VERSION, Switches},
     model::Model,
 };
-use crate::error::settings::SettingProblem;
-use crate::{Result, db};
+use rrss_core::error::settings::SettingProblem;
+use rrss_core::{Result, db};
 use rusqlite::{Connection, params};
 
 /// Experimental opt-in; absent means the existing manual scorer.
@@ -60,7 +60,7 @@ fn set_switch_with(
     between: impl Fn() -> Result<()>,
 ) -> Result<()> {
     if !conn.is_autocommit() {
-        return Err(crate::Error::InvalidSetting(
+        return Err(rrss_core::Error::InvalidSetting(
             SettingProblem::RankTransactionRequired,
         ));
     }
@@ -73,7 +73,7 @@ fn set_switch_with(
             return Ok(());
         }
     }
-    if let Some(metrics) = crate::db::metrics::for_connection(conn) {
+    if let Some(metrics) = rrss_core::db::metrics::for_connection(conn) {
         metrics
             .rank_fallbacks
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -106,7 +106,7 @@ impl<'a> SwitchChange<'a> {
     fn prepare(conn: &Connection, key: &'a str, enabled: bool) -> Result<Self> {
         let version = input_version(conn)?;
         // 每次重试在快照建立后取新的截止时间，覆盖等待期间刚入库的文章与行为。
-        let now = crate::feeds::now_ms();
+        let now = rrss_core::feeds::now_ms();
         let mut switches = switches(conn)?;
         let mut fitted = fitted_enabled(conn)?;
         let selected = match key {
@@ -117,7 +117,7 @@ impl<'a> SwitchChange<'a> {
             db::RANK_FRESHNESS_ENABLED_KEY => &mut switches.freshness,
             db::RANK_AFFINITY_ENABLED_KEY => &mut switches.affinity,
             _ => {
-                return Err(crate::Error::InvalidSetting(
+                return Err(rrss_core::Error::InvalidSetting(
                     SettingProblem::RankSwitchUnknown,
                 ));
             }
@@ -183,7 +183,7 @@ pub fn refresh(
             }
         }
     }
-    if let Some(metrics) = crate::db::metrics::for_connection(conn) {
+    if let Some(metrics) = rrss_core::db::metrics::for_connection(conn) {
         metrics
             .rank_fallbacks
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -443,7 +443,7 @@ mod tests {
                 .unwrap(),
             3
         );
-        let current = plan(&conn, None, crate::feeds::now_ms()).unwrap();
+        let current = plan(&conn, None, rrss_core::feeds::now_ms()).unwrap();
         for (id, boost, _) in current.rows {
             assert_eq!(
                 conn.query_row(

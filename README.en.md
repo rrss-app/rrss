@@ -142,12 +142,14 @@ Unpack and run `rrss` (`rrss.exe` on Windows).
 flowchart TB
     UI["UI · React + Tauri 2<br/>Focus · Reader · Digest · Chat"]
     App["rrss-app<br/>Queries · Actions · Background scheduling"]
+    Focus["rrss-focus<br/>Focus ranking · Candidates and ordering"]
     Core["rrss-core<br/>Fetching · Rules · Clustering · Search"]
     DB[("Single SQLite database<br/>WAL · FTS5 · sqlite-vec")]
     Feeds(["Feeds<br/>RSS · Atom · JSON"])
     LLM(["Model endpoints you choose<br/>Summaries · Digests · Translation · Embeddings"])
     Pi(["Pi runtime<br/>Conversation and tools"])
     UI <-->|IPC| App
+    App --> Focus --> Core
     App --> Core --> DB
     Feeds -->|fetch| Core
     App <-->|HTTP| LLM
@@ -161,7 +163,8 @@ flowchart TB
 | `apps/desktop` | React + Vite UI: draws the interface, calls IPC, handles interaction |
 | `crates/rrss-desktop` | Tauri 2 window, command adapters and the `rrss://` local media protocol |
 | `crates/rrss-app` | Orchestration: queries, actions, background scheduling, translation and the Pi runtime |
-| `crates/rrss-core` | SQLite, domain model, fetching, rules, ranking, clustering, networking and platform adapters |
+| `crates/rrss-focus` | Focus recommendations: ranking, candidate pool, ordering, exploration and spot checks |
+| `crates/rrss-core` | SQLite, domain model, fetching, rules, clustering, networking and platform adapters |
 | `crates/rrss-render` | Sanitizes HTML / Markdown into a block IR |
 | `crates/rrss-ai` | HTTP completions, embeddings and the Pi protocol |
 

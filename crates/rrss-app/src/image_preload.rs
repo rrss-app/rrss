@@ -77,7 +77,7 @@ pub async fn run(db_path: &Path, data_dir: &Path, network: &crate::network::Netw
 }
 
 fn collect_jobs(conn: &rusqlite::Connection) -> Vec<Job> {
-    let Ok(ids) = articles::list_preload_article_ids(&conn) else {
+    let Ok(ids) = rrss_focus::list_preload_article_ids(&conn) else {
         return Vec::new();
     };
     let mut jobs = Vec::new();

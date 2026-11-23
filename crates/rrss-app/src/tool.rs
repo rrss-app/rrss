@@ -163,7 +163,7 @@ fn run_with_connection(
             let limit = flag(rest, "--limit")
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(20);
-            let rows = rrss_core::list_focus(&conn, limit)?;
+            let rows = rrss_focus::list_focus(&conn, limit)?;
             let v: Vec<Value> = rows
                 .iter()
                 .map(|c| {

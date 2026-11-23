@@ -1,5 +1,6 @@
 use super::*;
-use crate::{db, feed_scope::FeedScope, rank::store};
+use crate::store;
+use rrss_core::{db, feed_scope::FeedScope};
 
 fn fixture() -> (tempfile::TempDir, db::PooledConnection) {
     let dir = tempfile::tempdir().unwrap();
@@ -11,7 +12,7 @@ fn fixture() -> (tempfile::TempDir, db::PooledConnection) {
         UPDATE feeds SET folder_id=1;",
     )
     .unwrap();
-    let now = crate::feeds::now_ms();
+    let now = rrss_core::feeds::now_ms();
     for id in 1..=60 {
         conn.execute(
             "INSERT INTO articles(id,feed_id,title,score,published_at,created_at)
@@ -45,7 +46,7 @@ fn fixture() -> (tempfile::TempDir, db::PooledConnection) {
 }
 
 fn page(conn: &Connection, seen: &[i64], scope: FeedScope) -> Vec<ArticleCard> {
-    articles::list_focus_page(conn, 20, None, seen, &[], scope)
+    crate::list_focus_page(conn, 20, None, seen, &[], scope)
         .unwrap()
         .0
 }
@@ -64,7 +65,7 @@ fn off_is_unchanged_and_only_ordinary_first_pages_explore() {
     assert!(trials(&page(&conn, &[1], FeedScope::All)).is_empty());
     assert!(
         trials(
-            &articles::list_focus_page(&conn, 20, None, &[], &[1], FeedScope::All)
+            &crate::list_focus_page(&conn, 20, None, &[], &[1], FeedScope::All)
                 .unwrap()
                 .0
         )
@@ -114,7 +115,7 @@ fn daily_trial_is_latest_eligible_preserves_order_and_has_no_duplicate() {
     assert_eq!(trials(&page(&conn, &[], FeedScope::All)), vec![102]);
     let all = page(&conn, &[], FeedScope::All);
     let mut short = all[..3].to_vec();
-    inject(&conn, &mut short, &[102], -10, crate::feeds::now_ms()).unwrap();
+    inject(&conn, &mut short, &[102], -10, rrss_core::feeds::now_ms()).unwrap();
     assert!(trials(&short).is_empty());
     conn.execute_batch("UPDATE articles SET read=1 WHERE feed_id=2;")
         .unwrap();
@@ -125,7 +126,7 @@ fn daily_trial_is_latest_eligible_preserves_order_and_has_no_duplicate() {
 fn admission_threshold_counts_recent_baseline_and_trial_focus_exposures() {
     let (_dir, conn) = fixture();
     store::set_switch(&conn, store::FITTED_ENABLED_KEY, true).unwrap();
-    let now = crate::feeds::now_ms();
+    let now = rrss_core::feeds::now_ms();
     // High-exposure news must not take the trial when the rare feed is excluded.
     for (surface, variant, at, count) in [
         ("focus", "baseline", now - 1, 6),
@@ -152,7 +153,7 @@ fn thompson_uses_article_outcomes_and_reading_from_any_entry() {
     let (_dir, conn) = fixture();
     conn.execute("DELETE FROM exposures", []).unwrap();
     let baseline = page(&conn, &[], FeedScope::All);
-    let now = crate::feeds::now_ms();
+    let now = rrss_core::feeds::now_ms();
     for id in 51..=55 {
         conn.execute("UPDATE articles SET fulltext_md='body' WHERE id=?1", [id])
             .unwrap();

@@ -142,12 +142,14 @@
 flowchart TB
     UI["界面 · React + Tauri 2<br/>焦点 · 阅读 · 简报 · 对话"]
     App["rrss-app<br/>查询 · 动作 · 后台调度"]
+    Focus["rrss-focus<br/>焦点排序 · 候选与排列"]
     Core["rrss-core<br/>抓取 · 规则 · 聚类 · 检索"]
     DB[("SQLite 单库<br/>WAL · FTS5 · sqlite-vec")]
     Feeds(["订阅源<br/>RSS · Atom · JSON"])
     LLM(["你选择的模型端点<br/>摘要 · 简报 · 翻译 · 嵌入"])
     Pi(["Pi 运行时<br/>深度对话与工具"])
     UI <-->|IPC| App
+    App --> Focus --> Core
     App --> Core --> DB
     Feeds -->|抓取| Core
     App <-->|HTTP| LLM
@@ -161,7 +163,8 @@ flowchart TB
 | `apps/desktop` | React + Vite 界面，只画界面、调 IPC、管交互 |
 | `crates/rrss-desktop` | Tauri 2 窗口、命令适配与 `rrss://` 本地媒体协议 |
 | `crates/rrss-app` | 业务编排：查询、动作、后台调度、翻译与 Pi 运行时 |
-| `crates/rrss-core` | SQLite、领域模型、抓取、规则、排序、聚类、网络与平台适配 |
+| `crates/rrss-focus` | 今日焦点的推荐：排序、候选池、排列、探索与抽查 |
+| `crates/rrss-core` | SQLite、领域模型、抓取、规则、聚类、网络与平台适配 |
 | `crates/rrss-render` | HTML / Markdown 清洗并转成块 IR |
 | `crates/rrss-ai` | HTTP 补全、嵌入与 Pi 协议 |
 

@@ -37,7 +37,7 @@ pub(crate) fn require_autocommit(
     .into())
 }
 
-pub(crate) fn input_revision(conn: &rusqlite::Connection, domain: &str) -> crate::Result<i64> {
+pub fn input_revision(conn: &rusqlite::Connection, domain: &str) -> crate::Result<i64> {
     Ok(conn.query_row(
         "SELECT revision FROM computation_revisions WHERE domain=?1",
         [domain],

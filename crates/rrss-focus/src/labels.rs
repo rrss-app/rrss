@@ -2,8 +2,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use crate::signals::engagement::{self, DailySession, Engagement, Profiles, SessionSummary};
-use crate::signals::{ArticleEvent, EventKind};
+use rrss_core::signals::engagement::{self, DailySession, Engagement, Profiles, SessionSummary};
+use rrss_core::signals::{ArticleEvent, EventKind};
 
 // 阶段 23「在 B1 里的权重」：跳出可能只是误点，负证据取显式踩的四分之一；
 // 细读取阅读的两倍。显式证据始终覆盖分档，强度固定为一票，不叠加隐式证据。

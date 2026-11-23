@@ -39,7 +39,8 @@ cargo build --release --locked -p rrss-desktop
 | `apps/desktop/src` | 界面、交互与 IPC 调用。业务计算不写在这里 |
 | `crates/rrss-desktop` | Tauri 窗口与命令适配；命令只转接 `rrss-app` |
 | `crates/rrss-app` | 业务编排：查询、动作、后台作业、调度、Pi 运行时 |
-| `crates/rrss-core` | SQLite、领域模型、抓取、规则、排序、聚类、网络与平台适配 |
+| `crates/rrss-focus` | 今日焦点的推荐：排序、候选池、排列、探索与抽查；只依赖 `rrss-core` |
+| `crates/rrss-core` | SQLite、领域模型、抓取、规则、聚类、网络与平台适配 |
 | `crates/rrss-render` | HTML / Markdown 清洗并转成块 IR |
 | `crates/rrss-ai` | HTTP 补全、嵌入与 Pi 协议 |
 | `pi/` | 随应用发布的 Pi 系统提示、扩展与技能 |

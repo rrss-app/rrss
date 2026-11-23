@@ -2,8 +2,8 @@
 
 use rusqlite::{Connection, params_from_iter};
 
-use crate::articles::{self, ArticleCard, FocusFilter};
-use crate::{Result, db};
+use rrss_core::articles::{self, ArticleCard, FocusFilter};
+use rrss_core::{Result, db};
 
 // 固定 FNV-1a：文章 id 的小端字节 + 本地日期 YYYYMMDD，不依赖进程种子。
 pub(super) fn daily_hash(id: i64, day: &str) -> u64 {
@@ -23,7 +23,7 @@ pub(super) fn insert(
     last: usize,
 ) {
     card.cluster_id = None;
-    card.feed_title = crate::feeds::display_title(&card.feed_title, "");
+    card.feed_title = rrss_core::feeds::display_title(&card.feed_title, "");
     let position = (first + (hash % (last - first + 1) as u64) as usize).min(cards.len());
     cards.insert(position, card);
 }
@@ -93,8 +93,8 @@ pub(crate) fn inject(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::articles::ListScope;
-    use crate::feed_scope::FeedScope;
+    use rrss_core::articles::ListScope;
+    use rrss_core::feed_scope::FeedScope;
     use rusqlite::params;
 
     fn fixture() -> (tempfile::TempDir, db::PooledConnection) {
@@ -106,7 +106,7 @@ mod tests {
              (3,'https://noisy.invalid','Noisy',0);",
         )
         .unwrap();
-        let now = crate::feeds::now_ms();
+        let now = rrss_core::feeds::now_ms();
         let tx = db::write_transaction(&conn).unwrap();
         for feed in 1..=3 {
             for n in 0..4 {
@@ -138,7 +138,7 @@ mod tests {
     }
 
     fn page(conn: &Connection, ids: &[i64], clusters: &[i64]) -> Vec<ArticleCard> {
-        articles::list_focus_page(conn, 8, None, ids, clusters, FeedScope::All)
+        crate::list_focus_page(conn, 8, None, ids, clusters, FeedScope::All)
             .unwrap()
             .0
     }
@@ -239,7 +239,7 @@ mod tests {
         db::set_setting_enabled(&conn, db::CLUSTER_GROUP_ENABLED_KEY, false).unwrap();
         assert!(
             spots(
-                &articles::list_focus_page(&conn, 1, None, &[], &[], FeedScope::All)
+                &crate::list_focus_page(&conn, 1, None, &[], &[], FeedScope::All)
                     .unwrap()
                     .0
             )
@@ -253,7 +253,7 @@ mod tests {
     #[test]
     fn candidate_scope_matches_normal_feed_list_scope_and_noise_exclusions() {
         let (_dir, conn) = fixture();
-        let now = crate::feeds::now_ms();
+        let now = rrss_core::feeds::now_ms();
         conn.execute(
             "UPDATE articles SET created_at=?1 WHERE score <= -10 AND id%3=0",
             [now - 8 * 86_400_000],
@@ -265,7 +265,7 @@ mod tests {
         )
         .unwrap();
         db::set_setting_enabled(&conn, db::HIDE_NOISY_KEY, true).unwrap();
-        assert_eq!(crate::feeds::noisy_feed_ids(&conn).unwrap(), [3].into());
+        assert_eq!(rrss_core::feeds::noisy_feed_ids(&conn).unwrap(), [3].into());
         for scope in [ListScope::All, ListScope::Unread, ListScope::Starred] {
             articles::set_list_scope(&conn, scope).unwrap();
             let cards = page(&conn, &[], &[]);

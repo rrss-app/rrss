@@ -1,9 +1,7 @@
 //! 阶段 23「共同部分」「可维护性约定」：分量 × 手调权重 × 开关。
 
-use serde::{Deserialize, Serialize};
-
-use crate::reasons::{Habit, ReasonMessage, ReasonPrefix, safe_text};
-use crate::{features::FeatureChip, rules::Dimension};
+use rrss_core::reasons::{Habit, ReasonMessage, ReasonPrefix, safe_text};
+use rrss_core::{features::FeatureChip, rules::Dimension};
 pub const ALGO_VERSION: i64 = 16;
 
 /// 文章级特征总和最多 ±4：长中文标题的二元组不能叠加压过一条 ±10 的明确规则。
@@ -64,44 +62,8 @@ impl Switches {
     };
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Component {
-    Features,
-    Source,
-    Coverage,
-    Freshness,
-    Affinity,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Reason {
-    pub component: Component,
-    #[serde(flatten)]
-    pub message: ReasonMessage,
-    /// 这条原因折合的整数分；不足 1 分的分量不出原因。
-    #[serde(default)]
-    pub points: i64,
-}
-
-impl<'de> Deserialize<'de> for Reason {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        struct Stored {
-            component: Component,
-            #[serde(default)]
-            points: i64,
-            #[serde(flatten)]
-            message: serde_json::Value,
-        }
-        let stored = Stored::deserialize(deserializer)?;
-        Ok(Self {
-            component: stored.component,
-            message: ReasonMessage::from_stored(&stored.message, "", None),
-            points: stored.points,
-        })
-    }
-}
+/// 排序原因的类型在 core：卡片读取 `article_rank.reasons_json` 时要用。
+pub use rrss_core::reasons::{RankComponent as Component, RankReason as Reason};
 
 #[derive(Debug, PartialEq)]
 pub struct Boost {
@@ -297,7 +259,7 @@ mod tests {
     #[test]
     fn vector_score_and_reason_share_the_same_two_point_bound() {
         for (long, recent) in [(1.0, 1.0), (0.8, 1.0), (0.0, 1.0), (-1.0, -1.0)] {
-            let value = crate::rank::affinity::combined_score(long, recent);
+            let value = crate::affinity::combined_score(long, recent);
             let boost = combine(
                 Input {
                     features: &[],

@@ -1,0 +1,24 @@
+[package]
+name = "rrss-focus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Focus ranking, candidate pool and page assembly (no UI)"
+publish = false
+
+[features]
+# Offline evaluation clock and weight overrides; production builds leave it off.
+evaluation-clock = ["rrss-core/evaluation-clock"]
+
+[dependencies]
+chrono.workspace = true
+rrss-core.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+rusqlite = { workspace = true, features = ["backup"] }
+tempfile = "3"

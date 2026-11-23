@@ -4,8 +4,8 @@ use std::collections::{HashMap, HashSet};
 use rusqlite::{Connection, params};
 
 use super::{evidence::DAY_MS, labels, spot_check};
-use crate::signals::engagement;
-use crate::{
+use rrss_core::signals::engagement;
+use rrss_core::{
     Result,
     articles::{self, ArticleCard},
     signals,

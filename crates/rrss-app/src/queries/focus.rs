@@ -17,9 +17,9 @@ pub fn focus_page(
     scope: FeedScope,
 ) -> rrss_core::Result<FocusPage> {
     let scope = articles::focus_column_scope(scope);
-    let (cards, has_more) = articles::list_focus_page(
+    let (cards, has_more) = rrss_focus::list_focus_page(
         conn,
-        articles::FOCUS_PAGE_SIZE,
+        rrss_focus::FOCUS_PAGE_SIZE,
         expanded_cluster,
         exclude_ids,
         exclude_cluster_ids,
@@ -306,7 +306,7 @@ fn digest_lede(body: &str) -> String {
 }
 
 pub fn ranking_settings(conn: &Connection) -> rrss_core::Result<RankingSettings> {
-    let learned = rrss_core::rank::store::switches(conn)?;
+    let learned = rrss_focus::store::switches(conn)?;
     Ok(RankingSettings {
         show_details: db::setting_enabled(conn, db::FOCUS_SHOW_DETAILS_KEY, false)?,
         interest_boost: interests::boost_enabled(conn)?,
@@ -516,7 +516,7 @@ mod tests {
         .unwrap();
         recent_articles(&conn);
         let views = focus_cluster_members(&conn, 7, FeedScope::All).unwrap();
-        let page = articles::list_focus_page(&conn, 40, Some(7), &[], &[], FeedScope::All)
+        let page = rrss_focus::list_focus_page(&conn, 40, Some(7), &[], &[], FeedScope::All)
             .unwrap()
             .0;
         let page_members: Vec<_> = page

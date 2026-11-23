@@ -1,6 +1,7 @@
 //! Synthetic contracts for the opt-in fitted scorer.
 use super::*;
-use crate::{db, rank::evidence::DAY_MS, rank::store};
+use crate::{evidence::DAY_MS, store};
+use rrss_core::db;
 use rusqlite::params;
 
 const H: i64 = 3_600_000;
@@ -144,7 +145,7 @@ fn build(mode: Weekly) -> Lib {
             .execute(
                 "INSERT INTO chunks(article_id,ordinal,kind,text,embedding,model,space_id)
              VALUES(?1,0,'title_summary','',?2,'fixture',1)",
-                params![id, crate::rag::f32s_to_le(&vector)],
+                params![id, rrss_core::rag::f32s_to_le(&vector)],
             )
             .unwrap();
         lib.published.insert(id, published);
@@ -303,7 +304,7 @@ fn build(mode: Weekly) -> Lib {
 // contract below.
 #[test]
 fn fitted_ten_source_contract() {
-    crate::rank::model::with_source_draw(0.0, f64::INFINITY, ten_source_contract);
+    crate::model::with_source_draw(0.0, f64::INFINITY, ten_source_contract);
 }
 
 #[test]
@@ -444,8 +445,8 @@ fn ten_source_contract() {
                 assert_eq!(topic.affinity, fit.report.beta[1] * (vector - fit.mean[1]));
                 assert!(topic.valid());
                 assert!(
-                    crate::rank::topics::Lane::decode(
-                        &serde_json::to_string(&crate::rank::topics::Lane::from_evidence(&topic))
+                    crate::topics::Lane::decode(
+                        &serde_json::to_string(&crate::topics::Lane::from_evidence(&topic))
                             .unwrap()
                     )
                     .is_some()
@@ -644,7 +645,7 @@ fn fitted_load_performance() {
         conn.execute(
             "INSERT INTO chunks(article_id,ordinal,kind,text,embedding,model,space_id)
             VALUES(?1,0,'title_summary','',?2,'fixture',1)",
-            params![id, crate::rag::f32s_to_le(&axis((id % 6) as usize))],
+            params![id, rrss_core::rag::f32s_to_le(&axis((id % 6) as usize))],
         )
         .unwrap();
         if id % 3 != 0 {
@@ -677,7 +678,7 @@ fn weekly_cutoff_labels_and_fallbacks() {
     freshness::with_policy(freshness::Policy::Legacy, weekly_cutoff_legacy);
 }
 
-fn weekly_cutoff_legacy() -> (tempfile::TempDir, crate::db::PooledConnection) {
+fn weekly_cutoff_legacy() -> (tempfile::TempDir, rrss_core::db::PooledConnection) {
     let dir = tempfile::tempdir().unwrap();
     let conn = db::open_at(&dir.path().join("cutoffs.db")).unwrap();
     conn.execute_batch("INSERT INTO feeds(id,url,created_at) VALUES(1,'https://one.example/rss',0),(2,'https://two.example/rss',0)").unwrap();
@@ -692,7 +693,7 @@ fn weekly_cutoff_legacy() -> (tempfile::TempDir, crate::db::PooledConnection) {
         conn.execute(
             "INSERT INTO chunks(article_id,ordinal,kind,text,embedding,model,space_id)
             VALUES(?1,0,'title_summary','',?2,'fixture',1)",
-            params![id, crate::rag::f32s_to_le(&axis((id % 2) as usize))],
+            params![id, rrss_core::rag::f32s_to_le(&axis((id % 2) as usize))],
         )
         .unwrap();
         if id <= 80 {
@@ -768,7 +769,7 @@ fn weekly_cutoff_legacy() -> (tempfile::TempDir, crate::db::PooledConnection) {
     #[cfg(feature = "evaluation-clock")]
     for enabled in [true, false] {
         let now = at + 4 * H - 1;
-        crate::evaluation_clock::at_time(now, || {
+        rrss_core::evaluation_clock::at_time(now, || {
             store::set_switch(&conn, store::FITTED_ENABLED_KEY, enabled)
         })
         .unwrap();
@@ -787,7 +788,7 @@ fn weekly_cutoff_legacy() -> (tempfile::TempDir, crate::db::PooledConnection) {
                 cached,
                 (
                     boost.score,
-                    crate::rank::cache::encode(&boost.reasons, topics).unwrap()
+                    crate::cache::encode(&boost.reasons, topics).unwrap()
                 )
             );
         }

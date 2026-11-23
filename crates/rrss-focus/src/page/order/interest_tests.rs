@@ -1,10 +1,11 @@
 use super::tests::{fixture, page};
-use crate::{db, feeds::now_ms, rank::store};
+use crate::store;
+use rrss_core::{db, feeds::now_ms};
 use rusqlite::{Connection, params};
 
 const DAY: i64 = 86_400_000;
 
-fn cached_topic(conn: &Connection, id: i64) -> crate::rank::topics::Evidence {
+fn cached_topic(conn: &Connection, id: i64) -> crate::topics::Evidence {
     let json: String = conn
         .query_row(
             "SELECT reasons_json FROM article_rank WHERE article_id=?1",
@@ -12,21 +13,21 @@ fn cached_topic(conn: &Connection, id: i64) -> crate::rank::topics::Evidence {
             |r| r.get(0),
         )
         .unwrap();
-    crate::rank::cache::topics(&json).unwrap()
+    crate::cache::topics(&json).unwrap()
 }
 
 #[test]
 fn semantic_partition_survives_later_incremental_scoring() {
     let (_dir, conn) = fixture();
     let now = trained(&conn, true, 1, 1, 120);
-    crate::articles::set_list_scope(&conn, crate::articles::ListScope::Unread).unwrap();
+    rrss_core::articles::set_list_scope(&conn, rrss_core::articles::ListScope::Unread).unwrap();
     db::set_setting_enabled(&conn, db::RANK_FEATURES_ENABLED_KEY, false).unwrap();
     // Non-axis-aligned centers expose rounding after the common decay factor.
     for id in 1..=10 {
         let vector = [1.0, id as f32 * 0.02, id as f32 * 0.003];
         conn.execute(
             "UPDATE chunks SET embedding=?2 WHERE article_id=?1",
-            params![id, crate::rag::f32s_to_le(&vector)],
+            params![id, rrss_core::rag::f32s_to_le(&vector)],
         )
         .unwrap();
     }
@@ -65,7 +66,7 @@ fn semantic_partition_survives_later_incremental_scoring() {
         "semantic topic must retain a first-page opportunity"
     );
     let ids =
-        |cards: &[crate::articles::ArticleCard]| cards.iter().map(|c| c.id).collect::<Vec<_>>();
+        |cards: &[rrss_core::articles::ArticleCard]| cards.iter().map(|c| c.id).collect::<Vec<_>>();
     assert_eq!(ids(&first), ids(&page(&conn, 40, &[]).0));
     let mut seen = ids(&first);
     loop {
@@ -87,7 +88,7 @@ fn changed_semantic_spaces_and_memberships_keep_lexical_pagination() {
     for change in ["space", "membership"] {
         let (_dir, conn) = fixture();
         let now = trained(&conn, true, 1, 1, 120);
-        crate::articles::set_list_scope(&conn, crate::articles::ListScope::Unread).unwrap();
+        rrss_core::articles::set_list_scope(&conn, rrss_core::articles::ListScope::Unread).unwrap();
         let old = cached_topic(&conn, 50);
         if change == "space" {
             conn.execute_batch("UPDATE vector_spaces SET state='retired' WHERE id=1;
@@ -97,7 +98,7 @@ fn changed_semantic_spaces_and_memberships_keep_lexical_pagination() {
         } else {
             conn.execute(
                 "UPDATE chunks SET embedding=?1 WHERE article_id=10",
-                [crate::rag::f32s_to_le(&[0., 1., 0.])],
+                [rrss_core::rag::f32s_to_le(&[0., 1., 0.])],
             )
             .unwrap();
         }
@@ -108,16 +109,17 @@ fn changed_semantic_spaces_and_memberships_keep_lexical_pagination() {
             new.epoch(),
             "{change} must invalidate compatibility"
         );
-        let ids =
-            |cards: &[crate::articles::ArticleCard]| cards.iter().map(|c| c.id).collect::<Vec<_>>();
+        let ids = |cards: &[rrss_core::articles::ArticleCard]| {
+            cards.iter().map(|c| c.id).collect::<Vec<_>>()
+        };
         let first = ids(&page(&conn, 40, &[]).0);
         let next = ids(&page(&conn, 40, &first).0);
-        let switches = crate::rank::store::switches(&conn).unwrap();
+        let switches = crate::store::switches(&conn).unwrap();
         for topic in [&old, &new] {
             assert!(topic.allocation(switches, false).eligible());
             assert!(matches!(
-                crate::rank::topics::Lane::from_evidence(topic).key(switches, false),
-                Some(crate::rank::topics::LaneKey::Lexical(_))
+                crate::topics::Lane::from_evidence(topic).key(switches, false),
+                Some(crate::topics::LaneKey::Lexical(_))
             ));
         }
         assert!(next.iter().all(|id| !first.contains(id)));
@@ -146,7 +148,7 @@ fn article(conn: &Connection, id: i64, feed: i64, title: &str, at: i64, vector: 
         conn.execute(
             "INSERT INTO chunks(article_id,ordinal,kind,text,embedding,model,space_id)
             VALUES(?1,0,'title_summary','',?2,'fixture',1)",
-            params![id, crate::rag::f32s_to_le(vector)],
+            params![id, rrss_core::rag::f32s_to_le(vector)],
         )
         .unwrap();
     }
@@ -302,7 +304,7 @@ fn secondary_evidence_can_be_revoked_and_learning_switches_remain_independent() 
                     |r| r.get(0),
                 )
                 .unwrap();
-            assert!(crate::rank::cache::topics(&json).is_none());
+            assert!(crate::cache::topics(&json).is_none());
         }
     }
 }
@@ -480,7 +482,7 @@ fn saved_retrieval_keeps_baseline_order_even_with_deep_topic_context() {
     let (_dir, conn) = fixture();
     trained(&conn, true, 1, 1, 90);
     conn.execute("UPDATE articles SET starred=1", []).unwrap();
-    crate::articles::set_list_scope(&conn, crate::articles::ListScope::Starred).unwrap();
+    rrss_core::articles::set_list_scope(&conn, rrss_core::articles::ListScope::Starred).unwrap();
     conn.execute(
         "WITH RECURSIVE n(id) AS (SELECT 10000 UNION ALL SELECT id+1 FROM n WHERE id<19999)
         INSERT INTO articles(id,feed_id,title,created_at,published_at,starred,score)
@@ -528,14 +530,14 @@ fn content_reranking_remains_optional_and_mixed_vector_profiles_fall_back() {
         .iter()
         .map(|c| c.id)
         .collect::<Vec<_>>();
-    crate::interests::set_rerank_enabled(&conn, true).unwrap();
+    rrss_core::interests::set_rerank_enabled(&conn, true).unwrap();
     let reranked = page(&conn, 40, &[])
         .0
         .iter()
         .map(|c| c.id)
         .collect::<Vec<_>>();
     assert_ne!(before, reranked);
-    crate::interests::set_rerank_enabled(&conn, false).unwrap();
+    rrss_core::interests::set_rerank_enabled(&conn, false).unwrap();
     assert_eq!(
         before,
         page(&conn, 40, &[])
@@ -588,7 +590,7 @@ fn malformed_topic_metadata_preserves_old_recovery_and_display_reasons() {
         format!(r#"{{"reasons":{reason},"topics":{{"features":"bad"}},"lane":["bad"]}}"#),
     ] {
         conn.execute("INSERT OR REPLACE INTO article_rank(article_id,boost,reasons_json,algo_version,computed_at)
-            VALUES(42,-2,?1,?2,?3)",params![json,crate::rank::combine::ALGO_VERSION,now]).unwrap();
+            VALUES(42,-2,?1,?2,?3)",params![json,crate::combine::ALGO_VERSION,now]).unwrap();
         let cards = page(&conn, 80, &[]).0;
         let recovered = cards.iter().find(|c| c.id == 42).unwrap();
         assert_eq!(recovered.rank_reasons[0].points, -2);
@@ -617,7 +619,7 @@ fn scalar_topic_lanes_preserve_pagination_and_reasons_without_extra_candidate_ac
         .unwrap();
     };
     let ids =
-        |cards: &[crate::articles::ArticleCard]| cards.iter().map(|c| c.id).collect::<Vec<_>>();
+        |cards: &[rrss_core::articles::ArticleCard]| cards.iter().map(|c| c.id).collect::<Vec<_>>();
     // With no usable topic lane, these lower-scoring items cannot reach the
     // first page through its global/source shortlists in this single feed.
     replace_lane("null");

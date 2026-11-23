@@ -5,7 +5,7 @@ use super::{
     features,
     labels::{Evidence, LabelExposure},
 };
-use crate::{features::FeatureChip, rules::Dimension};
+use rrss_core::{features::FeatureChip, rules::Dimension};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const WINDOW_MS: i64 = 60 * DAY_MS;
@@ -162,8 +162,8 @@ mod tests {
     use super::*;
     #[test]
     fn extra_daily_supply_cannot_multiply_opportunities_or_source_reward() {
-        let a = crate::features::extract_features(None, &[], "Orbital mechanics", None, None);
-        let b = crate::features::extract_features(None, &[], "Garden plants", None, None);
+        let a = rrss_core::features::extract_features(None, &[], "Orbital mechanics", None, None);
+        let b = rrss_core::features::extract_features(None, &[], "Garden plants", None, None);
         let learn_count = |per_day: i64, days: i64| {
             let mut exposures = Vec::new();
             let mut feedback = Vec::new();

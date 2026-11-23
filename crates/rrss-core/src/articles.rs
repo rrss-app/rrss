@@ -1,4 +1,5 @@
-//! 文章列表与已读 / 收藏。日志 target：`rrss_core::articles`。
+//! 文章卡片、可见性、相近报道分组与已读 / 收藏。焦点页的候选与排列在 `rrss-focus`。
+//! 日志 target：`rrss_core::articles`。
 
 use std::collections::{HashMap, HashSet};
 
@@ -10,11 +11,9 @@ use crate::error::{Error, Result};
 use crate::feed_scope::FeedScope;
 use crate::feeds::now_ms;
 use crate::interests::{self, parse_interest_reasons};
-mod focus_order;
-mod focus_pool;
 
 // Replace the threshold marker with the query's bound placeholder.
-pub(crate) const FOCUS_VISIBLE_SQL: &str =
+pub const FOCUS_VISIBLE_SQL: &str =
     "(a.expires_at IS NULL AND (a.score > $threshold OR a.released_at IS NOT NULL))";
 
 pub const DEFAULT_HIDE_THRESHOLD: i64 = -10;
@@ -62,7 +61,7 @@ pub struct ArticleCard {
     pub score: i64,
     pub interest_boost: i64,
     pub rank_boost: i64,
-    pub rank_reasons: Vec<crate::rank::combine::Reason>,
+    pub rank_reasons: Vec<crate::reasons::RankReason>,
     pub summary: String,
     pub feed_id: i64,
     pub cluster_id: Option<i64>,
@@ -87,7 +86,7 @@ pub struct ArticleCard {
 
 impl ArticleCard {
     pub fn rank_score(&self, boost_on: bool) -> i64 {
-        crate::rank::focus::score(self.score, self.interest_boost, boost_on, self.rank_boost)
+        crate::rank_score::score(self.score, self.interest_boost, boost_on, self.rank_boost)
     }
 }
 
@@ -155,75 +154,6 @@ pub fn set_focus_filter(conn: &Connection, filter: FocusFilter) -> Result<()> {
     crate::db::set_setting(conn, FOCUS_FILTER_KEY, filter.as_str())
 }
 
-pub fn list_focus(conn: &Connection, limit: i64) -> Result<Vec<ArticleCard>> {
-    list_focus_stream(conn, limit, None)
-}
-
-const PRELOAD_FOCUS: i64 = 12;
-const PRELOAD_STARRED: i64 = 8;
-
-/// 焦点高分 + 收藏，供正文配图预载。不含淡化条目。
-pub fn list_preload_article_ids(conn: &Connection) -> Result<Vec<i64>> {
-    let threshold = hide_threshold(conn)?;
-    let boost_on = interests::boost_enabled(conn)?;
-    let mut ids = Vec::new();
-    let mut seen = HashSet::new();
-    let focus = query_focus_cards(
-        conn,
-        FocusFilter::FocusOnly,
-        threshold,
-        boost_on,
-        PRELOAD_FOCUS,
-        &[],
-        &[],
-        &[],
-        FeedScope::All,
-        None,
-        None,
-    )?;
-    for (card, _) in focus {
-        if seen.insert(card.id) {
-            ids.push(card.id);
-        }
-    }
-    if ids.len() < 8 {
-        let extra = query_focus_cards(
-            conn,
-            FocusFilter::HideFaded,
-            threshold,
-            boost_on,
-            PRELOAD_FOCUS,
-            &[],
-            &[],
-            &[],
-            FeedScope::All,
-            None,
-            None,
-        )?;
-        for (card, _) in extra {
-            if seen.insert(card.id) {
-                ids.push(card.id);
-            }
-            if ids.len() >= PRELOAD_FOCUS as usize {
-                break;
-            }
-        }
-    }
-    let mut stmt = conn.prepare(
-        "SELECT id FROM articles WHERE expires_at IS NULL AND starred = 1
-         ORDER BY COALESCE(published_at, 0) DESC, id DESC
-         LIMIT ?1",
-    )?;
-    let starred = stmt.query_map([PRELOAD_STARRED], |row| row.get::<_, i64>(0))?;
-    for id in starred {
-        let id = id?;
-        if seen.insert(id) {
-            ids.push(id);
-        }
-    }
-    Ok(ids)
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListScope {
     All,
@@ -248,7 +178,7 @@ impl ListScope {
         }
     }
 
-    pub(crate) fn filter_sql(self) -> &'static str {
+    pub fn filter_sql(self) -> &'static str {
         match self {
             Self::Unread => " AND a.read = 0",
             Self::Starred => " AND a.starred = 1",
@@ -267,16 +197,6 @@ pub fn set_list_scope(conn: &Connection, scope: ListScope) -> Result<()> {
     crate::db::set_setting(conn, LIST_SCOPE_KEY, scope.as_str())
 }
 
-pub const FOCUS_PAGE_SIZE: i64 = 40;
-
-pub fn list_focus_stream(
-    conn: &Connection,
-    limit: i64,
-    expanded_cluster_id: Option<i64>,
-) -> Result<Vec<ArticleCard>> {
-    Ok(list_focus_page(conn, limit, expanded_cluster_id, &[], &[], FeedScope::All)?.0)
-}
-
 /// 焦点栏目只接受全部订阅与文件夹。单个源没有栏目语义，按全部订阅查。
 pub fn focus_column_scope(scope: FeedScope) -> FeedScope {
     match scope {
@@ -286,174 +206,12 @@ pub fn focus_column_scope(scope: FeedScope) -> FeedScope {
 }
 
 /// `scope_sql` 的占位符是匿名 `?`。焦点查询用编号参数，换成这次绑定的序号。
-fn numbered_scope_sql(scope: FeedScope, index: usize) -> (String, Option<i64>) {
+pub fn numbered_scope_sql(scope: FeedScope, index: usize) -> (String, Option<i64>) {
     let (sql, id) = crate::feed_scope::scope_sql(scope);
     (sql.replace('?', &format!("?{index}")), id)
 }
 
-/// 一页焦点卡片。`exclude_*` 给滚轮续查，避开 OFFSET 和首屏源混合窗口错位。
-/// `scope` 过滤候选与簇内可见成员；全部订阅时 SQL 片段为空。
-pub fn list_focus_page(
-    conn: &Connection,
-    limit: i64,
-    expanded_cluster_id: Option<i64>,
-    exclude_ids: &[i64],
-    exclude_cluster_ids: &[i64],
-    scope: FeedScope,
-) -> Result<(Vec<ArticleCard>, bool)> {
-    let scope = focus_column_scope(scope);
-    let filter = focus_filter(conn)?;
-    let threshold = hide_threshold(conn)?;
-    let boost_on = interests::boost_enabled(conn)?;
-    let rerank_on = interests::rerank_enabled(conn)?;
-    let group_on = interests::cluster_group_enabled(conn)?;
-    let hide_noisy = interests::hide_noisy_enabled(conn)?;
-    let exclude_feeds: Vec<i64> = if hide_noisy {
-        crate::feeds::noisy_feed_ids(conn)?.into_iter().collect()
-    } else {
-        Vec::new()
-    };
-    let want = limit.max(1);
-    let first_page = exclude_ids.is_empty() && exclude_cluster_ids.is_empty();
-    crate::db::read_snapshot(conn, |conn| {
-        let exploring = first_page
-            && scope == FeedScope::All
-            && list_scope(conn)? != ListScope::Starred
-            && crate::rank::store::fitted_enabled(conn)?;
-        let mut explore_pool = Vec::new();
-        let candidates = query_focus_cards(
-            conn,
-            filter,
-            threshold,
-            boost_on,
-            want.saturating_add(1),
-            exclude_ids,
-            if group_on { exclude_cluster_ids } else { &[] },
-            &exclude_feeds,
-            scope,
-            Some(group_on),
-            exploring.then_some(&mut explore_pool),
-        )?;
-        let has_more = candidates.len() > want as usize;
-        let rerank_effective = rerank_on
-            && (interests::interest_ready(conn).unwrap_or(false)
-                || candidates
-                    .iter()
-                    .any(|(c, _)| c.score > 0 || (boost_on && c.interest_boost > 0)));
-        let mut cards = focus_order::select(
-            conn,
-            candidates,
-            want as usize,
-            exclude_ids,
-            rerank_effective,
-            group_on,
-        )?;
-        if group_on {
-            cards = project_clusters(
-                conn,
-                cards,
-                expanded_cluster_id,
-                threshold,
-                exclude_cluster_ids,
-                scope,
-            )?;
-        }
-        if scope == FeedScope::All {
-            crate::rank::spot_check::inject(
-                conn,
-                &mut cards,
-                filter,
-                threshold,
-                &exclude_feeds,
-                first_page,
-            )?;
-        }
-        if exploring && focus_order::exploration_enabled() {
-            crate::rank::explore::inject(conn, &mut cards, &explore_pool, threshold, now_ms())?;
-        }
-        attach_noise(conn, &mut cards)?;
-        Ok((cards, has_more))
-    })
-}
-
-fn query_focus_cards(
-    conn: &Connection,
-    filter: FocusFilter,
-    threshold: i64,
-    boost_on: bool,
-    limit: i64,
-    exclude_ids: &[i64],
-    exclude_cluster_ids: &[i64],
-    exclude_feed_ids: &[i64],
-    scope: FeedScope,
-    group_for_page: Option<bool>,
-    explore_pool: Option<&mut Vec<i64>>,
-) -> Result<Vec<(ArticleCard, i64)>> {
-    let boost = i64::from(boost_on);
-    let noisy_sql = if exclude_feed_ids.is_empty() {
-        String::new()
-    } else {
-        let start = 4;
-        let marks: String = (0..exclude_feed_ids.len())
-            .map(|i| format!("?{}", start + i))
-            .collect::<Vec<_>>()
-            .join(",");
-        format!(" AND a.feed_id NOT IN ({marks})")
-    };
-    let list_scope = list_scope(conn)?;
-    let list_sql = list_scope.filter_sql();
-    let scope_index = 4 + exclude_feed_ids.len();
-    let (feed_sql, feed_id) = numbered_scope_sql(scope, scope_index);
-    let rank_score = crate::rank::focus::SCORE_SQL;
-    let member_score = crate::rank::focus::MEMBER_SQL;
-    let visible = FOCUS_VISIBLE_SQL.replace("$threshold", "?2");
-    let filter_sql = match filter {
-        FocusFilter::FocusOnly => format!("{visible} AND {member_score} > 0"),
-        FocusFilter::HideFaded => visible,
-        FocusFilter::ShowAll => "1".into(),
-    };
-    let eligible = format!(
-        "a.expires_at IS NULL AND {filter_sql}
-           {list_sql}
-           {feed_sql}
-           {noisy_sql}"
-    );
-    let mut bind = vec![limit, threshold, boost];
-    bind.extend_from_slice(exclude_feed_ids);
-    if let Some(id) = feed_id {
-        bind.push(id);
-    }
-    if let Some(group) = group_for_page {
-        // Candidate selection and card loading used to be one SQL statement.
-        // Preserve that snapshot even when a background writer changes articles.
-        return crate::db::read_snapshot(conn, |conn| {
-            let picked = focus_order::candidates(
-                conn,
-                &eligible,
-                group,
-                list_scope,
-                &bind,
-                exclude_ids,
-                exclude_cluster_ids,
-                explore_pool,
-            )?;
-            query_ranked_cards(
-                conn,
-                "SELECT json_extract(value,'$[0]') AS id,
-                        json_extract(value,'$[1]') AS priority,CAST(key AS INTEGER) AS position FROM json_each(?1)",
-                [serde_json::to_string(&picked).expect("integer candidate pairs serialize")],
-            )
-        });
-    }
-    let ranked = format!(
-        "SELECT a.id, {rank_score} AS priority,0 AS position FROM articles a
-         LEFT JOIN article_rank r ON r.article_id=a.id WHERE {eligible}
-         ORDER BY priority DESC, COALESCE(a.published_at,0) DESC, a.id DESC LIMIT ?1"
-    );
-    query_ranked_cards(conn, &ranked, params_from_iter(bind))
-}
-
-pub(crate) fn query_ranked_cards(
+pub fn query_ranked_cards(
     conn: &Connection,
     ranked: &str,
     bind: impl rusqlite::Params,
@@ -477,7 +235,7 @@ pub(crate) fn query_ranked_cards(
     Ok(cards)
 }
 
-pub(crate) fn map_card(row: &rusqlite::Row<'_>) -> rusqlite::Result<ArticleCard> {
+pub fn map_card(row: &rusqlite::Row<'_>) -> rusqlite::Result<ArticleCard> {
     let reasons = parse_interest_reasons(row.get::<_, Option<String>>(12)?.as_deref());
     let interest_label = reasons.first().map(|r| r.label.clone()).unwrap_or_default();
     Ok(ArticleCard {
@@ -493,7 +251,7 @@ pub(crate) fn map_card(row: &rusqlite::Row<'_>) -> rusqlite::Result<ArticleCard>
         rank_boost: row.get(13)?,
         rank_reasons: row
             .get::<_, Option<String>>(14)?
-            .map(|s| crate::rank::cache::reasons(&s))
+            .map(|s| crate::reasons::rank_reasons(&s))
             .unwrap_or_default(),
         summary: row.get(9)?,
         feed_id: row.get(10)?,
@@ -512,7 +270,7 @@ pub(crate) fn map_card(row: &rusqlite::Row<'_>) -> rusqlite::Result<ArticleCard>
     })
 }
 
-fn project_clusters(
+pub fn project_clusters(
     conn: &Connection,
     cards: Vec<ArticleCard>,
     expanded: Option<i64>,
@@ -745,7 +503,7 @@ fn format_day(ms: i64) -> String {
         .unwrap_or_default()
 }
 
-fn attach_noise(conn: &Connection, cards: &mut [ArticleCard]) -> Result<()> {
+pub fn attach_noise(conn: &Connection, cards: &mut [ArticleCard]) -> Result<()> {
     let mut feeds = HashSet::new();
     for card in cards.iter() {
         if card.row_kind == ROW_CARD {
@@ -1167,60 +925,6 @@ mod tests {
     }
 
     #[test]
-    fn learned_boost_changes_order_only_never_visibility_or_membership() {
-        let dir = tempfile::tempdir().unwrap();
-        let conn = crate::db::open_at(&dir.path().join("rank.db")).unwrap();
-        conn.execute_batch("INSERT INTO feeds(id,url,created_at) VALUES(1,'https://rank.invalid/feed',0);
-            INSERT INTO articles(id,feed_id,title,score,interest_boost,created_at,starred) VALUES
-            (1,1,'hidden',-10,0,0,0),(2,1,'neutral',0,0,0,0),(3,1,'liked',10,0,0,1),(4,1,'liked second',10,0,0,1);").unwrap();
-        conn.execute("UPDATE articles SET created_at=?1", [now_ms()])
-            .unwrap();
-        crate::db::set_setting(&conn, crate::db::HIDDEN_SPOT_CHECK_RATE_KEY, "0").unwrap();
-        let ids = || {
-            list_focus_page(&conn, 40, None, &[], &[], FeedScope::All)
-                .unwrap()
-                .0
-                .into_iter()
-                .map(|c| c.id)
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(ids(), vec![4, 3, 2]);
-        conn.execute_batch("INSERT INTO article_rank VALUES(1,1000,'[]',2,0),(2,100,'[]',2,0),(3,10,'[]',2,0),(4,-100,'[]',2,0);").unwrap();
-        assert_eq!(ids(), vec![2, 3, 4]);
-        set_focus_filter(&conn, FocusFilter::FocusOnly).unwrap();
-        assert_eq!(ids(), vec![3, 4]); // neutral +100 不能变成关注，liked -100 不能掉出。
-        crate::db::set_setting(&conn, crate::db::LIST_SCOPE_KEY, "starred").unwrap();
-        assert_eq!(ids(), vec![3, 4]);
-        conn.execute("UPDATE articles SET read=1 WHERE id=3", [])
-            .unwrap();
-        crate::db::set_setting(&conn, crate::db::LIST_SCOPE_KEY, "unread").unwrap();
-        assert_eq!(ids(), vec![4]);
-    }
-
-    #[test]
-    fn slider_filters() {
-        let (_dir, conn) = open_temp();
-        seed(&conn);
-        assert_eq!(focus_filter(&conn).unwrap(), FocusFilter::HideFaded);
-        let faded = list_focus(&conn, 10).unwrap();
-        let titles: Vec<_> = faded.iter().map(|c| c.title.as_str()).collect();
-        assert_eq!(titles, vec!["focus piece", "neutral piece"]);
-
-        set_focus_filter(&conn, FocusFilter::FocusOnly).unwrap();
-        let focus = list_focus(&conn, 10).unwrap();
-        assert_eq!(focus.len(), 1);
-        assert_eq!(focus[0].title, "focus piece");
-        assert_eq!(focus[0].score, 10);
-
-        set_focus_filter(&conn, FocusFilter::ShowAll).unwrap();
-        let all = list_focus(&conn, 10).unwrap();
-        assert_eq!(all.len(), 3);
-        assert_eq!(all[0].title, "focus piece");
-        assert_eq!(all[2].title, "noise piece");
-        assert_eq!(all[2].score, -10);
-    }
-
-    #[test]
     fn due_focus_summaries_filters_age_visibility_and_effective_score() {
         let (_dir, conn) = open_temp();
         seed(&conn);
@@ -1280,383 +984,5 @@ mod tests {
             due_focus_summaries_excluding(&conn, 1, &excluded).unwrap()[0].id,
             first.id
         );
-    }
-
-    #[test]
-    fn list_focus_groups_cross_feed_cluster() {
-        let (_dir, conn) = open_temp();
-        let a = subscribe(
-            &conn,
-            SubscribeRequest {
-                url: "https://a.example.com/rss.xml".into(),
-                folder_id: None,
-                as_rsshub: false,
-                rsshub_instance_id: None,
-            },
-        )
-        .unwrap();
-        let b = subscribe(
-            &conn,
-            SubscribeRequest {
-                url: "https://b.example.com/rss.xml".into(),
-                folder_id: None,
-                as_rsshub: false,
-                rsshub_instance_id: None,
-            },
-        )
-        .unwrap();
-        let url = "https://news.example.com/library";
-        crate::ingest::upsert_entries(&conn, a, &[entry("市政厅新图书馆开放", url)], now_ms())
-            .unwrap();
-        crate::ingest::upsert_entries(&conn, b, &[entry("市政厅开放新图书馆", url)], now_ms())
-            .unwrap();
-        set_focus_filter(&conn, FocusFilter::ShowAll).unwrap();
-        let rows = list_focus(&conn, 10).unwrap();
-        assert!(
-            rows.iter().any(|r| r.row_kind == ROW_HEADER),
-            "expected cluster header, got {:?}",
-            rows.iter()
-                .map(|r| (r.row_kind, r.title.clone()))
-                .collect::<Vec<_>>()
-        );
-        let cid = rows
-            .iter()
-            .find(|r| r.row_kind == ROW_HEADER)
-            .and_then(|r| r.cluster_id)
-            .unwrap();
-        // 折叠时只有标题行和代表文章，没有第二个展开入口。
-        let collapsed: Vec<i32> = rows
-            .iter()
-            .filter(|r| r.cluster_id == Some(cid))
-            .map(|r| r.row_kind)
-            .collect();
-        assert_eq!(collapsed, vec![ROW_HEADER, ROW_CARD]);
-        let expanded = list_focus_stream(&conn, 10, Some(cid)).unwrap();
-        let members = expanded
-            .iter()
-            .filter(|r| r.row_kind == ROW_CARD && r.cluster_id == Some(cid))
-            .count();
-        assert_eq!(members, 2);
-        assert!(
-            expanded
-                .iter()
-                .all(|r| r.row_kind == ROW_CARD || r.row_kind == ROW_HEADER)
-        );
-    }
-
-    #[test]
-    fn preload_ids_cover_focus_and_starred() {
-        let (_dir, conn) = open_temp();
-        seed(&conn);
-        let ids = list_preload_article_ids(&conn).unwrap();
-        let titles: Vec<String> = ids
-            .iter()
-            .map(|id| get_article(&conn, *id).unwrap().title)
-            .collect();
-        assert!(titles.iter().any(|t| t.contains("focus")));
-        assert!(!titles.iter().any(|t| t.contains("noise")));
-        let noise_id: i64 = conn
-            .query_row(
-                "SELECT id FROM articles WHERE title LIKE '%noise%'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        set_starred(&conn, noise_id, true).unwrap();
-        let ids = list_preload_article_ids(&conn).unwrap();
-        assert!(ids.contains(&noise_id));
-    }
-
-    #[test]
-    fn mix_keeps_quiet_feed_when_loud_feed_floods() {
-        let (_dir, conn) = open_temp();
-        set_focus_filter(&conn, FocusFilter::ShowAll).unwrap();
-        crate::interests::set_cluster_group_enabled(&conn, false).unwrap();
-        let loud = subscribe(
-            &conn,
-            SubscribeRequest {
-                url: "https://loud.example.com/rss.xml".into(),
-                folder_id: None,
-                as_rsshub: false,
-                rsshub_instance_id: None,
-            },
-        )
-        .unwrap();
-        let quiet = subscribe(
-            &conn,
-            SubscribeRequest {
-                url: "https://quiet.example.com/rss.xml".into(),
-                folder_id: None,
-                as_rsshub: false,
-                rsshub_instance_id: None,
-            },
-        )
-        .unwrap();
-        let loud_entries: Vec<ParsedEntry> = (1..=20)
-            .map(|i| {
-                let mut e = entry(
-                    &format!("loud {i:02}"),
-                    &format!("https://loud.example.com/{i}"),
-                );
-                e.published_at = Some(now_ms() - 60_000 + 1_000 + i);
-                e
-            })
-            .collect();
-        crate::ingest::upsert_entries(&conn, loud, &loud_entries, now_ms()).unwrap();
-        crate::ingest::upsert_entries(
-            &conn,
-            quiet,
-            &[
-                {
-                    let mut e = entry("quiet alpha", "https://quiet.example.com/a");
-                    e.published_at = Some(now_ms() - 60_000 + 1);
-                    e
-                },
-                {
-                    let mut e = entry("quiet beta", "https://quiet.example.com/b");
-                    e.published_at = Some(now_ms() - 60_000 + 2);
-                    e
-                },
-            ],
-            now_ms(),
-        )
-        .unwrap();
-
-        let mixed = list_focus(&conn, 10).unwrap();
-        assert_eq!(mixed.len(), 10);
-        let quiet_n = mixed.iter().filter(|c| c.feed_id == quiet).count();
-        assert!(
-            quiet_n >= 2,
-            "quiet feed should survive mix, got {:?}",
-            mixed.iter().map(|c| c.title.as_str()).collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn focus_page_then_more_does_not_repeat_ids() {
-        let (_dir, conn) = open_temp();
-        seed(&conn);
-        set_focus_filter(&conn, FocusFilter::ShowAll).unwrap();
-        crate::interests::set_cluster_group_enabled(&conn, false).unwrap();
-        let feed: i64 = conn
-            .query_row("SELECT id FROM feeds LIMIT 1", [], |r| r.get(0))
-            .unwrap();
-        for i in 0..12 {
-            let title = format!("extra {i}");
-            let url = format!("https://news.example.com/extra/{i}");
-            crate::ingest::upsert_entries(
-                &conn,
-                feed,
-                &[ParsedEntry {
-                    guid: url.clone(),
-                    canonical_url: Some(url.clone()),
-                    title: title.clone(),
-                    author: None,
-                    published_at: Some(now_ms() - 30_000 + i),
-                    content_html: Some("<p>x</p>".into()),
-                    hash: crate::parse::entry_hash(&title, Some(&url), Some("<p>x</p>")),
-                    tags: vec![],
-                }],
-                now_ms(),
-            )
-            .unwrap();
-        }
-        let (first, has_more) = list_focus_page(&conn, 5, None, &[], &[], FeedScope::All).unwrap();
-        assert!(has_more);
-        assert_eq!(first.len(), 5);
-        let seen: Vec<i64> = first
-            .iter()
-            .filter(|c| c.row_kind == ROW_CARD)
-            .map(|c| c.id)
-            .collect();
-        let (second, second_more) =
-            list_focus_page(&conn, 5, None, &seen, &[], FeedScope::All).unwrap();
-        let again: Vec<i64> = second
-            .iter()
-            .filter(|c| c.row_kind == ROW_CARD)
-            .map(|c| c.id)
-            .collect();
-        assert!(!again.is_empty());
-        assert!(second_more);
-        for id in &again {
-            assert!(!seen.contains(id), "id {id} repeated across pages");
-        }
-        let mut all = seen;
-        all.extend(again);
-        let (third, third_more) =
-            list_focus_page(&conn, 5, None, &all, &[], FeedScope::All).unwrap();
-        assert_eq!(third.len(), 5);
-        assert!(!third_more);
-        for card in &third {
-            assert!(!all.contains(&card.id));
-        }
-    }
-
-    #[test]
-    fn hide_noisy_drops_flagged_feed() {
-        let (_dir, conn) = open_temp();
-        insert_rule(
-            &conn,
-            NewRule::manual_global(Polarity::Dislike, Dimension::TitleKw, "ad"),
-        )
-        .unwrap();
-        let feed = subscribe(
-            &conn,
-            SubscribeRequest {
-                url: "https://ads.example.com/rss.xml".into(),
-                folder_id: None,
-                as_rsshub: false,
-                rsshub_instance_id: None,
-            },
-        )
-        .unwrap();
-        let now = crate::feeds::now_ms();
-        let entries: Vec<ParsedEntry> = (0..8)
-            .map(|i| {
-                let url = format!("https://ads.example.com/{i}");
-                let mut item = entry(&format!("ad promo {i}"), &url);
-                item.published_at = Some(now);
-                item
-            })
-            .collect();
-        crate::ingest::upsert_entries(&conn, feed, &entries, now).unwrap();
-        crate::articles::set_focus_filter(&conn, FocusFilter::ShowAll).unwrap();
-        crate::interests::set_cluster_group_enabled(&conn, false).unwrap();
-        let shown = list_focus(&conn, 20).unwrap();
-        assert!(shown.iter().any(|c| c.noisy));
-        crate::interests::set_hide_noisy_enabled(&conn, true).unwrap();
-        let hidden = list_focus(&conn, 20).unwrap();
-        assert!(hidden.is_empty(), "got {:?}", hidden.len());
-    }
-
-    #[test]
-    fn cluster_header_lists_sources_and_group_read_respects_scope_and_rules() {
-        let (_dir, conn) = open_temp();
-        conn.execute_batch(
-            "INSERT INTO folders(id,parent_id,name,created_at) VALUES (1,NULL,'in',0),(2,NULL,'out',0);
-             INSERT INTO feeds(id,url,title,folder_id,created_at) VALUES
-             (10,'https://a.example/rss','甲',1,0),(11,'https://b.example/rss','乙',1,0),
-             (12,'https://c.example/rss','丙',2,0);
-             INSERT INTO clusters(id,label,member_count,created_at) VALUES (7,'同题',5,0);
-             INSERT INTO articles(id,feed_id,title,score,published_at,cluster_id,read,created_at) VALUES
-             (1,10,'甲一',5,1000,7,0,1),(2,11,'乙一',5,2000,7,0,1),(3,10,'甲二',5,3000,7,1,1),
-             (4,12,'丙一',5,4000,7,0,1),(5,11,'被隐藏',-100,5000,7,0,1);",
-        )
-        .unwrap();
-        conn.execute(
-            "UPDATE articles SET published_at=?1+published_at,created_at=?2",
-            params![now_ms() - 60_000, now_ms()],
-        )
-        .unwrap();
-        let header = |scope| {
-            list_focus_page(&conn, 40, None, &[], &[], scope)
-                .unwrap()
-                .0
-                .into_iter()
-                .find(|card| card.row_kind == ROW_HEADER)
-                .unwrap()
-        };
-        // 按成员发布先后去重；被规则隐藏的成员不算来源。
-        assert_eq!(
-            header(FeedScope::All).cluster_feeds,
-            vec![
-                (10, "甲".to_string()),
-                (11, "乙".to_string()),
-                (12, "丙".to_string())
-            ]
-        );
-        assert_eq!(
-            header(FeedScope::Folder(1)).cluster_feeds,
-            vec![(10, "甲".to_string()), (11, "乙".to_string())]
-        );
-        // 只标范围内可见的未读：已读、隐藏、范围外的都不动。
-        assert_eq!(
-            mark_cluster_read(&conn, 7, FeedScope::Folder(1)).unwrap(),
-            vec![1, 2]
-        );
-        let read = |id: i64| -> i64 {
-            conn.query_row("SELECT read FROM articles WHERE id=?1", [id], |r| r.get(0))
-                .unwrap()
-        };
-        assert_eq!((read(4), read(5)), (0, 0));
-        assert_eq!(
-            mark_cluster_read(&conn, 7, FeedScope::All).unwrap(),
-            vec![4]
-        );
-        assert!(
-            mark_cluster_read(&conn, 7, FeedScope::All)
-                .unwrap()
-                .is_empty()
-        );
-    }
-
-    #[test]
-    fn folder_scope_limits_cards_clusters_and_skips_spot_checks() {
-        let (_dir, conn) = open_temp();
-        conn.execute_batch(
-            "INSERT INTO folders(id,parent_id,name,created_at) VALUES
-             (1,NULL,'parent',0),(2,1,'child',0),(3,NULL,'other',0);
-             INSERT INTO feeds(id,url,folder_id,created_at) VALUES
-             (10,'https://in.example/rss',1,0),(11,'https://child.example/rss',2,0),
-             (12,'https://out.example/rss',3,0);
-             INSERT INTO clusters(id,label,member_count,created_at) VALUES
-             (7,'同题',3,0),(8,'只剩一篇',2,0);
-             INSERT INTO articles(id,feed_id,title,score,published_at,cluster_id,created_at) VALUES
-             (1,10,'in parent',5,3000,7,1),(2,11,'in child',5,2000,7,1),
-             (3,12,'outside cluster',5,4000,7,1),(4,10,'solo in',5,1000,8,1),
-             (5,12,'solo out',5,5000,8,1),(6,12,'plain out',5,6000,NULL,1);",
-        )
-        .unwrap();
-        conn.execute(
-            "UPDATE articles SET published_at=?1+published_at,created_at=?2",
-            params![now_ms() - 60_000, now_ms()],
-        )
-        .unwrap();
-        crate::db::set_setting(&conn, crate::db::HIDDEN_SPOT_CHECK_RATE_KEY, "5").unwrap();
-        let now = crate::feeds::now_ms();
-        conn.execute(
-            "WITH RECURSIVE ids(id) AS (SELECT 100 UNION ALL SELECT id+1 FROM ids WHERE id<500)
-             INSERT INTO articles(id,feed_id,title,score,created_at)
-             SELECT id,10,'hidden',-10,?1 FROM ids",
-            [now],
-        )
-        .unwrap();
-        let page = |scope| {
-            list_focus_page(&conn, 40, Some(7), &[], &[], scope)
-                .unwrap()
-                .0
-        };
-        let cards = |rows: &[ArticleCard]| {
-            rows.iter()
-                .filter(|card| card.row_kind == ROW_CARD)
-                .map(|card| card.id)
-                .collect::<Vec<_>>()
-        };
-        let scoped = page(FeedScope::Folder(1));
-        assert_eq!(cards(&scoped), vec![2, 1, 4]);
-        let headers: Vec<_> = scoped
-            .iter()
-            .filter(|card| card.row_kind == ROW_HEADER)
-            .collect();
-        assert_eq!(
-            headers
-                .iter()
-                .map(|card| (card.cluster_id, card.cluster_size))
-                .collect::<Vec<_>>(),
-            vec![(Some(7), 2)]
-        );
-        assert_eq!(
-            focus_cluster_members(&conn, 7, FeedScope::Folder(1))
-                .unwrap()
-                .into_iter()
-                .map(|card| card.id)
-                .collect::<Vec<_>>(),
-            vec![2, 1]
-        );
-        let all = page(FeedScope::All);
-        assert!(
-            all.iter().any(|card| card.spot_check) && scoped.iter().all(|card| !card.spot_check)
-        );
-        assert_eq!(cards(&page(FeedScope::Feed(12))), cards(&all));
     }
 }

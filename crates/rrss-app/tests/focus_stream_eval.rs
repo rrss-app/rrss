@@ -13,7 +13,7 @@ use rrss_core::{
     articles::{self, FocusFilter, ListScope, ROW_CARD},
     db,
     feed_scope::FeedScope,
-    feeds, interests, rank,
+    feeds, interests,
 };
 use rusqlite::{Connection, params};
 
@@ -150,7 +150,7 @@ impl Fixture {
         .unwrap();
         tx.commit().unwrap();
         if self.rebuild_rank {
-            assert!(rank::store::rebuild(&conn, self.anchor).unwrap() > 0);
+            assert!(rrss_focus::store::rebuild(&conn, self.anchor).unwrap() > 0);
         }
         // Reading the pages must not mutate even this disposable fixture.
         conn.pragma_update(None, "query_only", true).unwrap();
@@ -253,7 +253,7 @@ fn collect_scope(conn: &Connection, expected: &[Item], scope: FeedScope) -> Vec<
             cards.push(a);
         }
         assert!(cards.len() <= expected.len(), "unexpected candidates");
-        assert!(cards.len() - before <= articles::FOCUS_PAGE_SIZE as usize);
+        assert!(cards.len() - before <= rrss_focus::FOCUS_PAGE_SIZE as usize);
         if !page.has_more {
             break;
         }
@@ -775,7 +775,7 @@ fn focus_static_history_perf() {
             .filter(|a| a.row_kind == ROW_CARD)
             .map(|a| a.id)
             .collect();
-        assert_eq!(ids.len(), articles::FOCUS_PAGE_SIZE as usize);
+        assert_eq!(ids.len(), rrss_focus::FOCUS_PAGE_SIZE as usize);
         assert!(first.has_more);
         let second = queries::focus_page(&conn, None, &ids, &[], true, FeedScope::All).unwrap();
         assert!(second.has_more);

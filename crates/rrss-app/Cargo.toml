@@ -7,7 +7,7 @@ description = "UI-agnostic view models, actions, jobs, Pi runtime, and CLI"
 publish = false
 
 [features]
-evaluation-clock = ["rrss-core/evaluation-clock"]
+evaluation-clock = ["rrss-core/evaluation-clock", "rrss-focus/evaluation-clock"]
 
 [dependencies]
 anyhow.workspace = true
@@ -27,6 +27,7 @@ pulldown-cmark.workspace = true
 reqwest.workspace = true
 rrss-ai.workspace = true
 rrss-core.workspace = true
+rrss-focus.workspace = true
 rrss-render.workspace = true
 rusqlite.workspace = true
 serde.workspace = true

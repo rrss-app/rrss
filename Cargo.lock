@@ -4076,6 +4076,7 @@ dependencies = [
  "reqwest 0.12.28",
  "rrss-ai",
  "rrss-core",
+ "rrss-focus",
  "rrss-render",
  "rusqlite",
  "serde",
@@ -4159,6 +4160,20 @@ dependencies = [
  "webkit2gtk",
  "webview2-com",
  "windows",
+]
+
+[[package]]
+name = "rrss-focus"
+version = "0.4.1"
+dependencies = [
+ "chrono",
+ "rrss-core",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]

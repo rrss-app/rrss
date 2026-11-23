@@ -16,12 +16,15 @@ flowchart TB
     UI["apps/desktop<br/>React 界面"]
     Host["crates/rrss-desktop<br/>Tauri 窗口与命令适配"]
     App["crates/rrss-app<br/>查询 · 动作 · 后台作业 · 调度 · Pi 运行时"]
-    Core["crates/rrss-core<br/>SQLite · 抓取 · 规则 · 排序 · 聚类 · 网络 · 平台"]
+    Focus["crates/rrss-focus<br/>焦点排序 · 候选池 · 排列 · 探索与抽查"]
+    Core["crates/rrss-core<br/>SQLite · 抓取 · 规则 · 聚类 · 网络 · 平台"]
     Render["crates/rrss-render<br/>HTML / Markdown → 块 IR"]
     AI["crates/rrss-ai<br/>HTTP 补全 · 嵌入 · Pi 协议"]
     DB[("SQLite 单库")]
     UI <-->|IPC| Host
     Host --> App
+    App --> Focus
+    Focus --> Core
     App --> Core
     App --> AI
     AI --> Core
@@ -32,7 +35,8 @@ flowchart TB
 - **界面**只画界面、管交互，所有调用经 `lib/api.ts`；IPC 的类型由 Rust 视图类型生成（`bindings.ts`），前后端字段不会各写一份。
 - **宿主**只做适配：命令转接到 `rrss-app`，数据库访问放到阻塞工作线程，不占界面线程。
 - **应用层**持有全部业务：给界面的查询、用户动作、后台作业（摘要、嵌入、媒体、聚类、排序、简报）和调度。
-- **核心层**是纯后端领域逻辑；正文清洗调用 `rrss-render`。平台差异集中在 `rrss-core::platform` 一个模块。
+- **焦点推荐**（`rrss-focus`）负责今日焦点的排序、候选池、排列、探索与抽查，只依赖核心层；表结构仍在核心层，它经核心层的连接读写排序缓存与曝光记录。
+- **核心层**是纯后端领域逻辑，不依赖焦点推荐；正文清洗调用 `rrss-render`。平台差异集中在 `rrss-core::platform` 一个模块。
 - **AI 层**只管和模型端点、Pi 子进程通信，不持有业务状态。
 
 ## 数据流

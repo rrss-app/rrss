@@ -7,7 +7,7 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use rusqlite::{Connection, params, params_from_iter, types::Value};
 
-use crate::{Result, feeds::now_ms, rank::focus::SCORE_SQL};
+use rrss_core::{Result, feeds::now_ms, rank_score::SCORE_SQL};
 
 const DAY: i64 = 86_400_000;
 const RECENT_DAYS: i64 = 30;
@@ -49,7 +49,7 @@ pub(super) fn members(
     eligible: &str,
     group: bool,
     bind: &[i64],
-) -> Result<(Vec<Member>, HashMap<i64, crate::rank::topics::Lane>)> {
+) -> Result<(Vec<Member>, HashMap<i64, crate::topics::Lane>)> {
     let now = now_ms();
     let mut args = bind.to_vec();
     let start = args.len() + 1;
@@ -57,7 +57,7 @@ pub(super) fn members(
     let (feed, since, until, read_since, now_index) =
         (start, start + 1, start + 2, start + 3, start + 4);
     args.extend([0, now - RECENT_DAYS * DAY, now, now - READ_DAYS * DAY, now]);
-    let member_score = crate::rank::focus::MEMBER_SQL;
+    let member_score = rrss_core::rank_score::MEMBER_SQL;
     let select = format!(
         "SELECT a.id,{member_score},{DATE_SQL} FROM articles a
          WHERE a.feed_id=?{feed} AND {DATE_SQL}>=?{since} AND {DATE_SQL}<=?{until}
@@ -91,8 +91,8 @@ pub(super) fn members(
     // publishing rate; quiet feeds keep 180 days and leave after repeated
     // unread showings. No separate recovery lane under this policy.
     let shelf = matches!(
-        crate::rank::freshness::policy(crate::rank::store::fitted_enabled(conn)?),
-        crate::rank::freshness::Policy::Shelf { .. }
+        crate::freshness::policy(crate::store::fitted_enabled(conn)?),
+        crate::freshness::Policy::Shelf { .. }
     );
     let mut rate_count = conn.prepare(&format!(
         "SELECT COUNT(*) FROM articles a WHERE a.feed_id=?1 AND {DATE_SQL}>=?2 AND {DATE_SQL}<=?3"
@@ -107,7 +107,7 @@ pub(super) fn members(
     for feed_id in feeds {
         args[start - 1] = feed_id;
         if shelf {
-            use crate::rank::freshness::{
+            use crate::freshness::{
                 EXEMPT_LOOKBACK_DAYS, RATE_DAYS, exempt, per_day, window_for_rate,
             };
             let count: i64 =
@@ -192,8 +192,8 @@ pub(super) fn members(
     let since = values.len() + 1;
     let until = since + 1;
     values.extend([Value::Integer(now - 7 * DAY), Value::Integer(now)]);
-    let lane_sql = crate::rank::topics::LANE_SQL;
-    let version = crate::rank::combine::ALGO_VERSION;
+    let lane_sql = crate::topics::LANE_SQL;
+    let version = crate::combine::ALGO_VERSION;
     let sql = format!(
         "SELECT a.id,a.feed_id,a.cluster_id,{SCORE_SQL},{DATE_SQL},a.read,
                 json_extract(seed.value,'$[1]'),a.score,a.interest_boost,COALESCE(r.boost,0),
@@ -229,14 +229,14 @@ pub(super) fn members(
         let reasons = if recovery {
             cached
                 .as_deref()
-                .map(crate::rank::cache::reasons)
+                .map(crate::cache::reasons)
                 .unwrap_or_default()
         } else {
             Vec::new()
         };
         let freshness: i64 = reasons
             .iter()
-            .filter(|r| r.component == crate::rank::combine::Component::Freshness)
+            .filter(|r| r.component == crate::combine::Component::Freshness)
             .map(|r| r.points.min(0))
             .sum();
         let preference = relevance - freshness;
@@ -245,7 +245,7 @@ pub(super) fn members(
             || row.get::<_, i64>(9)? - freshness < 0
             || reasons
                 .iter()
-                .any(|r| r.component != crate::rank::combine::Component::Freshness && r.points < 0);
+                .any(|r| r.component != crate::combine::Component::Freshness && r.points < 0);
         let neutral_recovery = recovery && preference == 0;
         let eligible = if recovery {
             !seen && (preference > 0 || (neutral_recovery && !negative && dormant.contains(&feed)))
@@ -319,7 +319,7 @@ pub(super) fn members(
             total_recent += 1;
         }
         members.push((id, feed, cluster, priority));
-        if let Some(lane) = lane.as_deref().and_then(crate::rank::topics::Lane::decode) {
+        if let Some(lane) = lane.as_deref().and_then(crate::topics::Lane::decode) {
             topics.insert(id, lane);
         }
     }

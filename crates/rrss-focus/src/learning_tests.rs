@@ -1,8 +1,8 @@
 //! Production-model contract tests; only disposable synthetic databases.
 use super::*;
-use crate::{
+use crate::evidence::DAY_MS;
+use rrss_core::{
     db,
-    rank::evidence::DAY_MS,
     signals::{self, ArticleEvent, EventKind},
 };
 use rusqlite::params;
@@ -44,7 +44,7 @@ fn article(conn: &Connection, id: i64, feed: i64, title: &str, vector: &[f32]) {
     conn.execute(
         "INSERT INTO chunks(article_id,ordinal,kind,text,embedding,model,space_id)
         VALUES(?1,0,'title_summary','',?2,'fixture',1)",
-        params![id, crate::rag::f32s_to_le(vector)],
+        params![id, rrss_core::rag::f32s_to_le(vector)],
     )
     .unwrap();
 }

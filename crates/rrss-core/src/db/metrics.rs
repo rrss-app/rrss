@@ -125,7 +125,7 @@ pub(super) fn attach(
     }
 }
 
-pub(crate) fn for_connection(conn: &rusqlite::Connection) -> Option<Arc<DatabaseMetrics>> {
+pub fn for_connection(conn: &rusqlite::Connection) -> Option<Arc<DatabaseMetrics>> {
     // SAFETY: only attach writes this key. Connection is !Sync and remains
     // borrowed while cloning the Arc, so its destructor cannot race this read.
     unsafe {

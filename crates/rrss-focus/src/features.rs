@@ -1,6 +1,6 @@
 //! 阶段 23「B1 基础层 · 特征偏好」：衰减计数与可解释词面画像，纯函数。
 
-use crate::{features::FeatureChip, rules::Dimension};
+use rrss_core::{features::FeatureChip, rules::Dimension};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const HALF_LIFE_MS: i64 = super::evidence::LONG_HALF_LIFE_MS;
@@ -179,7 +179,7 @@ mod tests {
     use super::*;
     #[test]
     fn sparse_explicit_topic_transfers_but_long_titles_stopwords_and_identity_do_not_multiply_it() {
-        let chips = crate::features::extract_features_with_bigrams(
+        let chips = rrss_core::features::extract_features_with_bigrams(
             Some("Author"),
             &["orbit".into()],
             "Orbital mechanics spacecraft navigation propulsion landing research satellite the",
@@ -202,7 +202,7 @@ mod tests {
             Dimension::Tag | Dimension::TitleKw
         ) && c.pattern != "the"));
         assert!(weighted.iter().map(|(_, w)| w).sum::<f64>() <= 2.0 * 2_f64.ln());
-        let other = crate::features::extract_features(
+        let other = rrss_core::features::extract_features(
             Some("Author"),
             &[],
             "Cooking",

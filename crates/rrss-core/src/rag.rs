@@ -808,7 +808,7 @@ pub fn title_embedding(conn: &Connection, article_id: i64) -> Result<Option<Vec<
 }
 
 /// 严格标题向量：按 ordinal 取首个合法向量，不使用正文回退。
-pub(crate) fn normalized_title_vectors(
+pub fn normalized_title_vectors(
     conn: &Connection,
     wanted: Option<&[i64]>,
 ) -> Result<std::collections::BTreeMap<i64, Vec<f32>>> {

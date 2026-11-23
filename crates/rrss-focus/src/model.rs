@@ -1,17 +1,17 @@
 //! 阶段 23「B1 基础层」「B2 增强层」「接入方式」：只读加载与学习，排序作业与回放共用。
 
 use crate::{
+    affinity,
+    combine::{self, Input, Switches},
+    coverage, evidence,
+    features::Profile,
+    freshness,
+    labels::{self, LabelExposure},
+    source,
+};
+use rrss_core::{
     Result,
     features::{FeatureChip, extract_features_with_bigrams},
-    rank::{
-        affinity,
-        combine::{self, Input, Switches},
-        coverage, evidence,
-        features::Profile,
-        freshness,
-        labels::{self, LabelExposure},
-        source,
-    },
     signals::{ArticleEvent, EventKind, load_events, rows},
 };
 
@@ -131,9 +131,9 @@ impl Model {
         let start = if fitted_enabled {
             i64::MIN
         } else {
-            before.saturating_sub(crate::signals::RETENTION_MS)
+            before.saturating_sub(rrss_core::signals::RETENTION_MS)
         };
-        let sessions = crate::signals::load_session_summaries(conn, start, before)?;
+        let sessions = rrss_core::signals::load_session_summaries(conn, start, before)?;
         // Source opportunities only come from the global ranked Focus stream.
         let exposures = rows(
             conn,
@@ -202,7 +202,7 @@ impl Model {
                 .collect::<Vec<_>>()
         });
         let vectors = if enabled {
-            crate::rag::normalized_title_vectors(conn, wanted.as_deref())?
+            rrss_core::rag::normalized_title_vectors(conn, wanted.as_deref())?
         } else {
             BTreeMap::new()
         };
@@ -236,7 +236,7 @@ impl Model {
         let (feature_profile, affinity, recent_affinity) =
             fitted::profiles(&articles, &vectors, &votes, before);
         let space_id = if enabled && !vectors.is_empty() {
-            crate::vector_space::active(conn)?.map(|space| space.id)
+            rrss_core::vector_space::active(conn)?.map(|space| space.id)
         } else {
             None
         };
@@ -396,7 +396,7 @@ impl Model {
         fitted: bool,
         ids: &[i64],
     ) -> Result<(bool, BTreeMap<i64, [f64; 5]>)> {
-        let on = crate::rank::store::switches(conn)?;
+        let on = crate::store::switches(conn)?;
         let model = Self::load_with_fitted(conn, now.saturating_add(1), on.affinity, None, fitted)?;
         let only = |k: usize| Switches {
             features: on.features && k == 0,
@@ -555,7 +555,7 @@ impl Model {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::signals::Surface;
+    use rrss_core::signals::Surface;
 
     fn affinity_article(
         conn: &Connection,
@@ -571,7 +571,7 @@ mod tests {
         conn.execute(
             "INSERT INTO chunks(article_id,ordinal,kind,text,embedding,model,space_id)
             VALUES(?1,0,'title_summary','',?2,?3,?4)",
-            rusqlite::params![id, crate::rag::f32s_to_le(vector), space.0, space.1],
+            rusqlite::params![id, rrss_core::rag::f32s_to_le(vector), space.0, space.1],
         )
         .unwrap();
         if let Some(kind) = feedback {
@@ -584,7 +584,7 @@ mod tests {
     #[test]
     fn default_learning_score_snapshot() {
         let dir = tempfile::tempdir().unwrap();
-        let conn = crate::db::open_at(&dir.path().join("snapshot.db")).unwrap();
+        let conn = rrss_core::db::open_at(&dir.path().join("snapshot.db")).unwrap();
         conn.execute_batch("INSERT INTO feeds(id,url,created_at) VALUES(1,'https://snapshot.example/rss',0);
             INSERT INTO vector_spaces(id,base_url,model,dims,prefix_version,normalized,state,created_at)
             VALUES(1,'','fixture',2,1,0,'active',0);").unwrap();
@@ -626,7 +626,8 @@ mod tests {
 
     #[test]
     fn scoped_vectors_and_incremental_ranks_match_full_rebuild() {
-        use crate::{db, rank::store};
+        use crate::store;
+        use rrss_core::db;
         let dir = tempfile::tempdir().unwrap();
         let conn = db::open_at(&dir.path().join("scoped-rank.db")).unwrap();
         conn.execute_batch("INSERT INTO feeds(id,url,created_at) VALUES(1,'https://rank.invalid',0);
@@ -696,7 +697,7 @@ mod tests {
     #[test]
     fn affinity_requires_active_title_summary_vectors_and_never_crosses_spaces() {
         let dir = tempfile::tempdir().unwrap();
-        let conn = crate::db::open_at(&dir.path().join("affinity.db")).unwrap();
+        let conn = rrss_core::db::open_at(&dir.path().join("affinity.db")).unwrap();
         conn.execute_batch("INSERT INTO feeds(id,url,created_at) VALUES(1,'https://affinity.invalid',0);
             INSERT INTO vector_spaces(id,base_url,model,dims,prefix_version,normalized,state,created_at)
             VALUES(1,'','a',2,1,0,'retired',0),(2,'','b',2,1,0,'retired',0);").unwrap();
@@ -742,7 +743,7 @@ mod tests {
     #[test]
     fn loads_tags_in_bulk_and_learns_before_cutoff_only() {
         let dir = tempfile::tempdir().unwrap();
-        let conn = crate::db::open_at(&dir.path().join("rank.db")).unwrap();
+        let conn = rrss_core::db::open_at(&dir.path().join("rank.db")).unwrap();
         conn.execute(
             "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://rank.invalid/feed',0)",
             [],
@@ -808,7 +809,7 @@ mod tests {
     #[test]
     fn feeds_exposures_do_not_change_source_preference() {
         let dir = tempfile::tempdir().unwrap();
-        let conn = crate::db::open_at(&dir.path().join("feeds-source.db")).unwrap();
+        let conn = rrss_core::db::open_at(&dir.path().join("feeds-source.db")).unwrap();
         conn.execute(
             "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://src.example/rss',0)",
             [],

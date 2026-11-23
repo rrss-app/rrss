@@ -86,6 +86,61 @@ pub fn safe_text(value: &str) -> String {
     }
 }
 
+/// 焦点排序加分的一个分量。`rrss-focus` 写进 `article_rank.reasons_json`，卡片读出来展示。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RankComponent {
+    Features,
+    Source,
+    Coverage,
+    Freshness,
+    Affinity,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct RankReason {
+    pub component: RankComponent,
+    #[serde(flatten)]
+    pub message: ReasonMessage,
+    /// 这条原因折合的整数分；不足 1 分的分量不出原因。
+    #[serde(default)]
+    pub points: i64,
+}
+
+impl<'de> serde::Deserialize<'de> for RankReason {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Stored {
+            component: RankComponent,
+            #[serde(default)]
+            points: i64,
+            #[serde(flatten)]
+            message: serde_json::Value,
+        }
+        let stored = Stored::deserialize(deserializer)?;
+        Ok(Self {
+            component: stored.component,
+            message: ReasonMessage::from_stored(&stored.message, "", None),
+            points: stored.points,
+        })
+    }
+}
+
+/// 排序缓存里的展示原因：旧的数组与带私有排序元数据的对象都认，坏数据为空。
+pub fn rank_reasons(json: &str) -> Vec<RankReason> {
+    #[derive(serde::Deserialize)]
+    struct Display {
+        reasons: Vec<RankReason>,
+    }
+    if json.trim_start().starts_with('[') {
+        serde_json::from_str(json).unwrap_or_default()
+    } else {
+        serde_json::from_str::<Display>(json)
+            .map(|cache| cache.reasons)
+            .unwrap_or_default()
+    }
+}
+
 #[derive(serde::Serialize)]
 pub(crate) struct StoredReason<'a> {
     pub component: &'static str,
@@ -95,7 +150,7 @@ pub(crate) struct StoredReason<'a> {
 }
 
 impl ReasonPrefix {
-    pub(crate) fn for_feature(dimension: crate::rules::Dimension, habit: Habit) -> Self {
+    pub fn for_feature(dimension: crate::rules::Dimension, habit: Habit) -> Self {
         use crate::rules::Dimension;
         match (dimension, habit) {
             (Dimension::TitleKw, Habit::Read) => Self::RankTitleKwRead,

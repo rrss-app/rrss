@@ -1,10 +1,7 @@
-//! 真实馈源快照：解析、OPML 导入、入库。不访问网络。
+//! 真实馈源快照：解析、OPML 导入、入库。不访问网络；入库后进焦点页的测试在 `rrss-focus`。
 
-use rrss_core::articles::{self, FocusFilter};
-use rrss_core::feeds::{SubscribeRequest, subscribe};
-use rrss_core::ingest::{FetchRequest, FetchResponse, HttpFetcher, RefreshStatus, refresh_feed};
 use rrss_core::opml::import_opml;
-use rrss_core::{FeedKind, Result, db, parse_feed_bytes};
+use rrss_core::{FeedKind, db, parse_feed_bytes};
 
 const HNRSS: &str = include_str!("../../../testdata/feeds/real/hnrss-frontpage.xml");
 const SOLIDOT: &str = include_str!("../../../testdata/feeds/real/solidot.xml");
@@ -15,22 +12,6 @@ const V2EX: &str = include_str!("../../../testdata/feeds/real/v2ex-atom.xml");
 const RSSHUB_DIV_BR: &str = include_str!("../../../testdata/feeds/real/rsshub-div-br.xml");
 const JSONFEED: &str = include_str!("../../../testdata/feeds/real/jsonfeed-org.json");
 const REAL_OPML: &str = include_str!("../../../testdata/feeds/opml/real.opml");
-
-struct Snapshot {
-    body: &'static str,
-}
-
-impl HttpFetcher for Snapshot {
-    fn get(&self, _req: FetchRequest) -> Result<FetchResponse> {
-        Ok(FetchResponse {
-            status: 200,
-            etag: Some("\"real\"".into()),
-            last_modified: None,
-            retry_after: None,
-            body: self.body.as_bytes().to_vec(),
-        })
-    }
-}
 
 fn open_temp() -> (tempfile::TempDir, rrss_core::db::PooledConnection) {
     let dir = tempfile::tempdir().unwrap();
@@ -149,58 +130,5 @@ fn imports_real_opml_tree() {
         feeds
             .iter()
             .any(|f| f.url == "https://www.jsonfeed.org/feed.json")
-    );
-}
-
-#[test]
-fn ingesting_solidot_snapshot_fills_focus() {
-    let (_dir, conn) = open_temp();
-    articles::set_focus_filter(&conn, FocusFilter::ShowAll).unwrap();
-    let id = subscribe(
-        &conn,
-        SubscribeRequest {
-            url: "https://www.solidot.org/index.rss".into(),
-            folder_id: None,
-            as_rsshub: false,
-            rsshub_instance_id: None,
-        },
-    )
-    .unwrap();
-    let result = refresh_feed(&conn, &Snapshot { body: SOLIDOT }, id).unwrap();
-    match result.status {
-        RefreshStatus::Updated {
-            inserted, skipped, ..
-        } => {
-            assert!(inserted >= 10, "inserted={inserted}");
-            assert_eq!(skipped, 0);
-        }
-        other => panic!("unexpected status {other:?}"),
-    }
-    // Preserve the archived source and relative publication times, but replay
-    // this temporary database in the current recommendation window.
-    let latest: i64 = conn
-        .query_row("SELECT MAX(published_at) FROM articles", [], |r| r.get(0))
-        .unwrap();
-    conn.execute(
-        "UPDATE articles SET published_at=published_at+?1",
-        [rrss_core::feeds::now_ms() - 60_000 - latest],
-    )
-    .unwrap();
-    let cards = articles::list_focus(&conn, 50).unwrap();
-    assert!(cards.len() >= 10);
-    assert!(cards.iter().any(|c| !c.title.is_empty()));
-    let article = articles::get_article(&conn, cards[0].id).unwrap();
-    assert!(article.content_html.as_deref().unwrap_or("").len() > 10);
-    assert!(
-        article
-            .blocks_json
-            .as_deref()
-            .unwrap_or("")
-            .starts_with('{')
-            || article
-                .blocks_json
-                .as_deref()
-                .unwrap_or("")
-                .starts_with('[')
     );
 }

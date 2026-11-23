@@ -196,7 +196,7 @@ fn fixture_with_articles(articles: usize) -> (tempfile::TempDir, PathBuf) {
     db::set_setting(&tx, "pi_auto_download", "0").unwrap();
     db::set_setting(&tx, window_close::SETTING, "ask").unwrap();
     tx.commit().unwrap();
-    rrss_core::rank::store::rebuild(&conn, now).unwrap();
+    rrss_focus::store::rebuild(&conn, now).unwrap();
     assert_eq!(
         conn.pragma_query_value(None, "journal_mode", |r| r.get::<_, String>(0))
             .unwrap(),
@@ -516,7 +516,7 @@ fn small_database_work_baseline() {
     let ingest = rrss_core::ingest::upsert_entries_measured(&conn, 1, &entries, now).unwrap();
     assert_eq!(ingest.inserted, 30);
     let rank_started = Instant::now();
-    rrss_core::rank::store::rebuild(&conn, now).unwrap();
+    rrss_focus::store::rebuild(&conn, now).unwrap();
     let rank_ms = ms(rank_started.elapsed());
     conn.execute("UPDATE articles SET read=1, embed_tier=2", [])
         .unwrap();

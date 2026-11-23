@@ -31,7 +31,7 @@ fn release_and_undo_change_focus_without_changing_scores_or_rules() {
     conn.execute("UPDATE articles SET published_at=created_at WHERE id=1", [])
         .unwrap();
     let ids = || {
-        articles::list_focus(&conn, 10)
+        rrss_focus::list_focus(&conn, 10)
             .unwrap()
             .iter()
             .map(|a| a.id)

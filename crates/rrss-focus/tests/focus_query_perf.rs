@@ -1,5 +1,5 @@
 //! Offline focus pagination benchmark. Fixture construction and connection opening are untimed.
-//! CARGO_TARGET_DIR=target CARGO_BUILD_JOBS=4 flock /tmp/rrss-cargo.lock cargo test --offline --locked -p rrss-core --test focus_query_perf -- --ignored --nocapture --test-threads=1
+//! CARGO_TARGET_DIR=target CARGO_BUILD_JOBS=4 flock /tmp/rrss-cargo.lock cargo test --offline --locked -p rrss-focus --test focus_query_perf -- --ignored --nocapture --test-threads=1
 //!
 //! Uses the production core pagination entry point, including cluster projection and source mixing.
 //! Does not measure the app view adapter, IPC, rendering, background jobs, or rank rebuilding.
@@ -12,11 +12,12 @@ use std::{collections::HashSet, path::Path, time::Instant};
 
 use rrss_core::{
     ai_store,
-    articles::{self, ArticleCard, FOCUS_PAGE_SIZE, FocusFilter, ListScope, ROW_CARD},
+    articles::{self, ArticleCard, FocusFilter, ListScope, ROW_CARD},
     db,
     feed_scope::FeedScope,
     feeds, interests,
 };
+use rrss_focus::FOCUS_PAGE_SIZE;
 use rusqlite::{Connection, OpenFlags, params};
 use serde_json::json;
 
@@ -128,7 +129,7 @@ fn seed(conn: &Connection, count: i64, now: i64) {
             if id % 10 != 0 {
                 rank.execute(params![id, boost,
                     json!([{"component":"source","code":"rank_source","params":{"habit":"read"},"points":boost}]).to_string(),
-                    rrss_core::rank::combine::ALGO_VERSION, now - 3_600_000]).unwrap();
+                    rrss_focus::combine::ALGO_VERSION, now - 3_600_000]).unwrap();
             }
             // 3.6 exposures/article: recent repeats, first opportunities, stale history,
             // and unrelated surfaces/variants. Only baseline focus rows can cool an article.
@@ -211,7 +212,7 @@ impl Cursor {
 }
 
 fn page(conn: &Connection, cursor: &Cursor) -> (Vec<ArticleCard>, bool) {
-    articles::list_focus_page(
+    rrss_focus::list_focus_page(
         conn,
         FOCUS_PAGE_SIZE,
         None,

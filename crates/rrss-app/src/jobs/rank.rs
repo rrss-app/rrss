@@ -1,10 +1,8 @@
 //! 阶段 23「接入方式 · 排序作业」：入库增量、行为防抖与每小时刷新，不调用模型。
 
 use super::spawn_db;
-use rrss_core::{
-    db,
-    rank::store::{self, REFRESHED_KEY},
-};
+use rrss_core::db;
+use rrss_focus::store::{self, REFRESHED_KEY};
 use rusqlite::Connection;
 use std::{
     path::{Path, PathBuf},
@@ -128,7 +126,7 @@ fn run_due(conn: &Connection, now: i64) -> rrss_core::Result<bool> {
     };
     let outdated: bool = conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM article_rank WHERE algo_version<>?1)",
-        [rrss_core::rank::combine::ALGO_VERSION],
+        [rrss_focus::combine::ALGO_VERSION],
         |r| r.get(0),
     )?;
     if !outdated && !due(now, read(REFRESHED_KEY)?, read(DIRTY_KEY)?) {

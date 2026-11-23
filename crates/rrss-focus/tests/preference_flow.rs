@@ -59,7 +59,7 @@ fn replay_recent_dates(conn: &rusqlite::Connection) {
 }
 
 fn titles(conn: &rusqlite::Connection) -> Vec<String> {
-    articles::list_focus(conn, 20)
+    rrss_focus::list_focus(conn, 20)
         .unwrap()
         .into_iter()
         .map(|c| c.title)
@@ -85,7 +85,7 @@ fn ingest_train_rescore_slider_and_reasons() {
         articles::focus_filter(&conn).unwrap(),
         FocusFilter::HideFaded
     );
-    let cards = articles::list_focus(&conn, 20).unwrap();
+    let cards = rrss_focus::list_focus(&conn, 20).unwrap();
     assert_eq!(cards.len(), 2);
     assert!(cards.iter().all(|c| c.score == 0));
     assert_eq!(
@@ -138,13 +138,13 @@ fn ingest_train_rescore_slider_and_reasons() {
     assert_eq!(faded, vec!["Storm delays trains".to_string()]);
 
     articles::set_focus_filter(&conn, FocusFilter::ShowAll).unwrap();
-    let all = articles::list_focus(&conn, 20).unwrap();
+    let all = rrss_focus::list_focus(&conn, 20).unwrap();
     assert_eq!(all.len(), 2);
     let ada = all.iter().find(|c| c.title.contains("library")).unwrap();
     assert_eq!(ada.score, -10);
 
     articles::set_focus_filter(&conn, FocusFilter::FocusOnly).unwrap();
-    assert!(articles::list_focus(&conn, 20).unwrap().is_empty());
+    assert!(rrss_focus::list_focus(&conn, 20).unwrap().is_empty());
 
     let explained = articles::get_article(&conn, library.id).unwrap();
     let reasons = parse_reasons(explained.reasons_json.as_deref());
@@ -167,7 +167,7 @@ fn existing_rule_scores_on_ingest_without_rescore() {
     replay_recent_dates(&conn);
 
     articles::set_focus_filter(&conn, FocusFilter::FocusOnly).unwrap();
-    let focus = articles::list_focus(&conn, 20).unwrap();
+    let focus = rrss_focus::list_focus(&conn, 20).unwrap();
     assert_eq!(focus.len(), 1);
     assert_eq!(focus[0].title, "City opens new library");
     assert_eq!(focus[0].score, 10);

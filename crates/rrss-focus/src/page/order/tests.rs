@@ -1,5 +1,5 @@
-use crate::articles::{self, ArticleCard, ListScope, ROW_CARD};
-use crate::{db, feed_scope::FeedScope, feeds::now_ms};
+use rrss_core::articles::{self, ArticleCard, ListScope, ROW_CARD};
+use rrss_core::{db, feed_scope::FeedScope, feeds::now_ms};
 use rusqlite::{Connection, params};
 
 pub(super) fn fixture() -> (tempfile::TempDir, db::PooledConnection) {
@@ -28,7 +28,7 @@ fn fill(conn: &Connection, feed: i64, count: i64, published: i64) {
 }
 
 pub(super) fn page(conn: &Connection, limit: i64, seen: &[i64]) -> (Vec<ArticleCard>, bool) {
-    articles::list_focus_page(conn, limit, None, seen, &[], FeedScope::All).unwrap()
+    crate::list_focus_page(conn, limit, None, seen, &[], FeedScope::All).unwrap()
 }
 
 #[test]
@@ -154,7 +154,7 @@ fn cluster_representative_and_expansion_follow_the_list_scope() {
     conn.execute("UPDATE articles SET created_at=?1", [now_ms()])
         .unwrap();
     let cards = |expanded| {
-        articles::list_focus_page(&conn, 1, expanded, &[], &[], FeedScope::All)
+        crate::list_focus_page(&conn, 1, expanded, &[], &[], FeedScope::All)
             .unwrap()
             .0
             .into_iter()
@@ -169,7 +169,7 @@ fn cluster_representative_and_expansion_follow_the_list_scope() {
     articles::set_list_scope(&conn, ListScope::Starred).unwrap();
     assert_eq!(cards(None), [2]);
     assert_eq!(
-        crate::cluster_summary::visible_members(&conn, 7, FeedScope::All)
+        rrss_core::cluster_summary::visible_members(&conn, 7, FeedScope::All)
             .unwrap()
             .len(),
         3
@@ -387,7 +387,7 @@ fn dormant_neutral_recovery_ignores_only_identified_freshness_penalties() {
         params![now, now - 40 * day, now - 50 * day],
     )
     .unwrap();
-    crate::rank::store::rebuild(&conn, now).unwrap();
+    crate::store::rebuild(&conn, now).unwrap();
     assert_eq!(
         conn.query_row(
             "SELECT boost FROM article_rank WHERE article_id=2",

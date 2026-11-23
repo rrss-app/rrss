@@ -1,7 +1,7 @@
 //! Fitted read prediction; weekly profiles never observe a sample's own outcome.
 use super::*;
-use crate::rank::{evidence::DAY_MS, labels::Evidence, read_model};
-use crate::signals::engagement::SessionSummary;
+use crate::{evidence::DAY_MS, labels::Evidence, read_model};
+use rrss_core::signals::engagement::SessionSummary;
 
 const WINDOW_MS: i64 = 60 * DAY_MS;
 /// Selected positives without a Focus showing receive half weight.
@@ -493,7 +493,7 @@ pub(super) fn add_skips(
     votes: &mut Vec<Evidence>,
     exposures: &[(LabelExposure, i64)],
     sessions: &[SessionSummary],
-    events: &[crate::signals::ArticleEvent],
+    events: &[rrss_core::signals::ArticleEvent],
 ) {
     let touched: BTreeSet<_> = sessions
         .iter()

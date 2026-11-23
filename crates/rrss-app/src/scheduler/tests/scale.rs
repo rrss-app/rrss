@@ -220,7 +220,7 @@ async fn mixed_sources(cluster_upgrade: bool) {
         SELECT id,1,'retained-'||id,'Retained '||id,'<p>Synthetic reading fixture.</p>','old-'||id,10,0,id,?2,?2 FROM n",
         rusqlite::params![RETAINED, now_ms()]).unwrap();
     tx.commit().unwrap();
-    rrss_core::rank::store::rebuild(&conn, now_ms()).unwrap();
+    rrss_focus::store::rebuild(&conn, now_ms()).unwrap();
     db::set_setting(
         &conn,
         rrss_core::cluster::ALGORITHM_VERSION_KEY,

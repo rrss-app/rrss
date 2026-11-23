@@ -2,7 +2,7 @@
 //! These tests load real signal rows into the production model; no amplified weights.
 
 use super::*;
-use crate::{
+use rrss_core::{
     db,
     signals::{EndedBy, ReadSession, Via},
 };
@@ -28,10 +28,10 @@ fn continuous(ages: &[i64]) -> (f64, f64, f64) {
         conn.execute(
             "INSERT INTO chunks(article_id,ordinal,kind,text,embedding,model,space_id)
             VALUES(?1,0,'title_summary','',?2,'synthetic',1)",
-            params![id, crate::rag::f32s_to_le(&[1., 0.])],
+            params![id, rrss_core::rag::f32s_to_le(&[1., 0.])],
         )
         .unwrap();
-        crate::signals::record_read_sessions(
+        rrss_core::signals::record_read_sessions(
             &conn,
             &[ReadSession {
                 article_id: id,

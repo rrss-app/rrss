@@ -40,7 +40,7 @@ pub mod prefs;
 pub mod presets;
 pub mod rag;
 pub mod rag_prepare;
-pub mod rank;
+pub mod rank_score;
 pub mod reasons;
 pub mod retention;
 pub mod rule_stats;
@@ -70,9 +70,8 @@ pub use ai_store::{
     TASK_EMBED, TASK_EPISODE_COMPRESS, TASK_FOCUS_SUMMARY, TASK_MEMORY_CANDIDATE,
 };
 pub use articles::{
-    ArticleCard, ArticleRow, FOCUS_PAGE_SIZE, FocusFilter, get_article, list_focus,
-    list_focus_page, list_focus_stream, set_focus_filter, set_hide_threshold, set_read,
-    set_starred, set_summary,
+    ArticleCard, ArticleRow, FocusFilter, get_article, set_focus_filter, set_hide_threshold,
+    set_read, set_starred, set_summary,
 };
 pub use cite::{CitationSnap, expand_user_prompt, parse_citations_json, passage_around};
 pub use cluster::{assign_article, assign_unclustered, backfill_simhash, merge_close_clusters};

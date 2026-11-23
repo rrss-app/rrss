@@ -3,19 +3,7 @@
 use super::{combine::Reason, topics};
 use serde::{Deserialize, Serialize};
 
-pub(crate) fn reasons(json: &str) -> Vec<Reason> {
-    #[derive(Deserialize)]
-    struct Display {
-        reasons: Vec<Reason>,
-    }
-    if json.trim_start().starts_with('[') {
-        serde_json::from_str(json).unwrap_or_default()
-    } else {
-        serde_json::from_str::<Display>(json)
-            .map(|cache| cache.reasons)
-            .unwrap_or_default()
-    }
-}
+pub(crate) use rrss_core::reasons::rank_reasons as reasons;
 
 pub(crate) fn topics(json: &str) -> Option<topics::Evidence> {
     // Old arrays (also used for neutral new caches) need no JSON parsing here.
@@ -33,7 +21,7 @@ pub(crate) fn topics(json: &str) -> Option<topics::Evidence> {
 pub(crate) fn encode(
     reasons: &[Reason],
     topics: Option<topics::Evidence>,
-) -> crate::Result<String> {
+) -> rrss_core::Result<String> {
     #[derive(Serialize)]
     struct Stored<'a> {
         lane: topics::Lane,
@@ -49,7 +37,7 @@ pub(crate) fn encode(
     } else {
         serde_json::to_string(reasons)
     };
-    result.map_err(|e| crate::Error::Parse(e.to_string()))
+    result.map_err(|e| rrss_core::Error::Parse(e.to_string()))
 }
 
 #[cfg(test)]

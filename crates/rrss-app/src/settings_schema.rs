@@ -579,7 +579,7 @@ fn write_fetch_interval(conn: &Connection, _key: &str, value: &str) -> rrss_core
 }
 
 fn write_rank_switch(conn: &Connection, key: &str, value: &str) -> rrss_core::Result<()> {
-    rrss_core::rank::store::set_switch(conn, key, value == "1")
+    rrss_focus::store::set_switch(conn, key, value == "1")
 }
 
 fn spec(def: &Def) -> SettingSpec {

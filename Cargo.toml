@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/rrss-core",
+    "crates/rrss-focus",
     "crates/rrss-render",
     "crates/rrss-ai",
     "crates/rrss-app",
@@ -46,6 +47,7 @@ toml = { version = "0.8", default-features = false, features = ["parse"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
 
 rrss-core = { path = "crates/rrss-core" }
+rrss-focus = { path = "crates/rrss-focus" }
 rrss-render = { path = "crates/rrss-render" }
 rrss-ai = { path = "crates/rrss-ai" }
 rrss-app = { path = "crates/rrss-app" }
@@ -60,6 +62,9 @@ debug = 2
 debug = 0
 
 [profile.dev.package.rrss-core]
+debug = 2
+
+[profile.dev.package.rrss-focus]
 debug = 2
 
 [profile.dev.package.rrss-render]

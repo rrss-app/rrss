@@ -2,7 +2,7 @@
 
 use sha2::{Digest, Sha256};
 
-use crate::vector_math::{dot, normalized};
+use rrss_core::vector_math::{dot, normalized};
 
 pub const MIN_POSITIVES: usize = 10;
 const MAX_ITERATIONS: usize = 20;
