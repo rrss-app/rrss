@@ -16,42 +16,45 @@ pub fn focus_page(
     more: bool,
     scope: FeedScope,
 ) -> rrss_core::Result<FocusPage> {
-    let scope = articles::focus_column_scope(scope);
-    // 先读水位再读列表：期间入库的文章即使进了这一页，也只会被当成新文章，不会漏掉。
-    let ingested_through = articles::newest_article_id(conn)?;
-    let (cards, has_more) = rrss_focus::list_focus_page(
-        conn,
-        rrss_focus::FOCUS_PAGE_SIZE,
-        expanded_cluster,
-        exclude_ids,
-        exclude_cluster_ids,
-        scope,
-    )?;
-    let articles = article_views(conn, cards)?;
-    // 续页与栏目都不带简报；栏目的排序原因仍用入库时的全局结果。
-    let digest = if more || scope != FeedScope::All {
-        None
-    } else {
-        ai_store::latest_digest(conn, "daily")
-            .ok()
-            .flatten()
-            .or_else(|| ai_store::latest_digest(conn, "weekly").ok().flatten())
-    };
-    Ok(FocusPage {
-        articles,
-        digest_banner: digest
-            .as_ref()
-            .map(|d| d.period.clone())
-            .unwrap_or_default(),
-        digest_lede: digest
-            .as_ref()
-            .map(|d| digest_lede(&d.body))
-            .unwrap_or_default(),
-        filter: articles::focus_filter(conn)?.as_str().to_string(),
-        list_scope: articles::list_scope(conn)?.as_str().to_string(),
-        ranking: ranking_settings(conn)?,
-        has_more,
-        ingested_through,
+    // Keep the ingestion watermark, cards, per-article feedback and displayed
+    // settings on the same side of any concurrent refresh or settings change.
+    db::read_snapshot(conn, |conn| {
+        let scope = articles::focus_column_scope(scope);
+        let ingested_through = articles::ingestion_watermark(conn)?;
+        let (cards, has_more) = rrss_focus::list_focus_page(
+            conn,
+            rrss_focus::FOCUS_PAGE_SIZE,
+            expanded_cluster,
+            exclude_ids,
+            exclude_cluster_ids,
+            scope,
+        )?;
+        let articles = article_views(conn, cards)?;
+        // 续页与栏目都不带简报；栏目的排序原因仍用入库时的全局结果。
+        let digest = if more || scope != FeedScope::All {
+            None
+        } else {
+            ai_store::latest_digest(conn, "daily")
+                .ok()
+                .flatten()
+                .or_else(|| ai_store::latest_digest(conn, "weekly").ok().flatten())
+        };
+        Ok(FocusPage {
+            articles,
+            digest_banner: digest
+                .as_ref()
+                .map(|d| d.period.clone())
+                .unwrap_or_default(),
+            digest_lede: digest
+                .as_ref()
+                .map(|d| digest_lede(&d.body))
+                .unwrap_or_default(),
+            filter: articles::focus_filter(conn)?.as_str().to_string(),
+            list_scope: articles::list_scope(conn)?.as_str().to_string(),
+            ranking: ranking_settings(conn)?,
+            has_more,
+            ingested_through,
+        })
     })
 }
 
@@ -60,14 +63,17 @@ pub fn focus_cluster_members(
     cluster_id: i64,
     scope: FeedScope,
 ) -> rrss_core::Result<Vec<ArticleView>> {
-    article_views(
-        conn,
-        articles::focus_cluster_members(conn, cluster_id, scope)?,
-    )
+    db::read_snapshot(conn, |conn| {
+        article_views(
+            conn,
+            articles::focus_cluster_members(conn, cluster_id, scope)?,
+        )
+    })
 }
 
 /// 相近报道综述：存着的综述、与当前成员比较的新旧，以及没配模型时列出的各篇一句话。
-/// `scope` 与焦点页相同（`all` / `folder:<id>`）；成员口径同 `focus_cluster_members`。
+/// `scope` 与焦点页相同（`all` / `folder:<id>`）。成员的范围、规则可见性与噪声源过滤同
+/// `focus_cluster_members`，但不随未读 / 收藏的列表范围变化。
 pub fn cluster_summary(
     conn: &Connection,
     cluster_id: i64,
@@ -320,7 +326,8 @@ fn digest_lede(body: &str) -> String {
 }
 
 pub fn ranking_settings(conn: &Connection) -> rrss_core::Result<RankingSettings> {
-    let learned = rrss_focus::store::switches(conn)?;
+    let settings = rrss_focus::store::settings(conn)?;
+    let learned = settings.switches;
     Ok(RankingSettings {
         show_details: db::setting_enabled(conn, db::FOCUS_SHOW_DETAILS_KEY, false)?,
         interest_boost: interests::boost_enabled(conn)?,
@@ -336,7 +343,7 @@ pub fn ranking_settings(conn: &Connection) -> rrss_core::Result<RankingSettings>
         rank_coverage: learned.coverage,
         rank_freshness: learned.freshness,
         rank_affinity: learned.affinity,
-        rank_fitted: db::setting_enabled(conn, db::RANK_FITTED_ENABLED_KEY, false)?,
+        rank_fitted: settings.fitted,
     })
 }
 
@@ -354,6 +361,38 @@ mod tests {
             [rrss_core::feeds::now_ms() - 60_000],
         )
         .unwrap();
+    }
+
+    #[test]
+    fn deleting_the_latest_feed_keeps_the_focus_watermark_for_the_next_ingest() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open_at(&dir.path().join("focus.db")).unwrap();
+        let page = || focus_page(&conn, None, &[], &[], false, FeedScope::All).unwrap();
+        assert_eq!(page().ingested_through, 0);
+        conn.execute_batch(
+            "INSERT INTO feeds(id,url,created_at) VALUES
+             (1,'https://old.example/feed',0),(2,'https://new.example/feed',0);
+             INSERT INTO articles(feed_id,title,created_at) VALUES(1,'First',0);",
+        )
+        .unwrap();
+        let baseline = page().ingested_through;
+        rrss_core::feeds::unsubscribe(&conn, 1).unwrap();
+        assert_eq!(page().ingested_through, baseline);
+
+        let feed = rrss_core::parse::parse_feed_bytes(
+            br#"<rss version="2.0"><channel><title>Updates</title><item><guid>next</guid><title>New arrival</title></item></channel></rss>"#, None
+        ).unwrap();
+        let ingest = || {
+            rrss_core::ingest::upsert_entries(&conn, 2, &feed.entries, rrss_core::feeds::now_ms())
+                .unwrap()
+        };
+        assert_eq!(ingest(), (1, 0));
+        let refreshed = page();
+        assert_eq!(refreshed.articles.len(), 1);
+        assert!(refreshed.articles[0].id > baseline);
+        assert_eq!(refreshed.articles[0].id, refreshed.ingested_through);
+        assert_eq!(ingest(), (0, 1));
+        assert_eq!(page().ingested_through, refreshed.ingested_through);
     }
 
     #[test]

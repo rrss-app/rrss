@@ -123,6 +123,25 @@ fn daily_trial_is_latest_eligible_preserves_order_and_has_no_duplicate() {
 }
 
 #[test]
+fn cluster_ids_do_not_exclude_unrelated_trial_articles() {
+    let (_dir, conn) = fixture();
+    conn.execute_batch(
+        "INSERT INTO clusters(id,member_count,created_at) VALUES(102,2,0);
+         UPDATE articles SET cluster_id=102 WHERE id IN (59,60);",
+    )
+    .unwrap();
+    db::set_setting_enabled(&conn, db::CLUSTER_GROUP_ENABLED_KEY, true).unwrap();
+    store::set_switch(&conn, store::FITTED_ENABLED_KEY, true).unwrap();
+    let cards = page(&conn, &[], FeedScope::All);
+    let header = cards
+        .iter()
+        .find(|c| c.row_kind == articles::ROW_HEADER)
+        .unwrap();
+    assert_eq!(header.id, 102);
+    assert_eq!(trials(&cards), [102]);
+}
+
+#[test]
 fn admission_threshold_counts_recent_baseline_and_trial_focus_exposures() {
     let (_dir, conn) = fixture();
     store::set_switch(&conn, store::FITTED_ENABLED_KEY, true).unwrap();

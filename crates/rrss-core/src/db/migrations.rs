@@ -2,7 +2,7 @@ use rusqlite::Connection;
 
 use crate::error::{Error, Result};
 
-pub const SCHEMA_VERSION: i32 = 49;
+pub const SCHEMA_VERSION: i32 = 50;
 
 /// 低于此版本的库不能在当前程序里升级。
 pub const MIN_UPGRADE_VERSION: i32 = 33;
@@ -38,6 +38,7 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         (47, apply_v47),
         (48, apply_v48),
         (49, apply_v49),
+        (50, apply_v50),
     ];
     let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if !(0..=SCHEMA_VERSION).contains(&version) {
@@ -102,6 +103,62 @@ fn apply_v49(conn: &Connection) -> Result<()> {
         )?;
         Ok(())
     })
+}
+
+/// Retain article IDs after deletions, including when a feed is removed. Copy
+/// rows before restoring triggers so FTS and derived work stay intact.
+fn apply_v50(conn: &Connection) -> Result<()> {
+    crate::db::require_autocommit(conn, "article ID migration")?;
+    let foreign_keys: bool = conn.pragma_query_value(None, "foreign_keys", |r| r.get(0))?;
+    let legacy_alter: bool = conn.pragma_query_value(None, "legacy_alter_table", |r| r.get(0))?;
+    // External references must keep pointing at "articles" during the rename.
+    conn.pragma_update(None, "foreign_keys", false)?;
+    let result = (|| -> Result<()> {
+        conn.pragma_update(None, "legacy_alter_table", true)?;
+        let tx = crate::db::write_transaction(conn)?;
+        let ddl: String = tx.query_row(
+            "SELECT sql FROM sqlite_schema WHERE type='table' AND name='articles'",
+            [],
+            |r| r.get(0),
+        )?;
+        // Earlier migrations appended columns in different orders. Preserve
+        // this database's exact column definitions and ordering after its ID.
+        let (id, columns) = ddl
+            .split_once('(')
+            .and_then(|(_, body)| body.split_once(','))
+            .ok_or(rusqlite::Error::InvalidQuery)?;
+        let id = id.split_whitespace().collect::<Vec<_>>().join(" ");
+        if id.eq_ignore_ascii_case("id INTEGER PRIMARY KEY") {
+            let objects = tx
+                .prepare(
+                    "SELECT sql FROM sqlite_schema WHERE tbl_name='articles'
+                 AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY rowid",
+                )?
+                .query_map([], |row| row.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            tx.execute_batch("ALTER TABLE articles RENAME TO articles_v49")?;
+            tx.execute(
+                &format!("CREATE TABLE articles (id INTEGER PRIMARY KEY AUTOINCREMENT,{columns}"),
+                [],
+            )?;
+            tx.execute_batch(
+                "INSERT INTO articles SELECT * FROM articles_v49;
+                              DROP TABLE articles_v49;",
+            )?;
+            for sql in objects {
+                tx.execute(&sql, [])?;
+            }
+        } else if !id.eq_ignore_ascii_case("id INTEGER PRIMARY KEY AUTOINCREMENT") {
+            return Err(rusqlite::Error::InvalidQuery.into());
+        }
+        tx.pragma_update(None, "user_version", 50)?;
+        tx.commit()?;
+        Ok(())
+    })();
+    let restore_alter = conn.pragma_update(None, "legacy_alter_table", legacy_alter);
+    conn.pragma_update(None, "foreign_keys", foreign_keys)?;
+    restore_alter?;
+    result
 }
 
 fn apply_v47(conn: &Connection) -> Result<()> {
@@ -641,6 +698,80 @@ fn apply_v34(conn: &Connection) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn v50_keeps_article_references_and_resumes_ids_after_deletion_and_reopen() {
+        use crate::articles::ingestion_watermark;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("articles.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.pragma_update(None, "foreign_keys", true).unwrap();
+            let legacy = SCHEMA_SQL.replacen(
+                "id              INTEGER PRIMARY KEY AUTOINCREMENT",
+                "id              INTEGER PRIMARY KEY",
+                1,
+            );
+            conn.execute_batch(&legacy).unwrap();
+            conn.execute_batch(
+                "PRAGMA user_version=49;
+                 INSERT INTO feeds(id,url,created_at) VALUES(1,'https://notes.example/feed',0);
+                 INSERT INTO articles(id,feed_id,title,content_md,created_at)
+                   VALUES(42,1,'Field notes','Archived observation',0);
+                 INSERT INTO article_tags(article_id,tag) VALUES(42,'field');",
+            )
+            .unwrap();
+            let rank = crate::db::input_revision(&conn, "rank").unwrap();
+            migrate(&conn).unwrap();
+            assert_eq!(ingestion_watermark(&conn).unwrap(), 42);
+            assert_eq!(crate::db::input_revision(&conn, "rank").unwrap(), rank);
+            assert_eq!(
+                conn.query_row(
+                    "SELECT a.content_md FROM articles a JOIN article_tags t ON t.article_id=a.id
+                 JOIN articles_fts ON articles_fts.rowid=a.id WHERE t.tag='field'
+                 AND articles_fts MATCH 'observation'",
+                    [],
+                    |r| r.get::<_, String>(0)
+                )
+                .unwrap(),
+                "Archived observation"
+            );
+            assert!(
+                !conn
+                    .prepare("PRAGMA foreign_key_check")
+                    .unwrap()
+                    .exists([])
+                    .unwrap()
+            );
+            conn.execute("DELETE FROM feeds WHERE id=1", []).unwrap();
+            assert!(
+                !conn
+                    .prepare("SELECT 1 FROM article_tags")
+                    .unwrap()
+                    .exists([])
+                    .unwrap()
+            );
+            assert!(
+                !conn
+                    .prepare("SELECT 1 FROM articles_fts")
+                    .unwrap()
+                    .exists([])
+                    .unwrap()
+            );
+        }
+        let conn = crate::db::open_at(&path).unwrap();
+        assert_eq!(ingestion_watermark(&conn).unwrap(), 42);
+        conn.execute_batch(
+            "INSERT INTO feeds(id,url,created_at) VALUES(2,'https://new.example/feed',0);
+             INSERT INTO articles(feed_id,title,created_at) VALUES(2,'Next',0);",
+        )
+        .unwrap();
+        assert!(conn.last_insert_rowid() > 42);
+        assert_eq!(
+            ingestion_watermark(&conn).unwrap(),
+            conn.last_insert_rowid()
+        );
+    }
 
     #[test]
     fn v49_adds_admission_indexes_without_changing_articles_or_exposures() {

@@ -28,11 +28,14 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 - Reader Back unwinds one step consistently across the toolbar, keyboard and browser history. Returning to chat stays there, and revisiting an article removes duplicate reading steps.
 - Feed articles and Markdown preserve superscripts, subscripts, strikethrough, underlines and highlights.
 - Default logs are quieter during normal work. Enable Detailed logging in Settings → Diagnostics to see individual command, database and window-close timings. Stalls of two seconds or more (a busy executor, long database work or a full worker queue) and their recovery remain in the default log.
+- The first launch after upgrading updates the library database, which can take longer for large libraries. Earlier versions cannot open the upgraded database.
 
 ### Fixed
 
 - Minimizing the window no longer makes the page flash, and a maximized window keeps its Restore button while minimized.
 - Sending a chat message at the moment the idle chat engine is being shut down no longer fails with a "reply still in progress" error; the message waits for the engine to restart.
+- Starting a new chat from a reader citation no longer shows "Another chat is replying" while its first reply arrives.
+- Articles that Focus mixes in for variety no longer split a grouped report. With noisy feeds hidden, their articles also stay out of expanded groups, group-wide mark-as-read and similar-report summaries, and automatic summaries only count feeds you can see.
 - The lead story's title in Focus no longer cuts off the bottoms of letters such as g, y and p.
 - Returning from a citation conversation restores the article's original navigation, so Back reaches the starting page instead of cycling between the article and chat.
 

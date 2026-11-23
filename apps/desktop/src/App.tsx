@@ -468,6 +468,7 @@ function DesktopShell() {
     } catch (err) { setToast({ message: formatNotice(t("notice.sendFailed"), err) }); return false; }
   };
 
+  const replyingHere = chat.isReplyingTo(threadId, chatContext);
   const webCovered = top !== "web-warning" || commandPaletteOpen || !!webLinks.menu || !!pendingLeave || stack.includes("confirm");
   return <WebLinksContext.Provider value={{ ...webLinks.context, editRule: (domain, url) => { setSiteRuleSeed({ domain, url }); setSettingsTab("web"); open("settings"); } }}><div className="shell" data-web-embedded={webLinks.windows.embedded ? "" : undefined}>
     <Sidebar ref={sidebarRef} view={view} threadId={threadId} inert={trapBackground} feeds={feedsSession} feedsReturn={feedsReturn} onEditFeed={openFeedEdit} onView={setView} onThread={selectThread} onThreadTitle={onThreadTitle}
@@ -493,11 +494,11 @@ function DesktopShell() {
           <button type="button" className="btn sm" onClick={() => void api.unarchiveThread(threadId).then(reloadThreads,
             (err) => setToast({ message: formatNotice(t("notice.unarchiveFailed"), err) }))}>{t("chat.unarchive")}</button>
         </div> : null}
-        <ChatPane store={chat.store} turns={chat.turns} threadId={threadId} context={chatContext} busy={chat.busyThreadId === threadId} jump={jump}
+        <ChatPane store={chat.store} turns={chat.turns} threadId={threadId} context={chatContext} busy={replyingHere} jump={jump}
           onLoadOlder={chat.loadOlder} onOpenUrl={openContentLink} onOpenArticle={openArticleFromMessage} onFix={openChatFix} />
       </MainViewFrame> : null}
       {view !== "digest" ? <Composer drafts={drafts} context={chatContext} ariaLabel={t("chat.composerLabel")} placeholder={t("chat.composerPlaceholder")}
-        otherThreadBusy={chat.busyThreadId !== null && chat.busyThreadId !== threadId} generating={chat.busyThreadId !== null}
+        otherThreadBusy={chat.busyThreadId !== null && !replyingHere} generating={chat.busyThreadId !== null}
         sending={chat.sending} disabled={false} ready collapsible={false} forceExpanded={chat.busyThreadId !== null} showWhenEmpty={view !== "focus" && view !== "column" && view !== "feeds"}
         onSend={send} onStop={() => void api.abort().catch((err) => setToast({ message: formatNotice(t("notice.stopFailed"), err) }))}
         onOpenArticle={openArticleFromMessage} activity={<ChatActivity store={chat.activity} />}

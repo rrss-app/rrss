@@ -924,8 +924,7 @@ pub struct FocusPage {
     pub has_more: bool,
     #[serde(default = "default_list_scope")]
     pub list_scope: String,
-    // 读这一页之前库里最大的文章 id。之后入库的文章 id 更大；后台更新只把它们当新文章，
-    // 排序上升的旧文章不打断当前列表（阶段 17 · 后台更新不动阅读位置）。
+    // 与本页卡片在同一快照读到的入库水位。之后入库的文章 id 更大。
     #[serde(default)]
     pub ingested_through: i64,
 }

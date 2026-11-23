@@ -3,9 +3,9 @@
 use std::collections::HashSet;
 
 use rrss_core::articles::{
-    ArticleCard, FocusFilter, ListScope, VISIBLE_SQL, attach_noise, focus_column_scope,
-    focus_filter, hide_threshold, list_scope, numbered_scope_sql, project_clusters,
-    query_ranked_cards,
+    ArticleCard, FocusFilter, ListScope, VISIBLE_SQL, attach_noise, exclude_feeds_sql,
+    focus_column_scope, focus_excluded_feeds, focus_filter, hide_threshold, list_scope,
+    numbered_scope_sql, project_clusters, query_ranked_cards,
 };
 use rrss_core::feed_scope::FeedScope;
 use rrss_core::feeds::now_ms;
@@ -108,23 +108,16 @@ pub fn list_focus_page(
     exclude_cluster_ids: &[i64],
     scope: FeedScope,
 ) -> Result<(Vec<ArticleCard>, bool)> {
-    let scope = focus_column_scope(scope);
-    let filter = focus_filter(conn)?;
-    let threshold = hide_threshold(conn)?;
-    let boost_on = interests::boost_enabled(conn)?;
-    let rerank_on = interests::rerank_enabled(conn)?;
-    let group_on = interests::cluster_group_enabled(conn)?;
-    let hide_noisy = interests::hide_noisy_enabled(conn)?;
-    let exclude_feeds: Vec<i64> = if hide_noisy {
-        rrss_core::feeds::noisy_feed_ids(conn)?
-            .into_iter()
-            .collect()
-    } else {
-        Vec::new()
-    };
-    let want = limit.max(1);
-    let first_page = exclude_ids.is_empty() && exclude_cluster_ids.is_empty();
     rrss_core::db::read_snapshot(conn, |conn| {
+        let scope = focus_column_scope(scope);
+        let filter = focus_filter(conn)?;
+        let threshold = hide_threshold(conn)?;
+        let boost_on = interests::boost_enabled(conn)?;
+        let rerank_on = interests::rerank_enabled(conn)?;
+        let group_on = interests::cluster_group_enabled(conn)?;
+        let exclude_feeds = focus_excluded_feeds(conn)?;
+        let want = limit.max(1);
+        let first_page = exclude_ids.is_empty() && exclude_cluster_ids.is_empty();
         let settings = crate::store::settings(conn)?;
         let exploring = first_page
             && scope == FeedScope::All
@@ -167,6 +160,7 @@ pub fn list_focus_page(
                 threshold,
                 exclude_cluster_ids,
                 scope,
+                &exclude_feeds,
             )?;
         }
         if scope == FeedScope::All {
@@ -202,19 +196,11 @@ fn query_focus_cards(
     explore_pool: Option<&mut Vec<i64>>,
 ) -> Result<Vec<(ArticleCard, i64)>> {
     let boost = i64::from(boost_on);
-    let noisy_sql = if exclude_feed_ids.is_empty() {
-        String::new()
-    } else {
-        let start = 4;
-        let marks: String = (0..exclude_feed_ids.len())
-            .map(|i| format!("?{}", start + i))
-            .collect::<Vec<_>>()
-            .join(",");
-        format!(" AND a.feed_id NOT IN ({marks})")
-    };
+    let mut bind = vec![limit, threshold, boost];
+    let noisy_sql = exclude_feeds_sql(&mut bind, exclude_feed_ids);
     let list_scope = list_scope(conn)?;
     let list_sql = list_scope.filter_sql();
-    let scope_index = 4 + exclude_feed_ids.len();
+    let scope_index = bind.len() + 1;
     let (feed_sql, feed_id) = numbered_scope_sql(scope, scope_index);
     let rank_score = rrss_core::rank_score::SCORE_SQL;
     let member_score = rrss_core::rank_score::MEMBER_SQL;
@@ -230,33 +216,25 @@ fn query_focus_cards(
            {feed_sql}
            {noisy_sql}"
     );
-    let mut bind = vec![limit, threshold, boost];
-    bind.extend_from_slice(exclude_feed_ids);
-    if let Some(id) = feed_id {
-        bind.push(id);
-    }
+    bind.extend(feed_id);
     if let Some((group, settings)) = group_for_page {
-        // Candidate selection and card loading used to be one SQL statement.
-        // Preserve that snapshot even when a background writer changes articles.
-        return rrss_core::db::read_snapshot(conn, |conn| {
-            let picked = order::candidates(
-                conn,
-                settings,
-                &eligible,
-                group,
-                list_scope,
-                &bind,
-                exclude_ids,
-                exclude_cluster_ids,
-                explore_pool,
-            )?;
-            query_ranked_cards(
+        let picked = order::candidates(
+            conn,
+            settings,
+            &eligible,
+            group,
+            list_scope,
+            &bind,
+            exclude_ids,
+            exclude_cluster_ids,
+            explore_pool,
+        )?;
+        return query_ranked_cards(
                 conn,
                 "SELECT json_extract(value,'$[0]') AS id,
                         json_extract(value,'$[1]') AS priority,CAST(key AS INTEGER) AS position FROM json_each(?1)",
                 [serde_json::to_string(&picked).expect("integer candidate pairs serialize")],
-            )
-        });
+            );
     }
     let ranked = format!(
         "SELECT a.id, {rank_score} AS priority,0 AS position FROM articles a

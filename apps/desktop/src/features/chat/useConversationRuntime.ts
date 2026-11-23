@@ -243,6 +243,13 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
   const thinkingFor = useCallback((id: number, context: string) => models[modelKey(id, context)]?.thinking ?? null, [models]);
   const contextFor = useCallback((id: number) => (id > 0 ? contexts[id] ?? null : null), [contexts]);
 
+  const isReplyingTo = (id: number, context: string) => {
+    if (id > 0) return status.busyThreadId === id;
+    // chat:start carries the new thread ID before sendMessage returns it to the composer.
+    const live = turns.getLive();
+    return status.sending && live?.slot === threadSlot(0, context) && live.threadId === status.busyThreadId;
+  };
+
   const sendMessage = useCallback(async (id: number, text: string, citations: CitationView[], digestId: number | null, context = "chat", dispatch?: SendOptions) => {
     const current = store.getStatus();
     if (current.sending || current.busyThreadId !== null) {
@@ -323,6 +330,6 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
 
   return {
     store, activity, turns, hydrate, loadMessages, loadOlder, release, sendMessage, sending: status.sending, busyThreadId: status.busyThreadId,
-    modelFor, thinkingFor, contextFor, seedThread, chooseModel, chooseThinking, resetNewModel,
+    isReplyingTo, modelFor, thinkingFor, contextFor, seedThread, chooseModel, chooseThinking, resetNewModel,
   };
 }

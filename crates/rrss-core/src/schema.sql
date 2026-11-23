@@ -76,7 +76,7 @@ CREATE UNIQUE INDEX idx_feeds_manual ON feeds(kind) WHERE kind='manual';
 CREATE INDEX idx_feeds_due ON feeds(next_fetch_at, id) WHERE kind!='manual';
 
 CREATE TABLE articles (
-    id              INTEGER PRIMARY KEY,
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
     feed_id         INTEGER NOT NULL REFERENCES feeds (id) ON DELETE CASCADE,
     guid            TEXT,
     canonical_url   TEXT,

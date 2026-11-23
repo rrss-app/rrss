@@ -80,13 +80,20 @@ pub struct StoredSummary {
     pub generated_at: i64,
 }
 
-/// 综述按范围与可见性取材，不随浏览时的未读 / 收藏过滤改变素材。
+/// 综述按范围与可见性取材，不随浏览时的未读 / 收藏过滤改变素材；开了「隐藏噪声源」时
+/// 与焦点的组一样不含噪声源的成员。
 pub fn visible_members(
     conn: &Connection,
     cluster_id: i64,
     scope: FeedScope,
 ) -> Result<Vec<ArticleCard>> {
-    articles::cluster_members_in_scope(conn, cluster_id, scope, articles::ListScope::All)
+    articles::cluster_members_in_scope(
+        conn,
+        cluster_id,
+        scope,
+        articles::ListScope::All,
+        &articles::focus_excluded_feeds(conn)?,
+    )
 }
 
 /// 全部焦点范围内的自动综述候选；先处理还没有综述的组。
@@ -105,22 +112,23 @@ fn auto_candidates(conn: &Connection, now: i64, limit: i64, only: Option<i64>) -
         return Ok(Vec::new());
     }
     let visible = articles::VISIBLE_SQL.replace("$threshold", "?1");
+    // 簇 id 从 1 起，0 表示不限。
+    let mut bind = vec![
+        articles::hide_threshold(conn)?,
+        now - CLUSTER_WINDOW_DAYS * 86_400_000,
+        only.unwrap_or(0),
+    ];
+    // 来源数与时间窗口只算焦点里看得到的成员：噪声源的成员不能把一篇凑成一组。
+    let noisy_sql = articles::exclude_feeds_sql(&mut bind, &articles::focus_excluded_feeds(conn)?);
     let mut stmt = conn.prepare(&format!(
         "SELECT c.id FROM clusters c JOIN articles a ON a.cluster_id=c.id
          JOIN feeds f ON f.id=a.feed_id
-         WHERE {visible} AND c.member_count>=2 AND (?3 IS NULL OR c.id=?3)
+         WHERE {visible} AND c.member_count>=2 AND (?3=0 OR c.id=?3){noisy_sql}
          GROUP BY c.id
          HAVING COUNT(DISTINCT a.feed_id)>=2 AND MAX(a.created_at)>=?2
          ORDER BY c.summary_json IS NOT NULL, MAX(a.created_at) DESC, c.id DESC"
     ))?;
-    let rows = stmt.query_map(
-        params![
-            articles::hide_threshold(conn)?,
-            now - CLUSTER_WINDOW_DAYS * 86_400_000,
-            only
-        ],
-        |row| row.get::<_, i64>(0),
-    )?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(bind), |row| row.get::<_, i64>(0))?;
     let mut out = Vec::new();
     for id in rows {
         let id = id?;
@@ -627,6 +635,34 @@ mod tests {
         .unwrap();
         assert_eq!(due(), [8, 7]);
         assert_eq!(due_auto_summaries(&conn, now, 1).unwrap(), [8]);
+    }
+
+    #[test]
+    fn hidden_noisy_feeds_stay_out_of_summary_members_and_sources() {
+        let (_dir, conn) = seeded();
+        let now = crate::feeds::now_ms();
+        // 乙报近期大多被规则隐藏，成了噪声源；它在组里的那篇仍是规则可见的。
+        conn.execute("UPDATE articles SET created_at=?1", [now])
+            .unwrap();
+        for i in 0..crate::feeds::NOISE_MIN_ARTICLES {
+            conn.execute(
+                "INSERT INTO articles(feed_id,title,score,published_at,created_at)
+                 VALUES(2,?1,-20,?2,?2)",
+                rusqlite::params![format!("filler {i}"), now],
+            )
+            .unwrap();
+        }
+        let ids = |conn: &Connection| members(conn).iter().map(|a| a.id).collect::<Vec<_>>();
+        assert_eq!(ids(&conn), [1, 2, 3]);
+        assert_eq!(due_auto_summaries(&conn, now, 4).unwrap(), [7]);
+
+        crate::interests::set_hide_noisy_enabled(&conn, true).unwrap();
+        assert_eq!(ids(&conn), [1, 3]);
+        assert!(
+            due_auto_summaries(&conn, now, 4).unwrap().is_empty(),
+            "只剩一个来源时不自动生成"
+        );
+        assert!(!auto_summary_due(&conn, 7, now).unwrap());
     }
 
     #[test]

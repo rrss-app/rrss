@@ -206,16 +206,41 @@ pub fn focus_column_scope(scope: FeedScope) -> FeedScope {
     }
 }
 
-/// 库里最大的文章 id，空库为 0。文章 id 是 SQLite 的行号，新入库的总比已有的大
-/// （只有最大的那篇被删后才可能复用它的 id）。
-pub fn newest_article_id(conn: &Connection) -> Result<i64> {
-    Ok(conn.query_row("SELECT COALESCE(MAX(id), 0) FROM articles", [], |r| r.get(0))?)
+/// 已提交的文章 ID 水位。删除文章不会降低水位，从未入库时为 0。
+pub fn ingestion_watermark(conn: &Connection) -> Result<i64> {
+    Ok(conn.query_row(
+        "SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='articles'), 0)",
+        [],
+        |row| row.get(0),
+    )?)
 }
 
 /// `scope_sql` 的占位符是匿名 `?`。焦点查询用编号参数，换成这次绑定的序号。
 pub fn numbered_scope_sql(scope: FeedScope, index: usize) -> (String, Option<i64>) {
     let (sql, id) = crate::feed_scope::scope_sql(scope);
     (sql.replace('?', &format!("?{index}")), id)
+}
+
+/// Feed exclusions shared by Focus candidates, standalone cards and groups.
+pub fn focus_excluded_feeds(conn: &Connection) -> Result<Vec<i64>> {
+    if interests::hide_noisy_enabled(conn)? {
+        Ok(crate::feeds::noisy_feed_ids(conn)?.into_iter().collect())
+    } else {
+        Ok(Vec::new())
+    }
+}
+
+pub fn exclude_feeds_sql(bind: &mut Vec<i64>, ids: &[i64]) -> String {
+    if ids.is_empty() {
+        return String::new();
+    }
+    let first = bind.len() + 1;
+    bind.extend_from_slice(ids);
+    let marks = (first..=bind.len())
+        .map(|i| format!("?{i}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(" AND a.feed_id NOT IN ({marks})")
 }
 
 pub fn query_ranked_cards(
@@ -284,6 +309,7 @@ pub fn project_clusters(
     threshold: i64,
     exclude_cluster_ids: &[i64],
     scope: FeedScope,
+    excluded_feeds: &[i64],
 ) -> Result<Vec<ArticleCard>> {
     let skip: HashSet<i64> = exclude_cluster_ids.iter().copied().collect();
     let mut wanted = Vec::new();
@@ -300,8 +326,14 @@ pub fn project_clusters(
         }
     }
     let metas = crate::cluster::get_clusters(conn, &wanted)?;
-    let members_map =
-        visible_cluster_cards_map(conn, &wanted, threshold, scope, list_scope(conn)?)?;
+    let members_map = visible_cluster_cards_map(
+        conn,
+        &wanted,
+        threshold,
+        scope,
+        list_scope(conn)?,
+        excluded_feeds,
+    )?;
     let mut out = Vec::new();
     let mut seen = HashSet::new();
     for card in cards {
@@ -347,8 +379,9 @@ pub fn project_clusters(
 
 fn fill_cluster_members(members: &mut [ArticleCard], meta: &crate::cluster::ClusterMeta) {
     let span = format_span(meta.first_published_at, meta.last_published_at);
+    let size = members.len() as i64;
     for member in members {
-        member.cluster_size = meta.member_count;
+        member.cluster_size = size;
         member.cluster_label = meta.label.clone();
         member.cluster_span = span.clone();
     }
@@ -361,7 +394,13 @@ pub fn focus_cluster_members(
     cluster_id: i64,
     scope: FeedScope,
 ) -> Result<Vec<ArticleCard>> {
-    cluster_members_in_scope(conn, cluster_id, scope, list_scope(conn)?)
+    cluster_members_in_scope(
+        conn,
+        cluster_id,
+        scope,
+        list_scope(conn)?,
+        &focus_excluded_feeds(conn)?,
+    )
 }
 
 pub(crate) fn cluster_members_in_scope(
@@ -369,12 +408,20 @@ pub(crate) fn cluster_members_in_scope(
     cluster_id: i64,
     scope: FeedScope,
     list_scope: ListScope,
+    excluded_feeds: &[i64],
 ) -> Result<Vec<ArticleCard>> {
     let scope = focus_column_scope(scope);
     let threshold = hide_threshold(conn)?;
-    let mut members = visible_cluster_cards_map(conn, &[cluster_id], threshold, scope, list_scope)?
-        .remove(&cluster_id)
-        .unwrap_or_default();
+    let mut members = visible_cluster_cards_map(
+        conn,
+        &[cluster_id],
+        threshold,
+        scope,
+        list_scope,
+        excluded_feeds,
+    )?
+    .remove(&cluster_id)
+    .unwrap_or_default();
     if members.len() < 2 {
         return Ok(Vec::new());
     }
@@ -394,6 +441,7 @@ fn visible_cluster_cards_map(
     threshold: i64,
     scope: FeedScope,
     list_scope: ListScope,
+    excluded_feeds: &[i64],
 ) -> Result<HashMap<i64, Vec<ArticleCard>>> {
     let mut out: HashMap<i64, Vec<ArticleCard>> = HashMap::new();
     if cluster_ids.is_empty() {
@@ -407,6 +455,10 @@ fn visible_cluster_cards_map(
     let (feed_sql, feed_id) = numbered_scope_sql(scope, threshold_idx + 1);
     let visible = VISIBLE_SQL.replace("$threshold", &format!("?{threshold_idx}"));
     let list_sql = list_scope.filter_sql();
+    let mut bind = cluster_ids.to_vec();
+    bind.push(threshold);
+    bind.extend(feed_id);
+    let noisy_sql = exclude_feeds_sql(&mut bind, excluded_feeds);
     let sql = format!(
         "SELECT a.id, a.title, COALESCE(f.title, f.url), a.published_at, a.canonical_url,
                 a.read, a.starred, a.score, a.interest_boost, COALESCE(a.summary, ''),
@@ -414,14 +466,9 @@ fn visible_cluster_cards_map(
          FROM articles a
          JOIN feeds f ON f.id = a.feed_id
          LEFT JOIN article_rank r ON r.article_id = a.id
-         WHERE a.cluster_id IN ({marks}) AND {visible}{feed_sql}{list_sql}
+         WHERE a.cluster_id IN ({marks}) AND {visible}{feed_sql}{list_sql}{noisy_sql}
          ORDER BY a.cluster_id, COALESCE(a.published_at, 0) ASC, a.id ASC"
     );
-    let mut bind = cluster_ids.to_vec();
-    bind.push(threshold);
-    if let Some(id) = feed_id {
-        bind.push(id);
-    }
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params_from_iter(bind), map_card)?;
     for row in rows {
@@ -478,15 +525,14 @@ pub fn mark_cluster_read(conn: &Connection, cluster_id: i64, scope: FeedScope) -
     let visible = VISIBLE_SQL.replace("$threshold", "?2");
     let (feed_sql, feed_id) = numbered_scope_sql(scope, 3);
     let list_sql = list_scope(conn)?.filter_sql();
+    let mut bind = vec![cluster_id, hide_threshold(conn)?];
+    bind.extend(feed_id);
+    let noisy_sql = exclude_feeds_sql(&mut bind, &focus_excluded_feeds(conn)?);
     let sql = format!(
         "UPDATE articles SET read = 1 WHERE id IN (
-            SELECT a.id FROM articles a WHERE a.cluster_id = ?1 AND a.read = 0 AND {visible}{feed_sql}{list_sql}
+            SELECT a.id FROM articles a WHERE a.cluster_id = ?1 AND a.read = 0 AND {visible}{feed_sql}{list_sql}{noisy_sql}
          ) RETURNING id"
     );
-    let mut bind = vec![cluster_id, hide_threshold(conn)?];
-    if let Some(id) = feed_id {
-        bind.push(id);
-    }
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params_from_iter(bind), |row| row.get(0))?;
     let mut ids: Vec<i64> = rows.collect::<rusqlite::Result<_>>()?;
@@ -918,7 +964,8 @@ mod tests {
         set_focus_summary_neutral_limit(&conn, 10).unwrap();
         let check = |expected: &[i64], count| {
             let map =
-                visible_cluster_cards_map(&conn, &[7], 0, FeedScope::All, ListScope::All).unwrap();
+                visible_cluster_cards_map(&conn, &[7], 0, FeedScope::All, ListScope::All, &[])
+                    .unwrap();
             assert_eq!(map[&7].iter().map(|a| a.id).collect::<Vec<_>>(), expected);
             assert_eq!(due_focus_summaries(&conn, 10).unwrap().len() as i64, count);
         };

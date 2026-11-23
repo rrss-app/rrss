@@ -120,7 +120,7 @@ mod tests {
         conn.pragma_update(None, "foreign_keys", true).unwrap();
         let interest_before = input_revision(&conn, "interest").unwrap();
         conn.execute(
-            "INSERT INTO articles(feed_id,title,created_at) VALUES(1,'second',0)",
+            "INSERT INTO articles(id,feed_id,title,created_at) VALUES(1,1,'second',0)",
             [],
         )
         .unwrap();

@@ -142,6 +142,46 @@ fn read_and_repeated_exposure_costs_are_scoped_and_expire() {
 }
 
 #[test]
+fn hidden_noisy_feeds_stay_out_of_group_headers_expansion_and_mark_read() {
+    let (_dir, conn) = fixture();
+    conn.execute_batch(
+        "INSERT INTO clusters(id,member_count,created_at) VALUES(7,3,0);
+         INSERT INTO articles(id,feed_id,title,cluster_id,created_at) VALUES
+         (1,1,'First',7,0),(2,2,'Second',7,0),(3,3,'Noisy source',7,0);",
+    )
+    .unwrap();
+    fill(&conn, 3, rrss_core::feeds::NOISE_MIN_ARTICLES, 0);
+    conn.execute("UPDATE articles SET score=-10 WHERE cluster_id IS NULL", [])
+        .unwrap();
+    conn.execute(
+        "UPDATE articles SET created_at=?1 WHERE cluster_id=7",
+        [now_ms()],
+    )
+    .unwrap();
+    db::set_setting_enabled(&conn, db::HIDE_NOISY_KEY, true).unwrap();
+
+    let (expanded, _) =
+        crate::list_focus_page(&conn, 1, Some(7), &[], &[], FeedScope::All).unwrap();
+    assert_eq!(expanded[0].cluster_members, [1, 2]);
+    assert_eq!(
+        expanded.iter().map(|c| c.cluster_size).collect::<Vec<_>>(),
+        [2, 2, 2]
+    );
+    let members = articles::focus_cluster_members(&conn, 7, FeedScope::All).unwrap();
+    assert_eq!(members.iter().map(|c| c.id).collect::<Vec<_>>(), [1, 2]);
+    assert_eq!(
+        articles::mark_cluster_read(&conn, 7, FeedScope::All).unwrap(),
+        [1, 2]
+    );
+
+    db::set_setting_enabled(&conn, db::HIDE_NOISY_KEY, false).unwrap();
+    assert_eq!(
+        articles::mark_cluster_read(&conn, 7, FeedScope::All).unwrap(),
+        [3]
+    );
+}
+
+#[test]
 fn cluster_representative_and_expansion_follow_the_list_scope() {
     let (_dir, conn) = fixture();
     conn.execute_batch(

@@ -58,7 +58,14 @@ pub(crate) fn inject(
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let present: HashSet<_> = cards
         .iter()
-        .flat_map(|c| std::iter::once(c.id).chain(c.cluster_members.iter().copied()))
+        .flat_map(|card| {
+            if card.row_kind == articles::ROW_HEADER {
+                card.cluster_members.as_slice()
+            } else {
+                std::slice::from_ref(&card.id)
+            }
+        })
+        .copied()
         .collect();
     let mut newest = HashMap::new();
     for (id, feed) in candidates

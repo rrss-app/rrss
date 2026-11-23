@@ -147,6 +147,7 @@ export function DigestScreen({ active, topmost = true, chat, drafts, onContext, 
     } catch (err) { notify({ message: formatNotice(i18n.t("send.failed", { ns: "digest" }), err) }); return false; }
   };
 
+  const replyingHere = chat.isReplyingTo(threadId, `digest:${digestId}`);
   return <MainViewFrame visible={active} rootRef={root}>
     <DigestPane onOpenUrl={onOpenUrl} visible={active} topmost={topmost} onChange={onChange} onOpenArticle={onOpenArticle}
       onCiteSelection={chat.sending || citing ? undefined : (source, blocks) => void citeSelection(source, blocks)}
@@ -157,7 +158,7 @@ export function DigestScreen({ active, topmost = true, chat, drafts, onContext, 
             <button type="button" className="btn sm" onClick={() => setRetry((value) => value + 1)}>{t("discussion.retry")}</button>
           </div>
         </section>
-      ) : ready ? <DigestDiscussion store={chat.store} turns={chat.turns} threadId={threadId} context={`digest:${digestId}`} busy={chat.busyThreadId !== null && chat.busyThreadId === threadId}
+      ) : ready ? <DigestDiscussion store={chat.store} turns={chat.turns} threadId={threadId} context={`digest:${digestId}`} busy={replyingHere}
         onLoadOlder={chat.loadOlder} onOpenUrl={onOpenUrl} onOpenArticle={onOpenArticle} onFix={onFixChat} /> : null}
     </DigestPane>
     <Composer drafts={drafts} context={`digest:${digestId}`} ariaLabel={t("composer.aria")} placeholder={t("composer.placeholder")}
@@ -165,7 +166,7 @@ export function DigestScreen({ active, topmost = true, chat, drafts, onContext, 
         ? t("composer.contextNotLoaded", { date: digestDateLabel(digest.period, digest.period_start), period: digestPeriodLabel(digest.period) })
         : !ready ? t("composer.contextLoading", { date: digestDateLabel(digest.period, digest.period_start), period: digestPeriodLabel(digest.period) })
         : t("composer.context", { date: digestDateLabel(digest.period, digest.period_start), period: digestPeriodLabel(digest.period) })}
-      otherThreadBusy={chat.busyThreadId !== null && chat.busyThreadId !== threadId} generating={chat.busyThreadId !== null}
+      otherThreadBusy={chat.busyThreadId !== null && !replyingHere} generating={chat.busyThreadId !== null}
       sending={chat.sending} disabled={!digest} ready={!citing && ready} collapsible atBottom={atBottom}
       dockLabel={<><Icon name="chat" size={14} />{t("composer.dock")}{asked ? <span className="composer-dock-count"> · {t("composer.dockCount", { count: asked })}</span> : null}</>}
       forceExpanded={chat.busyThreadId !== null || !digest} showWhenEmpty onSend={send}

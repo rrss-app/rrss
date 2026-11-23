@@ -52,7 +52,10 @@ test("a new reader citation opens chat before acceptance or history and flows in
   });
   await expect(pane(page).locator(".bubble.assistant")).toContainText("The first field observation.");
   await expect(bubble(page)).toHaveCount(1);
+  await expect(page.locator(".composer-card").getByRole("status")).toHaveCount(0);
 
+  await page.getByRole("button", { name: "Digest", exact: true }).click();
+  await expect(page.locator(".composer-card:visible").getByRole("status")).toBeVisible();
   await page.getByRole("button", { name: "Today", exact: true }).click();
   await releaseSend(page);
   await expect(page.locator(".sidebar .thread-row .thread-item").filter({ hasText: question })).toBeVisible();

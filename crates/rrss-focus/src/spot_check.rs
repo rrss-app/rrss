@@ -25,7 +25,13 @@ pub(super) fn insert(
     card.cluster_id = None;
     card.feed_title = rrss_core::feeds::display_title(&card.feed_title, "");
     let position = (first + (hash % (last - first + 1) as u64) as usize).min(cards.len());
-    cards.insert(position, card);
+    // Cluster projection emits a header followed by its representative or all
+    // its members. Keep those rows adjacent when inserting a standalone card.
+    let members = cards[position..]
+        .iter()
+        .take_while(|row| row.row_kind == articles::ROW_CARD && row.cluster_size > 1)
+        .count();
+    cards.insert(position + members, card);
 }
 
 pub(crate) fn inject(
@@ -43,15 +49,9 @@ pub(crate) fn inject(
     let now = chrono::Local::now();
     let day = now.format("%Y%m%d").to_string();
     let scope_sql = articles::list_scope(conn)?.filter_sql();
-    let noisy_sql = if exclude_feeds.is_empty() {
-        String::new()
-    } else {
-        let marks = (4..4 + exclude_feeds.len())
-            .map(|i| format!("?{i}"))
-            .collect::<Vec<_>>()
-            .join(",");
-        format!(" AND a.feed_id NOT IN ({marks})")
-    };
+    let now_ms = now.timestamp_millis();
+    let mut bind = vec![threshold, now_ms - 7 * 86_400_000, now_ms];
+    let noisy_sql = articles::exclude_feeds_sql(&mut bind, exclude_feeds);
     let sql = format!(
         "SELECT a.id, a.title, COALESCE(f.title, f.url), a.published_at, a.canonical_url,
                 a.read, a.starred, a.score, a.interest_boost, COALESCE(a.summary, ''),
@@ -63,9 +63,6 @@ pub(crate) fn inject(
            {scope_sql} {noisy_sql}
          ORDER BY a.id"
     );
-    let now_ms = now.timestamp_millis();
-    let mut bind = vec![threshold, now_ms - 7 * 86_400_000, now_ms];
-    bind.extend_from_slice(exclude_feeds);
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query(params_from_iter(bind))?;
     let mut selected = Vec::new();
@@ -223,6 +220,7 @@ mod tests {
         let injected = page(&conn, &[], &[]);
         assert_eq!(spots(&injected).len(), 2);
         assert!(!injected[0].spot_check);
+        assert_eq!(injected[1].cluster_id, Some(1));
         assert_eq!(injected.len(), baseline.len() + 2);
         for card in injected.iter().filter(|c| c.spot_check) {
             assert_eq!(card.row_kind, articles::ROW_CARD);
@@ -235,6 +233,16 @@ mod tests {
             serde_json::to_value(normal).unwrap(),
             serde_json::to_value(baseline).unwrap()
         );
+        let expanded = crate::list_focus_page(&conn, 8, Some(1), &[], &[], FeedScope::All)
+            .unwrap()
+            .0;
+        let group_rows = 1 + expanded[0].cluster_members.len();
+        assert!(
+            expanded[..group_rows]
+                .iter()
+                .all(|c| c.cluster_id == Some(1))
+        );
+        assert!(expanded[group_rows..].iter().all(|c| c.spot_check));
         // 一条或空列表没有合法插入位置。
         db::set_setting_enabled(&conn, db::CLUSTER_GROUP_ENABLED_KEY, false).unwrap();
         assert!(
