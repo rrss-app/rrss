@@ -48,7 +48,7 @@ export function AdvancedPane({ onAsk, onEditStateChange }: {
   );
 }
 
-/** 窗口组：关闭窗口时怎么做（阶段 14 · 后台驻留）。托盘不可用时提示「隐藏到托盘」会改为最小化。 */
+/** 窗口组：关闭窗口时的行为。托盘不可用时提示「隐藏到托盘」会改为最小化。 */
 function WindowGroup({ report }: { report: Report }) {
   const { t } = useTranslation("settingsSystem");
   const [tray, setTray] = useState(true);
@@ -70,7 +70,7 @@ function WindowGroup({ report }: { report: Report }) {
   );
 }
 
-/** 模型组：各连接的地址、协议与兼容设置在连接弹层的「高级」里（阶段 19-7），这里只剩全局的模型定义覆盖。 */
+/** 模型组：各连接的地址、协议与兼容设置在连接弹层的「高级」里，这里只剩全局的模型定义覆盖。 */
 function ModelGroup({ report }: { report: (part: string) => Report }) {
   const { t } = useTranslation("settingsSystem");
   return (

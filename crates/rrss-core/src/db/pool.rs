@@ -364,7 +364,7 @@ fn configure(conn: &Connection) -> Result<()> {
     conn.pragma_update(None, "busy_timeout", 30_000)?;
     // WAL 下用 NORMAL：提交写入 WAL 后不再逐次 fsync，落盘交给检查点。程序崩溃不丢，
     // 断电 / 系统崩溃可能回滚最后几次提交，库不损坏。FULL 时每次提交持写锁 fsync，
-    // 遇到检查点写库文件会拖到数百毫秒，交互写入跟着排队（阶段 25「写锁外计算」）。
+    // 遇到检查点写库文件会拖到数百毫秒，避免阻塞交互写入排队。
     // 备份与恢复另开连接，仍是默认的 FULL。
     conn.pragma_update(None, "synchronous", "NORMAL")?;
     Ok(())

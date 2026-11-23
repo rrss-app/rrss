@@ -6,7 +6,7 @@ import { Icon } from "./Icon";
 import { RelativeTime } from "./RelativeTime";
 
 /**
- * 相近报道的成组面板（阶段 14 · 相近报道成组与汇总）。焦点列表是虚拟化的行，面板按行拼：
+ * 相近报道的成组面板。焦点列表是虚拟化的行，面板按行拼：
  * 组头、代表、成员各占一行，组尾放在最后一行里；底板由 `FocusPane` 按这几行的位置画一块。
  */
 export type ClusterGroup = { clusterId: number; first: number; last: number; open: boolean };
@@ -89,7 +89,7 @@ export function ClusterHead({ row, open, sources, onExpand, onSummarize }: {
 
 /**
  * 展开后的其余成员：一行「来源头像 · 来源 · 标题 · 相对时间」，已读变灰，点开就读。
- * 有综述时代表文章也收成这样一行，排第一并标「代表」（阶段 14 · 2026-11-08 综述位置方案 C）。
+ * 有综述时代表文章也收成这样一行，排第一并标「代表」。
  */
 export function ClusterMember({ row, focused = false, representative = false, onOpen }: {
   row: ArticleView; focused?: boolean; representative?: boolean; onOpen: (id: number) => void;

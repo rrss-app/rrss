@@ -12,7 +12,7 @@ export const trayLabels = (): TrayLabels => ({
 });
 
 /**
- * 关闭询问（阶段 14 · 后台驻留）：设置为「每次询问」时，宿主拦下关闭后弹出。
+ * 关闭询问（后台驻留）：设置为「每次询问」时，宿主拦下关闭后弹出。
  * ×、Esc、点遮罩都是取消，窗口不关；勾「记住」时由宿主写进设置。
  */
 export function CloseAskDialog({ rootRef, inert = false, style, onChoose, onCancel }: {

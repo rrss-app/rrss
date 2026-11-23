@@ -113,16 +113,16 @@
     "write": {
       "failed": "{{label}}失败：",
       "done": "{{label}}已完成。",
-      "refreshFailed": "规则列表没能刷新，显示的还是之前的内容；刚才的修改已保存，重新读取即可：",
+      "refreshFailed": "修改已保存，但规则列表刷新失败，请重新读取：",
       "patternRequired": "请填写匹配内容",
       "thresholdInvalid": "请填写有效的隐藏阈值，不能为空。"
     },
     "hidden": {
       "title": "隐藏",
       "threshold": "隐藏阈值",
-      "thresholdHint": "分数低于这个值的文章不出现在焦点里。",
+      "thresholdHint": "总分低于或等于此阈值的文章会被隐藏，不再出现在今日焦点中。",
       "spot": "隐藏抽查",
-      "spotHint": "随机放回少量本该隐藏的文章，看规则有没有误杀。",
+      "spotHint": "按比例随机抽回少量已隐藏文章，帮助你核对规则是否误拦。",
       "spotOff": "关",
       "statsLoading": "正在读取隐藏抽查统计…",
       "statsFailed": "读取抽查设置或统计失败。",
@@ -141,7 +141,29 @@
       "enabledOf": "已启用 {{enabled}} / {{total}} 条",
       "notInstalled_other": "{{count}} 条规则，未安装",
       "remove": "移除",
-      "apply": "启用"
+      "apply": "启用",
+      "items": {
+        "ads-and-sponsored": {
+          "name": "广告与推广",
+          "description": "赞助稿、推广链接与带跟踪参数的投放页"
+        },
+        "clickbait-cn": {
+          "name": "中文标题党",
+          "description": "震惊体、速看、一图看懂等标题党内容"
+        },
+        "promo-cn": {
+          "name": "促销与抽奖",
+          "description": "限时优惠、福利、抽奖与优惠码类推广内容"
+        },
+        "dev-focus": {
+          "name": "开发关注",
+          "description": "Rust、异步、SQLite、编译器与性能等开发主题，启用后相关文章会优先排进今日焦点"
+        },
+        "crypto-web3": {
+          "name": "加密与 Web3",
+          "description": "空投、土狗盘、合约地址等促销向加密内容，按需启用"
+        }
+      }
     },
     "scopeList": {
       "failed": "生效范围读取失败，请重试读取规则。",
@@ -192,7 +214,7 @@
     "write": {
       "failed": "{{label}}失败：",
       "done": "{{label}}已完成。",
-      "refreshFailed": "订阅列表没能刷新，显示的还是之前的内容；刚才的修改已保存，重新读取即可：",
+      "refreshFailed": "修改已保存，但订阅列表刷新失败，请重新读取：",
       "stale": "订阅列表还没刷新，请先点「重新读取」，确认后再操作。"
     },
     "batch": {
@@ -287,7 +309,7 @@
       "refreshPending": "尚未刷新 · 即将刷新",
       "refreshRescheduled": "上次刷新 {{last}} · 保存后按新间隔重新排期",
       "limited": "限流中 · {{until}} 恢复",
-      "limitedDetail": "这个网站要求暂停请求，同一网站的订阅都在等待；{{until}} 后自动恢复，手动刷新也要等到那时。",
+      "limitedDetail": "该网站要求暂停请求，同站下的所有订阅均会暂缓抓取；将在 {{until}} 后自动恢复（手动刷新也需等待至此时间）。",
       "refreshLimited": "上次刷新 {{last}} · {{until}} 恢复后刷新",
       "missing": "此订阅已不在列表中，未保存的输入仍保留。"
     }

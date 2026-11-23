@@ -1,4 +1,4 @@
-//! 设置选项注册表（阶段 19-1）：简单选项的描述符、读取与按描述符校验的写入。
+//! 设置选项注册表：简单选项的描述符、读取与按描述符校验的写入。
 //! 复杂对象（连接、用途绑定、工具、技能、MCP）继续走各自的表和命令，不在这里。
 //! 前端文案由生成的 SettingId 检查，预览和测试复用同一份导出描述符。
 
@@ -783,7 +783,7 @@ mod tests {
             .find(|s| s.id == "pi_assistant_note")
             .unwrap();
         assert!(note.affects_pi && note.apply == SettingApply::Draft);
-        // 思考强度改为按模型设置（阶段 19-7）。
+        // 思考强度按模型单独设置。
         assert!(schema.specs.iter().all(|s| s.id != "pi_thinking_level"));
     }
 

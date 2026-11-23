@@ -27,7 +27,7 @@ it("separates filter and list scope and explains unavailable ranking", () => {
   expect(host.querySelector('[aria-label="评分过滤"]')).toBeTruthy();
   expect(host.querySelector('[aria-label="阅读范围"]')).toBeTruthy();
   expect(host.textContent).not.toContain("今日 token");
-  expect(host.textContent).toContain("兴趣未就绪");
+  expect(host.textContent).toContain("按关注度排序暂未就绪");
   expect(host.textContent).toContain("收起噪声源 · 闲聊广场");
   expect(menuText(host, "显示")).toContain("兴趣加分（未就绪）");
 });

@@ -315,7 +315,7 @@
     "loadFailed": "Couldn’t load diagnostics: {{message}}. Refresh the status to try again.",
     "busy": "Running maintenance…",
     "report": "Diagnostics",
-    "refreshFailed": "Diagnostics couldn’t refresh, so the previous content is still shown; maintenance has run, so just refresh the status:",
+    "refreshFailed": "Maintenance finished, but the status couldn’t refresh. Click “Refresh status”:",
     "opFailed": {
       "embed": "Couldn’t generate embeddings:",
       "resetFailed": "Couldn’t reset the failure count:"
@@ -337,7 +337,7 @@
       "title": "Index maintenance",
       "embed": {
         "label": "Generate article embeddings",
-        "hint": "Adds embeddings to a batch of content that doesn’t have them yet, making related articles and search by meaning more accurate. Using a remote model incurs charges.",
+        "hint": "Generates vectors for a batch of articles that don’t have them yet, improving related reading and chat search. Using a remote model incurs charges.",
         "done": "Finished embeddings for this batch.",
         "action": "Process a batch"
       },
@@ -558,8 +558,8 @@
       "label": "Remind you not to trust pages when opening"
     },
     "allow_embedding_model_change": {
-      "label": "Allow changing the embeddings model",
-      "hint": "Changing it rebuilds the entire vector store."
+      "label": "Allow changing the embedding model",
+      "hint": "Changing it rebuilds the entire vector space."
     },
     "feed_icons_enabled": {
       "label": "Show site icons",
@@ -618,28 +618,28 @@
       "label": "Pinned"
     },
     "cluster_group_enabled": {
-      "label": "Group related articles"
+      "label": "Group related coverage"
     },
     "interest_boost_enabled": {
       "label": "Interest boost"
     },
     "rank_features_enabled": {
-      "label": "Feature preference"
+      "label": "Topics and authors you read often"
     },
     "rank_source_enabled": {
-      "label": "Source preference"
+      "label": "Feeds you read often"
     },
     "rank_coverage_enabled": {
-      "label": "Multi-feed coverage"
+      "label": "Covered by multiple sources"
     },
     "rank_freshness_enabled": {
-      "label": "Freshness decay"
+      "label": "Newer articles first"
     },
     "rank_affinity_enabled": {
-      "label": "Similar to articles you read"
+      "label": "Similar to articles you read often"
     },
     "rank_fitted_enabled": {
-      "label": "Fitted model (experimental)"
+      "label": "Personalized ranking model (experimental)"
     },
     "focus_show_details": {
       "label": "Why this"
@@ -648,7 +648,7 @@
       "label": "Spot-check rate for hidden articles"
     },
     "focus_rerank_enabled": {
-      "label": "Rerank by interest"
+      "label": "Rank by interest"
     },
     "focus_hide_noisy": {
       "label": "Hide noisy feeds"
@@ -688,7 +688,7 @@
     },
     "ai_embed_daily_budget_tokens": {
       "label": "Daily embedding budget",
-      "hint": "Counts embedding requests only (the vectors used for related articles, interests, and memory search). Running out stops embeddings only; summaries and digests keep working. Embedding on demand is also limited by it. 0 means no limit.",
+      "hint": "Counts embedding requests only (the vectors used for related articles, interests, and memory search). Running out stops embeddings only; summaries and digests keep working. Manual “Generate article embeddings” in Diagnostics is also limited by it. 0 means no limit.",
       "control": "Daily embedding budget (10k tokens, 0 = no limit)"
     },
     "focus_summary_neutral_limit": {
@@ -894,8 +894,8 @@
       "storage_articles_one": "1 article · Title, body text, and read status",
       "storage_articles_other": "{{count}} articles · Titles, body text, and read status",
       "storage_search_index": "Used for search; grows and shrinks with articles",
-      "storage_vectors_unset_one": "1 vector · No embeddings model set",
-      "storage_vectors_unset_other": "{{count}} vectors · No embeddings model set",
+      "storage_vectors_unset_one": "1 vector · No embedding model set",
+      "storage_vectors_unset_other": "{{count}} vectors · No embedding model set",
       "storage_vectors_other_one": "1 vector · {{old_count}} from another model",
       "storage_vectors_other_other": "{{count}} vectors · {{old_count}} from other models",
       "storage_vectors_current_one": "1 vector · Current model {{model}}",

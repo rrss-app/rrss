@@ -110,7 +110,7 @@ describe("ModelPane", () => {
     expect(sheet.textContent).toContain("重新获取失败，已记住的 3 个模型不受影响");
     expect(sheet.querySelectorAll(".catalog-list input")).toHaveLength(3);
 
-    type(sheet.querySelector<HTMLInputElement>('input[aria-label="手填模型 id"]')!, "my/private-model");
+    type(sheet.querySelector<HTMLInputElement>('input[aria-label="手填模型 ID"]')!, "my/private-model");
     click(button(sheet, "加入勾选"));
     click(checkbox(sheet, "openai/o3"));
     click(checkbox(sheet, "openai/gpt-4.1"));

@@ -354,7 +354,7 @@
       },
       "memory": {
         "title": "Memory",
-        "hint": "Extracts memory candidates from chats and compresses chat episodes."
+        "hint": "Extracts long-term memory suggestions from chats and summarizes earlier turns in long conversations."
       },
       "translate": {
         "title": "Translation"
@@ -382,7 +382,7 @@
     "loadingJobs": "Loading automated tasks…",
     "advanced": "Advanced settings for this page →",
     "pickModels": "{{message}} Select the models you want.",
-    "afterApply": "{{message}} The new models haven’t been tested yet; click “Test capabilities” in “Manage models”.",
+    "afterApply": "{{message}} Test capabilities in “Manage models” to verify tool calling and structured output support.",
     "ago": {
       "now": "Just now",
       "minutes_one": "1 minute ago",
@@ -392,8 +392,8 @@
     },
     "conn": {
       "lastFailed": "Test failed: {{note}}",
-      "summary_one": "{{host}} · 1 model in the pool",
-      "summary_other": "{{host}} · {{count}} models in the pool",
+      "summary_one": "{{host}} · 1 model added",
+      "summary_other": "{{host}} · {{count}} models added",
       "keyMissing": "Enter the API key again",
       "editAria": "Edit {{name}}",
       "edit": "Edit",
@@ -440,7 +440,7 @@
     "applyTo_other": "Apply to {{count}} tasks",
     "mixed_one": "1 model",
     "mixed_other": "{{count}} models",
-    "translateBackend": "Translation currently uses {{backend}}; models here are used only after the translation backend is switched to the large language model.",
+    "translateBackend": "Translation currently uses {{backend}}. Switch to LLM in Translation settings to use this model.",
     "translateSettings": "Translation settings",
     "unsetAll": "{{title}} is paused because no model is selected.",
     "unsetSome_one": "1 task has no model, so it’s paused.",

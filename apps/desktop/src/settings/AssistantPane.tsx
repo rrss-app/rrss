@@ -252,7 +252,7 @@ function EngineStatus({ probe, loading, failed, disabled, install, onInstall, on
 
 /**
  * 对话模型：从用于对话的模型里选；和模型页「对话」是同一项、同一查询键，改完立即保存。
- * 思考强度跟着模型走（阶段 19-7），这里只读显示，到「管理模型」里改。
+ * 思考强度跟着模型走，这里只读显示，到「管理模型」里改。
  */
 function ChatModel({ onNavigate }: { onNavigate: Navigate }) {
   const { t } = useTranslation("settingsAssistant");

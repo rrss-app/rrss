@@ -70,7 +70,7 @@ pub const PI_BINARY_KEY: &str = "pi_binary";
 pub const DEVELOPER_TOOLS_KEY: &str = "developer_tools";
 pub const FETCH_URL_ENABLED_KEY: &str = "fetch_url_enabled";
 
-/// 用途当前选的「连接 + 模型」（阶段 19-7：没有主模型与继承）。没选、连接已删或模型为空时为 `None`。
+/// 用途当前选的「连接 + 模型」（每个用途独立配置）。没选、连接已删或模型为空时为 `None`。
 pub fn resolve_binding_model(
     conn: &Connection,
     binding: &TaskBinding,
@@ -133,7 +133,7 @@ pub const ALL_TASKS: &[&str] = &[
     TASK_CHAT_TITLE,
 ];
 
-/// AI 输出语言（阶段 27 · I3）：后台作业写给用户看的字段用哪种语言。提示词只有一份英文，
+/// AI 输出语言：后台作业写给用户看的字段用哪种语言。提示词只有一份英文，
 /// 语言名用英文写进指令；加语言只加取值与语言名，不改提示词。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputLanguage {
@@ -260,7 +260,7 @@ const SEED_BINDINGS: &[(&str, &str)] = &[
     (TASK_CHAT_TITLE, SLUG_CHAT_TITLE),
 ];
 
-/// 连接。`api_key` 为空串表示从不含密钥的备份恢复、需要重新填写（阶段 19-9）。
+/// 连接。`api_key` 为空串表示从不含密钥的备份恢复、需要重新填写。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiProvider {
     pub id: i64,
@@ -272,7 +272,7 @@ pub struct AiProvider {
     pub last_test: Option<ProviderTest>,
 }
 
-/// 最近一次「测试」（阶段 19-7）。
+/// 最近一次连接测试结果。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderTest {
     pub at: i64,

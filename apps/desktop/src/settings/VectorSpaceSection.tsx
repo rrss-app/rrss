@@ -10,7 +10,7 @@ import { SettingsRows } from "./SettingsRows";
 import type { Ask } from "./SettingsPanel";
 import { i18n, locale, useTranslation } from "../i18n";
 
-/** 阶段 23 V1c：向量库绑定、重建进度与探针核对。 */
+/** 向量库绑定、重建进度与探针核对。 */
 export const vectorSpaceKey = ["vector-space"] as const;
 export const vectorSpaceQueryOptions = () => queryOptions({
   queryKey: vectorSpaceKey,

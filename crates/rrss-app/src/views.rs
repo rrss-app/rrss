@@ -597,7 +597,7 @@ pub struct ChatStreamEvent {
 pub struct ChatErrorEvent {
     pub thread_id: i64,
     pub message: UiError,
-    // not_installed / version / config / model / process_exit / busy / internal，文案见阶段 19。
+    // not_installed / version / config / model / process_exit / busy / internal，文案由前端语言包提供。
     #[serde(default)]
     pub kind: String,
 }
@@ -664,7 +664,7 @@ pub struct MemoryView {
     pub strength: String,
 }
 
-/// 连接（阶段 19-7 / 19-9）：不再有模型，也不带完整密钥。
+/// 模型服务连接视图（不含完整密钥）。
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct ProviderView {
     pub id: i64,
@@ -903,7 +903,7 @@ pub struct RankingSettings {
     pub ranking_note: String,
     pub hide_threshold: i64,
     pub theme: String,
-    // B1 / B2 学来的排序分量（阶段 23「共同部分」），默认开启。
+    // 根据阅读习惯计算的排序分量，默认开启。
     pub rank_features: bool,
     pub rank_source: bool,
     pub rank_coverage: bool,
@@ -1287,7 +1287,7 @@ impl From<rrss_core::model_pool::Support> for CapabilitySupport {
     }
 }
 
-/// 模型的四项能力（阶段 19-7）。
+/// 模型的四项能力标记。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 pub struct CapsView {
     pub tool_calling: CapabilitySupport,
@@ -1394,7 +1394,7 @@ pub enum ThreadTitleOutcome {
     Invalid,
 }
 
-// 连接上获取到的模型 id（阶段 19-6）。
+// 从连接获取到的模型 ID 目录。
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct ModelCatalogView {
     pub provider_id: i64,
@@ -1402,7 +1402,7 @@ pub struct ModelCatalogView {
     pub fetched_at: i64,
 }
 
-/// 加进来的一个模型与它的设置（阶段 19-7）。
+/// 已添加到模型列表的模型及其配置。
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct PoolEntryView {
     pub provider_id: i64,
@@ -1568,7 +1568,7 @@ pub struct MemoryPage {
 }
 
 // AI 设置页「输入档位」：当前档位与各档说明，数值只在 rrss-core 定义。
-// 设置选项注册表（阶段 19-1）。简单选项的描述符与当前值；复杂对象（连接、绑定、工具、技能、MCP）不在这里。
+// 设置选项注册表。简单选项的描述符与当前值；复杂对象（连接、绑定、工具、技能、MCP）不在这里。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 pub enum SettingDomain {
@@ -1931,7 +1931,7 @@ pub struct PiProbe {
     pub binary_source_code: Option<String>,
     pub binary_source: String,
     pub version: String,
-    // 版本闸结论：missing / too_old / unverified / ok（阶段 18 版本闸）。
+    // 版本闸结论：missing / too_old / unverified / ok（版本兼容性检查结果）。
     pub version_state: String,
     // 按当前配置启动会遇到的配置错误（如没有对话模型）；为空表示可以启动。
     pub config_error: Option<UiError>,
@@ -2064,7 +2064,7 @@ mod tests {
     }
 }
 
-// 阶段 23 · V1：只包含前端展示和预估所需数据，不暴露接口地址或密钥。
+// 向量空间状态视图：只包含前端展示和预估所需数据，不暴露接口地址或密钥。
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct VectorSpaceView {
     pub id: i64,

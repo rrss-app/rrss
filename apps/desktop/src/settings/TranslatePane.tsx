@@ -108,7 +108,7 @@ export function TranslatePane({ onEditStateChange, onOpenModels }: {
   );
 }
 
-/** 「大模型」服务下就地选翻译用途的模型（阶段 19-7），与模型页的翻译行同一用途、同一查询键，选即存。 */
+/** 「大模型」服务下就地选翻译用途的模型，与模型页的翻译行同一用途、同一查询键，选即存。 */
 function TranslateModel({ disabled, onOpenModels }: { disabled: boolean; onOpenModels: () => void }) {
   const { t } = useTranslation("settingsJobs");
   const client = useQueryClient();

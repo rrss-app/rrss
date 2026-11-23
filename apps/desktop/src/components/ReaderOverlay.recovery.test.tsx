@@ -53,7 +53,7 @@ describe("reader body error boundary", () => {
     render({ ...base, document: { boom: true } });
     expect(host.querySelector(".reader-stage")).not.toBeNull();
     expect(host.querySelector(".reader-title")?.textContent).toBe("坏文章");
-    expect(host.querySelector(".reader-body-error")?.textContent).toContain("正文显示不出来");
+    expect(host.querySelector(".reader-body-error")?.textContent).toContain("正文暂时无法显示");
     expect(host.querySelector("[data-reader-document]")).toBeNull();
 
     const back = [...host.querySelectorAll<HTMLButtonElement>(".reader-head-nav button")].find((b) => b.textContent === "返回")!;

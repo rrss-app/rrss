@@ -70,10 +70,10 @@ test("recommendation details default off, reveal ordinary reasons and keep spot 
   await expect(ordinary.locator(".score")).toHaveText("+12");
   await expect(ordinary.locator(".meta-tag.interest")).toHaveText("本地优先");
   await expect(ordinary.getByText("噪声源", { exact: true })).toBeVisible();
-  await expect(tag).toHaveText("3 个源在报道");
-  await expect(tag).toHaveAttribute("title", /你常关注这个源的焦点推荐/);
+  await expect(tag).toHaveText("3 个来源同时报道");
+  await expect(tag).toHaveAttribute("title", /你常看这个来源的文章/);
   await expect(tag).toHaveAttribute("title", /和你常读的『Rust async』相似/);
-  await expect(spot.getByText("抽查", { exact: true })).toHaveAttribute("title", "随机放回的一篇本该隐藏的文章，用来核对规则有没有误杀");
+  await expect(spot.getByText("抽查", { exact: true })).toHaveAttribute("title", "随机抽回的一篇已隐藏文章，方便核对规则是否误拦");
   await expect(spot.locator(".score, .meta-tag.learned, .meta-tag.interest")).toHaveCount(0);
   await expect(spot.getByText("噪声源", { exact: true })).toHaveCount(0);
   await page.keyboard.press("Escape");
@@ -106,7 +106,7 @@ test("fitted model defaults off, persists both toggles and reloads the focus lis
   await expect(rows.first()).toHaveAttribute("aria-label", first.title);
   await page.locator(".toolbar").getByRole("button", { name: "View", exact: true }).click();
   const fitted = page.getByRole("menu", { name: "View" })
-    .getByRole("menuitemcheckbox", { name: "Fitted model (experimental)", exact: true });
+    .getByRole("menuitemcheckbox", { name: "Personalized ranking model (experimental)", exact: true });
   await expect(fitted).toHaveAttribute("aria-checked", "false");
   for (const [enabled, title] of [[true, second.title], [false, first.title]] as const) {
     // Only a fresh focus_stream response can reveal this changed order.

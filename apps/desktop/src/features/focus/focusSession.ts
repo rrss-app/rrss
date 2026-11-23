@@ -32,7 +32,7 @@ export type FocusSnapshot = {
   /** 最近一次查询中可展示、尚未并进当前列表的文章数。 */
   pendingNew: number;
   readerReturn: { id: number; sequence: number } | null;
-  /** 点踩后还在撤销窗口里的卡片，按文章 id（阶段 11 · 踩的反馈）。 */
+  /** 点踩后还在撤销窗口里的卡片，按文章 ID。 */
   dislikes: Record<number, DislikeState>;
 };
 
@@ -375,7 +375,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
   }
 
   /**
-   * 从托盘唤回（阶段 14 · 后台驻留）：当作重新开始，直接采用最新的第一页并回到顶部，
+   * 从托盘唤回时：当作重新开始，直接采用最新的第一页并回到顶部，
    * 不显示「有 N 篇新内容」；不出骨架屏。本地已读 / 收藏写入先落库再读。
    */
   async function adoptLatest() {
@@ -525,7 +525,7 @@ export function createFocusSession(notify: (notice: FocusNotice) => void, readFe
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     start() { active = true; publish({ refreshing: false }); void reload(); void reloadFeeds(); if (isTauri() && !options?.scope) void refreshCurrent(true); },
     stop() { dislikes.commitAll(); active = false; refreshController?.abort(); ++generation; ++feedsGeneration; moreRequest = null; },
-    /** 卡片上的踩（阶段 11 · 踩的反馈）：原地虚化、可撤销，到时换成下一条候选。 */
+    /** 卡片上的点踩操作：原地虚化、可撤销，到时换成下一条候选。 */
     dislike(row: ArticleView, write: RatingWrite) {
       if (!active) return Promise.resolve(false);
       if (row.spot_check) revealSpotCheck(row.id, false);

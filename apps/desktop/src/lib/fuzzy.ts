@@ -1,4 +1,4 @@
-/** 模型选择列表的模糊匹配与缩写（阶段 19-6）。 */
+/** 模型选择列表的模糊匹配与缩写。 */
 
 export type FuzzyHit = { score: number; indices: number[] };
 

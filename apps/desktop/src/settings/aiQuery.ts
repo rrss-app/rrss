@@ -16,7 +16,7 @@ import { settingsChanged } from "./editState";
 export { aiKeys };
 
 
-// 连接列表不含完整密钥（阶段 19-9），只有状态与首尾各 4 位。
+// 连接列表不含完整密钥，只有状态与首尾各 4 位。
 // IPC 不可取消；消费 signal 让 query 取消隔离迟到快照。
 export const aiQueryOptions = () => queryOptions({
   ...settingsQueryPolicy, queryKey: aiKeys.page, queryFn: ({ signal }) => { void signal; return api.ai(0); },

@@ -57,7 +57,7 @@ pub enum PiMode {
     Own,
 }
 
-/// `models.json` 里的一个模型（阶段 19-7）：名称、能力与对话参数来自模型设置。
+/// `models.json` 里的一个模型配置：名称、能力与对话参数来自模型设置。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PiModel {
     pub id: String,
@@ -164,7 +164,7 @@ pub struct PiProfile {
     pub mode: PiMode,
     /// 托管模式的各连接端点（按连接 id 排序）；自有配置下为空。
     pub endpoints: Vec<PiEndpoint>,
-    /// 托管模式的默认模型 `rrss-<id>/<model>`，即对话默认（阶段 19-6）。
+    /// 托管模式的默认模型 `rrss-<id>/<model>`，即默认对话模型。
     pub default_model: Option<String>,
     /// 自有配置下选用的 `provider/id`；空表示用 Pi 的默认模型。
     pub own_model: Option<String>,
@@ -172,7 +172,7 @@ pub struct PiProfile {
     /// 这一轮要用的 `provider/id`：对话中选定的模型，没选时同默认。不参与指纹，换模型在进程内切换。
     #[serde(skip)]
     pub wanted_model: Option<String>,
-    /// 默认模型的思考强度（阶段 19-7 起按模型设置）；自有配置下为空，交给用户的 Pi。
+    /// 默认模型的思考强度（按模型设置）；自有配置下为空，交给用户的 Pi。
     pub thinking: Option<String>,
     /// 这一轮要用的模型的思考强度。不参与指纹，换模型时在进程内设置。
     #[serde(skip)]
@@ -356,7 +356,7 @@ struct Managed {
     keys: Vec<(String, String)>,
 }
 
-/// 托管模式：每个连接一个 provider，列出用于对话的模型与对话默认，Pi 进程内即可切换（阶段 19-6 / 19-7）。
+/// 托管模式：每个连接一个 provider，列出用于对话的模型与对话默认，Pi 进程内即可切换。
 /// 加进来但不用于对话的模型不写，它们变化不引起重启。对话中选定的模型不在其中时（已移出或关了「用于对话」）
 /// 也列进去，这时指纹变化、按既有机制重启。密钥没有时用占位值；没填地址的连接跳过，除非它是对话默认。
 fn managed_endpoints(
@@ -452,7 +452,7 @@ fn managed_endpoints(
     })
 }
 
-/// 对话默认模型：模型页「对话」选的那个（阶段 19-7 起没有主模型可以继承）。
+/// 对话默认模型：模型页「对话」用途选定的模型（无主模型继承）。
 fn resolve_chat_model(conn: &Connection) -> Result<(ai_store::AiProvider, String), ChatError> {
     let db_err = |err: rrss_core::Error| ChatError::new(ChatErrorKind::Internal, err);
     let binding = ai_store::get_task_binding(conn, ai_store::TASK_CHAT).map_err(db_err)?;

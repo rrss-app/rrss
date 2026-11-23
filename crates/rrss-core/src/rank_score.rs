@@ -1,5 +1,5 @@
 //! 焦点列表的排序值：规则分 + 可选兴趣分 + 学来的排序加分。
-//! 焦点页、离线回放与卡片共用；曝光记录按同一式子写入 `rank_score`（阶段 23「接入方式」）。
+//! 焦点页、离线回放与卡片共用；曝光记录按同一公式写入 `rank_score`。
 
 /// 成员筛选保留既有规则分 + 可选兴趣分，不含学来的 B1 加分。
 pub const MEMBER_SQL: &str = "(a.score + CASE WHEN ?3 THEN a.interest_boost ELSE 0 END)";

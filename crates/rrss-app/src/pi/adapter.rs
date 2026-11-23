@@ -194,7 +194,7 @@ impl PiAdapter for Adapter15 {
             args.push("--model".into());
             args.push(model);
         }
-        // 思考强度按模型设置（阶段 19-7）；自有配置交给用户的 Pi。
+        // 思考强度按模型设置；自有配置交给用户的 Pi。
         if caps.thinking_flag
             && let Some(thinking) = &p.thinking
         {

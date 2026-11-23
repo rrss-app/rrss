@@ -28,7 +28,7 @@ import { taskTitle } from "./taskNames";
 
 type Result = { tone: "ok" | "err"; text: string; detail?: string };
 
-/** 用途按功能分组显示，存储仍按用途一行（阶段 19-7）；用途常量以后端 `ALL_TASKS` 为准。 */
+/** 用途按功能分组显示，存储仍按用途一行；用途常量以后端 `ALL_TASKS` 为准。 */
 type UseGroupId = "chat" | "chatTitle" | "summary" | "digest" | "memory" | "translate" | "embed";
 export const USE_GROUPS: Array<{ id: UseGroupId; tasks: string[]; need?: Need }> = [
   { id: "chat", tasks: ["chat"], need: "tools" },

@@ -113,20 +113,20 @@
     "write": {
       "failed": "{{label}} failed:",
       "done": "{{label}} completed.",
-      "refreshFailed": "Couldn’t refresh the rule list, so the previous list is still shown. Your changes were saved; reload to see them:",
+      "refreshFailed": "Your changes were saved, but the rule list couldn’t refresh. Reload to see them:",
       "patternRequired": "Enter the text to match",
       "thresholdInvalid": "Enter a valid hidden threshold; it can’t be empty."
     },
     "hidden": {
       "title": "Hidden",
       "threshold": "Hidden threshold",
-      "thresholdHint": "Articles scoring below this value don’t appear in Today.",
+      "thresholdHint": "Articles scoring at or below this threshold are hidden from Today.",
       "spot": "Spot check",
-      "spotHint": "Randomly let a few articles that should be hidden through, to see whether rules are hiding good ones.",
+      "spotHint": "Randomly brings back a small share of hidden articles so you can check whether rules are too strict.",
       "spotOff": "Off",
       "statsLoading": "Loading spot check stats…",
       "statsFailed": "Couldn’t load spot check settings or stats.",
-      "spotStats": "{{exposed}} let through in the last 30 days: you opened or liked {{liked}}, and disliked {{disliked}}.",
+      "spotStats": "{{exposed}} let through in the last 30 days: you opened or liked {{liked}}, and disliked {{disliked}}. ",
       "insufficient": "Too few samples to estimate the false-hide rate yet",
       "estimate": "About {{percent}}% may be wrongly hidden",
       "viewLiked": "View liked articles ({{liked}})",
@@ -142,7 +142,29 @@
       "notInstalled_one": "1 rule, not installed",
       "notInstalled_other": "{{count}} rules, not installed",
       "remove": "Remove",
-      "apply": "Enable"
+      "apply": "Enable",
+      "items": {
+        "ads-and-sponsored": {
+          "name": "Ads & sponsored",
+          "description": "Sponsored posts, promotional links, and tracked ad pages"
+        },
+        "clickbait-cn": {
+          "name": "Chinese clickbait",
+          "description": "Sensationalist Chinese headlines and clickbait phrasing"
+        },
+        "promo-cn": {
+          "name": "Promotions & giveaways",
+          "description": "Limited-time offers, giveaways, and coupon promos"
+        },
+        "dev-focus": {
+          "name": "Developer focus",
+          "description": "Rust, async, SQLite, compilers, and performance; boosts matching articles in Today"
+        },
+        "crypto-web3": {
+          "name": "Crypto & Web3",
+          "description": "Airdrops, token promos, and contract-address spam; optional"
+        }
+      }
     },
     "scopeList": {
       "failed": "Couldn’t load scopes. Try loading the rules again.",
@@ -193,7 +215,7 @@
     "write": {
       "failed": "{{label}} failed:",
       "done": "{{label}} completed.",
-      "refreshFailed": "Couldn’t refresh the feed list, so the previous list is still shown. Your changes were saved; reload to see them:",
+      "refreshFailed": "Your changes were saved, but the feed list couldn’t refresh. Reload to see them:",
       "stale": "The feed list hasn’t refreshed yet. Click “Reload” and check before making changes."
     },
     "batch": {

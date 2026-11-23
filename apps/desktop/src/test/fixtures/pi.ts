@@ -32,7 +32,7 @@ export function createPiFixture(): PiFixture {
   stub.handle("piProbe", () => clone(state.probe));
   stub.handle("piInstallStatus", () => ({ state: "idle", received: 0, total: null, message: "", dir: "" }));
   stub.handle("ai", () => clone(state.ai));
-  // 复合保存只剩可执行文件路径；空闲超时与思考强度走 `setSetting`（阶段 19-1）。
+  // 复合保存只剩可执行文件路径；空闲超时与思考强度走 `setSetting`。
   stub.handle("savePiSettings", (args) => {
     const piPath = args.pi_path.trim();
     state.pi = { ...state.pi, pi_path: piPath };

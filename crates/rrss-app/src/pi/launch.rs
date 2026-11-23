@@ -672,16 +672,20 @@ mod tests {
         );
         assert!(!rendered.contains("pi-user") && !rendered.contains("pi%2Fpass"));
 
-        // 坏配置不挡住查看其余配置，但明确写出 Pi 无法启动，不回显原文。
+        // 坏配置不挡住查看其余配置，但返回结构化代理错误，不回显原文。
         db::set_setting(&conn, network::SETTING_KEY, "broken-private-secret").unwrap();
         let shown = generated_config(&conn, dir.path()).unwrap();
+        let proxy_err = shown.proxy_error.as_ref().unwrap();
+        assert_eq!(
+            serde_json::to_value(proxy_err).unwrap()["code"],
+            "proxy_config_invalid"
+        );
         let rendered = format!(
             "{:?} {}",
             shown.env,
-            crate::ui_error::test_display::proxy_env(shown.proxy_error.as_ref().unwrap())
+            crate::ui_error::test_display::proxy_env(proxy_err)
         );
-        assert!(rendered.contains("Pi 无法启动"), "{rendered}");
-        assert!(!rendered.contains("private-secret"));
+        assert!(!rendered.contains("private-secret"), "{rendered}");
     }
 
     #[test]

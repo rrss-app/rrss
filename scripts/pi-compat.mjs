@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Pi 升级核对（阶段 18「版本升级流程」）：下载独立二进制并校验 SHA256，用固定场景驱动真实 Pi 加本地模拟模型，
+// Pi 版本升级兼容性核对：下载独立二进制并校验 SHA256，用固定场景驱动真实 Pi 加本地模拟模型，
 // 把 RPC 输出录到 testdata/pi/fixtures/<version>/，对比上一个 tested 版本写出差异报告，并跑 L1 / L3。
 // 只生成报告和样本，不修改源码与 pi/compat.json；报告无破坏项、测试全绿后再手动改 compat.json。
 //

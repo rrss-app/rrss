@@ -1,4 +1,4 @@
-//! 阶段 23 · V1：空间状态、COUNT 进度和更换成本的原始量。
+//! 向量空间查询：空间状态、COUNT 进度和更换成本的原始量。
 use crate::views::{VectorRebuildView, VectorSpaceStatusView, VectorSpaceView};
 use rrss_core::{Result, db, vector_space as spaces};
 use rusqlite::{Connection, OptionalExtension};

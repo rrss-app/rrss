@@ -346,7 +346,7 @@ pub fn short_source_name(feed_title: &str) -> String {
 }
 
 /// 正文里的〈n〉（以及 <n>、[n]、【n】等写法）换成第 n 篇的来源名；对不上的序号删掉。
-/// 模型常照抄输入里的序号，界面上读者看不懂它（阶段 14 · 2026-11-08 调整）。
+/// 模型常照抄输入里的序号，界面上读者看不懂这些内部编号，因此需要清洗。
 pub fn name_refs(text: &str, name: impl Fn(usize) -> Option<String>) -> String {
     static REFS: OnceLock<Regex> = OnceLock::new();
     let refs = REFS.get_or_init(|| Regex::new(r"[〈<＜\[【]\s*(\d{1,3})\s*[〉>＞\]】]").unwrap());

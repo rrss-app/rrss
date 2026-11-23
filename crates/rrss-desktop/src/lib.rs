@@ -67,7 +67,7 @@ pub fn run() -> anyhow::Result<()> {
             return;
         }
         match event {
-            // 关闭先拦下：按设置询问、隐藏到托盘或退出（阶段 14 · 后台驻留）。
+            // 关闭先拦下：按设置询问、隐藏到托盘或退出。
             tauri::WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 tray::close_requested(window.app_handle());

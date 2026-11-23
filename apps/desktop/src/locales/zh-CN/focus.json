@@ -11,7 +11,7 @@
     "pickModel": "去选模型",
     "summarizeAll_other": "汇总这 {{count}} 篇报道",
     "needModel": "生成综述要先选摘要模型",
-    "generateHint": "写一段综述，标出各家补充与说法不一 · 用摘要模型，{{tokens}}",
+    "generateHint": "生成综述，梳理各家共识、补充与分歧 · 使用摘要模型，{{tokens}}",
     "tokens": "约 {{n}} token",
     "generate": "生成综述",
     "fresh_other": "新增 {{count}} 篇：{{items}}",
@@ -86,7 +86,7 @@
     "releaseFailed": "放行失败：",
     "optionAll_other": "全部 {{count}}",
     "optionSpotLiked_other": "抽查时你赞过 {{count}}",
-    "hint": "这里只是列出来，不会改动任何东西。想放行某篇，选一项后才生效。",
+    "hint": "这里仅作查看，不会改动任何规则；只有你主动选择放行方式后才会生效。",
     "range": "当前范围：{{scope}}{{listScope}} · 近 7 天 · 隐藏阈值 {{threshold}} · 只读",
     "allFeeds": "全部订阅",
     "rangeUnread": " · 未读",
@@ -134,9 +134,9 @@
     "representative": "代表报道",
     "reasonSeparator": "；",
     "noisy": "噪声源",
-    "spotCheckTitle": "随机放回的一篇本该隐藏的文章，用来核对规则有没有误杀",
+    "spotCheckTitle": "随机抽回的一篇已隐藏文章，方便核对规则是否误拦",
     "explore": "试读",
-    "exploreTitle": "为你试一个较少出现的来源",
+    "exploreTitle": "为你推荐一个平时较少出现的来源",
     "spotCheck": "抽查",
     "starred": "已收藏",
     "liked": "已赞",
@@ -211,7 +211,7 @@
       "interestBoostNotReady": "兴趣加分（未就绪）",
       "rerank": "按关注度排序",
       "hideNoisy": "收起噪声源",
-      "learnedTitle": "按你的阅读习惯调整先后，不影响隐藏",
+      "learnedTitle": "按阅读习惯微调排序，不影响隐藏规则",
       "showDetails": "推荐详情"
     },
     "learned": {
@@ -220,7 +220,7 @@
       "rank_coverage": "多源报道",
       "rank_freshness": "新文章优先",
       "rank_affinity": "和常读文章相似",
-      "rank_fitted": "拟合模型（实验）"
+      "rank_fitted": "个性化排序模型（实验）"
     },
     "search": "搜索",
     "searchTitle": "搜索文章（Ctrl+K）",
@@ -234,7 +234,7 @@
     "retryLoadMore": "重试加载更多",
     "empty": {
       "loading": "加载中…",
-      "noFeeds": "还没有订阅。打开设置添加 RSS / Atom 源后点刷新。",
+      "noFeeds": "还没有订阅。前往「设置 → 订阅」添加订阅源或导入 OPML 后点刷新。",
       "noStarred": "还没有收藏。在卡片或阅读器点星标即可。",
       "viewAll": "查看全部条目",
       "noUnread": "没有未读。",
@@ -262,8 +262,8 @@
     "body_re": "正文匹配正则『{{pattern}}』"
   },
   "rankingNote": {
-    "interest_boost_inactive": "兴趣加分未生效：还没有兴趣向量，排序只用规则分",
-    "interest_not_ready": "兴趣未就绪：还没有可用的兴趣向量，当前按时间混合"
+    "interest_boost_inactive": "兴趣加分暂未生效：尚未生成兴趣索引，当前仅按规则打分排序",
+    "interest_not_ready": "按关注度排序暂未就绪：尚未生成兴趣索引，当前按时间混合排序"
   },
   "like": {
     "recorded": "已记下，会多推类似文章",

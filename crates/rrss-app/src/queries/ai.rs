@@ -12,7 +12,7 @@ pub fn model_bindings(conn: &Connection) -> rrss_core::Result<ModelBindingsView>
     })
 }
 
-/// 每个用途选的模型（阶段 19-7：没有继承）。
+/// 每个用途独立选定的模型（无主模型继承）。
 fn task_bindings(conn: &Connection) -> rrss_core::Result<Vec<TaskBindView>> {
     ALL_TASKS
         .iter()
@@ -58,7 +58,7 @@ pub(crate) fn secret_view(value: Option<&str>, missing: bool) -> SecretView {
     }
 }
 
-/// 连接视图不带完整密钥（阶段 19-9），只有状态与首尾各 4 位。
+/// 连接视图不带完整密钥，只有状态与首尾各 4 位。
 pub(crate) fn provider_view(
     conn: &Connection,
     p: ai_store::AiProvider,

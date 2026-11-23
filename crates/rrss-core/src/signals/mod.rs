@@ -1,4 +1,4 @@
-//! 阶段 23「数据底座 E0」「阅读会话」「接入方式」：原始信号的类型、批量写入与保留清理。
+//! 阅读与曝光原始信号：原始信号的类型、批量写入与保留清理。
 
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
 use rusqlite::{Connection, OptionalExtension, Row, ToSql, params};

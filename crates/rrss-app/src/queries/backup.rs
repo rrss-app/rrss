@@ -11,7 +11,7 @@ use crate::views::*;
 pub const SCHEDULE_KEY: &str = "backup_schedule";
 pub const LAST_MANUAL_KEY: &str = "backup_last_manual";
 
-/// 定时备份：off / daily / weekly，默认关（阶段 20 D7）。
+/// 定时备份：off / daily / weekly，默认关闭。
 pub fn backup_schedule(conn: &Connection) -> rrss_core::Result<String> {
     let value = db::get_setting(conn, SCHEDULE_KEY)?.unwrap_or_default();
     Ok(match value.as_str() {

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import { expect, test, type Page } from "./fixtures";
+import { expect, test, type Browser, type Page } from "./fixtures";
 import { installMockHost, settingsTab } from "./mockHost";
 import { readmeDemo, type DemoLanguage } from "./readmeDemo";
 
@@ -9,14 +9,97 @@ import { readmeDemo, type DemoLanguage } from "./readmeDemo";
 //   RRSS_README_SHOTS=1 pnpm --dir apps/desktop test:e2e e2e/readme-shots.spec.ts --grep "\\ben\\b"
 // 每种语言 9 张，按语言分开跑（本地 e2e 一次最多 10 条）。中文界面与中文演示数据写到 doc/images/，
 // 英文写到 doc/images/en/（README.en 用）。
-// 数据是演示用的模拟宿主内容，不调用模型、不碰日常库。PNG 先写到 test-results/readme-shots/，
-// 再用 Python Pillow 转成无损 WebP（体积约为 PNG 的四成）。
+// 数据是演示用的模拟宿主内容，不调用模型、不碰日常库。
+// 先截下原始应用画面，再在无背景页面中加上圆角窗口边框与柔和阴影，最后用 Python Pillow 转成无损 WebP。
 test.skip(!process.env.RRSS_README_SHOTS, "只在更新 README 截图时运行");
-test.use({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 });
+
+const APP_WIDTH = 1280;
+const APP_HEIGHT = 800;
+const PAD = { top: 20, right: 32, bottom: 42, left: 32 };
+const FRAME_WIDTH = APP_WIDTH + PAD.left + PAD.right;
+const FRAME_HEIGHT = APP_HEIGHT + PAD.top + PAD.bottom;
+
+test.use({ viewport: { width: APP_WIDTH, height: APP_HEIGHT }, deviceScaleFactor: 2 });
 
 const PNG_DIR = "../../test-results/readme-shots";
 const OUT: Record<DemoLanguage, string> = { "zh-CN": "../../doc/images", en: "../../doc/images/en" };
 const TO_WEBP = "import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2], 'WEBP', lossless=True, method=6)";
+
+let pillowCmd: [string, string[]] | null = null;
+function convertToWebp(png: string, webp: string) {
+  if (!pillowCmd) {
+    try {
+      execFileSync("python3", ["-c", "import PIL"], { stdio: "ignore" });
+      pillowCmd = ["python3", ["-c", TO_WEBP]];
+    } catch {
+      pillowCmd = ["uv", ["run", "--with", "pillow", "python3", "-c", TO_WEBP]];
+    }
+  }
+  execFileSync(pillowCmd[0], [...pillowCmd[1], png, webp]);
+}
+
+function framedHtml(base64Png: string, theme: "light" | "dark"): string {
+  const shadow = theme === "dark"
+    ? "0 24px 48px -10px rgba(0, 0, 0, 0.54), 0 8px 20px -4px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(0, 0, 0, 0.52)"
+    : "0 22px 44px -12px rgba(24, 21, 17, 0.22), 0 8px 18px -6px rgba(24, 21, 17, 0.11), 0 0 0 1px rgba(24, 21, 17, 0.10)";
+  const innerRim = theme === "dark"
+    ? "inset 0 0 0 1px rgba(255, 255, 255, 0.11), inset 0 1px 0 rgba(255, 255, 255, 0.06)"
+    : "inset 0 1px 0 rgba(255, 255, 255, 0.65)";
+  return `<!doctype html>
+<html>
+<head>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: ${FRAME_WIDTH}px;
+    height: ${FRAME_HEIGHT}px;
+    background: transparent;
+    overflow: hidden;
+  }
+  .stage {
+    padding: ${PAD.top}px ${PAD.right}px ${PAD.bottom}px ${PAD.left}px;
+    box-sizing: border-box;
+    width: ${FRAME_WIDTH}px;
+    height: ${FRAME_HEIGHT}px;
+  }
+  .window {
+    position: relative;
+    width: ${APP_WIDTH}px;
+    height: ${APP_HEIGHT}px;
+    border-radius: 14px;
+    box-shadow: ${shadow};
+  }
+  .clip {
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    overflow: hidden;
+  }
+  .clip img {
+    display: block;
+    width: ${APP_WIDTH}px;
+    height: ${APP_HEIGHT}px;
+  }
+  .window::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: ${innerRim};
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="window">
+      <div class="clip"><img src="data:image/png;base64,${base64Png}" alt=""></div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
 
 for (const language of ["zh-CN", "en"] as const) {
   const demo = readmeDemo(language);
@@ -31,7 +114,7 @@ for (const language of ["zh-CN", "en"] as const) {
       await expect(page.getByRole("article").first()).toBeVisible();
     }
 
-    async function save(page: Page, name: string) {
+    async function save(page: Page, browser: Browser, name: string, theme: "light" | "dark" = "light") {
       // 左缘是阅读器篇目抽屉的热区，鼠标放到右下角，避免唤出抽屉或悬停态。
       const { width, height } = page.viewportSize()!;
       await page.mouse.move(width - 1, height - 1);
@@ -39,18 +122,29 @@ for (const language of ["zh-CN", "en"] as const) {
       const png = `${PNG_DIR}/${language}/${name}.png`;
       mkdirSync(`${PNG_DIR}/${language}`, { recursive: true });
       mkdirSync(OUT[language], { recursive: true });
-      await page.screenshot({ path: png, animations: "disabled" });
-      execFileSync("python3", ["-c", TO_WEBP, png, `${OUT[language]}/${name}.webp`]);
+      const raw = await page.screenshot({ animations: "disabled" });
+      const frameContext = await browser.newContext({
+        viewport: { width: FRAME_WIDTH, height: FRAME_HEIGHT },
+        deviceScaleFactor: 2,
+      });
+      try {
+        const framePage = await frameContext.newPage();
+        await framePage.setContent(framedHtml(raw.toString("base64"), theme), { waitUntil: "load" });
+        await framePage.screenshot({ path: png, omitBackground: true, animations: "disabled" });
+      } finally {
+        await frameContext.close();
+      }
+      convertToWebp(png, `${OUT[language]}/${name}.webp`);
     }
 
     for (const theme of ["light", "dark"] as const) {
-      test(`focus ${theme}`, async ({ page }) => {
+      test(`focus ${theme}`, async ({ page, browser }) => {
         await open(page, theme);
-        await save(page, `focus-${theme}`);
+        await save(page, browser, `focus-${theme}`, theme);
       });
     }
 
-    test("cluster summary", async ({ page }) => {
+    test("cluster summary", async ({ page, browser }) => {
       await open(page);
       const focus = page.locator(".focus");
       await focus.locator(".cluster-head button.cluster").click();
@@ -61,54 +155,54 @@ for (const language of ["zh-CN", "en"] as const) {
         while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
         (scroller ?? document.scrollingElement!).scrollBy(0, el.getBoundingClientRect().top - 72);
       });
-      await save(page, "cluster");
+      await save(page, browser, "cluster");
     });
 
-    test("reader", async ({ page }) => {
+    test("reader", async ({ page, browser }) => {
       await open(page);
       await page.getByRole("article").first().click();
       await expect(page.locator(".drawer.reader .reader-summary")).toBeVisible();
-      await save(page, "reader");
+      await save(page, browser, "reader");
     });
 
-    test("digest", async ({ page }) => {
+    test("digest", async ({ page, browser }) => {
       await open(page, "dark");
       await page.getByRole("button", { name: ui.digest, exact: true }).click();
       await expect(page.locator(".digest-date")).not.toBeEmpty();
-      await save(page, "digest");
+      await save(page, browser, "digest", "dark");
     });
 
-    test("chat", async ({ page }) => {
+    test("chat", async ({ page, browser }) => {
       await open(page);
       await page.getByRole("button", { name: demo.firstThread }).click();
       await expect(page.locator(".bubble.assistant").last()).toBeVisible();
-      await save(page, "chat");
+      await save(page, browser, "chat");
     });
 
-    test("feeds", async ({ page }) => {
+    test("feeds", async ({ page, browser }) => {
       await open(page);
       await page.locator(".sidebar").getByRole("button", { name: ui.feeds }).click();
       await expect(page.getByRole("tree", { name: ui.feedTree })).toBeVisible();
       for (const id of [1, 2]) await page.locator(`.feeds-row[data-key="folder:${id}"] .feeds-twist`).click();
-      await save(page, "feeds");
+      await save(page, browser, "feeds");
     });
 
-    test("search", async ({ page }) => {
+    test("search", async ({ page, browser }) => {
       await open(page);
       await page.locator(".sidebar").getByRole("button", { name: new RegExp(`^${ui.search}`) }).click();
       const search = page.getByRole("dialog", { name: ui.searchDialog });
-      await search.getByRole("searchbox").fill("SQLite");
+      await search.getByRole("searchbox").fill(demo.searchQuery);
       await expect(search.getByRole("option").first()).toBeVisible();
-      await save(page, "search");
+      await save(page, browser, "search");
     });
 
-    test("rules", async ({ page }) => {
+    test("rules", async ({ page, browser }) => {
       await open(page);
       await page.getByRole("button", { name: ui.settings, exact: true }).click();
       const settings = page.getByRole("dialog", { name: ui.settings, exact: true });
       await settingsTab(settings, "rules").click();
       await expect(settings.getByText(ui.suggestedRules)).toBeVisible();
-      await save(page, "rules");
+      await save(page, browser, "rules");
     });
   });
 }

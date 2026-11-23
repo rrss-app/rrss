@@ -1,6 +1,6 @@
 # 块渲染探针
 
-迭代阅读排版时走这里，不要开整软件。图、emoji、内联样式的下载 / 字体 / 控件问题会和壳叠在一起，探针把它们拆开。
+迭代阅读排版时优先走这里，不用启动整个桌面应用。图片下载、字体回退、内联样式与壳层控件的问题容易混在一起，探针把它们拆开单独验证。
 
 ## 两层
 
@@ -22,8 +22,7 @@
 亮色默认；暗色把 `html[data-theme=dark]` 打开后再截 `/#render`。
 
 ```sh
-cd apps/desktop
-pnpm test:e2e
+pnpm --dir apps/desktop test:e2e e2e/render.spec.ts
 ```
 
 探针页 `/#probe` 另测 CJK 换行、IME 输入框与协议 URL。

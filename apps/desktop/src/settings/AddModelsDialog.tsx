@@ -21,7 +21,7 @@ export const BULK_CONFIRM = 50;
 const fetchedLabel = (at: number) => new Date(at).toLocaleString(locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
 /**
- * 添加模型（阶段 19-7）：按连接切换；勾选只改草稿，底部「应用」一次写入，左侧写明将加入 / 移出几个。
+ * 添加模型弹窗：按连接切换；勾选只改草稿，底部「应用」一次写入，左侧写明将加入 / 移出几个。
  * 取消勾选的模型正被用途使用时，应用前先问改用哪个模型。「重新获取」失败时目录不变，仍可勾选或手填。
  */
 export function AddModelsDialog({ providers, pool, initial, note: firstNote, onAsk, onClose, onApplied, onEditStateChange }: {

@@ -1,4 +1,4 @@
-//! 阶段 23「B1 基础层 · 特征偏好」：衰减计数与可解释词面画像，纯函数。
+//! 题材与作者词面特征分量：衰减计数与可解释词面画像，纯函数。
 
 use rrss_core::{features::FeatureChip, rules::Dimension};
 use std::collections::{BTreeMap, BTreeSet};

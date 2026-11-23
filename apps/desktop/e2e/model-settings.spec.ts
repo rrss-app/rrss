@@ -55,7 +55,7 @@ test("a new connection goes straight to picking its models", async ({ page }) =>
   await add.getByRole("button", { name: "获取模型列表", exact: true }).click();
   await expect(add).toContainText("已更新，共 3 个模型。");
   await add.getByRole("checkbox", { name: /gpt-4o-mini/ }).check();
-  await add.getByLabel("手填模型 id").fill("deepseek-reasoner");
+  await add.getByLabel("手填模型 ID").fill("deepseek-reasoner");
   await add.getByRole("button", { name: "加入勾选", exact: true }).click();
   await shots(page, "add-models");
   await expect(add).toContainText("将加入 2 个、移出 0 个");

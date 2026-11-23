@@ -24,7 +24,7 @@ export function overviewText(text: string): string {
 }
 
 /**
- * 面板内的综述（阶段 14 · 相近报道成组与汇总）：未生成、生成中、已生成、有新报道、没配摘要模型五种状态，
+ * 相近报道面板内的综述：未生成、生成中、已生成、有新报道、没配摘要模型五种状态，
  * 生成失败时在原位写原因并给「重试」，旧综述照常显示。放在代表文章下、成员列表上方。
  */
 export function ClusterSummary({ entry, representativeId, onGenerate, onRetryLoad, onOpen, onManageModels, onCopy }: {

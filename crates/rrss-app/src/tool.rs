@@ -99,7 +99,7 @@ fn run_with_connection(
                 "text": view.text,
             }))?)
         }
-        // 扩展每轮写进系统提示「长期记忆」小节的内容（阶段 18 D10）。不在工具清单里，模型不能调用。
+        // 扩展每轮写进系统提示「长期记忆」小节的内容。不在工具清单里，模型不能调用。
         "memory_preview" => {
             let (memory, _) = memories::inject_preview(conn)?;
             match flag(rest, "--session-file") {

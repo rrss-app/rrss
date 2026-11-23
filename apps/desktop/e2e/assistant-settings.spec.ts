@@ -199,7 +199,7 @@ test("an online service is checked before saving, keeps its token masked, and op
   await sheet.getByRole("button", { name: "查看工具", exact: true }).click();
   await expect(tools.getByRole("checkbox", { name: /read_file/ })).toBeChecked();
   await expect(tools.getByRole("checkbox", { name: /write_file/ })).not.toBeChecked();
-  await expect(tools.locator("li").filter({ hasText: "write_file" })).toContainText("会改文件");
+  await expect(tools.locator("li").filter({ hasText: "write_file" })).toContainText("可能修改内容");
   for (const width of [1280, 560]) {
     await page.setViewportSize({ width, height: 720 });
     for (const theme of ["light", "dark"]) {
@@ -269,7 +269,7 @@ test("a failed check folds its reason, and old SSE services can only be repointe
   await shot(page, `${OUT}/mcp-list-1280-light.png`);
   await old.getByRole("button", { name: "改填地址 notion", exact: true }).click();
   const edit = page.getByRole("dialog", { name: "编辑外部工具", exact: true });
-  await expect(edit.getByRole("note")).toContainText("这个地址已经连不上");
+  await expect(edit.getByRole("note")).toContainText("不再支持旧版 SSE 地址");
   await expect(edit.getByRole("radio", { name: /在线服务/ })).toHaveAttribute("aria-checked", "true");
   await edit.getByRole("button", { name: "换成 …/mcp", exact: true }).click();
   await expect(edit.getByLabel("地址", { exact: true })).toHaveValue("https://mcp.notion.example/mcp");

@@ -171,7 +171,7 @@
       "summaryNative": "{{model}} ({{provider}}) · {{dims}} dimensions (native {{sourceDims}}) · {{chunks}} chunks",
       "providerDeleted": "Connection deleted"
     },
-    "unbound": "No embedding model yet. Without one, chat search uses full-text search only, and ranking doesn’t use vectors.",
+    "unbound": "No embedding model selected yet. Without one, chat uses full-text search only, and semantic ranking and related reading stay off.",
     "building": {
       "resizing": "Adjusting the vector space to {{dims}} dimensions: {{written}} / {{total}} chunks",
       "rebuilding": "Rebuilding the vector space with {{model}}: {{written}} / {{total}} chunks",
@@ -231,7 +231,7 @@
     "reading": {
       "title": "Reading",
       "enable": "Enable translation",
-      "enableHint": "When off, translations don’t appear in the reader.",
+      "enableHint": "When off, translation controls are hidden in the reader.",
       "targetLang": "Target language",
       "otherLangs": "Other languages",
       "langCode": "Language code",

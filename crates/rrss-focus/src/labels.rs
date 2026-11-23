@@ -1,11 +1,11 @@
-//! 阶段 23「M1 隐式标签」「阅读会话」：行为与会话 → 每篇每日一份证据，纯函数。
+//! 隐式阅读反馈标签：行为与会话 → 每篇每日一份证据，纯函数。
 
 use std::collections::{BTreeMap, HashMap};
 
 use rrss_core::signals::engagement::{self, DailySession, Engagement, Profiles, SessionSummary};
 use rrss_core::signals::{ArticleEvent, EventKind};
 
-// 阶段 23「在 B1 里的权重」：跳出可能只是误点，负证据取显式踩的四分之一；
+// 负证据权重：跳出可能只是误点，负证据取显式踩的四分之一；
 // 细读取阅读的两倍。显式证据始终覆盖分档，强度固定为一票，不叠加隐式证据。
 const BOUNCE_FEEDBACK: f64 = -0.25;
 const READ_FEEDBACK: f64 = 1.0;

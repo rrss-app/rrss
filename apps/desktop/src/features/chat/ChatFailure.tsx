@@ -10,7 +10,7 @@ export type ChatFixTab = NonNullable<ChatFailure["fix"]>;
 /** 上游原文可能是整页 HTML 或很长的 JSON：界面只留开头，完整内容在日志里。 */
 const DETAIL_MAX = 600;
 
-/** 错误类别的界面文案（阶段 18 错误分类）；`fix` 指向能修好它的设置页。 */
+/** 错误类别的界面文案；`fix` 指向能修好它的设置页。 */
 export function describeChatError(event: ChatErrorEvent): ChatFailure {
   const message = formatError(event.message).trim();
   const t = i18n.getFixedT(null, "chat");

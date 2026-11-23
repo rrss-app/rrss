@@ -20,7 +20,7 @@ import type { DislikeAction, DislikeState } from "./DislikeVeil";
 export type RankingToggle = "interest_boost" | "rerank" | "cluster_group" | "hide_noisy"
   | "rank_features" | "rank_source" | "rank_coverage" | "rank_freshness" | "rank_affinity" | "rank_fitted" | "show_details";
 
-/** B1 学来的排序分量（阶段 23）：只调先后，不影响隐藏。 */
+/** 根据阅读习惯计算的排序分量：只调先后，不影响隐藏。 */
 const LEARNED: { key: RankingToggle & `rank_${string}` }[] = [
   { key: "rank_features" },
   { key: "rank_source" },
@@ -246,7 +246,7 @@ export function FocusPane({
   onCite: (id: number) => void;
   onSource?: (feedId: number) => void;
   onRate: (row: ArticleView, up: boolean) => void;
-  /** 点踩后还在撤销窗口里的卡片（阶段 11 · 踩的反馈）。 */
+  /** 点踩后还在撤销窗口里的卡片。 */
   dislikes?: Record<number, DislikeState>;
   onDislikeAction?: (id: number, action: DislikeAction) => void;
   onStar?: (row: ArticleView) => void;
@@ -260,7 +260,7 @@ export function FocusPane({
   loadingMore?: boolean;
   moreError?: string;
   revision?: number;
-  /** 后台发现、还没并进列表的新文章数（阶段 17 · 后台更新不动视口）；点提示重读并回顶部。 */
+  /** 后台发现、还没并进列表的新文章数（后台更新保持当前视口不动）；点提示重读并回顶部。 */
   newCount?: number;
   onShowNew?: () => void;
   onVisibleEnd?: (index: number) => void;
@@ -272,7 +272,7 @@ export function FocusPane({
   spotReviews?: Record<number, SpotReview>;
   spotBusy?: boolean;
   onSpotAction?: (id: number, action: SpotAction) => void;
-  /** 「显示」菜单的「被隐藏的文章」入口（阶段 23 R1），由焦点功能域提供。 */
+  /** 「显示」菜单的「被隐藏的文章」入口，由焦点功能域提供。 */
   hiddenMenuItem?: (close: () => void) => ReactNode;
   /** 栏目刊头。有值时不显示简报横幅与导语。 */
   columnHeading?: { name: string; note: string };

@@ -114,7 +114,7 @@ export function mergeFocusPage(prev: FocusPage | null, more: FocusPage): FocusPa
 }
 
 /**
- * 后台更新（阶段 17 · 后台更新不动视口）：保持当前行的集合与先后，只换已显示行的内容；
+ * 后台更新（保持当前视口不动）：保持当前行的集合与先后，只换已显示行的内容；
  * 已读、收藏由本地写入维护，以当前行为准。
  */
 export function refreshFocusRows(current: FocusPage, latest: FocusPage): FocusPage {

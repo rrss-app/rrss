@@ -232,10 +232,10 @@
     "timeout": "Timed out while checking translation status",
     "disconnected": "Connection lost; existing translations are still readable",
     "failedPrefix": "Translation failed:",
-    "articleMismatch": "Article identity mismatch",
-    "snapshotStale": "Snapshot is out of date",
-    "eventGap": "Event gap remains after recovery",
-    "inconsistent": "Translation state is inconsistent; a snapshot recovery is needed",
+    "articleMismatch": "Article changed; translation state ignored",
+    "snapshotStale": "Translation progress is out of date; please refresh",
+    "eventGap": "Translation progress fell out of sync; click Recover to refresh",
+    "inconsistent": "Translation state is out of sync; click Recover to refresh",
     "note": {
       "keptOriginal": "Not translated here · original kept",
       "keptTranslation": "Not translated this time · existing translation kept",
@@ -347,7 +347,7 @@
     "missed": "No article text found",
     "missedReason": " · {{reason}}",
     "waiting": "<b>Waiting for verification</b> · Once you complete the verification in the page below, RRSS will extract the current page on its own.",
-    "extracting": "<b>Pre-extracting</b> · The page has loaded, and RRSS is trying to extract it.",
+    "extracting": "<b>Extracting text</b> · The page has loaded, and RRSS is trying to extract the article.",
     "read": "Switch to Reader view",
     "retryLater": "Extract again later",
     "retryNow": "Extract again now",
@@ -405,7 +405,7 @@
     },
     "paused": {
       "title": "Page hidden for now",
-      "detail": "Native pages cover menus, dialogs, and toasts, so this page is hidden while they’re open. It comes right back when they close, without reloading."
+      "detail": "The original page is temporarily hidden while menus or dialogs are open so it doesn’t cover them. It reappears right away once you close them, without reloading."
     },
     "opening": "Opening the original page…",
     "menu": {

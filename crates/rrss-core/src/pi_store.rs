@@ -639,7 +639,7 @@ pub fn set_assistant_note(conn: &Connection, note: &str) -> Result<()> {
     db::set_setting(conn, PI_ASSISTANT_NOTE_KEY, note)
 }
 
-/// Pi 设置覆盖：浅合并进生成的 `agent/settings.json`（阶段 18 D7）。
+/// Pi 设置覆盖：浅合并进生成的 `agent/settings.json`。
 pub const PI_SETTINGS_OVERRIDE_KEY: &str = "pi_settings_override";
 /// 模型定义覆盖：合并进生成的 `models.json`。
 pub const PI_MODELS_OVERRIDE_KEY: &str = "pi_models_override";

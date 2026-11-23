@@ -1,4 +1,4 @@
-//! 阶段 23「共同部分」「可维护性约定」：分量 × 手调权重 × 开关。
+//! 排序分量合成：分量 × 手调权重 × 开关。
 
 use rrss_core::reasons::{Habit, ReasonMessage, ReasonPrefix, safe_text};
 use rrss_core::{features::FeatureChip, rules::Dimension};

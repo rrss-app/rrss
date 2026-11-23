@@ -65,7 +65,7 @@ async function runTool(pi: ExtensionAPI, args: string[], signal?: AbortSignal) {
   };
 }
 
-/** 确认请求的期限；与阶段 18「ChatTurn」一致。 */
+/** 确认请求的超时时间（与宿主侧等待期限一致）。 */
 const CONFIRM_TIMEOUT_MS = 120_000;
 
 /** 系统提示里长期记忆小节的标签；内容每轮更新，不写进用户消息。 */
@@ -92,7 +92,7 @@ async function memoryPreview(pi: ExtensionAPI, sessionFile: string | undefined) 
 
 export default function (pi: ExtensionAPI) {
   installMcpGuard(pi);
-  // 每轮把最新的长期记忆写进系统提示的独立小节（阶段 18 D10）。改小节而不是整段替换，
+  // 每轮把最新的长期记忆写进系统提示的独立小节。改小节而不是整段替换，
   // Pi 只补发变化的小节，提示缓存前缀得以保留。没有 sections 的旧版 Pi 退回追加到提示末尾。
   pi.on("before_agent_start", async (event, ctx) => {
     const { memory, episode } = await memoryPreview(pi, ctx?.sessionManager?.getSessionFile?.());

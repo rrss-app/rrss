@@ -1,4 +1,4 @@
-//! 阶段 23「向量空间（V1）」：指纹、空间切换与固定探针；active 是读取唯一入口。
+//! 向量空间管理：指纹、空间切换与固定探针；active 是读取唯一入口。
 //! rebuild_from 区分 stale 的重建和生效空间。
 use crate::error::{models::ModelChoiceProblem, settings::SettingProblem};
 use crate::{ai_store::EmbedEndpoint, error::Result, rag::rebuild_inputs};

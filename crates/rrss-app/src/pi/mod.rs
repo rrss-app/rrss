@@ -1,4 +1,4 @@
-//! Pi 对话运行时（阶段 18）：`profile` 读期望配置，`adapter` 按版本渲染启动参数与文件，`workspace` 写托管目录，
+//! Pi 对话运行时：`profile` 读期望配置，`adapter` 按版本渲染启动参数与文件，`workspace` 写托管目录，
 //! `launch` 拉起进程，`supervisor` 管进程生命周期与握手，`turn` 结算一轮对话。
 //! `rrss-desktop` 只把 [`turn::ChatEvent`] 映射成 `chat:*` 事件。
 
@@ -15,7 +15,7 @@ pub mod workspace;
 pub use supervisor::{ProfileState, Supervisor, SupervisorConfig};
 pub use turn::{ChatEvent, ChatRuntime, ChatSink};
 
-/// 对话错误的类别，随 `chat:error.kind` 发给前端。界面文案见阶段 19。
+/// 对话错误的类别，随 `chat:error.kind` 发给前端。界面文案由前端语言包提供。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChatErrorKind {
     /// 找不到对话引擎，或托管下载失败。

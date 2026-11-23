@@ -1,6 +1,6 @@
 id = "dev-focus"
 name = "开发关注"
-description = "Rust、异步、SQLite、编译器与性能。启用后立刻有 score>0 的关注条目，点亮摘要与 Digest。"
+description = "Rust、异步、SQLite、编译器与性能等开发主题，启用后相关文章会优先排进今日焦点。"
 polarity_default = "like"
 
 [[rules]]

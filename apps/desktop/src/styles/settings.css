@@ -486,7 +486,7 @@
 .connection-main .hint, .connection-main .form-status { margin: 0; }
 .connection-actions { flex: none; gap: 8px; }
 
-/* 模型选择列表（阶段 19-6）：按钮只显示缩写，展开后每项是完整 id + 连接标签 */
+/* 模型选择列表：按钮只显示缩写，展开后每项是完整 id + 连接标签 */
 .model-picker { position: relative; display: inline-flex; min-width: 0; max-width: 100%; }
 .model-picker-trigger { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; text-align: left; }
 .model-picker[data-variant="field"] .model-picker-trigger {
@@ -736,7 +736,7 @@
 }
 .settings-savebar > .hint { flex: 1; min-width: 120px; margin: 0; }
 
-/* 模型页（阶段 19-7）：模型概况、用途分组与一键应用、添加模型、管理模型弹出页。 */
+/* 模型页：模型概况、用途分组与一键应用、添加模型、管理模型弹出页。 */
 /* 概况是一行数字加说明，不套框；点击按该条件打开「管理模型」。 */
 .model-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .model-stat {
@@ -962,7 +962,7 @@ details.manage-section > summary { cursor: pointer; font-weight: 500; }
 }
 
 
-/* 外部工具（阶段 19 · 内置 MCP 的界面）：列表行、检测状态、展开面板、添加 / 编辑弹层。 */
+/* 外部工具（MCP）：列表行、检测状态、展开面板、添加 / 编辑弹层。 */
 .mcp-list { margin: 0; padding: 0; list-style: none; }
 .mcp-row { padding: 12px 0; border-bottom: 1px solid var(--settings-hair, var(--border)); }
 .mcp-row-head { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px 12px; }

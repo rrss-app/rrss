@@ -1,4 +1,4 @@
-//! 加进来的模型与模型目录的查询、写入和获取（阶段 19-6 / 19-7）。存储在 `rrss_core::model_pool`。
+//! 加进来的模型与模型目录的查询、写入和获取。存储在 `rrss_core::model_pool`。
 
 use rrss_core::error::models::CompatProblem;
 use std::path::Path;

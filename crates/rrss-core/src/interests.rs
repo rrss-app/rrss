@@ -312,7 +312,7 @@ pub(crate) fn load_prototypes(conn: &Connection) -> Result<Vec<Prototype>> {
     Ok(out)
 }
 
-/// 阶段 23「M2 离线回放」：写入路径与离线回放共用的纯兴趣加分。
+/// 写入路径与离线回放共用的纯兴趣加分。
 pub(crate) fn calculate_boost(vec: &[f32], prototypes: &[Prototype]) -> (i64, Vec<InterestReason>) {
     let mut reasons = Vec::new();
     let mut boost = 0i64;

@@ -1,4 +1,4 @@
-//! 阶段 23「接入方式」：原始信号命令转接。
+//! 原始信号命令转接。
 
 use rrss_app::views::{ArticleEventInput, ExposureInput, ReadSessionInput, ReadingSpeedsView};
 

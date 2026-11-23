@@ -83,7 +83,7 @@ export function useConversationRuntime({ onError, onDone, store: injected }: Con
   const outgoingSeq = useRef(0);
   const callbacks = useRef({ onError, onDone });
   callbacks.current = { onError, onDone };
-  // 每条对话选定的模型与思考强度（阶段 19-6）：键是 `t<线程 id>`，还没发出第一条的新对话按输入框上下文区分。
+  // 每条对话选定的模型与思考强度：键是 `t<线程 id>`，还没发出第一条的新对话按输入框上下文区分。
   // 值里的 null 表示跟随默认；没有键表示还不知道（已有线程由列表或追问记录带入）。
   const [models, setModels] = useState<Record<string, ThreadOptions>>({});
   const modelsRef = useRef(models);

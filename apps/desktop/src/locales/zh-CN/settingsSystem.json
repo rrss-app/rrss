@@ -302,7 +302,7 @@
     "loadFailed": "读取诊断信息失败：{{message}}。请刷新状态重试。",
     "busy": "正在执行维护操作…",
     "report": "诊断维护",
-    "refreshFailed": "诊断信息没能刷新，显示的还是之前的内容；维护已经执行，刷新状态即可：",
+    "refreshFailed": "维护操作已完成，但诊断状态刷新失败，请点击「刷新状态」：",
     "opFailed": {
       "embed": "生成向量失败：",
       "resetFailed": "重置失败计数失败："
@@ -324,7 +324,7 @@
       "title": "索引维护",
       "embed": {
         "label": "生成文章向量",
-        "hint": "给一批还没有向量的内容补上向量，相似文章和按意思搜索会更准。用远程模型会产生费用。",
+        "hint": "为尚未建立向量的文章补充生成向量，用于相关阅读与对话语义检索；使用远程模型会产生费用。",
         "done": "本轮向量处理已结束。",
         "action": "处理一批"
       },
@@ -412,7 +412,7 @@
       "advanced": {
         "label": "高级",
         "title": "高级",
-        "desc": "一般不用改这里。模型或助手出问题，先看对话助手页顶部的状态。"
+        "desc": "常规使用无需修改。若模型或对话异常，建议先在「对话助手」页查看引擎状态。"
       }
     }
   },
@@ -566,16 +566,16 @@
       "label": "外观",
       "options": {
         "system": "跟随系统",
-        "light": "亮色",
-        "dark": "暗色"
+        "light": "浅色",
+        "dark": "深色"
       }
     },
     "focus_filter": {
       "label": "焦点筛选",
       "options": {
-        "focus": "只看焦点",
-        "hide_faded": "隐藏淡化",
-        "all": "全部"
+        "focus": "仅关注",
+        "hide_faded": "隐藏弱化",
+        "all": "所有文章"
       }
     },
     "focus_columns": {
@@ -604,28 +604,28 @@
       "label": "置顶"
     },
     "cluster_group_enabled": {
-      "label": "聚类分组"
+      "label": "相近文章折叠"
     },
     "interest_boost_enabled": {
-      "label": "兴趣加权"
+      "label": "兴趣加分"
     },
     "rank_features_enabled": {
-      "label": "特征偏好"
+      "label": "常读的主题与作者"
     },
     "rank_source_enabled": {
-      "label": "源偏好"
+      "label": "常读的源"
     },
     "rank_coverage_enabled": {
       "label": "多源报道"
     },
     "rank_freshness_enabled": {
-      "label": "时效衰减"
+      "label": "新文章优先"
     },
     "rank_affinity_enabled": {
       "label": "和常读文章相似"
     },
     "rank_fitted_enabled": {
-      "label": "拟合模型（实验）"
+      "label": "个性化排序模型（实验）"
     },
     "focus_show_details": {
       "label": "推荐详情"
@@ -634,10 +634,10 @@
       "label": "隐藏抽查比例"
     },
     "focus_rerank_enabled": {
-      "label": "关注重排"
+      "label": "按关注度排序"
     },
     "focus_hide_noisy": {
-      "label": "隐藏噪声"
+      "label": "收起噪声源"
     },
     "hide_threshold": {
       "label": "隐藏阈值"
@@ -674,7 +674,7 @@
     },
     "ai_embed_daily_budget_tokens": {
       "label": "嵌入日预算",
-      "hint": "只计嵌入请求（相似文章、兴趣和记忆检索用的向量）。用完只停嵌入，不影响摘要和简报；「立即嵌入」也受它限制。0 表示不限额。",
+      "hint": "只计嵌入请求（相似文章、兴趣和记忆检索用的向量）。用完只停嵌入，不影响摘要和简报；诊断页的手动「生成文章向量」同样受此上限限制。0 表示不限额。",
       "control": "嵌入日预算（万 token，0 = 不限额）"
     },
     "focus_summary_neutral_limit": {
@@ -900,7 +900,7 @@
       "storage_vacuum_confirm": "把 {{bytes}} 空闲空间还给磁盘。",
       "storage_vacuum_space": "需要约 {{required_bytes}} 临时磁盘空间{{available}}，大库可能需要一两分钟。",
       "storage_vacuum_wait": "期间刷新和后台作业会等待，可以继续阅读。",
-      "storage_wal": "含未写回的日志 {{bytes}}",
+      "storage_wal": "含待合并的数据库日志（WAL）{{bytes}}",
       "storage_images": "上限 256 MB，打开文章时按需下载",
       "storage_images_confirm": "删除本地保存的配图，释放约 {{bytes}}。",
       "storage_images_warning": "再打开文章时会重新下载。",

@@ -1,6 +1,6 @@
 id = "crypto-web3"
 name = "加密与 Web3"
-description = "空投、土狗盘、合约地址等促销向加密内容。默认不装，按需启用。"
+description = "空投、土狗盘、合约地址等促销向加密内容，按需启用。"
 polarity_default = "dislike"
 
 [[rules]]

@@ -26,7 +26,7 @@ const DB_ENTRY: &str = "rrss.db";
 const MANIFEST_ENTRY: &str = "manifest.json";
 const SESSIONS: &str = "pi/sessions";
 const SKILLS: &str = "pi/user-skills";
-/// 阶段 18 P2a 之前的用户技能位置；旧备份与未迁移的数据目录仍可能用它。
+/// 早期版本的用户技能目录位置；旧备份与未迁移的数据目录仍可能用它。
 const LEGACY_SKILLS: &str = "pi-project/.pi/skills";
 const STAGING: &str = "restore-staging";
 const PENDING: &str = "restore-pending.json";
@@ -1490,7 +1490,7 @@ mod tests {
             "same name: the new location wins"
         );
 
-        // 阶段 18 之前的备份：技能在旧路径，恢复到新位置。
+        // 兼容旧备份：技能位于旧路径时，恢复到新位置。
         let staged = inspect(&backup, src.path()).unwrap();
         let legacy_zip = src.path().join("legacy.zip");
         {

@@ -1,4 +1,4 @@
-//! 阶段 23「范围浏览 S1」：按发布时间倒序的订阅时间线。
+//! 订阅时间线查询：按发布时间倒序的订阅时间线。
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 

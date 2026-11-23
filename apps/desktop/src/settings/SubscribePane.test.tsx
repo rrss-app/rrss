@@ -144,7 +144,7 @@ describe("SubscribePane feed edit", () => {
     act(() => confirm());
     await harness.flush();
     expect.soft(host.querySelectorAll('[role=alert]')).toHaveLength(1);
-    expect(host.textContent).toContain("刚才的修改已保存");
+    expect(host.textContent).toContain("修改已保存，但订阅列表刷新失败");
     act(() => button(host.querySelectorAll<HTMLElement>(".feed-row")[0], "编辑").click());
     act(() => button(host, "删除").click());
     act(() => confirm());

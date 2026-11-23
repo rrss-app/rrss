@@ -7,7 +7,7 @@ import { formatNotice } from "../../lib/notice";
 import type { ArticleWriteOrder } from "../../lib/articleWriteOrder";
 import type { FocusNotice, FocusSession } from "./focusSession";
 
-/** 点赞、阅读器里点踩后的提示时长，也是撤销窗口（阶段 11 · 赞与踩的反馈）。 */
+/** 点赞、阅读器里点踩后的提示时长，也是撤销窗口。 */
 const QUIET_RATING_MS = 6000;
 /** 取消赞时撤销用的「之前没有评分」。 */
 const NO_PREVIOUS = { previous: 0, previous_at: 0, suggested_rule_id: null } as const;

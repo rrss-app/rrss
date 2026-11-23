@@ -37,8 +37,8 @@ export function describeTest(test: ConnectionTestView, secrets: string[]): Resul
 }
 
 /**
- * 添加 / 编辑连接（阶段 19-7）：服务商、名称、API Key；地址、协议、兼容设置在「高级」里。连接不再绑模型，
- * 添加成功后由模型页接着打开「添加模型」。已保存的密钥只显示首尾各 4 位，要改就重新输入（阶段 19-9）。
+ * 添加 / 编辑连接弹层：服务商、名称、API Key；地址、协议、兼容设置在「高级」里。连接不再绑模型，
+ * 添加成功后由模型页接着打开「添加模型」。已保存的密钥只显示首尾各 4 位，要改就重新输入。
  */
 export function ConnectionDialog({ provider, presets, onAsk, onClose, onSaved, onEditStateChange }: {
   provider?: ProviderView;

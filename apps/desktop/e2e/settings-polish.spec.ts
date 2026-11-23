@@ -137,7 +137,7 @@ test("F4.4 retains saved threshold after a failed reread and retries only the re
   await page.evaluate(() => { (window as any).__rulesTest.reads = 0; });
   await threshold.fill("-25");
   await threshold.press("Tab");
-  await expect(settings.getByText(/刚才的修改已保存，重新读取即可/)).toBeVisible();
+  await expect(settings.getByText(/修改已保存，但规则列表刷新失败/)).toBeVisible();
   await expect(threshold).toHaveValue("-25");
   expect(await page.evaluate(() => (window as any).__rulesTest)).toEqual({ threshold: -25, writes: 1, reads: 1, readFail: true });
   await page.setViewportSize({ width: 880, height: 900 });
@@ -225,7 +225,7 @@ test("F4.5 diagnostics blocks leaving during maintenance and retries only failed
   await expect(settings.getByRole("heading", { name: "本机状态与排查", exact: true })).toBeVisible();
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
   await page.evaluate(() => (window as any).__diagTest.release());
-  await expect(settings.getByText(/维护已经执行，刷新状态即可/)).toBeVisible();
+  await expect(settings.getByText(/维护操作已完成，但诊断状态刷新失败/)).toBeVisible();
   await expect(settings.locator(".diag-list")).not.toContainText("未能读取");
   await shot(page, "../../test-results/f4-5-settings/diagnostics-read-failed.png");
   await page.evaluate(() => { (window as any).__diagTest.readFail = false; });

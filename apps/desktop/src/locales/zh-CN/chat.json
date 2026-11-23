@@ -63,7 +63,7 @@
     "busy": "上一条回复尚未结束，请等待或停止生成后再发送"
   },
   "messages": {
-    "renderFailed": "这条消息显示不出来，不影响其他消息。",
+    "renderFailed": "这条消息暂时无法显示，不影响其余对话内容。",
     "loadingOlder": "正在加载更早的消息…",
     "loadOlder": "加载更早的消息",
     "loadOlderFailed": "加载失败：{{error}}，可重试",
@@ -86,7 +86,7 @@
     "headingUsedPercent": "上下文 {{used}} · {{pct}}%",
     "headingLimit": "上下文 {{used}} / {{limit}}",
     "headingLimitPercent": "上下文 {{used}} / {{limit}} · {{pct}}%",
-    "limitUnknown": "还不知道上下文上限；对话引擎启动过一次后会显示。",
+    "limitUnknown": "尚未获取上下文上限；开始一次对话后会自动显示。",
     "limitUser": "上限 {{limit}} 取 {{model}} 的上下文长度（设置里填的）。",
     "limitEngine": "上限 {{limit}} 是对话引擎给 {{model}} 的默认值（设置里留空）。",
     "limitLast": "上限 {{limit}} 按上次发送时的模型计算。",
@@ -189,19 +189,19 @@
       "moveDown": "下移"
     },
     "failure": {
-      "createFolder": "没能新建文件夹：",
-      "rename": "没能重命名：",
-      "renameFolder": "没能重命名文件夹：",
-      "collapse": "没能折叠文件夹：",
-      "delete": "没能删除：",
-      "deleteFolder": "没能删除文件夹：",
-      "move": "没能移动：",
-      "pin": "没能置顶：",
-      "unpin": "没能取消置顶：",
-      "archive": "没能归档：",
-      "undoArchive": "没能撤销归档：",
-      "unarchive": "没能取消归档：",
-      "reorder": "没能调整顺序："
+      "createFolder": "新建文件夹失败：",
+      "rename": "重命名失败：",
+      "renameFolder": "重命名文件夹失败：",
+      "collapse": "折叠文件夹失败：",
+      "delete": "删除失败：",
+      "deleteFolder": "删除文件夹失败：",
+      "move": "移动失败：",
+      "pin": "置顶失败：",
+      "unpin": "取消置顶失败：",
+      "archive": "归档失败：",
+      "undoArchive": "撤销归档失败：",
+      "unarchive": "取消归档失败：",
+      "reorder": "调整顺序失败："
     },
     "notice": {
       "deleted": "已删除「{{title}}」",

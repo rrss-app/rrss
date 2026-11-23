@@ -109,8 +109,8 @@ describe("memory settings feedback", () => {
     click(host, "保存"); await flush();
     expect(write).toHaveBeenCalledTimes(1);
     expect(host.querySelector("textarea")).toBeNull();
-    expect(host.textContent).toContain("保存记忆已完成");
-    expect(host.textContent).toContain("刚才的操作已完成");
+    expect(host.textContent).toContain("保存记忆已生效");
+    expect(host.textContent).toContain("请重新读取");
     box.stub!.handle("memory", () => page("已经保存的内容"));
     click(host, "重试读取"); await flush();
     expect(host.querySelector(".memory-content")?.textContent).toBe("已经保存的内容");

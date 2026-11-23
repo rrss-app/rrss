@@ -351,7 +351,7 @@ pub fn save_ai_settings(
             id: provider_id,
             name: args.provider.name.trim().to_string(),
             base_url: args.provider.base_url.trim().to_string(),
-            // 新填的密钥替换；「清除」删掉；否则保留（前端拿不到完整密钥，阶段 19-9）。
+            // 新填的密钥替换；「清除」删掉；否则保留（前端拿不到完整密钥）。
             api_key: match args
                 .provider
                 .api_key

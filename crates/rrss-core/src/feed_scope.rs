@@ -1,4 +1,4 @@
-//! 阶段 23「范围浏览 S1」：订阅范围 `all` / `folder:<id>` / `feed:<id>`。
+//! 订阅范围模型：订阅范围 `all` / `folder:<id>` / `feed:<id>`。
 
 use rusqlite::{Connection, OptionalExtension};
 

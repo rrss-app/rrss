@@ -13,7 +13,7 @@
     "summarizeAll_one": "Summarize this article",
     "summarizeAll_other": "Summarize these {{count}} articles",
     "needModel": "Choose a summary model to generate an overview",
-    "generateHint": "Writes an overview that notes what each source adds and where they disagree · Uses the summary model, {{tokens}}",
+    "generateHint": "Writes an overview of consensus, unique additions, and disagreements · Uses the summary model, {{tokens}}",
     "tokens": "about {{n}} tokens",
     "generate": "Generate overview",
     "fresh_one": "1 new article: {{items}}",
@@ -100,7 +100,7 @@
     "optionAll_other": "All {{count}}",
     "optionSpotLiked_one": "You liked 1 in a spot check",
     "optionSpotLiked_other": "You liked {{count}} in spot checks",
-    "hint": "This list only shows hidden articles; nothing changes here. To let one through, pick an option.",
+    "hint": "This list is read-only and changes nothing on its own. Pick an action only if you want to let an article through.",
     "range": "Current scope: {{scope}}{{listScope}} · last 7 days · hide threshold {{threshold}} · read-only",
     "allFeeds": "All feeds",
     "rangeUnread": " · Unread",
@@ -152,9 +152,9 @@
     "representative": "Representative",
     "reasonSeparator": "; ",
     "noisy": "Noisy feed",
-    "spotCheckTitle": "An article that should have been hidden, brought back at random to check whether the rules got it wrong",
+    "spotCheckTitle": "A hidden article brought back at random so you can check whether a rule was too strict",
     "explore": "Trying",
-    "exploreTitle": "Trying a source you rarely see",
+    "exploreTitle": "Surfacing a feed you don’t see often",
     "spotCheck": "Spot check",
     "starred": "Starred",
     "liked": "Liked",
@@ -225,7 +225,7 @@
       "interestBoostNotReady": "Interest boost (not ready)",
       "rerank": "Rank by interest",
       "hideNoisy": "Hide noisy feeds",
-      "learnedTitle": "Adjusts the order based on your reading habits; doesn’t affect which articles are hidden",
+      "learnedTitle": "Adjusts article order from your reading habits; never hides articles",
       "showDetails": "Why this"
     },
     "learned": {
@@ -234,7 +234,7 @@
       "rank_coverage": "Covered by multiple sources",
       "rank_freshness": "Newer articles first",
       "rank_affinity": "Similar to articles you read often",
-      "rank_fitted": "Fitted model (experimental)"
+      "rank_fitted": "Personalized ranking model (experimental)"
     },
     "search": "Search",
     "searchTitle": "Search articles (Ctrl+K)",
@@ -249,7 +249,7 @@
     "retryLoadMore": "Retry loading more",
     "empty": {
       "loading": "Loading…",
-      "noFeeds": "No feeds yet. Add RSS / Atom feeds in Settings, then refresh.",
+      "noFeeds": "No feeds yet. Add feeds or import OPML in Settings → Feeds, then refresh.",
       "noStarred": "Nothing starred yet. Click the star on a card or in the reader.",
       "viewAll": "View all items",
       "noUnread": "No unread articles.",
@@ -277,8 +277,8 @@
     "body_re": "Body matches regex ‘{{pattern}}’"
   },
   "rankingNote": {
-    "interest_boost_inactive": "Interest boost isn’t active: no interest vectors yet, so ranking uses rule scores only",
-    "interest_not_ready": "Interests aren’t ready: no interest vectors yet, so results are ordered by time for now"
+    "interest_boost_inactive": "Interest boost isn’t active yet: interest matching isn’t ready, so articles are ranked by rules only",
+    "interest_not_ready": "Interest ranking isn’t ready yet: results are ordered by time for now"
   },
   "like": {
     "recorded": "Got it. You’ll see more articles like this",

@@ -7,12 +7,12 @@
   "rank_tag": "你{{habit}}标签『{{pattern}}』",
   "rank_domain": "你{{habit}}域名『{{pattern}}』",
   "habit": { "read": "常读", "skip": "常跳过" },
-  "rank_source": "你常关注这个源的焦点推荐",
-  "rank_source_read": "你常关注这个源的焦点推荐",
-  "rank_source_skip": "你较少关注这个源的焦点推荐",
-  "rank_coverage": "{{count}} 个源在报道",
-  "rank_coverage_other": "{{count}} 个源在报道",
-  "rank_freshness": "按这个源的阅读节奏降低旧文优先级",
+  "rank_source": "你常看这个来源的文章",
+  "rank_source_read": "你常看这个来源的文章",
+  "rank_source_skip": "你较少看这个来源的文章",
+  "rank_coverage": "{{count}} 个来源同时报道",
+  "rank_coverage_other": "{{count}} 个来源同时报道",
+  "rank_freshness": "按发布时间适当降低旧文优先级",
   "rank_affinity": "和你常读的『{{pattern}}』相似",
 
   "rule_author": "作者：{{pattern}}",
@@ -31,5 +31,5 @@
   "rule_condition_url_re": "URL 匹配正则『{{pattern}}』",
   "rule_condition_body_phrase": "正文包含『{{pattern}}』",
   "rule_condition_body_re": "正文匹配正则『{{pattern}}』",
-  "interest_match": "接近你标记的兴趣：{{pattern}}"
+  "interest_match": "与你关注的兴趣「{{pattern}}」相关"
 }

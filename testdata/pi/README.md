@@ -1,6 +1,6 @@
 # Pi RPC 测试数据
 
-`digest_rpc.py` 是确定性的模拟 Pi 0.84 进程，仅由 `python3 scripts/dev-smoke.py --digest` 复制到一次性测试目录并运行。
+`digest_rpc.py` 是确定性的模拟 Pi 进程（协议兼容 `pi/compat.json` 当前锁定的版本线），仅由 `python3 scripts/dev-smoke.py --digest` 复制到一次性测试目录并运行。
 
 - 模拟新建/恢复会话、提示词预检拒绝、工具循环和 `agent_settled`。
 - 通过真实 `rrss tool get_digest --id` / `get_article` 读取隔离库，检查第二条来源的文章 ID。

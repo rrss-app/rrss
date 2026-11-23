@@ -11,7 +11,7 @@ import {
 import { piConfigOptions, piQueryOptions } from "../../settings/piQuery";
 
 /**
- * 输入区的模型按钮：模型与思考强度合在一处，只改这条对话之后的轮次（阶段 19-6）。`value` / `thinking` 为 null
+ * 输入区的模型按钮：模型与思考强度合在一处，只改这条对话之后的轮次。`value` / `thinking` 为 null
  * 跟随设置里的默认；选回默认即清除。自有 Pi 配置下只列 Pi 的模型，思考默认由 Pi 配置决定。
  */
 export function ChatModelChip({ value, thinking, onChange, onThinking, onManagePool, disabled }: {

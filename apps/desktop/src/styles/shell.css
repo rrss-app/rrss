@@ -223,7 +223,7 @@
 .window-controls[data-style="gnome"] button:hover { background: var(--tint-press); }
 .window-controls[data-style="gnome"] svg { stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
-/* ---------- 会话文件夹与归档（阶段 14 · 会话文件夹与归档） ---------- */
+/* ---------- 会话文件夹与归档 ---------- */
 .thread-section { display: flex; align-items: center; gap: 4px; padding-right: 0; }
 .thread-section > span { flex: 1; }
 .thread-section-add {

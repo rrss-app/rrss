@@ -4,6 +4,10 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Changed
+
+- Refined user-facing error messages, settings hints, and recommendation explanations in both Simplified Chinese and English: removed internal error prefixes and raw technical codes, localized built-in rule presets, updated outdated menu references (such as Settings → AI to Settings → Models), and unified terminology across Focus, Reader, Feeds, and Settings.
+
 ## [0.5.0] - 2026-11-23
 
 ### Added

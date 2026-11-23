@@ -9,12 +9,12 @@
     "read": "often read",
     "skip": "often skip"
   },
-  "rank_source": "You often engage with this feed when shown in Focus",
-  "rank_source_read": "You often engage with this feed when shown in Focus",
-  "rank_source_skip": "You rarely engage with this feed when shown in Focus",
-  "rank_coverage_one": "1 feed is covering this",
-  "rank_coverage_other": "{{count}} feeds are covering this",
-  "rank_freshness": "Older articles rank lower to match this feed’s reading pace",
+  "rank_source": "You often read articles from this feed",
+  "rank_source_read": "You often read articles from this feed",
+  "rank_source_skip": "You rarely read articles from this feed",
+  "rank_coverage_one": "Covered by 1 feed",
+  "rank_coverage_other": "Covered by {{count}} feeds",
+  "rank_freshness": "Older articles rank lower over time",
   "rank_affinity": "Similar to “{{pattern}}”, which you often read",
   "rule_author": "Author: {{pattern}}",
   "rule_tag": "Tag: {{pattern}}",
@@ -32,5 +32,5 @@
   "rule_condition_url_re": "URL matches regex “{{pattern}}”",
   "rule_condition_body_phrase": "Body contains “{{pattern}}”",
   "rule_condition_body_re": "Body matches regex “{{pattern}}”",
-  "interest_match": "Close to an interest you marked: {{pattern}}"
+  "interest_match": "Matches your interest: {{pattern}}"
 }

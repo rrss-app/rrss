@@ -7,7 +7,7 @@
 **本地优先的智能信息中枢**
 
 规则替你筛选，AI 帮你读完、读懂、追问到底。<br>
-文章、全文索引、向量与对话都留在你自己的电脑上。
+订阅、文章与对话全部保存在你自己的电脑上。
 
 [![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-3b5bdb?style=flat-square)](#快速开始)
 [![license](https://img.shields.io/badge/license-MIT-2f9e44?style=flat-square)](LICENSE)
@@ -25,11 +25,11 @@
 <br>
 
 > [!NOTE]
-> 界面支持简体中文与英文，默认跟随系统语言，可在 设置 →「语言」切换；摘要、简报与综述等 AI 生成的内容默认跟随界面语言，也可在 设置 → 模型 单独选择；对话助手按你提问的语言回答。
+> 界面支持简体中文与英文（默认跟随系统，可在「设置 → 语言」随时切换）。摘要、简报与综述默认跟随界面语言，也可单独指定；对话助手会按你的提问语言回答。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/images/focus-dark.webp">
-  <img src="doc/images/focus-light.webp" alt="今日焦点：顶部是今日简报，下面是按规则与兴趣排好的卡片流，同一事件的多家报道自动成组">
+  <img src="doc/images/focus-light.webp" alt="今日焦点：顶部是今日简报，下面是按规则与阅读偏好排好的卡片流，同一事件的多家报道自动成组">
 </picture>
 
 ## 为什么是 RRSS
@@ -38,15 +38,15 @@
   <tr>
     <td width="33%" valign="top">
       <h3>🎯 规则先过滤</h3>
-      关键词、作者、来源、URL 正则……每一次加分和隐藏都写明原因。兴趣相似度只影响排序，不会静默藏起任何内容。
+      按关键词、作者、来源或网址编写规则，每一次加分和隐藏都写明原因。你的阅读偏好只调整排序，绝不会悄悄藏起文章。
     </td>
     <td width="33%" valign="top">
-      <h3>🔌 AI 可替换</h3>
-      摘要、简报、翻译接任意 OpenAI 兼容端点：OpenAI、DeepSeek、OpenRouter 或本机 Ollama。按用途分配模型，设每日预算。
+      <h3>🔌 AI 自由选配</h3>
+      摘要、简报、翻译与对话可接 OpenAI、DeepSeek、OpenRouter、本机 Ollama 或任意 OpenAI 兼容服务；按任务分别选模型，并设每日用量上限。
     </td>
     <td width="33%" valign="top">
-      <h3>🔒 数据在本机</h3>
-      文章、全文索引、向量与对话都在一个 SQLite 文件里，不需要额外的数据库或云服务。备份就是一个文件。
+      <h3>🔒 数据留在本机</h3>
+      文章、搜索索引与对话全部存在本机单个 SQLite 文件里，无需云账号或额外服务。备份与迁移就是一个文件。
     </td>
   </tr>
 </table>
@@ -55,11 +55,11 @@
 
 ### 今日焦点：先看最值得看的
 
-打开就是排好序的卡片流，而不是堆成山的未读数。
+打开即见排好序的卡片流，而不是压迫感满满的未读红点。
 
-- **可解释的排序**：规则打分加兴趣弱偏向，「仅关注 / 隐藏弱化 / 所有文章」一键切换；噪声源自动收起。
-- **相近报道成组**：同一事件的多家报道合成一组，一键生成综述——共识、各家补充、说法分歧，每条都标出来源。
-- **焦点栏目**：把文件夹设为栏目，按主题分开看。
+- **清晰可控的排序**：规则打分优先，结合你的阅读习惯调整先后，每篇都能查看推荐原因；「仅关注 / 隐藏弱化 / 所有文章」一键切换，噪声源自动收起，赞踩反馈可撤销，也可按需转成规则。
+- **相近报道成组**：同一事件的多家报道自动合为一组，一键生成综述，标出各家共识、补充与分歧，每条都附原文来源。
+- **按主题分栏**：把常用文件夹设为焦点栏目，不同主题分开阅读。
 
 <img src="doc/images/cluster.webp" alt="相近报道：三家来源的报道成组，综述列出共识、各家补充与说法分歧">
 
@@ -71,8 +71,8 @@
     <td width="50%"><img src="doc/images/chat.webp" alt="深度对话：带着文章全文与划选片段提问，回答链接回原文"></td>
   </tr>
   <tr>
-    <td valign="top"><b>阅读器</b>：正文清洗后排版，顶部是 AI 摘要和「推荐因为……」；整篇对照翻译与划词翻译（大模型 / DeepL / DeepLX）；原网页嵌在阅读区的隔离 webview 里打开。</td>
-    <td valign="top"><b>深度对话</b>：把整篇文章或划选的一段带进对话。由 Pi 运行时驱动工具循环，能检索本机文章、调用你配置的外部工具（MCP），回答里的链接直接回到原文。</td>
+    <td valign="top"><b>阅读器</b>：自动提取并重新排版正文，支持代码块高亮与直链音视频本地播放；顶部附 AI 摘要和推荐原因，支持整篇双语对照与划词翻译（大模型 / DeepL / DeepLX），也可在应用内直接查看原网页。</td>
+    <td valign="top"><b>深度对话</b>：带着整篇文章或划选片段直接提问。助手能检索你的本机文章与长期记忆，也可按需接入外部工具（MCP），回答里的链接一点即回原文。</td>
   </tr>
 </table>
 
@@ -84,8 +84,8 @@
     <td width="50%"><img src="doc/images/search.webp" alt="搜索：本机全文检索，右侧预览命中的段落"></td>
   </tr>
   <tr>
-    <td valign="top"><b>简报</b>：自动生成日报 / 周报，每条结论后都有来源编号，点开就是原文；读完直接在下方追问。</td>
-    <td valign="top"><b>搜索</b>：<kbd>Ctrl</kbd> + <kbd>K</kbd> 检索文章与对话，预览命中的段落，回车直接跳到那一段。本机全文索引，不调用模型。</td>
+    <td valign="top"><b>简报</b>：自动生成日报与周报，每条要点都附带来源编号，点开直达原文；读完后可以直接在下方继续追问。</td>
+    <td valign="top"><b>搜索</b>：按 <kbd>Ctrl</kbd> + <kbd>K</kbd> 检索文章与历史对话，右侧实时预览命中段落，回车直接跳到文中位置。完全走本机全文索引，不消耗模型额度。</td>
   </tr>
 </table>
 
@@ -97,44 +97,43 @@
     <td width="50%"><img src="doc/images/rules.webp" alt="规则设置：新建规则、待确认的建议规则与已有规则"></td>
   </tr>
   <tr>
-    <td valign="top"><b>订阅</b>：文件夹树与拖动整理，OPML 导入导出；长期不更新、连续失败或噪声过多的源会被标出来。</td>
-    <td valign="top"><b>规则</b>：读起来像一句话的规则；系统给的建议只在这里等你确认，不会自己生效。</td>
+    <td valign="top"><b>订阅</b>：文件夹树与拖拽整理、OPML 导入导出，支持自定义刷新间隔；长期停更、刷新失败、被限流或噪声过多的源都会自动标出。</td>
+    <td valign="top"><b>规则</b>：像写一句话一样创建加分或隐藏规则；系统根据你的反馈生成的建议只会在规则页等你确认，绝不会擅自生效。</td>
   </tr>
 </table>
 
 ### 还有这些
 
-- **记忆与兴趣**：对话里提炼出的偏好先进「待确认」，你同意后才影响排序。
-- **网络代理**：全局或按用途设置 HTTP / SOCKS5 代理；Windows 可直接读取系统代理。
-- **长期使用**：备份与恢复、文章保留策略、存储占用一览、运行日志与诊断包。
-- **深浅色主题**、自绘标题栏，键盘 <kbd>J</kbd> / <kbd>K</kbd> 翻篇。
+- **记忆与兴趣**：对话里提炼出的长期偏好先进入「待确认」，你同意后才会参与记忆或排序。
+- **网络代理**：支持全局或按用途分别设置 HTTP / SOCKS5 代理；Windows 可直接读取系统代理。
+- **长期使用**：单文件备份与恢复、旧文章正文定期清理、存储占用一览，以及自动脱敏的诊断包。
+- **日常体验**：深浅色主题、最小化到系统托盘后台刷新、<kbd>J</kbd> / <kbd>K</kbd> 快捷翻篇与文末相关阅读。
 
 ## 快速开始
 
 ### 下载安装
 
-从 [Releases](https://github.com/rrss-app/rrss/releases) 下载对应平台的包：
+从 [Releases](https://github.com/rrss-app/rrss/releases) 下载对应平台的压缩包：
 
 | 平台 | 安装包 | 运行要求 |
 | :-- | :-- | :-- |
-| Linux x64 | `rrss-linux-x64.tar.gz` | WebKitGTK 4.1（Debian / Ubuntu 为 `libwebkit2gtk-4.1-0`）。阅读器播放 H.264 视频需要 GStreamer 解码器，Debian / Ubuntu 可安装 `gstreamer1.0-plugins-good`、`gstreamer1.0-plugins-bad` 和 `gstreamer1.0-libav` |
-| Windows x64 | `rrss-windows-x64.zip` / `rrss-windows-x64-msvc.zip` | WebView2 Runtime（Windows 11 自带） |
+| Linux x64 | `rrss-linux-x64.tar.gz` | WebKitGTK 4.1（Debian / Ubuntu 为 `libwebkit2gtk-4.1-0`）。如需在阅读器内播放 H.264 视频，请另装 GStreamer 解码器（Debian / Ubuntu：`gstreamer1.0-plugins-good`、`gstreamer1.0-plugins-bad`、`gstreamer1.0-libav`） |
+| Windows x64 | `rrss-windows-x64.zip` / `rrss-windows-x64-msvc.zip` | WebView2 Runtime（Windows 11 已自带） |
 
-解压后运行 `rrss`（Windows 为 `rrss.exe`）。
+解压后运行 `rrss`（Windows 下为 `rrss.exe`）即可使用。
 
 ### 三步上手
 
-1. **添加订阅**：粘贴网址，或在「设置 → 订阅」导入 OPML。
-2. **接上模型**（可选）：在「设置 → 模型」添加 OpenAI / DeepSeek / OpenRouter / Ollama 或任意 OpenAI 兼容端点，再给摘要、简报、翻译、对话分别选模型。不接模型也能用规则、阅读与搜索。
-3. **写几条规则**：在「设置 → 规则」加分或隐藏，焦点流会马上按新规则重排。
+1. **添加订阅**：在「设置 → 订阅」粘贴 RSS / Atom / JSON Feed 地址，或直接导入 OPML。
+2. **按需接入模型**（可选）：在「设置 → 模型」添加 OpenAI、DeepSeek、OpenRouter、本机 Ollama 或任意 OpenAI 兼容服务，再给摘要、简报、翻译和对话分别选择模型。不接模型也能正常使用订阅、规则、阅读与搜索。
+3. **写几条规则**：在「设置 → 规则」为关心或不想看的内容加分或隐藏，今日焦点会立即按新规则重排。
 
-## 产品边界
+## 设计原则与隐私边界
 
-- 默认进入「今日焦点」卡片流；简报是日报 / 周报主视图，深度对话是独立入口，不做经典三栏 RSS。
-- 规则先过滤、原因可解释；参考 [NewsBlur Intelligence Trainer](https://www.newsblur.com/features/intelligence-training) 的显式训练，不把黑盒模型当主过滤器。兴趣相似度只影响可见列表。
-- 摘要 / 简报生成走 HTTP 补全；用户追问才启动 Pi。引用使用结构化文章 ID，而非把全文贴进聊天。
-- 系统 WebView 只画本应用外壳；正文走清洗后的块 IR，原网页只在隔离的子 webview 里打开（见[安全边界](doc/architecture.md#安全边界)），视频卡片外开。首期不做公式 / Mermaid 渲染、所见即所得编辑或对外 MCP。
-- 默认网络活动限于订阅内容（含文章图片与站点图标）、你选择的 AI 端点，以及对话用的 Pi 运行时下载（未安装时启动即自动下载，可在设置里关闭）；不发送使用统计。数据使用单库 SQLite。macOS 仅预留，不列入首发。
+- **聚焦阅读，而非三栏收件箱**：默认打开「今日焦点」卡片流，简报和深度对话各有独立入口；想按来源和时间顺序浏览时，随时可切到「订阅」视图。
+- **规则管隐藏，偏好只管排序**：一篇文章会不会被隐藏完全由你的规则决定，灵感来自 [NewsBlur Intelligence Trainer](https://www.newsblur.com/features/intelligence-training)。阅读习惯与实验性排序模型只影响可见文章的先后顺序，不把黑盒当过滤器。
+- **安全排版与隔离浏览**：正文先经安全清洗再重新排版，主界面不运行远程脚本，配图和直链音视频均通过本地缓存提供；查看原网页时会打开独立的隔离视图（详见[安全边界](doc/architecture.md#安全边界)），YouTube / 哔哩哔哩视频以封面卡片外开。暂不支持数学公式 / Mermaid 图表渲染或所见即所得编辑。
+- **透明的联网与隐私**：不发送任何使用统计或遥测数据。默认仅在以下情况联网：抓取你添加的订阅与媒体、请求你配置的 AI 服务，以及在首次使用前按需下载对话引擎 Pi（可在设置中关闭自动下载）。全部数据保存在本机单个 SQLite 文件中。目前支持 Windows 与 Linux，暂不提供 macOS 版本。
 
 ## 架构
 
@@ -146,7 +145,7 @@ flowchart TB
     Core["rrss-core<br/>抓取 · 规则 · 聚类 · 检索"]
     DB[("SQLite 单库<br/>WAL · FTS5 · sqlite-vec")]
     Feeds(["订阅源<br/>RSS · Atom · JSON"])
-    LLM(["你选择的模型端点<br/>摘要 · 简报 · 翻译 · 嵌入"])
+    LLM(["你选择的模型服务<br/>摘要 · 简报 · 翻译 · 嵌入"])
     Pi(["Pi 运行时<br/>深度对话与工具"])
     UI <-->|IPC| App
     App --> Focus --> Core
@@ -160,34 +159,35 @@ flowchart TB
 
 | 模块 | 职责 |
 | :-- | :-- |
-| `apps/desktop` | React + Vite 界面，只画界面、调 IPC、管交互 |
+| `apps/desktop` | React + Vite 桌面界面，只负责展示、交互与 IPC 调用 |
 | `crates/rrss-desktop` | Tauri 2 窗口、命令适配与 `rrss://` 本地媒体协议 |
-| `crates/rrss-app` | 业务编排：查询、动作、后台调度、翻译与 Pi 运行时 |
-| `crates/rrss-focus` | 今日焦点的推荐：排序、候选池、排列、探索与抽查 |
-| `crates/rrss-core` | SQLite、领域模型、抓取、规则、聚类、网络与平台适配 |
-| `crates/rrss-render` | HTML / Markdown 清洗并转成块 IR |
-| `crates/rrss-ai` | HTTP 补全、嵌入与 Pi 协议 |
+| `crates/rrss-app` | 业务编排：查询、动作、后台调度、翻译与 Pi 运行时管理 |
+| `crates/rrss-focus` | 今日焦点推荐：排序、候选池、排列、探索与抽查 |
+| `crates/rrss-core` | SQLite 单库、领域模型、抓取、规则、聚类、网络与平台适配 |
+| `crates/rrss-render` | HTML / Markdown 安全清洗并转成结构化块 IR |
+| `crates/rrss-ai` | HTTP 补全、文本嵌入与 Pi 通信协议 |
 
-完整说明见[架构概览](doc/architecture.md)。
+更详细的分层、数据流与安全边界见[架构概览](doc/architecture.md)。
 
 ## 开发
 
-需要 Node 22、pnpm 10、Rust stable；Linux 另需 `libwebkit2gtk-4.1-dev`。Linux / WSL 日常使用 Debug + Vite 热更新，在仓库根目录运行：
+本地开发需要 Node 22、pnpm 10、Rust stable；Linux 另需 `libwebkit2gtk-4.1-dev`。在仓库根目录启动 Debug + Vite 热更新：
 
 ```sh
 pnpm --dir apps/desktop install
 pnpm --dir apps/desktop dev:desktop
 ```
 
-环境、目录分工、开发约定与测试见 [参与开发](CONTRIBUTING.md)。上面的截图由 [`e2e/readme-shots.spec.ts`](apps/desktop/e2e/readme-shots.spec.ts) 用演示数据生成，界面变化后可重新生成。
+环境配置、目录分工、开发约定与测试方式见[参与开发](CONTRIBUTING.md)。本文档中的演示截图由 [`e2e/readme-shots.spec.ts`](apps/desktop/e2e/readme-shots.spec.ts) 基于虚构演示数据自动生成。
 
 ## 文档
 
-- [架构概览](doc/architecture.md)：分层、数据流、存储，以及安全、网络与隐私边界。
-- [参与开发](CONTRIBUTING.md)：环境、运行、目录分工、开发约定与测试。
-- [安全](SECURITY.md)：如何私下报告漏洞。
+- [架构概览](doc/architecture.md)：整体分层、数据流、存储与安全隐私边界。
+- [参与开发](CONTRIBUTING.md)：开发环境、运行方式、代码约定与测试。
+- [安全](SECURITY.md)：如何私下报告安全漏洞。
+- [更新日志](CHANGELOG.md)：各版本面向用户的变更记录。
 - 测试数据：[馈源](testdata/feeds/README.md) · [渲染](testdata/render/README.md) · [Pi 模拟](testdata/pi/README.md)。
 
 ## 许可
 
-应用主体为 [MIT](LICENSE)。Tauri 为 MIT / Apache-2.0；关于页保留应用 MIT 声明。
+应用主体采用 [MIT](LICENSE) 许可。Tauri 采用 MIT / Apache-2.0 许可；应用「关于」页保留了 MIT 许可声明。

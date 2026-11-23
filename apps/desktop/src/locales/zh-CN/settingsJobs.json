@@ -146,7 +146,7 @@
       "n": "{{dims}} 维",
       "native": "原始",
       "nativeN": "原始（{{dims}} 维）",
-      "hint": "只有部分模型适合降维（如 OpenAI text-embedding-3、Gemini embedding、Qwen3-Embedding、EmbeddingGemma），其他模型降维后效果会明显变差。默认不超过 1024 维，节省空间。",
+      "hint": "仅部分模型支持降维（如 OpenAI text-embedding-3、Gemini embedding、Qwen3-Embedding、EmbeddingGemma），其他模型降维后效果会明显下降。默认限制在 1024 维以内以节省磁盘空间。",
       "hintStale": "向量库已暂停生成，请先恢复原配置再改维度。",
       "hintBuilding": "正在重建向量库，完成或取消后才能改维度。"
     },
@@ -171,12 +171,12 @@
       "summaryNative": "{{model}}（{{provider}}）· {{dims}} 维（原始 {{sourceDims}} 维） · {{chunks}} 段",
       "providerDeleted": "连接已删除"
     },
-    "unbound": "还没有嵌入模型。没有它时，对话检索只用全文检索，排序不用向量。",
+    "unbound": "尚未选择嵌入模型。未配置时，对话检索仅使用全文搜索，不启用语义相似排序与文末相关阅读。",
     "building": {
       "resizing": "正在把向量库调整到 {{dims}} 维：{{written}} / {{total}} 段",
       "rebuilding": "正在用 {{model}} 重建向量库：{{written}} / {{total}} 段",
       "progressAria": "向量库重建进度",
-      "keepDims": "重建完成前，检索继续用 当前 {{dims}} 维；完成后自动切换。",
+      "keepDims": "调整完成前，检索继续使用当前的 {{dims}} 维向量；完成后自动切换。",
       "keepModel": "重建完成前，检索继续用 {{model}}；完成后自动切换。",
       "previousVectors": "原来的向量"
     },
@@ -231,7 +231,7 @@
     "reading": {
       "title": "阅读",
       "enable": "启用翻译",
-      "enableHint": "关闭后阅读器里不出现翻译。",
+      "enableHint": "关闭后，阅读器中将隐藏翻译入口。",
       "targetLang": "目标语言",
       "otherLangs": "其他语言",
       "langCode": "语言代码",

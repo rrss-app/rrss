@@ -1,4 +1,4 @@
-//! 阶段 23 · V1：探针请求与重建，沿用 API 网络用途、嵌入队列与预算。
+//! 向量空间维护作业：探针请求与重建，沿用 API 网络用途、嵌入队列与预算。
 use super::{
     embeddings::{EmbedQueue, embed_and_save},
     spawn_db,

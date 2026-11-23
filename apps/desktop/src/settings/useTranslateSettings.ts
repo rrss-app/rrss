@@ -6,7 +6,7 @@ import { sameTranslateDraft, translateDraft, translateKeys, translateMutationOpt
   type TranslateAction, type TranslateDraft, type TranslateStatus } from "./translateQuery";
 
 type Editor = { baseline: TranslateDraft; draft: TranslateDraft };
-/** 点选即存的字段（阶段 19-7）；其余文字字段在保存栏。 */
+/** 点选即存的字段；其余文字字段在保存栏。 */
 export type InstantKey = "enabled" | "backend" | "target_lang";
 
 export function useTranslateSettings(onEditStateChange?: (state: SettingsEditState | null) => void) {

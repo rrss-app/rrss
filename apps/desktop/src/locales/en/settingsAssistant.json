@@ -55,7 +55,7 @@
         "list_focus": "Today’s Focus",
         "explain_score": "Explain score",
         "list_feeds": "Feeds",
-        "get_digest": "Read Digest",
+        "get_digest": "Read digest",
         "add_interest": "Add interest",
         "mark_read": "Mark as read",
         "star_article": "Star article"
@@ -189,7 +189,7 @@
     },
     "oauthTag": "{{tag}} · Browser sign-in",
     "health": {
-      "legacy": "This legacy address no longer connects; switch to the new address before turning it on",
+      "legacy": "Legacy SSE addresses are no longer supported; switch to the new address before turning it on",
       "waiting": "Waiting for browser sign-in to finish…",
       "needsLogin": "Sign-in required · Authorize in your browser to use it",
       "connecting": "Connecting…",
@@ -220,11 +220,11 @@
     "errorFallback": "Couldn’t connect.",
     "probeIncomplete": "Test didn’t finish",
     "noTools": "This service doesn’t offer any tools.",
-    "toolsHead": "Checked tools are available to the assistant. Tools that change files are unchecked by default; once you check one, it asks before each call.",
+    "toolsHead": "Checked tools are available to the assistant. Tools that modify data are unchecked by default and ask for your confirmation before each call.",
     "selectAll": "Select all",
     "toolsLabel": "Tools available to the assistant",
     "ask": "Asks before each call",
-    "writes": "Changes files"
+    "writes": "Modifies data"
   },
   "mcpDialog": {
     "auth": {
@@ -249,7 +249,7 @@
     },
     "probeButton": "Test connection",
     "saveAndLogin": "Save and sign in",
-    "legacyTitle": "This address no longer connects",
+    "legacyTitle": "Legacy SSE addresses are no longer supported",
     "legacyBody": "Most services have a new address, usually by replacing the trailing <code>/sse</code> with <code>/mcp</code>; check the service’s instructions. Save it, then turn the service on from the list.",
     "legacySwap": "Use …/mcp",
     "kindsLabel": "Type",
@@ -324,7 +324,7 @@
     "editReport": "Memories and interests",
     "opDone": "{{label}} completed.",
     "opFailed": "{{label}} failed:",
-    "opDoneRefreshFailed": "{{label}} completed. The memories list couldn’t refresh and still shows the previous content; the change itself went through, so load it again:",
+    "opDoneRefreshFailed": "{{label}} succeeded, but the list couldn’t refresh. Reload to see the latest items:",
     "discardEdit": {
       "title": "Discard memory changes",
       "message": "This memory has unsaved changes. Discard them and continue?"
@@ -416,9 +416,9 @@
   "piSource": {
     "standalone": "Standalone binary: {{path}}",
     "standalone_explicit": "Standalone binary · Explicit path: {{path}}",
-    "node": "Node wrapper (not recommended; includes the npm dependency tree): {{path}}",
-    "node_explicit": "Node wrapper (not recommended; includes the npm dependency tree) · Explicit path: {{path}}",
-    "missing": "Couldn’t find the standalone pi binary. Download pi-linux-x64.tar.gz or pi-windows-x64.zip from GitHub Releases and put it on PATH, next to rrss, or in ~/.local/share/rrss/bin (Windows: %APPDATA%\\rrss\\bin)."
+    "node": "Node wrapper (not recommended; slower and depends on npm packages): {{path}}",
+    "node_explicit": "Node wrapper (not recommended; slower and depends on npm packages) · Explicit path: {{path}}",
+    "missing": "Couldn’t find the standalone Pi binary. Download it above, or get pi-linux-x64.tar.gz / pi-windows-x64.zip from GitHub Releases and put it on PATH, next to rrss, or in ~/.local/share/rrss/bin (Windows: %APPDATA%\\rrss\\bin)."
   },
   "piVersionUnknown": "Found, but the version couldn’t be read"
 }

@@ -26,7 +26,7 @@ type Props = {
 };
 
 /**
- * 对话助手页的「外部工具（MCP）」一区（阶段 19 · 内置 MCP 的界面）：每个服务单独开关；
+ * 对话助手页的「外部工具（MCP）」区块：每个服务单独开关；
  * 检测只在点按或打开开关时运行，结果默认收起；浏览器登录的结果在这里取走：成功后开启并检测一次。
  */
 export function McpSection({ servers, writing, onAdd, onImport, onEdit, onToggle, onSave, onLoginFailed }: Props) {

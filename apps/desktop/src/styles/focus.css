@@ -13,7 +13,7 @@
   padding: var(--space-2) max(var(--focus-gutter), calc(var(--window-controls-w) + 8px)) var(--space-2) var(--focus-gutter);
 }
 .focus-head { display: flex; flex-direction: column; }
-/* 后台新内容提示：零高度吸顶，浮在列表上方，不挤动内容（阶段 17 · 后台更新不动视口）。 */
+/* 后台新内容提示：零高度吸顶，浮在列表上方，不挤动内容。 */
 .focus-new { position: sticky; top: 0; z-index: var(--z-panel); height: 0; display: flex; justify-content: center; overflow: visible; }
 .focus-new-pill {
   display: inline-flex; align-items: center; gap: 6px; margin-top: var(--space-3); padding: 0 14px; min-height: 30px;
@@ -272,7 +272,7 @@ button.focus-banner:hover { background: var(--tint-hover); color: var(--text); }
   max-width: 200px;
   min-width: 0;
 }
-/* 来源名可点：进入订阅模式并选中这个源（阶段 23 S1）。 */
+/* 来源名可点：进入订阅视图并选中这个源。 */
 button.article-source {
   display: inline; min-height: 0; padding: 0; border: 0; border-radius: 0;
   background: none; box-shadow: none; font: inherit; font-weight: 500; color: var(--text-2);
@@ -288,7 +288,7 @@ button.article-source:focus-visible { outline: 2px solid var(--accent); outline-
 .spot-check-options { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .spot-check-reveal small { color: var(--text-muted); font-size: 12px; }
 .spot-check-reveal[data-tone="ok"] { background: var(--focus-tint); border-color: transparent; }
-/* ---------- 点踩后的撤销窗口（阶段 11 · 踩的反馈） ---------- */
+/* ---------- 点踩后的撤销窗口 ---------- */
 .article[data-dismissed] { cursor: default; }
 .focus .article[data-dismissed]:hover h3 { text-decoration: none; }
 .dismiss-stage { position: relative; }
@@ -369,12 +369,12 @@ button.article-source:focus-visible { outline: 2px solid var(--accent); outline-
 .article .acts .rate, .article .acts .star-btn { width: 28px; padding: 0; }
 .article .acts .rate.up:hover, .article .acts .rate.up[aria-pressed="true"] { color: var(--focus); }
 .article .acts .rate.down:hover, .article .acts .rate.down[aria-pressed="true"] { color: var(--danger); }
-/* 已赞常显在来源一行，与「已收藏」同位置（阶段 11 · 赞的反馈）。 */
+/* 已赞常显在来源一行，与「已收藏」同位置。 */
 .meta-tag.liked { color: var(--focus); background: transparent; }
 .star-btn.on { color: var(--accent); }
 .article.starred h3::after { content: none; }
 
-/* ---------- 相近报道成组面板（阶段 14 · 相近报道成组与汇总） ---------- */
+/* ---------- 相近报道成组面板 ---------- */
 /* 底板铺在这组几行后面，左右伸出版心 12px；行内正文仍与列表左沿对齐。 */
 .cluster-panel {
   position: absolute; top: 0; left: -12px; right: -12px;

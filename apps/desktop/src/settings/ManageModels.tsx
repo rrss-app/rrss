@@ -28,7 +28,7 @@ type Text = { name: string; ctx: string; out: string };
 const textOf = (e: PoolEntryView): Text => ({ name: e.display_name, ctx: e.context_window ? String(e.context_window) : "", out: e.max_output ? String(e.max_output) : "" });
 
 /**
- * 管理模型（阶段 19-7）：覆盖设置面板的弹出页，左侧列表，右侧选中模型的设置；改动立即保存。
+ * 管理模型弹出页：覆盖设置面板的弹出页，左侧列表，右侧选中模型的设置；改动立即保存。
  * 文字项在失焦或回车时保存，离开时有「保存并离开」。窄屏先列表后详情。
  */
 export function ManageModels({ providers, initialFilter, initialModel, onAsk, onClose, onAddModels, onShowUses, onEditStateChange }: {

@@ -423,7 +423,7 @@ export const api = {
   /** 建托盘或换菜单文字（文字由前端给）；没有宿主或托盘不可用时为 false。 */
   trayInstall: (labels: TrayLabels): Promise<boolean> => isTauri() ? invoke<boolean>("tray_install", { labels }) : Promise.resolve(false),
   storagePage: () => invoke<StoragePage>("storage_page"),
-  /** 推荐评测日志（阶段 23 E0）；统一由 `lib/signals.ts` 批量调用，组件不要直接用。 */
+  /** 推荐与阅读信号日志；统一由 `lib/signals.ts` 批量调用，组件不要直接用。 */
   recordExposures: (records: ExposureInput[]) => invoke<Array<number | null>>("record_exposures", { records }),
   recordArticleEvents: (records: ArticleEventInput[]) => invoke<number>("record_article_events", { records }),
   recordReadSessions: (records: ReadSessionInput[]) => invoke<number>("record_read_sessions", { records }),

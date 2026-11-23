@@ -49,7 +49,7 @@ function draftFrom(server?: McpView): Draft {
 }
 
 /**
- * 添加 / 编辑外部工具（阶段 19 · 内置 MCP 的界面）：两张类型卡片，左标签右字段，输入框只用占位示例。
+ * 添加 / 编辑外部工具（MCP）弹层：两张类型卡片，左标签右字段，输入框只用占位示例。
  * 「检测连接」用还没保存的内容连一次，不保存、不开启；检测后勾好的工具随保存写入。浏览器登录的服务保存后直接开始登录。
  */
 export function McpDialog({ server, run, status, onPaste, ...props }: Props & { server?: McpView; onPaste: () => void }) {

@@ -46,7 +46,7 @@
     "pruned": "正文已按保留策略清理，这里只留标题、摘要和阅读记录。",
     "openOriginal": "打开原文",
     "refetch": "重新抓取正文",
-    "renderError": "正文显示不出来，可以返回列表或换一篇。",
+    "renderError": "正文暂时无法显示，请返回列表或切换其他文章。",
     "retry": "重试"
   },
   "hits": {
@@ -228,10 +228,10 @@
     "timeout": "读取翻译状态超时",
     "disconnected": "连接中断，已有译文仍可阅读",
     "failedPrefix": "翻译失败：",
-    "articleMismatch": "文章身份不匹配",
-    "snapshotStale": "快照已过期",
-    "eventGap": "恢复后仍存在事件缺口",
-    "inconsistent": "译文状态不一致，需要恢复快照",
+    "articleMismatch": "当前文章已切换，译文状态已忽略",
+    "snapshotStale": "译文进度已过期，请刷新",
+    "eventGap": "翻译进度同步中断，请点击恢复译文",
+    "inconsistent": "译文状态不同步，请点击恢复译文",
     "note": {
       "keptOriginal": "本处未译出 · 已保留原文",
       "keptTranslation": "本次未译出 · 保留已有译文",
@@ -306,7 +306,7 @@
     },
     "failure": {
       "title": "没能提取这个网页的正文",
-      "notAutoLoaded": "{{detail}}不会自动加载原网页。",
+      "notAutoLoaded": "{{detail}}为保护安全，不会自动加载原网页。",
       "openToVerify": "打开原网页通过验证",
       "retry": "重试",
       "verifyNote": "在原网页里通过人机验证后，RRSS 会自己试着抽取。验证由你本人完成，RRSS 不做自动化。",
@@ -343,7 +343,7 @@
     "missed": "没抽到像文章的正文",
     "missedReason": " · {{reason}}",
     "waiting": "<b>等待验证</b> · 在下面的网页里完成验证后，RRSS 会自己抽取当前页。",
-    "extracting": "<b>正在预抽取</b> · 页面已加载，RRSS 正在试着抽取。",
+    "extracting": "<b>正在提取正文</b> · 页面已加载完成，正在尝试提取内容。",
     "read": "切到阅读视图",
     "retryLater": "页面还在加载，稍后重抽",
     "retryNow": "现在再抽一次",
@@ -401,7 +401,7 @@
     },
     "paused": {
       "title": "网页暂时收起",
-      "detail": "菜单、对话框、toast 打开时，原生网页会挡住它们，所以先隐藏；关闭菜单后立刻恢复，不重新加载。"
+      "detail": "打开菜单或弹窗时会暂时收起原网页以免遮挡；关闭后立即恢复，不会重新加载。"
     },
     "opening": "正在打开原网页…",
     "menu": {

@@ -168,8 +168,8 @@ function PresetList({ presets, run }: {
       {presets.map((p) => (
         <div key={p.id} className={`card preset-card${p.installed ? " on" : ""}`}>
           <div className="preset-body">
-            <strong>{p.name}</strong>
-            <p className="muted">{p.description}</p>
+            <strong>{t(`rules.presets.items.${p.id}.name` as never, { defaultValue: p.name })}</strong>
+            <p className="muted">{t(`rules.presets.items.${p.id}.description` as never, { defaultValue: p.description })}</p>
             <p className="hint">
               {p.installed ? t("rules.presets.enabledOf", { enabled: p.enabled_count, total: p.rule_count }) : t("rules.presets.notInstalled", { count: p.rule_count })}
             </p>

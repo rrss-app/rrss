@@ -106,7 +106,7 @@ pub fn prepare_send(conn: &Connection, args: &SendMessageArgs) -> Result<Prepare
         })
         .collect();
     // 每轮只带随轮变化的内容：原文、引用展开、简报锚点（检索结果由调用方追加）。
-    // 固定规则在 `pi/SYSTEM.md`，长期记忆由扩展每轮写进系统提示小节（阶段 18 D10）。
+    // 固定规则在 `pi/SYSTEM.md`，长期记忆由扩展每轮写进系统提示的独立小节。
     let mut documents = HashMap::new();
     let mut prompt = expand_user_prompt(&args.text, &snaps, |citation| {
         citation_passage(conn, &mut documents, citation)

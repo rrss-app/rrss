@@ -10,7 +10,7 @@ const IDLE: ThreadSearch = { status: "idle", hits: [], searched: "", error: "" }
 export const THREAD_SEARCH_LIMIT = 20;
 
 /**
- * 搜会话（阶段 11 · N4 搜索对话）：和文章搜索同一个输入框、同样的防抖与最短长度，单独发请求；
+ * 搜索历史会话：和文章搜索同一个输入框、同样的防抖与最短长度，单独发请求；
  * 「对话 N」的数字在文章标签上也看得到。旧词与关闭后迟到的结果按代际丢弃，出错时保留上一批。
  */
 export function useThreadSearch({ active, query, search, debounceMs = 180, minLength = 2 }: {

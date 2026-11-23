@@ -7,7 +7,7 @@ import { shortModel } from "../lib/fuzzy";
 import { formatNotice } from "../lib/notice";
 import { aiQueryOptions, bindingsQueryOptions, poolQueryOptions } from "./aiQuery";
 
-// 模型的选择列表（阶段 19-7）：没有主模型与「跟随」，所有用途只从加进来的模型里选，
+// 模型选择列表：没有主模型与「跟随」，所有用途只从加进来的模型里选，
 // 对话只从打开了「用于对话」的里选。键是「连接 id|模型 id」。
 
 export const choiceKey = (c: ModelChoice) => `${c.provider_id}|${c.model}`;

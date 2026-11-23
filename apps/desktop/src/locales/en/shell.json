@@ -23,7 +23,7 @@
   "webFailure": {
     "Waf": {
       "summary": "The site has access protection",
-      "detail": "The site uses access protection, so RRSS got a verification page instead of the article."
+      "detail": "This site uses access verification, so the article text couldn’t be fetched directly."
     },
     "Network": {
       "summary": "Network request failed",
@@ -71,10 +71,10 @@
   },
   "about": {
     "close": "Close",
-    "tagline": "A local-first reading and digest tool",
-    "intro": "A reading and digest tool that runs on your computer. Subscriptions, articles, and chats all stay on this machine; models are called with your configuration.",
-    "factLocal": "Articles, summaries, and digests are all saved on this machine",
-    "factModels": "You choose the model service; summaries and digests use your settings",
+    "tagline": "A local-first, AI-assisted reading hub",
+    "intro": "A local reading hub on your computer. Subscriptions, articles, and chats stay on your machine, with AI models you choose.",
+    "factLocal": "Articles, search indexes, summaries, and chats all stay on this machine",
+    "factModels": "You choose the model services; summaries, digests, and chats follow your settings",
     "factKeys": "Ctrl+K to search, J / K to select, Enter to read",
     "license": "MIT License · Windows / Linux"
   },

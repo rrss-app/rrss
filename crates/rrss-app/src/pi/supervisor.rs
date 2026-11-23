@@ -52,7 +52,7 @@ struct Running {
     model: Option<String>,
     /// 当前会话正在用的 `provider/id`（打开会话或切换后记下）。
     session_model: Option<String>,
-    /// 当前会话已设置的思考强度（按模型设置，阶段 19-7）；换会话或换模型后清空，下次发送前重设。
+    /// 当前会话已设置的思考强度（按模型设置）；换会话或换模型后清空，下次发送前重设。
     session_thinking: Option<String>,
     /// 版本在兼容线以外或读不出时的版本号（读不出记为「未知」）。
     unverified: Option<String>,

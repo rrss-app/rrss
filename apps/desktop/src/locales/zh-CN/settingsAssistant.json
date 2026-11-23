@@ -47,18 +47,18 @@
       "toggle": "工具 {{label}}",
       "labels": {
         "search_articles": "搜索文章",
-        "get_article": "读文章",
+        "get_article": "读取文章",
         "search_memory": "搜索记忆",
-        "get_assistant_config": "读助手配置",
+        "get_assistant_config": "读取助手配置",
         "open_original": "打开原文",
-        "fetch_url": "抓取网址",
+        "fetch_url": "读取网页",
         "list_focus": "今日焦点",
-        "explain_score": "解释分数",
+        "explain_score": "查看评分原因",
         "list_feeds": "订阅源",
-        "get_digest": "读 Digest",
+        "get_digest": "读取简报",
         "add_interest": "添加兴趣",
-        "mark_read": "标已读",
-        "star_article": "收藏"
+        "mark_read": "标记已读",
+        "star_article": "收藏文章"
       }
     },
     "extensions": "扩展",
@@ -188,7 +188,7 @@
     },
     "oauthTag": "{{tag}} · 浏览器登录",
     "health": {
-      "legacy": "这种旧式地址已连不上，换成新地址后再开启",
+      "legacy": "旧版 SSE 地址已不再支持，请更换为新版地址后再开启",
       "waiting": "等你在浏览器里完成登录…",
       "needsLogin": "需要登录 · 在浏览器里授权后才能使用",
       "connecting": "正在连接…",
@@ -219,11 +219,11 @@
     "errorFallback": "没有连上。",
     "probeIncomplete": "检测没有完成",
     "noTools": "这个服务没有提供工具。",
-    "toolsHead": "勾选的工具会开放给助手；会改文件的默认不勾，勾上后每次调用前先问你。",
+    "toolsHead": "勾选后将开放给助手使用；可能修改内容的工具默认关闭，开启后每次调用前都会先征得你确认。",
     "selectAll": "全选",
     "toolsLabel": "开放给助手的工具",
     "ask": "调用前会先问你",
-    "writes": "会改文件"
+    "writes": "可能修改内容"
   },
   "mcpDialog": {
     "auth": {
@@ -248,7 +248,7 @@
     },
     "probeButton": "检测连接",
     "saveAndLogin": "保存并登录",
-    "legacyTitle": "这个地址已经连不上",
+    "legacyTitle": "不再支持旧版 SSE 地址",
     "legacyBody": "多数服务另有新地址，通常是把结尾的 <code>/sse</code> 换成 <code>/mcp</code>，以服务说明为准。改好后保存，再回列表里开启。",
     "legacySwap": "换成 …/mcp",
     "kindsLabel": "类型",
@@ -320,7 +320,7 @@
     "editReport": "记忆与兴趣",
     "opDone": "{{label}}已完成。",
     "opFailed": "{{label}}失败：",
-    "opDoneRefreshFailed": "{{label}}已完成；记忆列表没能刷新，显示的还是之前的内容；刚才的操作已完成，重新读取即可：",
+    "opDoneRefreshFailed": "{{label}}已生效，但记忆列表刷新失败，请重新读取：",
     "discardEdit": {
       "title": "放弃记忆修改",
       "message": "当前记忆有未保存的修改，放弃后继续？"
@@ -411,9 +411,9 @@
   "piSource": {
     "standalone": "独立二进制：{{path}}",
     "standalone_explicit": "独立二进制 · 显式路径：{{path}}",
-    "node": "Node 包装（不推荐，会带上 npm 依赖树）：{{path}}",
-    "node_explicit": "Node 包装（不推荐，会带上 npm 依赖树） · 显式路径：{{path}}",
-    "missing": "未找到 pi 独立二进制。从 GitHub Releases 下载 pi-linux-x64.tar.gz / pi-windows-x64.zip，放到 PATH、与 rrss 同目录，或 ~/.local/share/rrss/bin（Windows：%APPDATA%\\rrss\\bin）。"
+    "node": "Node 脚本版（不推荐，启动较慢且依赖外部 npm 环境）：{{path}}",
+    "node_explicit": "Node 脚本版（不推荐，启动较慢且依赖外部 npm 环境） · 显式路径：{{path}}",
+    "missing": "未找到对话引擎（Pi）独立程序。可在上方点击下载，或从 GitHub Releases 下载 pi-linux-x64.tar.gz / pi-windows-x64.zip，放到 PATH、与 rrss 同目录，或 ~/.local/share/rrss/bin（Windows：%APPDATA%\\rrss\\bin）。"
   },
   "piVersionUnknown": "已找到，未能读取版本"
 }

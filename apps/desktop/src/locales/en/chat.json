@@ -16,11 +16,11 @@
   "failure": {
     "notInstalled": {
       "title": "Chat engine not found",
-      "detail": "You can download it in settings."
+      "detail": "You can download it in Settings."
     },
     "version": {
       "title": "Chat engine needs an update",
-      "detail": "Update it in settings."
+      "detail": "Update it in Settings."
     },
     "config": {
       "title": "Chat model unavailable",
@@ -88,8 +88,8 @@
     "headingLimit": "Context {{used}} / {{limit}}",
     "headingLimitPercent": "Context {{used}} / {{limit}} · {{pct}}%",
     "limitUnknown": "The context limit isn’t known yet; it will appear after the chat engine has started once.",
-    "limitUser": "Limit {{limit}} is the context length you set for {{model}} in settings.",
-    "limitEngine": "Limit {{limit}} is the default the chat engine reports for {{model}} (left blank in settings).",
+    "limitUser": "Limit {{limit}} is the context length you set for {{model}} in Settings.",
+    "limitEngine": "Limit {{limit}} is the default the chat engine reports for {{model}} (left blank in Settings).",
     "limitLast": "Limit {{limit}} is based on the model used when you last sent a message.",
     "noteUsage": "Context used by this chat at the end of the last turn.",
     "noteNoRecord": "This chat has no usage recorded yet; it will appear after you send a message.",

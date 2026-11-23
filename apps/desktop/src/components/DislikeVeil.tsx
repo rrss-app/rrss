@@ -4,7 +4,7 @@ import { ruleConditionLabel } from "../lib/ruleLabels";
 import { useTranslation } from "../i18n";
 import { Icon } from "./Icon";
 
-/** 点踩后可撤销的时长（阶段 11 · 踩的反馈）。 */
+/** 点踩后可撤销的时长。 */
 export const DISLIKE_HOLD_MS = 5000;
 
 export type DislikeRules = { loading: boolean; candidates: RuleCandidateView[]; error: string; busy: boolean };

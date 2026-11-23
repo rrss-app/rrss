@@ -14,7 +14,7 @@ export function handleShellReads(stub: ApiStub, page: FocusPage = TWO_ARTICLE_PA
   stub.handle("threadList", () => ({ folders: [], threads: [], archived_count: 0 }));
   // 搜索浮层同时搜会话（N4 · 搜索对话）。
   stub.handle("searchThreads", () => []);
-  // 输入区的模型按钮读模型池、连接与绑定（阶段 19-6）。
+  // 输入区的模型按钮读取已添加模型、连接与绑定。
   stub.handle("modelPool", () => modelPoolFixture());
   stub.handle("ai", () => aiPageFixture());
   stub.handle("modelBindings", () => bindingsFixture());

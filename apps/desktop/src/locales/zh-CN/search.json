@@ -18,7 +18,7 @@
     "session": "本次运行"
   },
   "hint": {
-    "short": "再输入一个字：至少 2 个字符",
+    "short": "请至少输入 2 个字符",
     "loading": "搜索中…",
     "threadsEmpty": "输入要找的词，搜会话标题和消息。"
   },
@@ -102,7 +102,7 @@
     "whereBodyCount": "正文 {{n}} 处",
     "bodyHit": "正文命中",
     "bodyStart": "正文开头",
-    "blocksError": "命中段落暂时取不到，打开后可在正文里查找。",
+    "blocksError": "暂无法预览命中段落，打开文章后可在文内继续定位。",
     "goBody": "点击或 Enter 打开，直接定位到正文里第一处命中的段落。",
     "goTitle": "只在标题命中：点击或 Enter 从头打开。",
     "siblings": "同来源",

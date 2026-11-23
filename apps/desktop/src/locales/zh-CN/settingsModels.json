@@ -66,7 +66,7 @@
     "lacksTools": "不能调用工具",
     "lacksJson": "不支持结构化输出",
     "auto": "自动",
-    "autoTitle": "还没起显示名，用模型 id 的缩写",
+    "autoTitle": "未设置显示名，默认显示模型 ID 缩写",
     "warnTools": "对话将无法查阅文章或读取网页",
     "warnJson": "结果可能格式错乱",
     "default": "默认",
@@ -202,7 +202,7 @@
     "noUses": "还没有用途选它。",
     "editUses": "去改用途",
     "displayName": "显示名称",
-    "displayNameHint": "选择列表和对话输入区显示它；留空显示模型 id。",
+    "displayNameHint": "在选择列表与对话输入区中显示；留空则显示模型 ID。",
     "capSection": "能力",
     "capIntro": "「测试能力」会实际调用一次模型；结果不准可以手动改，以手动设置为准。",
     "cap": {
@@ -257,7 +257,7 @@
     "bulkOk": "全部勾选",
     "manualStaged": "已勾选手填的 {{model}}，应用后加入。",
     "refetchFailed_other": "重新获取失败，已记住的 {{count}} 个模型不受影响：",
-    "fetchFailed": "获取失败，可以先手填模型 id：",
+    "fetchFailed": "获取失败，可以先手填模型 ID：",
     "updated_other": "已更新，共 {{count}} 个模型。",
     "noModels": "服务没有返回模型，可以手填。",
     "applyFailed": "没有应用：",
@@ -270,7 +270,7 @@
     "apply": "应用",
     "catalogMeta": "目录 {{total}} 个 · {{time}} 获取 · 已加入 {{added}} 个",
     "refetch": "重新获取",
-    "searchPlaceholder": "搜索模型 id，例如 gpt5m、qwen coder",
+    "searchPlaceholder": "搜索模型 ID，例如 gpt5m、qwen coder",
     "searchAria": "搜索模型",
     "unselectFiltered_other": "取消勾选筛选出的 {{count}} 个",
     "unselectAll_other": "取消勾选全部 {{count}} 个",
@@ -284,7 +284,7 @@
     "willRemoveUsed_other": "将移出 · 用于 {{count}} 项",
     "added": "已加入",
     "noMatch": "没有匹配「{{filter}}」的模型。可以在下面手填。",
-    "manual": "手填模型 id",
+    "manual": "手填模型 ID",
     "manualPlaceholder": "例如 my-proxy-model",
     "manualAdd": "加入勾选",
     "manualHint": "目录里没有、或获取失败时用。挂在「{{name}}」下。"
@@ -331,7 +331,7 @@
       },
       "memory": {
         "title": "记忆整理",
-        "hint": "从对话里提取记忆候选、压缩对话情节。"
+        "hint": "从对话中提炼长期偏好候选，并在长对话时压缩早期上下文。"
       },
       "translate": {
         "title": "翻译"
@@ -359,7 +359,7 @@
     "loadingJobs": "正在读取自动任务…",
     "advanced": "此页的高级设置 →",
     "pickModels": "{{message}}勾选要用的模型。",
-    "afterApply": "{{message}}新模型的能力还没测，在「管理模型」里点「测试能力」。",
+    "afterApply": "{{message}}建议前往「管理模型」点击「测试能力」，以确认工具调用与结构化输出支持。",
     "ago": {
       "now": "刚刚",
       "minutes_other": "{{count}} 分钟前",
@@ -367,7 +367,7 @@
     },
     "conn": {
       "lastFailed": "测试失败：{{note}}",
-      "summary_other": "{{host}} · {{count}} 个模型在池中",
+      "summary_other": "{{host}} · 已添加 {{count}} 个模型",
       "keyMissing": "需要重新填写 API Key",
       "editAria": "编辑 {{name}}",
       "edit": "编辑",
@@ -410,7 +410,7 @@
     "applyPost": "用于",
     "applyTo_other": "应用到 {{count}} 项",
     "mixed_other": "{{count}} 种模型",
-    "translateBackend": "现在用 {{backend}} 翻译，改成「大模型」后才会用这里的模型。",
+    "translateBackend": "当前翻译服务为「{{backend}}」，在翻译设置中切回「大模型」后此处选择才会生效。",
     "translateSettings": "翻译设置",
     "unsetAll": "还没选模型，{{title}}暂停。",
     "unsetSome_other": "{{count}} 项没选模型，这几项暂停。",

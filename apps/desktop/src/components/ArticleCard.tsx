@@ -45,7 +45,7 @@ export function ArticleCard({
   onSource?: (feedId: number) => void;
   onRate: (row: ArticleView, up: boolean) => void;
   onStar?: (row: ArticleView) => void;
-  /** 点踩后的撤销窗口：正文虚化、不能再打开，盖一行提示（阶段 11 · 踩的反馈）。 */
+  /** 点踩后的撤销窗口：正文虚化、不能再打开，盖一行提示。 */
   dislike?: DislikeState;
   onDislikeAction?: (action: DislikeAction) => void;
 }) {

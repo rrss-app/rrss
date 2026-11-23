@@ -58,7 +58,7 @@
       "failedBadge": "刷新失败",
       "limitedBadge": "限流中 · {{until}} 恢复",
       "failed": "最近一次刷新失败：{{error}}",
-      "limited": "这个网站要求暂停请求，{{until}} 后自动恢复。",
+      "limited": "该网站暂时限制了访问频率，将在 {{until}} 后自动恢复抓取。",
       "retry": "重试",
       "retrying": "重试中…",
       "retryFailed": "重试没有完成：{{error}}"
@@ -156,7 +156,7 @@
     "skip": "跳过",
     "cancel": "取消",
     "apply_other": "放进 {{count}} 个",
-    "applyNone": "放进  个",
+    "applyNone": "放入文件夹",
     "loose": "未放进文件夹"
   },
   "health": {
@@ -176,7 +176,7 @@
     },
     "feed_health_noisy": {
       "label": "多数内容被隐藏",
-      "detail": "近 {{days}} 天大部分文章被规则隐藏或被踩。可以退订，或在规则页调整。"
+      "detail": "近 {{days}} 天内大部分文章被规则隐藏或被踩。你可以退订此源，或在规则页微调过滤条件。"
     },
     "timeout": "订阅请求超时",
     "recentSuccess": "最近成功：{{date}}",

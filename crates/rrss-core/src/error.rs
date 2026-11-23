@@ -55,14 +55,14 @@ pub enum Error {
     ProviderNotFound,
     #[error("{0}")]
     InvalidProvider(models::ProviderProblem),
-    /// 选的模型不在模型列表里，或不适用于这个用途（阶段 19-7）。
+    /// 选的模型不在模型列表里，或不适用于这个用途。
     #[error("{0}")]
     InvalidModelChoice(models::ModelChoiceProblem),
     #[error("vector space model change requires a rebuild")]
     VectorSpaceRebuildRequired { model: String },
     #[error("vector space rebuild is in progress")]
     VectorSpaceRebuildInProgress,
-    /// 用途还没选模型（阶段 19-7）。
+    /// 该用途尚未选择模型。
     #[error("model is unset for {0}")]
     TaskModelUnset(models::TaskModelLabel),
     #[error("invalid Pi compat object: {0}")]
