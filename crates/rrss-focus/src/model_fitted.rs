@@ -11,54 +11,16 @@ const MIN_HALF_LIFE: i64 = 3_600_000;
 const MAX_HALF_LIFE: i64 = 14 * DAY_MS;
 pub(super) const ABSOLUTE_HALF_LIFE: i64 = 3 * DAY_MS;
 
-const LAMBDA: f64 = 1.0;
+pub(crate) const LAMBDA: f64 = 1.0;
 /// Daily source draw in standard deviations, and the cap on that deviation:
 /// sources whose effects differ by less than their uncertainty take turns from
 /// day to day instead of the same few always winning a tie by noise.
-const SOURCE_DRAW: (f64, f64) = (1.0, f64::INFINITY);
-#[cfg(any(test, feature = "evaluation-clock"))]
-thread_local! {
-    static SOURCE_PENALTY_OVERRIDE: std::cell::Cell<f64> = const { std::cell::Cell::new(LAMBDA) };
-    static SOURCE_DRAW_OVERRIDE: std::cell::Cell<(f64, f64)> = const { std::cell::Cell::new(SOURCE_DRAW) };
-    static FINE_POSITIONS_OVERRIDE: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
-}
-
-#[cfg(any(test, feature = "evaluation-clock"))]
-fn with_cell<V: Copy + 'static, T>(
-    cell: &'static std::thread::LocalKey<std::cell::Cell<V>>,
-    value: V,
-    f: impl FnOnce() -> T,
-) -> T {
-    struct Restore<V: Copy + 'static>(&'static std::thread::LocalKey<std::cell::Cell<V>>, V);
-    impl<V: Copy + 'static> Drop for Restore<V> {
-        fn drop(&mut self) {
-            self.0.set(self.1);
-        }
-    }
-    let _restore = Restore(cell, cell.replace(value));
-    f()
-}
-
-/// Evaluation only: the daily source draw as `scale` standard deviations capped
-/// at `cap` (0 turns it off) on this thread.
-#[cfg(any(test, feature = "evaluation-clock"))]
-pub fn with_source_draw<T>(scale: f64, cap: f64, f: impl FnOnce() -> T) -> T {
-    with_cell(&SOURCE_DRAW_OVERRIDE, (scale, cap), f)
-}
-
-/// Evaluation only: `false` restores the single 0–9 training position bucket.
-#[cfg(any(test, feature = "evaluation-clock"))]
-pub fn with_fine_positions<T>(enabled: bool, f: impl FnOnce() -> T) -> T {
-    with_cell(&FINE_POSITIONS_OVERRIDE, enabled, f)
-}
+pub(crate) const SOURCE_DRAW: (f64, f64) = (1.0, f64::INFINITY);
 
 /// Fixed per feed and UTC day, like the daily exploration trial, so one day's
 /// pages and cache refreshes agree.
 pub(super) fn source_draw(fit: &read_model::Fit<5>, feed: i64, at: i64) -> f64 {
-    #[cfg(any(test, feature = "evaluation-clock"))]
-    let (scale, cap) = SOURCE_DRAW_OVERRIDE.get();
-    #[cfg(not(any(test, feature = "evaluation-clock")))]
-    let (scale, cap) = SOURCE_DRAW;
+    let (scale, cap) = crate::tuning::current().source_draw;
     if scale == 0.0 {
         return 0.0;
     }
@@ -66,18 +28,6 @@ pub(super) fn source_draw(fit: &read_model::Fit<5>, feed: i64, at: i64) -> f64 {
     scale * sd * read_model::daily_normal(feed, at.div_euclid(DAY_MS))
 }
 
-/// Evaluation only: shrinkage of per-source effects toward their prior on this thread.
-#[cfg(any(test, feature = "evaluation-clock"))]
-pub fn with_source_penalty<T>(lambda: f64, f: impl FnOnce() -> T) -> T {
-    with_cell(&SOURCE_PENALTY_OVERRIDE, lambda, f)
-}
-
-fn source_penalty() -> f64 {
-    #[cfg(any(test, feature = "evaluation-clock"))]
-    return SOURCE_PENALTY_OVERRIDE.get();
-    #[cfg(not(any(test, feature = "evaluation-clock")))]
-    LAMBDA
-}
 /// Subscribing is an explicit choice: a new feed starts as if liked (log odds),
 /// fading to neutral over the window; its own Focus outcomes move it either way.
 const SUBSCRIPTION_PRIOR: f64 = 1.5;
@@ -320,7 +270,7 @@ pub(super) fn train(
         &samples,
         read_model::Penalty {
             beta: LAMBDA,
-            source: source_penalty(),
+            source: crate::tuning::current().source_penalty,
             prior: HAND_PRIOR.map(|w| k * w),
             source_prior: subscribed
                 .iter()
@@ -466,8 +416,7 @@ fn source_prior(ops: &[Opportunity]) -> BTreeMap<i64, f64> {
 /// three apart from the rest of the first ten, whose reads differ too much to
 /// share one correction.
 fn position_dummy(position: i64) -> u8 {
-    #[cfg(any(test, feature = "evaluation-clock"))]
-    if !FINE_POSITIONS_OVERRIDE.get() {
+    if !crate::tuning::current().fine_positions {
         return position_bucket(position);
     }
     match position {

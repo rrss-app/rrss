@@ -104,7 +104,7 @@ fn auto_candidates(conn: &Connection, now: i64, limit: i64, only: Option<i64>) -
     if limit <= 0 {
         return Ok(Vec::new());
     }
-    let visible = articles::FOCUS_VISIBLE_SQL.replace("$threshold", "?1");
+    let visible = articles::VISIBLE_SQL.replace("$threshold", "?1");
     let mut stmt = conn.prepare(&format!(
         "SELECT c.id FROM clusters c JOIN articles a ON a.cluster_id=c.id
          JOIN feeds f ON f.id=a.feed_id

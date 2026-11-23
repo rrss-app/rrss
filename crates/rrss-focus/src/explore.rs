@@ -42,7 +42,7 @@ pub(crate) fn inject(
     if cards.len() < 4 || pool.is_empty() {
         return Ok(());
     }
-    let visible = articles::FOCUS_VISIBLE_SQL.replace("$threshold", "?2");
+    let visible = articles::VISIBLE_SQL.replace("$threshold", "?2");
     let mut stmt = conn.prepare(&format!(
         "SELECT a.id,a.feed_id FROM json_each(?1) pool JOIN articles a ON a.id=pool.value
          WHERE a.read=0 AND {visible}

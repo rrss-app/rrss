@@ -868,5 +868,4 @@ mod fitted_tests;
 
 #[path = "model_fitted.rs"]
 mod fitted;
-#[cfg(any(test, feature = "evaluation-clock"))]
-pub use fitted::{with_fine_positions, with_source_draw, with_source_penalty};
+pub(crate) use fitted::{LAMBDA, SOURCE_DRAW};

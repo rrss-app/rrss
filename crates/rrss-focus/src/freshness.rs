@@ -30,15 +30,9 @@ pub enum Policy {
     Shelf { quadratic: bool },
 }
 
-#[cfg(any(test, feature = "evaluation-clock"))]
-thread_local! {
-    static POLICY: std::cell::Cell<Option<Policy>> = const { std::cell::Cell::new(None) };
-}
-
-/// The policy for the current fitted-ranking switch (evaluation may override).
+/// The policy for the current fitted-ranking switch (`Tuning::freshness` may override).
 pub(crate) fn policy(fitted_enabled: bool) -> Policy {
-    #[cfg(any(test, feature = "evaluation-clock"))]
-    if let Some(p) = POLICY.with(std::cell::Cell::get) {
+    if let Some(p) = crate::tuning::current().freshness {
         return p;
     }
     if fitted_enabled {
@@ -46,19 +40,6 @@ pub(crate) fn policy(fitted_enabled: bool) -> Policy {
     } else {
         Policy::Legacy
     }
-}
-
-/// Evaluation only: rank with a freshness policy on this thread.
-#[cfg(any(test, feature = "evaluation-clock"))]
-pub fn with_policy<T>(policy: Policy, f: impl FnOnce() -> T) -> T {
-    struct Restore(Option<Policy>);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            POLICY.with(|p| p.set(self.0));
-        }
-    }
-    let _restore = Restore(POLICY.with(|p| p.replace(Some(policy))));
-    f()
 }
 
 /// Below this many posts a week a feed never ages.

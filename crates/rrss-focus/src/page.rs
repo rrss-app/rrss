@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use rrss_core::articles::{
-    ArticleCard, FOCUS_VISIBLE_SQL, FocusFilter, ListScope, attach_noise, focus_column_scope,
+    ArticleCard, FocusFilter, ListScope, VISIBLE_SQL, attach_noise, focus_column_scope,
     focus_filter, hide_threshold, list_scope, numbered_scope_sql, project_clusters,
     query_ranked_cards,
 };
@@ -17,8 +17,7 @@ mod pool;
 #[cfg(test)]
 mod tests;
 
-#[cfg(feature = "evaluation-clock")]
-pub use order::{with_exploration, with_same_feed_window, with_topic_calibration};
+pub(crate) use order::SAME_FEED_WINDOW;
 
 pub fn list_focus(conn: &Connection, limit: i64) -> Result<Vec<ArticleCard>> {
     list_focus_stream(conn, limit, None)
@@ -126,10 +125,11 @@ pub fn list_focus_page(
     let want = limit.max(1);
     let first_page = exclude_ids.is_empty() && exclude_cluster_ids.is_empty();
     rrss_core::db::read_snapshot(conn, |conn| {
+        let settings = crate::store::settings(conn)?;
         let exploring = first_page
             && scope == FeedScope::All
             && list_scope(conn)? != ListScope::Starred
-            && crate::store::fitted_enabled(conn)?;
+            && settings.fitted;
         let mut explore_pool = Vec::new();
         let candidates = query_focus_cards(
             conn,
@@ -141,7 +141,7 @@ pub fn list_focus_page(
             if group_on { exclude_cluster_ids } else { &[] },
             &exclude_feeds,
             scope,
-            Some(group_on),
+            Some((group_on, &settings)),
             exploring.then_some(&mut explore_pool),
         )?;
         let has_more = candidates.len() > want as usize;
@@ -152,6 +152,7 @@ pub fn list_focus_page(
                     .any(|(c, _)| c.score > 0 || (boost_on && c.interest_boost > 0)));
         let mut cards = order::select(
             conn,
+            &settings,
             candidates,
             want as usize,
             exclude_ids,
@@ -178,7 +179,7 @@ pub fn list_focus_page(
                 first_page,
             )?;
         }
-        if exploring && order::exploration_enabled() {
+        if exploring && crate::tuning::current().exploration {
             crate::explore::inject(conn, &mut cards, &explore_pool, threshold, now_ms())?;
         }
         attach_noise(conn, &mut cards)?;
@@ -196,7 +197,8 @@ fn query_focus_cards(
     exclude_cluster_ids: &[i64],
     exclude_feed_ids: &[i64],
     scope: FeedScope,
-    group_for_page: Option<bool>,
+    // 焦点页：是否分组，以及这次请求读到的排序开关；预载不经候选池，传 None。
+    group_for_page: Option<(bool, &crate::store::Settings)>,
     explore_pool: Option<&mut Vec<i64>>,
 ) -> Result<Vec<(ArticleCard, i64)>> {
     let boost = i64::from(boost_on);
@@ -216,7 +218,7 @@ fn query_focus_cards(
     let (feed_sql, feed_id) = numbered_scope_sql(scope, scope_index);
     let rank_score = rrss_core::rank_score::SCORE_SQL;
     let member_score = rrss_core::rank_score::MEMBER_SQL;
-    let visible = FOCUS_VISIBLE_SQL.replace("$threshold", "?2");
+    let visible = VISIBLE_SQL.replace("$threshold", "?2");
     let filter_sql = match filter {
         FocusFilter::FocusOnly => format!("{visible} AND {member_score} > 0"),
         FocusFilter::HideFaded => visible,
@@ -233,12 +235,13 @@ fn query_focus_cards(
     if let Some(id) = feed_id {
         bind.push(id);
     }
-    if let Some(group) = group_for_page {
+    if let Some((group, settings)) = group_for_page {
         // Candidate selection and card loading used to be one SQL statement.
         // Preserve that snapshot even when a background writer changes articles.
         return rrss_core::db::read_snapshot(conn, |conn| {
             let picked = order::candidates(
                 conn,
+                settings,
                 &eligible,
                 group,
                 list_scope,

@@ -19,6 +19,9 @@ pub mod source;
 pub(crate) mod spot_check;
 pub mod store;
 pub(crate) mod topics;
+pub mod tuning;
+
+pub use tuning::Tuning;
 
 pub use page::{
     FOCUS_PAGE_SIZE, list_focus, list_focus_page, list_focus_stream, list_preload_article_ids,

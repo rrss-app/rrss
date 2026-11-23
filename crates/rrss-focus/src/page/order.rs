@@ -12,72 +12,18 @@ mod tests;
 
 const SAME_FEED_COST: f64 = 2.0;
 /// Preceding cards the same-feed cost looks back over.
-const SAME_FEED_WINDOW: usize = 2;
+pub(crate) const SAME_FEED_WINDOW: usize = 2;
 /// Evaluation look-backs only, per card beyond the last two: above a one-point
 /// gap of rounded scores and below an adjacent repeat.
 const FARTHER_FEED_COST: f64 = 1.5;
 const SIMILARITY_COST: f64 = 2.0;
-
-#[cfg(feature = "evaluation-clock")]
-thread_local! {
-    static TOPIC_CALIBRATION: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
-    static EXPLORATION: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
-    static FEED_WINDOW: std::cell::Cell<usize> = const { std::cell::Cell::new(SAME_FEED_WINDOW) };
-}
-
-#[cfg(feature = "evaluation-clock")]
-fn with_flag<V: Copy + 'static, T>(
-    flag: &'static std::thread::LocalKey<std::cell::Cell<V>>,
-    enabled: V,
-    f: impl FnOnce() -> T,
-) -> T {
-    struct Restore<V: Copy + 'static>(&'static std::thread::LocalKey<std::cell::Cell<V>>, V);
-    impl<V: Copy + 'static> Drop for Restore<V> {
-        fn drop(&mut self) {
-            self.0.set(self.1);
-        }
-    }
-    let _restore = Restore(flag, flag.replace(enabled));
-    f()
-}
-
-/// Evaluation only: applies on this thread and restores even during unwind.
-#[cfg(feature = "evaluation-clock")]
-pub fn with_topic_calibration<T>(enabled: bool, f: impl FnOnce() -> T) -> T {
-    with_flag(&TOPIC_CALIBRATION, enabled, f)
-}
-
-/// Evaluation only: turns the daily exploration trial off on this thread.
-#[cfg(feature = "evaluation-clock")]
-pub fn with_exploration<T>(enabled: bool, f: impl FnOnce() -> T) -> T {
-    with_flag(&EXPLORATION, enabled, f)
-}
-
-/// Evaluation only: how many preceding cards the same-feed cost counts.
-#[cfg(feature = "evaluation-clock")]
-pub fn with_same_feed_window<T>(window: usize, f: impl FnOnce() -> T) -> T {
-    with_flag(&FEED_WINDOW, window, f)
-}
-
-fn same_feed_window() -> usize {
-    #[cfg(feature = "evaluation-clock")]
-    return FEED_WINDOW.get();
-    #[cfg(not(feature = "evaluation-clock"))]
-    SAME_FEED_WINDOW
-}
-
-pub(super) fn exploration_enabled() -> bool {
-    #[cfg(feature = "evaluation-clock")]
-    return EXPLORATION.get();
-    #[cfg(not(feature = "evaluation-clock"))]
-    true
-}
 
 /// Membership is independent of page size and exclusions. Only the bounded
 /// active pool receives personalized scoring; explicit saved-item retrieval is
 /// intentionally exhaustive. Shortlists and page exclusions operate afterwards.
 pub(super) fn candidates(
     conn: &Connection,
+    settings: &crate::store::Settings,
     eligible: &str,
     group: bool,
     scope: ListScope,
@@ -100,7 +46,7 @@ pub(super) fn candidates(
         })?;
         shortlist(rows, limit, group, exclude_ids, exclude_clusters)
     } else {
-        let (members, evidence) = super::pool::members(conn, eligible, group, bind)?;
+        let (members, evidence) = super::pool::members(conn, settings, eligible, group, bind)?;
         if let Some(pool) = explore_pool {
             pool.extend(members.iter().map(|m| m.0));
         }
@@ -111,15 +57,14 @@ pub(super) fn candidates(
             exclude_ids,
             exclude_clusters,
         )?;
-        #[cfg(feature = "evaluation-clock")]
-        if !TOPIC_CALIBRATION.get() {
+        if !crate::tuning::current().topic_calibration {
             return Ok(picked);
         }
         // A source shortlist alone cannot reach a second learned topic buried
         // in the same busy feed. This third lane only uses admitted members;
         // it does not expand the active pool or scan historical observations.
         if !evidence.is_empty() {
-            let on = crate::store::switches(conn)?;
+            let on = settings.switches;
             let epochs: HashSet<_> = evidence.values().filter_map(|e| e.epoch()).collect();
             let mut lanes = HashMap::new();
             let mut topics = BinaryHeap::new();
@@ -235,19 +180,20 @@ impl Content {
 
 pub(super) fn select(
     conn: &Connection,
+    settings: &crate::store::Settings,
     candidates: Vec<(ArticleCard, i64)>,
     limit: usize,
     previous: &[i64],
     use_content: bool,
     group: bool,
 ) -> Result<Vec<ArticleCard>> {
-    let on = crate::store::switches(conn)?;
+    let on = settings.switches;
     // Saved-item retrieval is exhaustive, unlike the bounded recommendation
     // pool. Keep its original cost and ordering even after thousands of pages.
-    let window = same_feed_window();
-    let calibrate = rrss_core::articles::list_scope(conn)? != ListScope::Starred;
-    #[cfg(feature = "evaluation-clock")]
-    let calibrate = calibrate && TOPIC_CALIBRATION.get();
+    let tuning = crate::tuning::current();
+    let window = tuning.same_feed_window;
+    let calibrate =
+        tuning.topic_calibration && rrss_core::articles::list_scope(conn)? != ListScope::Starred;
     let ids: Vec<_> = if calibrate {
         candidates
             .iter()

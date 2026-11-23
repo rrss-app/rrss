@@ -193,6 +193,7 @@ fn shortlists_preserve_source_positions_after_grouping_and_total_order_ties() {
     let shortlist = |group, limit, eligible| {
         super::candidates(
             &conn,
+            &crate::store::settings(&conn).unwrap(),
             eligible,
             group,
             ListScope::Starred,

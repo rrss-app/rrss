@@ -304,7 +304,8 @@ fn build(mode: Weekly) -> Lib {
 // contract below.
 #[test]
 fn fitted_ten_source_contract() {
-    crate::model::with_source_draw(0.0, f64::INFINITY, ten_source_contract);
+    let tuning = crate::Tuning { source_draw: (0.0, f64::INFINITY), ..crate::Tuning::DEFAULT };
+    crate::tuning::with(tuning, ten_source_contract);
 }
 
 #[test]
@@ -675,7 +676,8 @@ fn fitted_load_performance() {
 fn weekly_cutoff_labels_and_fallbacks() {
     // The legacy freshness features' training contract (evaluation baseline);
     // the shelf-life default is covered by the ten-source contract.
-    freshness::with_policy(freshness::Policy::Legacy, weekly_cutoff_legacy);
+    let tuning = crate::Tuning { freshness: Some(freshness::Policy::Legacy), ..crate::Tuning::DEFAULT };
+    crate::tuning::with(tuning, weekly_cutoff_legacy);
 }
 
 fn weekly_cutoff_legacy() -> (tempfile::TempDir, rrss_core::db::PooledConnection) {

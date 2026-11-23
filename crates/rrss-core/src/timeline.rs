@@ -79,7 +79,7 @@ pub fn list_feeds_page(
 fn visible_kept_sql() -> String {
     format!(
         "{} AND a.pruned_at IS NULL",
-        articles::FOCUS_VISIBLE_SQL.replace("$threshold", "?")
+        articles::VISIBLE_SQL.replace("$threshold", "?")
     )
 }
 
@@ -136,7 +136,7 @@ pub fn feed_counts(conn: &Connection) -> Result<FeedCounts> {
 
 /// 把范围内规则可见的未读标为已读，返回改动的 id。被规则隐藏的不碰；已清理正文的照标。
 pub fn mark_scope_read(conn: &Connection, scope: FeedScope) -> Result<Vec<i64>> {
-    let visible = articles::FOCUS_VISIBLE_SQL.replace("$threshold", "?");
+    let visible = articles::VISIBLE_SQL.replace("$threshold", "?");
     let (scope_sql, scope_id) = feed_scope::scope_sql(scope);
     let sql = format!(
         "UPDATE articles SET read = 1 WHERE id IN (

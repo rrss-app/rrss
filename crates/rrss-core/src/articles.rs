@@ -12,8 +12,9 @@ use crate::feed_scope::FeedScope;
 use crate::feeds::now_ms;
 use crate::interests::{self, parse_interest_reasons};
 
-// Replace the threshold marker with the query's bound placeholder.
-pub const FOCUS_VISIBLE_SQL: &str =
+/// 规则可见性：未过期，且规则分高于隐藏阈值或已被用户放行。焦点页、时间线、相近报道与摘要挑选共用；
+/// 用时把 `$threshold` 换成这次查询绑定的占位符。
+pub const VISIBLE_SQL: &str =
     "(a.expires_at IS NULL AND (a.score > $threshold OR a.released_at IS NOT NULL))";
 
 pub const DEFAULT_HIDE_THRESHOLD: i64 = -10;
@@ -398,7 +399,7 @@ fn visible_cluster_cards_map(
         .join(",");
     let threshold_idx = cluster_ids.len() + 1;
     let (feed_sql, feed_id) = numbered_scope_sql(scope, threshold_idx + 1);
-    let visible = FOCUS_VISIBLE_SQL.replace("$threshold", &format!("?{threshold_idx}"));
+    let visible = VISIBLE_SQL.replace("$threshold", &format!("?{threshold_idx}"));
     let list_sql = list_scope.filter_sql();
     let sql = format!(
         "SELECT a.id, a.title, COALESCE(f.title, f.url), a.published_at, a.canonical_url,
@@ -468,7 +469,7 @@ fn cluster_header(meta: &crate::cluster::ClusterMeta, members: &[ArticleCard]) -
 /// 可见与范围的口径同 `focus_cluster_members`；被规则隐藏的成员不碰。
 pub fn mark_cluster_read(conn: &Connection, cluster_id: i64, scope: FeedScope) -> Result<Vec<i64>> {
     let scope = focus_column_scope(scope);
-    let visible = FOCUS_VISIBLE_SQL.replace("$threshold", "?2");
+    let visible = VISIBLE_SQL.replace("$threshold", "?2");
     let (feed_sql, feed_id) = numbered_scope_sql(scope, 3);
     let list_sql = list_scope(conn)?.filter_sql();
     let sql = format!(
@@ -772,7 +773,7 @@ pub fn due_focus_summaries_excluding(
     let cutoff = now_ms() - crate::ai_store::FOCUS_WINDOW_DAYS * 86_400_000;
     let threshold = hide_threshold(conn)?;
     let boost = i64::from(interests::boost_enabled(conn)?);
-    let visible = FOCUS_VISIBLE_SQL.replace("$threshold", "?2");
+    let visible = VISIBLE_SQL.replace("$threshold", "?2");
     let mut stmt = conn.prepare(&format!(
         "SELECT id, title, content_html, blocks_json, score, starred, COALESCE(hash,'') FROM articles a
          WHERE {visible} AND pruned_at IS NULL AND created_at >= ?5
@@ -800,7 +801,7 @@ pub fn due_focus_summaries_excluding(
     if extra > 0 && (out.len() as i64) < limit {
         let remain = (limit - out.len() as i64).min(extra);
         let seen: HashSet<i64> = out.iter().map(|d| d.id).collect();
-        let visible = FOCUS_VISIBLE_SQL.replace("$threshold", "?1");
+        let visible = VISIBLE_SQL.replace("$threshold", "?1");
         let mut extra_stmt = conn.prepare(&format!(
             "SELECT id, title, content_html, blocks_json, score, starred, COALESCE(hash,'') FROM articles a
              WHERE {visible} AND (score + CASE WHEN ?5 THEN interest_boost ELSE 0 END) = 0

@@ -17,32 +17,6 @@ pub const AFFINITY_WEIGHT: f64 = 2.0;
 /// half-life, so stories carried by several feeds do not outrank today's news.
 pub const WEIGHTS: [f64; 5] = [1.0, 2.0, 0.5, -2.0, AFFINITY_WEIGHT];
 
-#[cfg(feature = "evaluation-clock")]
-thread_local! {
-    static WEIGHTS_OVERRIDE: std::cell::Cell<Option<[f64; 5]>> = const { std::cell::Cell::new(None) };
-}
-
-pub(super) fn weights() -> [f64; 5] {
-    #[cfg(feature = "evaluation-clock")]
-    if let Some(w) = WEIGHTS_OVERRIDE.with(std::cell::Cell::get) {
-        return w;
-    }
-    WEIGHTS
-}
-
-/// Evaluation only: scores with other manual weights on this thread.
-#[cfg(feature = "evaluation-clock")]
-pub fn with_weights<T>(weights: [f64; 5], f: impl FnOnce() -> T) -> T {
-    struct Restore(Option<[f64; 5]>);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            WEIGHTS_OVERRIDE.with(|w| w.set(self.0));
-        }
-    }
-    let _restore = Restore(WEIGHTS_OVERRIDE.with(|w| w.replace(Some(weights))));
-    f()
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Switches {
     pub features: bool,
@@ -112,7 +86,7 @@ pub(super) fn with_contributions(
         input.freshness,
         affinity,
     ];
-    let weights = weights();
+    let weights = crate::tuning::current().weights;
     let points = fitted.unwrap_or_else(|| std::array::from_fn(|i| values[i] * weights[i]));
     let mut raw_score = points
         .into_iter()

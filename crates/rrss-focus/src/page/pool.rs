@@ -46,6 +46,7 @@ fn retain(heap: &mut SeedHeap, key: SeedKey, limit: usize) {
 
 pub(super) fn members(
     conn: &Connection,
+    settings: &crate::store::Settings,
     eligible: &str,
     group: bool,
     bind: &[i64],
@@ -91,7 +92,7 @@ pub(super) fn members(
     // publishing rate; quiet feeds keep 180 days and leave after repeated
     // unread showings. No separate recovery lane under this policy.
     let shelf = matches!(
-        crate::freshness::policy(crate::store::fitted_enabled(conn)?),
+        crate::freshness::policy(settings.fitted),
         crate::freshness::Policy::Shelf { .. }
     );
     let mut rate_count = conn.prepare(&format!(

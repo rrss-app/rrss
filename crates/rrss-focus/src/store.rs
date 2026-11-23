@@ -48,6 +48,20 @@ pub fn switches(conn: &Connection) -> Result<super::combine::Switches> {
     })
 }
 
+/// 影响排序的用户开关：五个分量与拟合模型。焦点页每次请求在同一快照里读一次，往下传。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Settings {
+    pub switches: super::combine::Switches,
+    pub fitted: bool,
+}
+
+pub fn settings(conn: &Connection) -> Result<Settings> {
+    Ok(Settings {
+        switches: switches(conn)?,
+        fitted: fitted_enabled(conn)?,
+    })
+}
+
 pub fn set_switch(conn: &Connection, key: &str, enabled: bool) -> Result<()> {
     set_switch_with(conn, key, enabled, || Ok(()))
 }
@@ -107,8 +121,10 @@ impl<'a> SwitchChange<'a> {
         let version = input_version(conn)?;
         // 每次重试在快照建立后取新的截止时间，覆盖等待期间刚入库的文章与行为。
         let now = rrss_core::feeds::now_ms();
-        let mut switches = switches(conn)?;
-        let mut fitted = fitted_enabled(conn)?;
+        let Settings {
+            mut switches,
+            mut fitted,
+        } = settings(conn)?;
         let selected = match key {
             FITTED_ENABLED_KEY => &mut fitted,
             db::RANK_FEATURES_ENABLED_KEY => &mut switches.features,
@@ -214,13 +230,8 @@ struct Plan {
 }
 
 fn plan(conn: &Connection, ids: Option<&[i64]>, now: i64) -> Result<Plan> {
-    plan_with_switches(
-        conn,
-        ids,
-        now,
-        switches(conn)?,
-        fitted_enabled(conn)?,
-    )
+    let Settings { switches, fitted } = settings(conn)?;
+    plan_with_switches(conn, ids, now, switches, fitted)
 }
 
 fn plan_with_switches(
