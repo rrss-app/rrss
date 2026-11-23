@@ -378,7 +378,7 @@ impl ChatRuntime {
             .dispatch_lock
             .try_lock()
             .map_err(|_| ChatError::new(ChatErrorKind::Busy, Error::Pi(PiFailure::SendBusy)))?;
-        if !self.sup.try_begin() {
+        if !self.sup.begin().await {
             return Err(ChatError::new(
                 ChatErrorKind::Busy,
                 Error::Pi(PiFailure::ReplyPending),
@@ -599,7 +599,7 @@ impl ChatRuntime {
             .dispatch_lock
             .try_lock()
             .map_err(|_| ChatError::new(ChatErrorKind::Busy, Error::Pi(busy)))?;
-        if !self.sup.try_begin() {
+        if !self.sup.begin().await {
             return Err(ChatError::new(ChatErrorKind::Busy, Error::Pi(pending)));
         }
         struct Release<'a>(&'a Supervisor);

@@ -4,7 +4,7 @@
 //! 启动 = 准备托管目录 + 拉起进程 + 握手；发送前核对 Profile 指纹，变了就在空闲时重启。
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 
@@ -15,7 +15,7 @@ use rrss_ai::pi::{
     cmd_set_thinking_level, cmd_switch_session, prompt_was_handled,
 };
 use serde_json::Value;
-use tokio::sync::{Mutex, mpsc, watch};
+use tokio::sync::{Mutex, Notify, mpsc, watch};
 
 use super::compat::VersionGate;
 use super::launch::{self, PiProcess, Prepared, RPC_TIMEOUT};
@@ -86,6 +86,9 @@ pub struct Supervisor {
     starting: StdMutex<Option<Arc<PiProcess>>>,
     generation: AtomicU64,
     busy: AtomicBool,
+    /// 空闲回收在占用 `busy` 前加一、关完并释放后减一；发送据此等回收结束，不当作回复未完。
+    releasing: AtomicUsize,
+    released: Notify,
     last_active: StdMutex<Instant>,
     events: mpsc::UnboundedSender<(u64, PiEvent)>,
     /// 最近一次发送所在对话选定的模型；进程按它启动，换对话时由 [`Self::sync_profile`] 更新。
@@ -102,6 +105,8 @@ impl Supervisor {
             starting: StdMutex::new(None),
             generation: AtomicU64::new(0),
             busy: AtomicBool::new(false),
+            releasing: AtomicUsize::new(0),
+            released: Notify::new(),
             last_active: StdMutex::new(Instant::now()),
             events,
             target: StdMutex::new(None),
@@ -140,6 +145,23 @@ impl Supervisor {
             self.touch();
         }
         ok
+    }
+
+    /// 同 [`Self::try_begin`]，但空闲回收正在关进程时先等它关完：回收占用期间进程已退出、
+    /// 占用还没放开，这时发送不是撞上了未完的回复。真有回复在进行时仍立刻返回 `false`。
+    pub async fn begin(&self) -> bool {
+        loop {
+            let released = self.released.notified();
+            tokio::pin!(released);
+            released.as_mut().enable();
+            if self.try_begin() {
+                return true;
+            }
+            if self.releasing.load(Ordering::SeqCst) == 0 {
+                return false;
+            }
+            released.await;
+        }
     }
 
     pub fn end(&self) {
@@ -707,12 +729,15 @@ impl Supervisor {
     }
 
     async fn reap_if_idle(&self, limit: i64) {
-        if limit > 0
-            && self.idle_for() >= Duration::from_secs(limit as u64)
-            && self
-                .busy
-                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-                .is_ok()
+        if limit <= 0 || self.idle_for() < Duration::from_secs(limit as u64) {
+            return;
+        }
+        // 先登记回收再抢占用：发送看到占用被拿走时，一定也看得到回收在进行。
+        self.releasing.fetch_add(1, Ordering::SeqCst);
+        if self
+            .busy
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
         {
             // 与 try_begin 共用原子占用；持有到关闭完成，中途不能开始发送。
             if self.idle_for() >= Duration::from_secs(limit as u64) {
@@ -721,6 +746,8 @@ impl Supervisor {
             }
             self.end();
         }
+        self.releasing.fetch_sub(1, Ordering::SeqCst);
+        self.released.notify_waiters();
     }
 }
 
@@ -888,8 +915,24 @@ mod tests {
             "reaper owns gate before waiting for running lock"
         );
         assert!(!sup.try_begin(), "send cannot race shutdown");
+        // 发送等回收关完再占用，而不是当作回复未完直接报忙。
+        let sender = tokio::spawn({
+            let sup = sup.clone();
+            async move { sup.begin().await }
+        });
+        tokio::task::yield_now().await;
+        assert!(
+            !sender.is_finished(),
+            "a send waits while the reaper shuts down"
+        );
         drop(running);
         reaper.await.unwrap();
+        assert!(
+            sender.await.unwrap(),
+            "the waiting send starts after the release"
+        );
+        assert!(!sup.begin().await, "a reply in progress still reports busy");
+        sup.end();
         assert!(sup.try_begin());
         *sup.last_active.lock().unwrap() = Instant::now() - Duration::from_secs(10);
         sup.reap_if_idle(1).await;
