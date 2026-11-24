@@ -776,6 +776,35 @@
         "streaming": "Keep the provider’s prompt cache warm while a reply streams.",
         "idle": "Also keep it warm between questions; this may incur charges even with no chat open."
       }
+    },
+    "translate_auto_titles": {
+      "label": "Translate list titles automatically",
+      "hint": "Foreign titles in Focus and feed lists show a translation, with the original language marked so you know the article itself isn’t translated. Only titles shown in a list are translated, a small batch at a time."
+    },
+    "translate_auto_body": {
+      "label": "Translate foreign articles when opened",
+      "hint": "Starts translating when you open a foreign article that has no translation yet; translated articles load from the cache. Each one calls the translation service."
+    },
+    "translate_auto_view": {
+      "label": "Show after automatic translation",
+      "options": {
+        "bilingual": "Bilingual",
+        "translated": "Translation only"
+      }
+    },
+    "translate_auto_max_words": {
+      "label": "Length limit",
+      "hint": "Longer articles aren’t translated automatically; you can still translate them by hand. Chinese, Japanese and Korean count two characters as one word.",
+      "control": "Length limit (words)",
+      "unit": "words"
+    },
+    "translate_auto_scope": {
+      "label": "Which languages count as foreign",
+      "hint": "Only foreign articles get a language mark and automatic translation.",
+      "options": {
+        "all": "Anything but the target language",
+        "en": "English only"
+      }
     }
   },
   "storage": {

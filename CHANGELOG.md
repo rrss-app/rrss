@@ -4,6 +4,10 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- Optional automatic translation in Settings → Translation, off by default. Titles of foreign articles in Focus and feed lists can show a translation, marked with a small language code (such as EN) so you know the article itself is still in the original language. Opening a foreign article can also start translating it right away, with a length limit, a choice of bilingual or translation-only view, and a stop once the daily generation budget is used up. Individual feeds can be set to always or never translate.
+
 ### Changed
 
 - Improved long-term memory extraction from chats: routine Q&A is skipped quietly without creating suggestions, durable preferences and reusable rules are distilled in your input language with evidence checked against your own words, and updates to existing memories show a side-by-side comparison so you can replace the original entry in place while keeping its pinned state. Pending memories now appear in a dedicated top group with localized type labels, and reusable rules no longer show "Add as interest".

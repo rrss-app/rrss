@@ -12,6 +12,7 @@ pub fn feed_tree(conn: &Connection) -> rrss_core::Result<FeedTree> {
     let noisy = feeds::noisy_feed_ids(conn)?;
     let retention = feed_retention(conn)?;
     let intervals = rrss_core::fetch_interval::feed_overrides(conn)?;
+    let auto_translate = rrss_core::translations::feed_autos(conn)?;
     let health = feed_health::feed_health(conn, feeds::now_ms())?;
     // 只有手动收录源要这个标记：没有文章时订阅树不显示它。
     let empty_manual: Option<i64> = conn
@@ -43,6 +44,7 @@ pub fn feed_tree(conn: &Connection) -> rrss_core::Result<FeedTree> {
                 health: health.get(&feed.id).map(health_notice),
                 position: feed.position,
                 empty: empty_manual == Some(feed.id),
+                auto_translate: auto_translate.get(&feed.id).map(|a| a.as_str().to_string()),
             }
         })
         .collect();

@@ -232,6 +232,155 @@ pub fn upsert(conn: &Connection, row: &ArticleTranslation) -> Result<()> {
     Ok(())
 }
 
+/// 自动翻译设置键。读取与默认值走 app 层的设置注册表。
+pub const AUTO_TITLES_KEY: &str = "translate_auto_titles";
+pub const AUTO_BODY_KEY: &str = "translate_auto_body";
+pub const AUTO_VIEW_KEY: &str = "translate_auto_view";
+pub const AUTO_MAX_WORDS_KEY: &str = "translate_auto_max_words";
+pub const AUTO_SCOPE_KEY: &str = "translate_auto_scope";
+
+/// 订阅源对自动翻译的覆盖（标题与正文一起）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeedAuto {
+    Follow,
+    Always,
+    Never,
+}
+
+impl FeedAuto {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Follow => "follow",
+            Self::Always => "always",
+            Self::Never => "never",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim() {
+            "follow" => Some(Self::Follow),
+            "always" => Some(Self::Always),
+            "never" => Some(Self::Never),
+            _ => None,
+        }
+    }
+
+    fn from_column(value: Option<i64>) -> Self {
+        match value {
+            Some(0) => Self::Never,
+            Some(_) => Self::Always,
+            None => Self::Follow,
+        }
+    }
+
+    /// 全局开关为 `global` 时，这个源是否自动翻译。
+    pub fn applies(self, global: bool) -> bool {
+        match self {
+            Self::Follow => global,
+            Self::Always => true,
+            Self::Never => false,
+        }
+    }
+}
+
+pub fn feed_auto(conn: &Connection, feed_id: i64) -> Result<FeedAuto> {
+    let value: Option<i64> = conn
+        .query_row(
+            "SELECT auto_translate FROM feeds WHERE id = ?1",
+            [feed_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .flatten();
+    Ok(FeedAuto::from_column(value))
+}
+
+/// 所有设了覆盖的源；没列出的跟随全局。
+pub fn feed_autos(conn: &Connection) -> Result<std::collections::HashMap<i64, FeedAuto>> {
+    let mut stmt = conn
+        .prepare_cached("SELECT id, auto_translate FROM feeds WHERE auto_translate IS NOT NULL")?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, i64>(0)?, FeedAuto::from_column(row.get(1)?)))
+    })?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+pub fn set_feed_auto(conn: &Connection, feed_id: i64, value: FeedAuto) -> Result<()> {
+    let column = match value {
+        FeedAuto::Follow => None,
+        FeedAuto::Always => Some(1),
+        FeedAuto::Never => Some(0),
+    };
+    conn.execute(
+        "UPDATE feeds SET auto_translate = ?2 WHERE id = ?1",
+        params![feed_id, column],
+    )?;
+    Ok(())
+}
+
+/// 这些文章在目标语言下已有的标题译文。
+pub fn title_translations(
+    conn: &Connection,
+    ids: &[i64],
+    target_lang: &str,
+) -> Result<std::collections::HashMap<i64, String>> {
+    let mut out = std::collections::HashMap::new();
+    let mut stmt = conn.prepare_cached(
+        "SELECT title FROM article_title_translations WHERE article_id = ?1 AND target_lang = ?2",
+    )?;
+    for &id in ids {
+        if let Some(title) = stmt
+            .query_row(params![id, target_lang], |row| row.get::<_, String>(0))
+            .optional()?
+        {
+            out.insert(id, title);
+        }
+    }
+    Ok(out)
+}
+
+/// 写入标题译文；文章已删除时跳过，不因外键失败。
+pub fn put_title_translations(
+    conn: &Connection,
+    target_lang: &str,
+    engine: &str,
+    titles: &[(i64, String)],
+) -> Result<usize> {
+    crate::db::atomic_write(conn, |conn| {
+        let mut stmt = conn.prepare_cached(
+            "INSERT INTO article_title_translations (article_id, target_lang, engine, title, created_at)
+             SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM articles WHERE id = ?1)
+             ON CONFLICT (article_id, target_lang) DO UPDATE SET
+                engine = excluded.engine, title = excluded.title, created_at = excluded.created_at",
+        )?;
+        let now = now_ms();
+        let mut written = 0;
+        for (id, title) in titles {
+            written += stmt.execute(params![id, target_lang, engine, title, now])?;
+        }
+        Ok(written)
+    })
+}
+
+/// 这些文章里有当前目标语言、当前服务正文译文缓存的。只作列表提示，不代表缓存一定还能挂载。
+pub fn body_translated(
+    conn: &Connection,
+    ids: &[i64],
+    target_lang: &str,
+    engine: &str,
+) -> Result<std::collections::HashSet<i64>> {
+    let mut out = std::collections::HashSet::new();
+    let mut stmt = conn.prepare_cached(
+        "SELECT 1 FROM article_translations WHERE article_id = ?1 AND target_lang = ?2 AND engine = ?3",
+    )?;
+    for &id in ids {
+        if stmt.exists(params![id, target_lang, engine])? {
+            out.insert(id);
+        }
+    }
+    Ok(out)
+}
+
 pub fn now() -> i64 {
     now_ms()
 }
@@ -274,6 +423,44 @@ mod tests {
         set_deepl_config(&conn, None, Some("")).unwrap();
         assert_eq!(deepl_config(&conn).unwrap().1, None);
         assert_eq!(http_config(&conn).unwrap().1.as_deref(), Some("legacy-key"));
+    }
+
+    #[test]
+    fn title_translations_and_feed_overrides_round_trip() {
+        let dir = tempdir().unwrap();
+        let conn = open_at(&dir.path().join("rrss.db")).unwrap();
+        conn.execute_batch(
+            "INSERT INTO feeds (id, url, title, kind, created_at) VALUES (1, 'https://a.example/f', 'a', 'rss', 1), (2, 'https://b.example/f', 'b', 'rss', 1);
+             INSERT INTO articles (id, feed_id, title, hash, created_at) VALUES (1, 1, 'Hello', 'h1', 1), (2, 2, 'World', 'h2', 1);",
+        )
+        .unwrap();
+        assert_eq!(feed_auto(&conn, 1).unwrap(), FeedAuto::Follow);
+        set_feed_auto(&conn, 1, FeedAuto::Never).unwrap();
+        set_feed_auto(&conn, 2, FeedAuto::Always).unwrap();
+        let autos = feed_autos(&conn).unwrap();
+        assert_eq!(autos.get(&1), Some(&FeedAuto::Never));
+        assert_eq!(autos.get(&2), Some(&FeedAuto::Always));
+        assert!(FeedAuto::Always.applies(false) && !FeedAuto::Never.applies(true));
+        set_feed_auto(&conn, 2, FeedAuto::Follow).unwrap();
+        assert!(!feed_autos(&conn).unwrap().contains_key(&2));
+
+        // 已删除的文章（99）跳过，不因外键失败。
+        let written = put_title_translations(
+            &conn,
+            "zh",
+            ENGINE_DEEPL,
+            &[(1, "你好".into()), (99, "不存在".into())],
+        )
+        .unwrap();
+        assert_eq!(written, 1);
+        put_title_translations(&conn, "zh", ENGINE_COMPLETE, &[(1, "您好".into())]).unwrap();
+        let titles = title_translations(&conn, &[1, 2], "zh").unwrap();
+        assert_eq!(titles.get(&1).map(String::as_str), Some("您好"));
+        assert!(!titles.contains_key(&2));
+        assert!(title_translations(&conn, &[1], "ja").unwrap().is_empty());
+        conn.execute("DELETE FROM articles WHERE id = 1", [])
+            .unwrap();
+        assert!(title_translations(&conn, &[1], "zh").unwrap().is_empty());
     }
 
     #[test]

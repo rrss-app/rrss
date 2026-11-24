@@ -6,6 +6,7 @@ import { useTranslation } from "../i18n";
 import { formatReason, formatReasonNumber } from "../lib/reasons";
 import { Icon } from "./Icon";
 import { RelativeTime } from "./RelativeTime";
+import { ArticleTitle, useArticleLabel } from "./ArticleTitle";
 import { ThumbIcon } from "./ThumbIcon";
 import { SpotCheckReveal, type SpotAction, type SpotReview } from "./SpotCheckReveal";
 import { DislikeRulesPanel, DislikeVeil, type DislikeAction, type DislikeState } from "./DislikeVeil";
@@ -56,9 +57,10 @@ export function ArticleCard({
   // 学来的原因只露加分最多的一条，其余放在悬停提示里。
   const learned = row.rank_reasons?.reduce<RankReasonView | undefined>((best, r) => r.points > 0 && r.points > (best?.points ?? 0) ? r : best, undefined);
   const dismissed = dislike && onDislikeAction ? dislike : undefined;
+  const label = useArticleLabel(row);
   const body = (
       <div className="body" inert={!!dismissed} aria-hidden={dismissed ? true : undefined}>
-        <h3>{row.title}</h3>
+        <h3><ArticleTitle row={row} /></h3>
         {row.summary ? <p className="summary">{row.summary}</p> : null}
         <div className="article-footer">
           <div className="meta">
@@ -104,7 +106,7 @@ export function ArticleCard({
       className={`article${row.read ? "" : " unread"}${row.starred ? " starred" : ""}${focused ? " focused" : ""}`}
       data-dismissed={dismissed ? (dismissed.leaving ? "leaving" : "veiled") : undefined}
       tabIndex={0}
-      aria-label={row.title}
+      aria-label={label}
       onClick={() => { if (!dismissed) onOpen(row.id); }}
       onKeyDown={(event) => {
         if (!dismissed && event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {

@@ -267,6 +267,11 @@
       "hint": "The same as the “Translation” task on the Models page.",
       "menuLabel": "Translation model",
       "saved": "Saved: translation now uses {{model}}."
+    },
+    "auto": {
+      "title": "Automatic translation",
+      "hint": "Both are off by default. With a language model, automatic translation counts toward the daily generation budget and stops once it’s used up; manual translation isn’t affected. Individual feeds can be set to Always or Never in feed settings.",
+      "needsReading": "Turn on reading translation above first."
     }
   }
 }

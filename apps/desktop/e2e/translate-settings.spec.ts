@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "./fixtures";
 import { installMockHost, MOCK_TRANSLATE, settingsTab } from "./mockHost";
 import { shot } from "./shots";
@@ -177,4 +180,22 @@ test("saved translation keys stay at the host and replacement clears the input a
   await settings.getByRole("button", { name: "DeepL 官方", exact: true }).click();
   await settings.getByRole("button", { name: "HTTP 服务", exact: true }).click();
   await expect(settings.getByText("备份未包含此密钥，需要重新填写 API Key（可选）。", { exact: true })).toBeVisible();
+});
+
+test("automatic translation switches save through the settings registry and the length limit is a draft", async ({ page }) => {
+  const locales = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/locales/zh-CN/settingsSystem.json");
+  const registry = JSON.parse(fs.readFileSync(locales, "utf8")).registry;
+  const settings = page.getByRole("dialog", { name: "设置", exact: true });
+  const lastSetting = () => page.evaluate(() => (window as any).__mockHost.args.set_setting);
+  const titles = settings.getByRole("button", { name: registry.translate_auto_titles.label, exact: true });
+  await expect(titles).toHaveAttribute("aria-pressed", "false");
+  await titles.click();
+  await expect.poll(lastSetting).toEqual({ id: "translate_auto_titles", value: "1" });
+  await expect(titles).toHaveAttribute("aria-pressed", "true");
+  await settings.getByRole("button", { name: registry.translate_auto_body.label, exact: true }).click();
+  await expect.poll(lastSetting).toEqual({ id: "translate_auto_body", value: "1" });
+  const limit = settings.getByLabel(registry.translate_auto_max_words.control, { exact: true });
+  await expect(limit).toHaveValue("6000");
+  await limit.fill("3000");
+  await expect.poll(lastSetting).toEqual({ id: "translate_auto_body", value: "1" });
 });

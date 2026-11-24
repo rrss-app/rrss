@@ -32,6 +32,7 @@ export function ReaderOverlay({
   summarizing,
   translating,
   translationStatus,
+  autoStrip,
   translateLabel,
   onRegenerate,
   blockNotes,
@@ -117,6 +118,8 @@ export function ReaderOverlay({
   summarizing: boolean;
   translating: boolean;
   translationStatus?: ReactNode;
+  /** 自动翻译的语言条，放在标题与元信息下方。 */
+  autoStrip?: ReactNode;
   translateLabel?: string;
   onRegenerate?: () => void;
   blockNotes?: ReadonlyMap<number, string>;
@@ -350,7 +353,9 @@ export function ReaderOverlay({
           {webTip}
           <div className={`reader-column${origin ? " web-column" : ""}`}>
             {origin}
-            <ReaderMasthead web={!!origin || webReader} reader={reader} article={article} title={title} onSource={onSourceToggle} sourceOpen={!!sourcePanel} originalTitle={translateMode === "bilingual" && reader.translated_title ? reader.title : undefined} />
+            <ReaderMasthead web={!!origin || webReader} reader={reader} article={article} title={title} onSource={onSourceToggle} sourceOpen={!!sourcePanel} originalTitle={translateMode === "bilingual" && reader.translated_title ? reader.title : undefined}
+              titleTranslation={translateMode === "original" ? reader.auto_translate?.title ?? undefined : undefined} />
+            {autoStrip}
             {fetchingFulltext ? <span className="reader-progress" role="status"><Icon name="spinner" size={14} className="spin" />{t("body.fetchingFulltext")}</span> : null}
             {reader.translation_note ? (
               <div className="reader-notice">

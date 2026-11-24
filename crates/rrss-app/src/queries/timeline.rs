@@ -28,7 +28,7 @@ pub fn feeds_page(
         PAGE_SIZE,
     )?;
     let icons = super::feeds::feed_icon_hrefs(conn, cards.iter().map(|a| a.feed_id))?;
-    let articles = cards
+    let mut articles: Vec<ArticleView> = cards
         .into_iter()
         .map(|card| {
             let mut article = article_from_card(card);
@@ -36,6 +36,7 @@ pub fn feeds_page(
             article
         })
         .collect();
+    crate::translate::titles::annotate(conn, &mut articles)?;
     Ok(FeedsPage {
         articles,
         has_more: next.is_some(),

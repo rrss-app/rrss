@@ -69,7 +69,7 @@ const TABS: ReadonlyArray<SettingsTab> = [
   { id: "assistant", icon: "chat",
     render: (p) => <AssistantPane onAsk={p.onAsk} onNavigate={p.onTab} onEditStateChange={p.onEditStateChange} /> },
   { id: "translate", icon: "translate",
-    render: (p) => <TranslatePane onEditStateChange={p.onEditStateChange} onOpenModels={() => p.onTab("model")} /> },
+    render: (p) => <TranslatePane onEditStateChange={p.onEditStateChange} onOpenModels={() => p.onTab("model")} onChanged={() => p.onChanged?.()} /> },
   { id: "diagnostics", icon: "activity",
     render: (p) => <DiagPane onAsk={p.onAsk} onEditStateChange={p.onEditStateChange} onChanged={p.onChanged} /> },
   { id: "storage", icon: "database",

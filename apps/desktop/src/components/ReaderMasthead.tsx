@@ -7,7 +7,7 @@ import { SourceAvatar } from "./ArticleCard";
 import { RelativeTime } from "./RelativeTime";
 import { Icon } from "./Icon";
 
-export function ReaderMasthead({ reader, article, title, originalTitle, web = false, onSource, sourceOpen }: { reader: ReaderView; article?: ArticleView; title: string; originalTitle?: string; web?: boolean; onSource?: () => void; sourceOpen?: boolean }) {
+export function ReaderMasthead({ reader, article, title, originalTitle, titleTranslation, web = false, onSource, sourceOpen }: { reader: ReaderView; article?: ArticleView; title: string; originalTitle?: string; /** 原文视图下显示的标题译文（标题自动翻译）。 */ titleTranslation?: string; web?: boolean; onSource?: () => void; sourceOpen?: boolean }) {
   const { t } = useTranslation("reader");
   const parts = reader.meta.split(" · ");
   const source = reader.feed_title || article?.feed_title || parts[0];
@@ -21,7 +21,7 @@ export function ReaderMasthead({ reader, article, title, originalTitle, web = fa
   return <>
     {source && !web ? onSource ? <button type="button" className="reader-source" aria-expanded={!!sourceOpen} onClick={onSource}>{badge}<Icon name="chevronRight" size={12} /></button> : <div className="reader-source">{badge}</div> : null}
     <h1 className="reader-title">{title}</h1>
-    {originalTitle ? <p className="reader-original-title">{originalTitle}</p> : null}
+    {originalTitle ? <p className="reader-original-title">{originalTitle}</p> : titleTranslation ? <p className="reader-original-title" title={t("autoTranslate.titleTranslation")}>{titleTranslation}</p> : null}
     <div className="reader-meta-bar">
       {[
         published != null ? <RelativeTime key="time" ms={published} /> : parts[1] ? <span key="time">{parts[1]}</span> : null,

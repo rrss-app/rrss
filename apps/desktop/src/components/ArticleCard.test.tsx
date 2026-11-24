@@ -95,3 +95,15 @@ it("shows the trial label only while recommendation details are enabled", () => 
   click(host.querySelector("input"));
   expect(host.querySelectorAll(".meta-tag")).toHaveLength(0);
 });
+
+it("marks foreign titles with their language only when title translation applies", () => {
+  const plain = setup({ title: "Quillstore rewrites its storage engine" });
+  expect(plain.host.querySelector(".title-lang")).toBeNull();
+  harness.cleanup();
+  const { host } = setup({ title: "Quillstore rewrites its storage engine", title_lang: "en", title_translation: "Quillstore 重写存储引擎", body_translated: true });
+  const prefix = host.querySelector(".title-lang");
+  expect(prefix?.textContent).toBe("EN");
+  expect(prefix?.hasAttribute("data-done")).toBe(true);
+  expect(host.querySelector("h3")?.textContent).toBe("ENQuillstore 重写存储引擎");
+  expect(host.querySelector("article")?.getAttribute("aria-label")).toBe("Quillstore 重写存储引擎");
+});

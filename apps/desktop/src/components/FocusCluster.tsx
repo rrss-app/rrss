@@ -4,6 +4,7 @@ import { SourceAvatar } from "./ArticleCard";
 import { useTranslation } from "../i18n";
 import { Icon } from "./Icon";
 import { RelativeTime } from "./RelativeTime";
+import { ArticleTitle, useArticleLabel } from "./ArticleTitle";
 
 /**
  * 相近报道的成组面板。焦点列表是虚拟化的行，面板按行拼：
@@ -95,11 +96,12 @@ export function ClusterMember({ row, focused = false, representative = false, on
   row: ArticleView; focused?: boolean; representative?: boolean; onOpen: (id: number) => void;
 }) {
   const { t } = useTranslation("focus");
+  const label = useArticleLabel(row);
   return (
     <article
       className={`article cluster-member${row.read ? "" : " unread"}${focused ? " focused" : ""}`}
       tabIndex={0}
-      aria-label={row.title}
+      aria-label={label}
       onClick={() => onOpen(row.id)}
       onKeyDown={(event) => {
         if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
@@ -112,8 +114,8 @@ export function ClusterMember({ row, focused = false, representative = false, on
       <SourceAvatar title={row.feed_title} iconHref={row.feed_icon_href} />
       <span className="cluster-member-source" title={row.feed_title}>{row.feed_title}</span>
       {representative
-        ? <span className="cluster-member-main"><h3 className="cluster-member-title">{row.title}</h3><span className="cluster-member-rep">{t("clusterMember.representative")}</span></span>
-        : <h3 className="cluster-member-title">{row.title}</h3>}
+        ? <span className="cluster-member-main"><h3 className="cluster-member-title"><ArticleTitle row={row} /></h3><span className="cluster-member-rep">{t("clusterMember.representative")}</span></span>
+        : <h3 className="cluster-member-title"><ArticleTitle row={row} /></h3>}
       {row.published_at != null ? <RelativeTime className="cluster-member-time" ms={row.published_at} /> : <span />}
     </article>
   );

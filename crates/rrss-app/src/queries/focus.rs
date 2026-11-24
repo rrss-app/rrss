@@ -277,7 +277,11 @@ fn article_views(
             }
             Ok(article)
         })
-        .collect()
+        .collect::<rrss_core::Result<Vec<_>>>()
+        .and_then(|mut articles| {
+            crate::translate::titles::annotate(conn, &mut articles)?;
+            Ok(articles)
+        })
 }
 
 // 只取正文首句；直接读 Markdown 事件，保留被块 IR 折成空格的 SoftBreak。

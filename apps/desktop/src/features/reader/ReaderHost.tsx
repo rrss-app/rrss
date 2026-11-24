@@ -46,6 +46,8 @@ import type { ReadSessionVia } from "../../bindings";
 import { i18n, useTranslation } from "../../i18n";
 import { inferReadingVia, useReadingSession } from "./useReadingSession";
 import { ReaderSourcePanel } from "./ReaderSourcePanel";
+import { AutoTranslateStrip } from "./AutoTranslateStrip";
+import { feedKeys } from "../../lib/feedQuery";
 
 function mergeReaderMedia(view: ReaderView, incoming: MediaRef): ReaderView {
   const exists = view.media.some((item) => item.src === incoming.src);
@@ -182,6 +184,8 @@ const PREFETCH_DELAY_MS = 400;
 const DRAWER_EDGE_MS = 440;
 /** 预热只取前几张已缓存到本地的图片：首屏和紧随其后的最要紧，整篇都解码太占内存。 */
 const mediaHrefs = (view: ReaderView) => view.media.map((media) => media.href).filter(Boolean).slice(0, 6);
+/** 一次打开的身份：同一篇换了正文版本也算新的一次。 */
+const readerKey = (view?: ReaderView | null) => (view ? `${view.id}:${view.source_hash}` : "");
 
 function ReaderOpening({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation("reader");
@@ -257,6 +261,9 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   });
   const userMode = useRef(false);
   const pendingMode = useRef<TranslateMode | null>(null);
+  /** 这次打开由自动翻译接管时记下文章与正文版本，第一块译文到达时切到它的默认视图。 */
+  const autoOpened = useRef<{ key: string; mode: TranslateMode } | null>(null);
+  const [neverFeed, setNeverFeed] = useState<number | null>(null);
   useEffect(() => {
     userMode.current = false;
     pendingMode.current = null;
@@ -332,8 +339,29 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       ...cur, translated_title: next.translated_title, translated_document: next.translated_document,
       translation_ready: next.translation_ready, translation_note: next.translation_note,
     });
-  }, () => { if (!userMode.current) setTranslateMode("bilingual"); }, settings.dataUpdatedAt);
+  }, () => {
+    const auto = autoOpened.current;
+    if (!userMode.current) setTranslateMode(auto && auto.key === readerKey(sessionRef.current?.view) ? auto.mode : "bilingual");
+  }, settings.dataUpdatedAt);
   const tr = translation.state;
+  // 自动翻译：打开没有译文的外文文章时按「点翻译」同样启动；已有译文的直接进入默认视图。每次打开只做一次。
+  const autoKey = readerKey(baseReader);
+  const autoAllowed = !preview && !session?.web;
+  useEffect(() => {
+    const auto = baseReader?.auto_translate;
+    if (!auto || !autoAllowed || !autoKey || autoOpened.current?.key === autoKey) return;
+    const mode: TranslateMode = auto.view === "translated" ? "translated" : "bilingual";
+    if (auto.body === "start") {
+      // 等打开时的只读握手结束：它可能找回进行中的翻译，期间的 start 会被忽略。
+      if (!translation.published || tr.data || tr.busy) return;
+      autoOpened.current = { key: autoKey, mode };
+      void translation.start();
+    } else if (auto.body === "cached" && baseReader.translation_ready) {
+      autoOpened.current = { key: autoKey, mode };
+      if (!userMode.current) setTranslateMode(mode);
+    }
+    // 每次打开只接管一次（按文章与正文版本记下），其余渲染直接返回。
+  }, [autoKey, autoAllowed, baseReader, tr.data, tr.busy, translation, translation.published]);
   const readingOnBody = readingSession.onBody;
   const translationOnBody = translation.onBody;
   const readerBody = useRef<HTMLDivElement | null>(null);
@@ -390,7 +418,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   const showReader = (ticket: ReaderTicket, view: ReaderView, skipNav: boolean, returnToList: boolean, options?: ReaderOpenOptions, openedAt: number | null = null, web?: WebPage, restored?: ReturnFrame) => {
     setOpening(null);
     setTranslateMode("original");
-    userMode.current = false; pendingMode.current = null;
+    userMode.current = false; pendingMode.current = null; autoOpened.current = null;
     setOps({});
     const sameArticle = sessionRef.current?.view.id === view.id ? sessionRef.current : null;
     const fromThread = options?.citationSource?.kind === "thread" ? options.citationSource
@@ -971,6 +999,16 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     if (action.kind === "retry") return translation.start("retry_failed");
     return translation.start();
   };
+  /** 语言条上的「这个源不再自动翻译」：写入按源覆盖，订阅树随返回值更新。 */
+  const stopFeedTranslation = async (feedId: number) => {
+    try {
+      const tree = await api.saveFeed({ id: feedId, title: null, url: null, folder_id: null, retention: null, interval: null, auto_translate: "never" });
+      queryClient.setQueryData(feedKeys.tree, tree);
+      setNeverFeed(feedId);
+    } catch (err) {
+      propsRef.current.notify({ message: formatNotice(i18n.t("autoTranslate.neverFailed", { ns: "reader" }), err) });
+    }
+  };
   const locateFailed = () => {
     const block = tr.data?.snapshot.unit_map.find((_, i) => unitFailed(tr.data!.snapshot.units[i]));
     if (block === undefined) return;
@@ -1207,6 +1245,10 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       summarizing={!!ops.summary}
       translating={tr.busy}
       translationStatus={<TranslationStatus view={tr} debug={debug} onAction={() => void translate()} onLocate={locateFailed} />}
+      autoStrip={reader.auto_translate && autoAllowed ? <AutoTranslateStrip auto={reader.auto_translate}
+        started={autoOpened.current?.key === autoKey} ready={reader.translation_ready} busy={tr.busy} never={neverFeed === reader.feed_id}
+        onTranslate={() => void translate()} onSettings={props.onTranslateSettings}
+        onNever={reader.feed_id > 0 ? () => void stopFeedTranslation(reader.feed_id) : undefined} /> : null}
       translateLabel={translationAction(tr).kind === "regenerate" ? t("status.action.start") : translationAction(tr).label}
       onRegenerate={reader.translation_ready ? regenerate : undefined}
       blockNotes={blockNotes}

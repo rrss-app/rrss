@@ -77,7 +77,7 @@ impl DbPart {
                 Self::Articles
             }
             "chunks" | "vector_spaces" | "vector_space_probes" | "vector_staging" => Self::Vectors,
-            "article_translations" => Self::Translations,
+            "article_translations" | "article_title_translations" => Self::Translations,
             "translations" | "feed_sub_records" => Self::Legacy,
             "ai_cache" => Self::AiCache,
             "threads" | "messages" | "memories" | "interests" => Self::Conversations,
@@ -360,7 +360,13 @@ pub fn clean(
             tx.commit()?;
             removed
         }
-        Cleanup::Translations => conn.execute("DELETE FROM article_translations", [])? as i64,
+        Cleanup::Translations => {
+            let tx = crate::db::write_transaction(conn)?;
+            let removed = tx.execute("DELETE FROM article_translations", [])? as i64;
+            tx.execute("DELETE FROM article_title_translations", [])?;
+            tx.commit()?;
+            removed
+        }
         Cleanup::Images => clear_media_kind(conn, "image")?,
         Cleanup::Videos => clear_media_kind(conn, "video")?,
         Cleanup::UntrackedMedia => {

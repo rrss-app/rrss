@@ -1,5 +1,10 @@
 {
-  "source": { "all": "View all articles", "empty": "No recent articles", "loading": "Loading articles…", "retry": "Retry loading articles" },
+  "source": {
+    "all": "View all articles",
+    "empty": "No recent articles",
+    "loading": "Loading articles…",
+    "retry": "Retry loading articles"
+  },
   "mode": {
     "original": "Original",
     "bilingual": "Bilingual",
@@ -424,5 +429,20 @@
       "copyLink": "Copy link",
       "dialogTitle": "Original page — RRSS"
     }
+  },
+  "autoTranslate": {
+    "original": "Original in {{lang}}; the article isn’t translated.",
+    "translate": "Translate article",
+    "translateAnyway": "Translate anyway",
+    "tooLong": "About {{words}} words, over the {{max}}-word limit for automatic translation, so it wasn’t translated.",
+    "budget": "Today’s generation budget is used up, so this wasn’t translated automatically. It resumes tomorrow.",
+    "unconfigured": "No translation service is set up, so this wasn’t translated automatically.",
+    "settings": "Open settings",
+    "running": "Translating automatically…",
+    "done": "Translated automatically (original in {{lang}}).",
+    "stopFeed": "Stop auto-translating this feed",
+    "never": "This feed won’t be translated automatically anymore. You can change it back in feed settings.",
+    "neverFailed": "Couldn’t change this feed’s setting",
+    "titleTranslation": "Title translation"
   }
 }

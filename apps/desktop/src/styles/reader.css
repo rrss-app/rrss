@@ -156,6 +156,15 @@ button.reader-source:hover span:last-of-type, button.reader-source:focus-visible
 .reader-source-row small, .reader-source-panel p { color: var(--text-muted); }
 .reader-source-panel p, .reader-source-all { margin: 12px; }
 .drawer.reader .reader-meta-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 0; margin: 0 0 28px; color: var(--text-faint); font: 11px/1.5 var(--font-ui); }
+/* 自动翻译的语言条：在标题与元信息之下、正文之前，一行说明正文翻没翻。 */
+.drawer.reader .reader-lang-strip { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin: -16px 0 24px; padding: var(--space-1) 0 var(--space-1) var(--space-3); border-left: 2px solid var(--border-strong); font: 12.5px/1.6 var(--font-ui); color: var(--text-2); }
+.drawer.reader .reader-lang-strip[data-tone="ok"] { border-left-color: var(--focus); }
+.drawer.reader .reader-lang-strip[data-tone="run"] { border-left-color: var(--accent); }
+.drawer.reader .reader-lang-strip[data-tone="warn"] { border-left-color: var(--warn); }
+.drawer.reader .reader-lang-strip > span { flex: 1 1 240px; min-width: 0; }
+.drawer.reader .reader-lang-strip button { padding: 0; border: 0; background: transparent; color: var(--accent); font: inherit; cursor: pointer; }
+.drawer.reader .reader-lang-strip button:hover { text-decoration: underline; text-underline-offset: 2px; }
+.drawer.reader .reader-lang-strip button.quiet { color: var(--text-muted); }
 /* 分隔点是独立元素，链接下划线不会延伸到点下面。 */
 .reader-meta-sep { margin-inline: 8px; }
 .drawer.reader .reader-meta-bar a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }

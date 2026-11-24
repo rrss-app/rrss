@@ -1,27 +1,36 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatNotice } from "../lib/notice";
 import { aiMutationOptions } from "./aiQuery";
 import { ChipBar, Field, SavedSecretField, SaveBar, SettingRow, Toggle } from "./chips";
-import { readGate, useSettingsWrite, type SettingsEditState } from "./editState";
+import { readGate, useMergedEditState, useSettingsWrite, type SettingsEditState } from "./editState";
 import { findEntry, ModelMenu, modelName, taskChoice, usePoolChoices } from "./modelChoices";
 import { TRANSLATE_BACKENDS, translateError } from "./translateQuery";
 import { useTranslateSettings } from "./useTranslateSettings";
+import { SettingsRows } from "./SettingsRows";
+import { titleTranslations } from "../lib/titleTranslations";
 import { Pending } from "../components/Pending";
 import { locale, Trans, useTranslation } from "../i18n";
 
 /** `auto` 跟随界面语言（默认），其余是常用的目标语言；别的语言在「其他语言」里填代码。 */
 const LANG_IDS = ["auto", "zh", "en", "ja"] as const;
 
-export function TranslatePane({ onEditStateChange, onOpenModels }: {
+export function TranslatePane({ onEditStateChange, onOpenModels, onChanged }: {
   onEditStateChange?: (state: SettingsEditState | null) => void;
   onOpenModels: () => void;
+  /** 自动翻译的开关会改变列表里的标题，列表据此重查。 */
+  onChanged?: () => void;
 }) {
   const { t } = useTranslation("settingsJobs");
   // 跟随界面时实际用的语言，与后端 `ui_language::translation_target` 一致。
   const followed = locale().startsWith("zh") ? "zh" : "en";
   const LANGS = LANG_IDS.map((id) => ({ id, label: id === "auto" ? t("translate.lang.auto", { current: t(`translate.lang.${followed}`) }) : t(`translate.lang.${id}`) }));
-  const { query, draft, baseline, dirty, busy, pending, status, change, pick, run, reload, discard } = useTranslateSettings(onEditStateChange);
+  const { report } = useMergedEditState(onEditStateChange);
+  const { query, draft, baseline, dirty, busy, pending, status, change, pick, run, reload, discard } = useTranslateSettings(report("service"));
+  // 服务、目标语言或总开关变了：列表标题要按新配置重新判断，之前失败或暂停的也重新请求。
+  const identity = baseline ? `${baseline.enabled}:${baseline.backend}:${baseline.target_lang}` : "";
+  useEffect(() => { if (identity) titleTranslations.reset(); }, [identity]);
+  const autoChanged = () => { titleTranslations.reset(); onChanged?.(); };
   if (!draft || !baseline) return (
     <div className="translate-pane">
       {query.isError ? <>
@@ -54,6 +63,17 @@ export function TranslatePane({ onEditStateChange, onOpenModels }: {
                 <input value={draft.target_lang} onChange={(e) => change("target_lang", e.target.value)} placeholder="zh" aria-label={t("translate.reading.langCode")} />
               </Field>
             </details>
+          </div>
+        </section>
+        <section className="settings-card settings-section">
+          <div className="settings-section-meta">
+            <h4>{t("translate.auto.title")}</h4>
+            <p className="hint">{t("translate.auto.hint")}</p>
+          </div>
+          <div className="settings-section-body">
+            {baseline.enabled ? null : <p className="hint">{t("translate.auto.needsReading")}</p>}
+            <SettingsRows ids={["translate_auto_titles", "translate_auto_body", "translate_auto_view", "translate_auto_max_words", "translate_auto_scope"]}
+              label={t("translate.auto.title")} disabled={busy || !baseline.enabled} onEditStateChange={report("auto")} onChanged={autoChanged} />
           </div>
         </section>
         <section className="settings-card settings-section">

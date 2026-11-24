@@ -68,7 +68,9 @@ CREATE TABLE feeds (
     position                INTEGER NOT NULL DEFAULT 0,
     -- 持久到期；0 表示从未抓取、立即到期。慢速退避与源健康计数分开。
     next_fetch_at           INTEGER NOT NULL DEFAULT 0,
-    slow_fail_count         INTEGER NOT NULL DEFAULT 0
+    slow_fail_count         INTEGER NOT NULL DEFAULT 0,
+    -- 自动翻译：NULL 跟随全局，1 总是，0 从不（标题与正文一起）
+    auto_translate          INTEGER
 );
 
 CREATE INDEX idx_feeds_folder ON feeds (folder_id);
@@ -556,6 +558,16 @@ CREATE TABLE article_translations (
     blocks_json    TEXT    NOT NULL,
     created_at     INTEGER NOT NULL,
     PRIMARY KEY (article_id, target_lang, engine)
+);
+
+-- 列表标题的自动翻译，只用于显示；换翻译服务不作废，换目标语言按新语言重翻。
+CREATE TABLE article_title_translations (
+    article_id  INTEGER NOT NULL REFERENCES articles (id) ON DELETE CASCADE,
+    target_lang TEXT    NOT NULL,
+    engine      TEXT    NOT NULL,
+    title       TEXT    NOT NULL,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (article_id, target_lang)
 );
 
 CREATE TABLE exposures (

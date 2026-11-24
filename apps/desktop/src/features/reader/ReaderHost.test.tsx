@@ -676,6 +676,30 @@ describe("ReaderHost standalone", () => {
     expect(box.stub!.callCount("fetchFulltext")).toBe(1);
   });
 
+  it("starts translation once when automatic translation applies, and waits for a click when it does not", async () => {
+    const auto = { lang: "en", title: null, words: 120, max_words: 6000, view: "translated" };
+    const start = readerView(ARTICLE_A, { auto_translate: { ...auto, body: "start" } });
+    const long = readerView(ARTICLE_B, { auto_translate: { ...auto, body: "too_long", words: 9800 } });
+    box.stub!.handle("openArticle", (id: number) => (id === ARTICLE_A ? start : long));
+    box.stub!.handle("translateSnapshot", (id: number) => translationReply(id === ARTICLE_A ? start : long));
+    const translate = vi.fn((id: number) => translationReply(id === ARTICLE_A ? start : long));
+    box.stub!.handle("translate", translate);
+    const { ref, host } = setup();
+    await open(ref, ARTICLE_A);
+    await harness.flush();
+    expect(translate).toHaveBeenCalledTimes(1);
+    expect(translate).toHaveBeenCalledWith(ARTICLE_A, "default", null);
+
+    await open(ref, ARTICLE_B);
+    await harness.flush();
+    expect(translate).toHaveBeenCalledTimes(1);
+    const action = host.querySelector<HTMLButtonElement>(".reader-lang-strip button");
+    expect(action).not.toBeNull();
+    act(() => action!.click());
+    await harness.flush();
+    expect(translate).toHaveBeenLastCalledWith(ARTICLE_B, "default", null);
+  });
+
   it("drops every in-flight result once the shell closes the reader", async () => {
     const gates: Array<{ id: number; resolve: (v: ReturnType<typeof readerView>) => void }> = [];
     box.stub!.handle("openArticle", (id: number) => {

@@ -32,6 +32,26 @@ pub async fn translate_selection(
 }
 
 #[tauri::command]
+pub async fn translate_titles(
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+) -> Result<TitleTranslations, TranslationCommandError> {
+    rrss_app::translate::titles::translate_titles(
+        &state.db_path,
+        &state
+            .network
+            .client(NetworkScope::Api)
+            .await
+            .map_err(|e| TranslationCommandError {
+                kind: TranslationFailure::Configuration,
+                error: Some(UiError::from(e)),
+            })?,
+        ids,
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn translate_article(
     state: State<'_, AppState>,
     id: i64,
@@ -108,4 +128,5 @@ command_handler![
     save_translate_settings,
     test_translate,
     translate_selection,
+    translate_titles,
 ];

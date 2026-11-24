@@ -50,7 +50,7 @@ export function useSubscribeSettings(
   const [folders, setFolders] = useState<Record<number, Editor<FolderView>>>({});
   const [status, setStatus] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const dirty = !!url || !!folderName || Object.values(feeds).some(({ baseline: b, draft: d }) =>
-    b.title !== d.title || b.url !== d.url || b.folder_id !== d.folder_id || b.retention_days !== d.retention_days || b.interval_minutes !== d.interval_minutes) ||
+    b.title !== d.title || b.url !== d.url || b.folder_id !== d.folder_id || b.retention_days !== d.retention_days || b.interval_minutes !== d.interval_minutes || (b.auto_translate ?? "follow") !== (d.auto_translate ?? "follow")) ||
     Object.values(folders).some(({ baseline, draft }) => baseline.name !== draft.name);
   useEditReport(onEditStateChange, t("subscribe.editLabel"), dirty, busy);
 

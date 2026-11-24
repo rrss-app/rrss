@@ -148,7 +148,10 @@
     "cite": "引用",
     "like": "赞",
     "unlike": "取消赞",
-    "dislike": "踩"
+    "dislike": "踩",
+    "langOriginal": "{{lang}}原文",
+    "langTranslated": "{{lang}}原文，已有全文译文",
+    "originalTitle": "原题：{{title}}"
   },
   "trainingBar": {
     "close": "关闭",

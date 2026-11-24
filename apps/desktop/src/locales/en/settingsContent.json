@@ -315,7 +315,14 @@
       "limited": "Rate-limited · back {{until}}",
       "limitedDetail": "This site asked for a pause, so every feed from it is waiting. Refreshing resumes {{until}}; a manual refresh waits too.",
       "refreshLimited": "Last refreshed {{last}} · resumes {{until}}",
-      "missing": "This feed is no longer in the list. Your unsaved input is kept."
+      "missing": "This feed is no longer in the list. Your unsaved input is kept.",
+      "autoTranslate": "Automatic translation",
+      "autoTranslateHint": "Covers title translation in lists and translating articles when opened. Always applies even when the global switches are off; reading translation still has to be on in settings."
+    },
+    "autoTranslateMode": {
+      "follow": "Follow global setting",
+      "always": "Always",
+      "never": "Never"
     }
   },
   "siteRule": {

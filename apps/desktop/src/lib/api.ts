@@ -161,6 +161,7 @@ import type {
   EmbedCoverEvent,
   TranslatePage,
   SelectionTranslation,
+  TitleTranslations,
   ExposureInput,
   ArticleEventInput,
   ReadSessionInput,
@@ -399,6 +400,8 @@ export const api = {
   }) => invoke("save_translate_settings", { args }),
   testTranslate: () => invoke<string>("test_translate"),
   translateSelection: (text: string, configIdentity: string) => invoke<SelectionTranslation>("translate_selection", { text, configIdentity }),
+  /** 列表标题自动翻译：一次至多 `TITLE_TRANSLATE_BATCH` 条；只翻生效且还没有译文的。 */
+  translateTitles: (ids: number[]) => invoke<TitleTranslations>("translate_titles", { ids }),
   digests: (period: string) => invoke<DigestSummary[]>("digest_list", { period }),
   digest: (id: number) => invoke<DigestView>("digest", { id }),
   /** 设置选项注册表：简单选项的描述符与当前值。 */

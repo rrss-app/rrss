@@ -28,6 +28,7 @@ pub(crate) mod cache;
 pub mod ipc;
 pub mod runtime;
 pub mod selection;
+pub mod titles;
 mod types;
 mod window;
 use cache::Config;

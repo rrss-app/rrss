@@ -351,6 +351,20 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .meta-tag.starred { color: var(--accent); background: transparent; }
 .meta-tag.warn { color: var(--warn); background: transparent; }
 .meta-tag.danger { color: var(--danger); background: transparent; }
+/* 列表标题前的外文语言码：标题已显示译文、点进去仍是外文。正文已有译文时变为焦点色。 */
+.title-lang {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font: 600 10px/16px var(--font-ui);
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  vertical-align: 0.2em;
+  white-space: nowrap;
+}
+.title-lang[data-done] { border-color: color-mix(in srgb, var(--focus) 45%, transparent); color: var(--focus); }
 
 .source-avatar {
   display: inline-flex;

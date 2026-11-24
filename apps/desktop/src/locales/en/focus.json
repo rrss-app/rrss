@@ -166,7 +166,10 @@
     "cite": "Cite",
     "like": "Like",
     "unlike": "Remove like",
-    "dislike": "Dislike"
+    "dislike": "Dislike",
+    "langOriginal": "Original in {{lang}}",
+    "langTranslated": "Original in {{lang}}; full translation available",
+    "originalTitle": "Original title: {{title}}"
   },
   "trainingBar": {
     "close": "Close",

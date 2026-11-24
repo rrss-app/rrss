@@ -29,6 +29,10 @@ pub struct FeedView {
     pub position: i64,
     // 手动收录源还没有任何文章；订阅树据此隐藏它。其他源恒为 false。
     pub empty: bool,
+    // 自动翻译覆盖：always 总是、never 从不；跟随全局时不带。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub auto_translate: Option<String>,
 }
 
 /// 订阅行内编辑的一次保存；`None` 字段表示未改。`folder_id` 为 `Some(0)` 表示移出文件夹。
@@ -48,6 +52,10 @@ pub struct SaveFeedArgs {
     // 刷新间隔："follow" 跟随全局，其余为分钟数。
     #[serde(default)]
     pub interval: Option<String>,
+    // 自动翻译："follow" / "always" / "never"。
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub auto_translate: Option<String>,
 }
 
 // OPML 导入结果的计数，提示文字由前端生成。

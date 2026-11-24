@@ -59,6 +59,8 @@ pub fn reader_view(conn: &Connection, id: i64) -> rrss_core::Result<ReaderView> 
     let mut doc = load_document(&article);
     let source_hash = crate::document::source_hash(&article.title, &doc);
     let translation = crate::translate::cache::for_reader(conn, &article, &doc)?;
+    let auto_translate =
+        crate::translate::titles::reader_auto(conn, &article, &doc, translation.is_some())?;
     present_document(&mut doc);
     let media = article_media_from_doc(conn, article.id, &doc);
     let embed_covers = embed_fetch::cached_covers(conn, article.id, &doc);
@@ -111,6 +113,7 @@ pub fn reader_view(conn: &Connection, id: i64) -> rrss_core::Result<ReaderView> 
                 article.content_html.as_deref(),
             ),
         starred: article.starred,
+        auto_translate,
     };
     Ok(attach_translation(translation, view))
 }

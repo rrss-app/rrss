@@ -1,5 +1,10 @@
 {
-  "source": { "all": "查看全部文章", "empty": "暂无近期文章", "loading": "正在加载文章…", "retry": "重新加载文章" },
+  "source": {
+    "all": "查看全部文章",
+    "empty": "暂无近期文章",
+    "loading": "正在加载文章…",
+    "retry": "重新加载文章"
+  },
   "mode": {
     "original": "原文",
     "bilingual": "双语",
@@ -420,5 +425,20 @@
       "copyLink": "复制链接",
       "dialogTitle": "原网页 — RRSS"
     }
+  },
+  "autoTranslate": {
+    "original": "{{lang}}原文，正文未翻译。",
+    "translate": "翻译全文",
+    "translateAnyway": "仍然翻译",
+    "tooLong": "全文约 {{words}} 词，超过自动翻译上限 {{max}} 词，没有自动翻译。",
+    "budget": "今日生成预算已用完，没有自动翻译。明天恢复。",
+    "unconfigured": "翻译服务还没配置，没有自动翻译。",
+    "settings": "去设置",
+    "running": "正在自动翻译…",
+    "done": "已自动翻译（{{lang}}原文）。",
+    "stopFeed": "这个源不再自动翻译",
+    "never": "这个源以后不再自动翻译，可以在订阅源设置里改回。",
+    "neverFailed": "没能更改这个源的设置",
+    "titleTranslation": "标题译文"
   }
 }

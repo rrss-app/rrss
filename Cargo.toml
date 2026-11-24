@@ -43,6 +43,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 percent-encoding = "2"
 url = { version = "2", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
+whichlang = "0.1"
 toml = { version = "0.8", default-features = false, features = ["parse"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
 

@@ -145,6 +145,10 @@ mod export_ts {
             EmbedCoverEvent::decl(),
             ReadingSpeedsView::decl(),
             ReaderView::decl(),
+            AutoTranslateView::decl(),
+            AutoBodyState::decl(),
+            TitleTranslationView::decl(),
+            TitleTranslations::decl(),
             TranslationFailure::decl(),
             TranslationUnitState::decl(),
             TranslationPhase::decl(),
@@ -331,6 +335,10 @@ mod export_ts {
         out.push_str(&format!(
             "export const SELECTION_TRANSLATE_MAX_CHARS = {};\n",
             translate::selection::MAX_CHARS
+        ));
+        out.push_str(&format!(
+            "export const TITLE_TRANSLATE_BATCH = {};\n",
+            translate::titles::MAX_TITLES
         ));
         out.replace("bigint", "number")
     }

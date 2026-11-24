@@ -118,6 +118,18 @@ pub struct ArticleView {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub feedback: Option<i8>,
+    // 标题自动翻译对这篇生效且是外文时：原文语言码（ISO 639-1）。卡片据此加标题前缀；没开或不是外文时不带。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub title_lang: Option<String>,
+    // 已有的标题译文（当前目标语言）。只在带 title_lang 时给。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub title_translation: Option<String>,
+    // 已有当前目标语言、当前服务的正文译文；前缀变绿。只在带 title_lang 时给。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub body_translated: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -391,6 +403,53 @@ pub struct ReaderView {
     pub feed_id: i64,
     #[serde(default)]
     pub feed_title: String,
+    // 标题或正文自动翻译对这篇生效、且正文是外文时才有；阅读页据此显示语言条、决定是否自动开始翻译。
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub auto_translate: Option<AutoTranslateView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct AutoTranslateView {
+    // 正文的语言码（ISO 639-1）。
+    pub lang: String,
+    // 已有的标题译文；原文视图下作为小字副标题。
+    pub title: Option<String>,
+    pub body: AutoBodyState,
+    // 正文词数与自动翻译上限（以空格分词的文字按词计，中日韩两个字算一个词）。
+    pub words: i64,
+    pub max_words: i64,
+    // 自动翻译后的默认视图：bilingual / translated。
+    pub view: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoBodyState {
+    // 这篇不自动翻译正文（只开了标题翻译，或源设为从不之外的其他原因）。
+    Off,
+    // 打开时自动开始翻译。
+    Start,
+    // 已有译文，直接进入默认视图。
+    Cached,
+    TooLong,
+    Budget,
+    Unconfigured,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct TitleTranslationView {
+    pub id: i64,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct TitleTranslations {
+    pub titles: Vec<TitleTranslationView>,
+    // 这次没有发请求的原因：disabled（没开或源设为从不）、unconfigured、budget。有值时前端暂停请求。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub paused: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -2015,6 +2074,9 @@ pub fn article_from_card(card: rrss_core::ArticleCard) -> ArticleView {
         hide_reasons: None,
         cluster_fresh: None,
         feedback: None,
+        title_lang: None,
+        title_translation: None,
+        body_translated: None,
         cluster_sources: (card.row_kind == rrss_core::articles::ROW_HEADER).then(|| {
             card.cluster_feeds
                 .into_iter()

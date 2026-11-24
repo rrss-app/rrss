@@ -27,6 +27,7 @@ function retentionArg(days: number | null) {
 /** 刷新间隔的下拉值：跟随全局或自定义分钟数（下限 1，不设档位）。 */
 type IntervalMode = "follow" | "custom";
 const INTERVAL_MODES: IntervalMode[] = ["follow", "custom"];
+const AUTO_TRANSLATE_MODES = ["follow", "always", "never"] as const;
 const DEFAULT_CUSTOM_MINUTES = 60;
 function intervalArg(minutes: number | null) {
   return minutes === null ? "follow" : String(minutes);
@@ -309,6 +310,14 @@ function FeedItem({ feed, folders, onAsk, settings: s, missing = false, onFinish
           onChange={(e) => { const minutes = e.target.valueAsNumber; change({ interval_minutes: Number.isInteger(minutes) && minutes >= 1 ? minutes : Number.NaN }); }} />
       </label>}
     </div>
+    <div className="field-grid">
+      <label className="field"><span>{t("subscribe.feed.autoTranslate")}</span>
+        <MenuSelect label={t("subscribe.feed.autoTranslate")} value={draft.auto_translate ?? "follow"}
+          options={AUTO_TRANSLATE_MODES.map((value) => ({ value, label: t(`subscribe.autoTranslateMode.${value}`) }))}
+          onChange={(mode) => change({ auto_translate: mode === "follow" ? undefined : mode })} />
+      </label>
+    </div>
+    <p className="hint">{t("subscribe.feed.autoTranslateHint")}</p>
     {(() => {
       const line = refreshLine(feed, !badInterval && draft.interval_minutes !== baseline.interval_minutes);
       return line && <p className="hint feed-refresh">{line}</p>;
@@ -321,7 +330,8 @@ function FeedItem({ feed, folders, onAsk, settings: s, missing = false, onFinish
         tree: await api.saveFeed({ id: feed.id, title: draft.title.trim() !== baseline.title ? draft.title : null,
           url: draft.url !== baseline.url ? draft.url : null, folder_id: draft.folder_id !== baseline.folder_id ? draft.folder_id : null,
           retention: draft.retention_days !== baseline.retention_days ? retentionArg(draft.retention_days) : null,
-          interval: draft.interval_minutes !== baseline.interval_minutes ? intervalArg(draft.interval_minutes) : null }),
+          interval: draft.interval_minutes !== baseline.interval_minutes ? intervalArg(draft.interval_minutes) : null,
+          auto_translate: (draft.auto_translate ?? "follow") !== (baseline.auto_translate ?? "follow") ? draft.auto_translate ?? "follow" : null }),
       }), finish)}>{t("subscribe.saveEdit")}</button>
       <button type="button" className="btn sm" onClick={finish}>{t("subscribe.cancel")}</button>
       <span className="toolbar-spacer" />

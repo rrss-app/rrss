@@ -18,6 +18,7 @@ import { feedsInScope, findFeed, scopeTitle, scopeUnread } from "./feedTree";
 import { feedAlert } from "./feedAlert";
 import { formatRefreshTime } from "./refreshTime";
 import { useFeedsSession, type FeedsSession } from "./feedsSession";
+import { ArticleTitle } from "../../components/ArticleTitle";
 
 const LIST_SCOPES = ["all", "unread", "starred"] as const;
 
@@ -222,7 +223,7 @@ export const FeedsScreen = memo(function FeedsScreen({ session, active, onOpen, 
               <button type="button" className="feeds-item" data-read={row.read ? "1" : "0"} data-article-id={row.id} onClick={() => onOpen(row.id)}>
                 <span className="feeds-item-dot" aria-label={row.read ? t("screen.read") : t("screen.unread")} />
                 <span className="feeds-item-body">
-                  <span className="feeds-item-title">{row.title}</span>
+                  <span className="feeds-item-title"><ArticleTitle row={row} /></span>
                   {row.summary ? <span className="feeds-item-summary">{row.summary}</span> : null}
                   {singleFeed ? null : <span className="feeds-item-source"><SourceAvatar title={row.feed_title} iconHref={row.feed_icon_href} /><span>{row.feed_title}</span></span>}
                 </span>

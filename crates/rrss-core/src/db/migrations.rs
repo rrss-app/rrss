@@ -2,7 +2,7 @@ use rusqlite::Connection;
 
 use crate::error::{Error, Result};
 
-pub const SCHEMA_VERSION: i32 = 51;
+pub const SCHEMA_VERSION: i32 = 52;
 
 /// 低于此版本的库不能在当前程序里升级。
 pub const MIN_UPGRADE_VERSION: i32 = 33;
@@ -40,6 +40,7 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         (49, apply_v49),
         (50, apply_v50),
         (51, apply_v51),
+        (52, apply_v52),
     ];
     let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if !(0..=SCHEMA_VERSION).contains(&version) {
@@ -84,6 +85,26 @@ fn apply_v51(conn: &Connection) -> Result<()> {
                 "ALTER TABLE memories ADD COLUMN replaces_id INTEGER REFERENCES memories(id) ON DELETE SET NULL;",
             )?;
         }
+        Ok(())
+    })
+}
+
+/// 自动翻译：列表标题译文表与按源覆盖（NULL 跟随全局）。
+fn apply_v52(conn: &Connection) -> Result<()> {
+    crate::db::atomic_write(conn, |conn| {
+        if !column_exists(conn, "feeds", "auto_translate")? {
+            conn.execute_batch("ALTER TABLE feeds ADD COLUMN auto_translate INTEGER;")?;
+        }
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS article_title_translations (
+                article_id  INTEGER NOT NULL REFERENCES articles (id) ON DELETE CASCADE,
+                target_lang TEXT    NOT NULL,
+                engine      TEXT    NOT NULL,
+                title       TEXT    NOT NULL,
+                created_at  INTEGER NOT NULL,
+                PRIMARY KEY (article_id, target_lang)
+            );",
+        )?;
         Ok(())
     })
 }
@@ -879,6 +900,43 @@ mod tests {
             })
             .unwrap();
         assert_eq!(custom, 1);
+    }
+
+    #[test]
+    fn v52_adds_title_translations_and_feed_override_idempotently() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             CREATE TABLE feeds (id INTEGER PRIMARY KEY);
+             CREATE TABLE articles (id INTEGER PRIMARY KEY, feed_id INTEGER);
+             INSERT INTO feeds(id) VALUES (1);
+             INSERT INTO articles(id, feed_id) VALUES (7, 1);",
+        )
+        .unwrap();
+        apply_v52(&conn).unwrap();
+        apply_v52(&conn).unwrap();
+        let auto: Option<i64> = conn
+            .query_row("SELECT auto_translate FROM feeds WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(auto, None);
+        conn.execute(
+            "INSERT INTO article_title_translations (article_id, target_lang, engine, title, created_at)
+             VALUES (7, 'zh', 'deepl', '标题', 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute("DELETE FROM articles WHERE id = 7", [])
+            .unwrap();
+        let left: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM article_title_translations",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(left, 0);
     }
 
     #[test]

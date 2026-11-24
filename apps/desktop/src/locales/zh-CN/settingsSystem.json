@@ -762,6 +762,35 @@
         "streaming": "回复进行中保持服务商的提示缓存。",
         "idle": "两次提问之间也保持，没有对话时也可能产生费用。"
       }
+    },
+    "translate_auto_titles": {
+      "label": "列表标题自动翻译",
+      "hint": "焦点和订阅列表里的外文标题显示译文，前面标出原文语言，提示点进去仍是外文。只翻列表里出现的文章，一次一小批。"
+    },
+    "translate_auto_body": {
+      "label": "打开外文文章时自动翻译正文",
+      "hint": "打开还没有译文的外文文章时开始翻译，已翻过的直接读缓存。每次都会调用翻译服务。"
+    },
+    "translate_auto_view": {
+      "label": "自动翻译后默认显示",
+      "options": {
+        "bilingual": "双语",
+        "translated": "仅译文"
+      }
+    },
+    "translate_auto_max_words": {
+      "label": "长文上限",
+      "hint": "正文超过这个词数不自动翻译，仍可手动翻译。中日韩文字按两个字一个词计。",
+      "control": "长文上限（词）",
+      "unit": "词"
+    },
+    "translate_auto_scope": {
+      "label": "哪些语言算外文",
+      "hint": "只有外文文章会标出语言并自动翻译。",
+      "options": {
+        "all": "目标语言以外都算",
+        "en": "只有英文"
+      }
     }
   },
   "storage": {

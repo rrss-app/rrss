@@ -78,6 +78,8 @@ export function useReaderTranslation(reader: ReaderView | null, ticket: ReaderTi
   }, [settingsUpdatedAt]);
   return {
     state: view?.ticket === ticket && view.sourceHash === sourceHash ? view.value : EMPTY,
+    /** 这次打开的会话已发布过状态（打开时的只读握手已开始或结束）；之前调用 start 会被忽略。 */
+    published: view?.ticket === ticket && view.sourceHash === sourceHash,
     onBody: setBody,
     start: (mode: TranslationStartMode = "default") => { viewport.current?.read(); return controller.current?.start(mode); },
     recover: () => controller.current?.recover(),

@@ -58,6 +58,15 @@ pub fn save_feed(
         };
         rrss_core::fetch_interval::set_feed_minutes(&tx, args.id, minutes)?;
     }
+    if let Some(auto) = &args.auto_translate {
+        let value = rrss_core::translations::FeedAuto::parse(auto).ok_or_else(|| {
+            rrss_core::Error::InvalidSetting(SettingProblem::OptionInvalid {
+                value: auto.trim().into(),
+                options: ["follow", "always", "never"].map(String::from).to_vec(),
+            })
+        })?;
+        rrss_core::translations::set_feed_auto(&tx, args.id, value)?;
+    }
     let tree = crate::queries::feed_tree(&tx)?;
     tx.commit()?;
     Ok(tree)
@@ -226,6 +235,7 @@ mod tests {
                 folder_id: None,
                 retention: Some("keep".into()),
                 interval: None,
+                auto_translate: None,
             },
         )
         .unwrap();
@@ -248,6 +258,7 @@ mod tests {
                     folder_id: None,
                     retention: Some("abc".into()),
                     interval: None,
+                    auto_translate: None,
                 }
             )
             .is_err()
@@ -261,6 +272,7 @@ mod tests {
                 folder_id: None,
                 retention: Some("30".into()),
                 interval: None,
+                auto_translate: None,
             },
         )
         .unwrap();
@@ -274,6 +286,7 @@ mod tests {
             folder_id: None,
             retention: None,
             interval: Some(value.into()),
+            auto_translate: None,
         };
         let tree = save_feed(&conn, &interval("5")).unwrap();
         assert_eq!(find_feed(&tree, 2).interval_minutes, Some(5));
@@ -282,6 +295,20 @@ mod tests {
         }
         let tree = save_feed(&conn, &interval("follow")).unwrap();
         assert_eq!(find_feed(&tree, 2).interval_minutes, None);
+        let translate = |value: &str| SaveFeedArgs {
+            id: 2,
+            title: None,
+            url: None,
+            folder_id: None,
+            retention: None,
+            interval: None,
+            auto_translate: Some(value.into()),
+        };
+        let tree = save_feed(&conn, &translate("never")).unwrap();
+        assert_eq!(find_feed(&tree, 2).auto_translate.as_deref(), Some("never"));
+        assert!(save_feed(&conn, &translate("sometimes")).is_err());
+        let tree = save_feed(&conn, &translate("follow")).unwrap();
+        assert_eq!(find_feed(&tree, 2).auto_translate, None);
         // Never fetched: no times yet. After a fetch both times are exposed.
         assert_eq!(
             (
@@ -324,6 +351,7 @@ mod tests {
                 folder_id: Some(folder),
                 retention: None,
                 interval: None,
+                auto_translate: None,
             },
         )
         .unwrap();
@@ -343,6 +371,7 @@ mod tests {
                 folder_id: Some(0),
                 retention: None,
                 interval: None,
+                auto_translate: None,
             },
         )
         .unwrap();
@@ -366,6 +395,7 @@ mod tests {
                 folder_id: Some(4040),
                 retention: None,
                 interval: None,
+                auto_translate: None,
             },
         )
         .unwrap_err();
@@ -390,6 +420,7 @@ mod tests {
                 folder_id: None,
                 retention: None,
                 interval: None,
+                auto_translate: None,
             },
         )
         .unwrap_err();
@@ -414,6 +445,7 @@ mod tests {
                 folder_id: None,
                 retention: None,
                 interval: None,
+                auto_translate: None,
             },
         )
         .unwrap_err();

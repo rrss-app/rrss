@@ -3,6 +3,7 @@
 mod embed;
 mod html;
 mod ir;
+mod lang;
 mod legacy;
 mod markdown;
 mod sanitize;
@@ -15,6 +16,7 @@ pub use embed::{
     direct_media_mime, present_embed,
 };
 pub use ir::{Block, Document, EmbedKind, IR_VERSION, Inline, InlineStyle, TableTotal};
+pub use lang::{detect_lang, foreign_lang, word_count};
 pub use text::{inlines_to_markdown, inlines_to_plain};
 pub use translate::{
     PatchError, TranslateUnit, TranslationPatch, TranslationPlan, already_target_lang, apply_units,
