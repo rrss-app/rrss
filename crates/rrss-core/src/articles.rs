@@ -821,71 +821,168 @@ pub fn due_focus_summaries_excluding(
     limit: i64,
     excluded: &[(i64, String)],
 ) -> Result<Vec<DueSummary>> {
-    let excluded = serde_json::to_string(excluded).expect("summary exclusions");
+    if limit <= 0 {
+        return Ok(Vec::new());
+    }
+    let excluded_json = serde_json::to_string(excluded).expect("summary exclusions");
     let cutoff = now_ms() - crate::ai_store::FOCUS_WINDOW_DAYS * 86_400_000;
     let threshold = hide_threshold(conn)?;
     let boost = i64::from(interests::boost_enabled(conn)?);
-    let visible = VISIBLE_SQL.replace("$threshold", "?2");
-    let mut stmt = conn.prepare(&format!(
-        "SELECT id, title, content_html, blocks_json, score, starred, COALESCE(hash,'') FROM articles a
-         WHERE {visible} AND pruned_at IS NULL AND created_at >= ?5
-           AND (score + CASE WHEN ?3 THEN interest_boost ELSE 0 END) > 0
-           AND NOT EXISTS (SELECT 1 FROM json_each(?4) e
-               WHERE json_extract(e.value,'$[0]')=a.id AND json_extract(e.value,'$[1]')=COALESCE(a.hash,''))
-           AND (summary IS NULL OR summary = ''
-                OR summary_hash IS NULL OR summary_hash != hash)
-         ORDER BY (score + CASE WHEN ?3 THEN interest_boost ELSE 0 END) DESC, id DESC
-         LIMIT ?1",
-    ))?;
-    let rows = stmt.query_map(params![limit, threshold, boost, excluded, cutoff], |row| {
-        Ok(DueSummary {
-            hash: row.get(6)?,
-            id: row.get(0)?,
-            title: row.get(1)?,
-            content_html: row.get(2)?,
-            blocks_json: row.get(3)?,
-            score: row.get(4)?,
-            starred: row.get::<_, i64>(5)? != 0,
-        })
-    })?;
-    let mut out = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    let hidden_feeds = focus_excluded_feeds(conn)?;
+    let noisy_feeds = crate::feeds::noisy_feed_ids(conn)?;
+    let fetch_limit = limit.saturating_mul(3).max(limit);
+
+    let mut out = Vec::new();
+    {
+        let visible = VISIBLE_SQL.replace("$threshold", "?2");
+        let mut bind: Vec<rusqlite::types::Value> = vec![
+            fetch_limit.into(),
+            threshold.into(),
+            boost.into(),
+            excluded_json.clone().into(),
+            cutoff.into(),
+        ];
+        let noisy_sql = exclude_feeds_sql_values(&mut bind, &hidden_feeds);
+        let noisy_order = demote_feeds_order_sql(&mut bind, &noisy_feeds);
+        let mut stmt = conn.prepare(&format!(
+            "SELECT id, title, content_html, blocks_json, score, starred, COALESCE(hash,'') FROM articles a
+             WHERE {visible} AND pruned_at IS NULL AND created_at >= ?5
+               AND (a.read = 0 OR a.starred != 0)
+               AND (score + CASE WHEN ?3 THEN interest_boost ELSE 0 END) > 0
+               AND NOT EXISTS (SELECT 1 FROM feedback fb WHERE fb.article_id = a.id AND fb.kind = 'down')
+               AND NOT EXISTS (SELECT 1 FROM json_each(?4) e
+                   WHERE json_extract(e.value,'$[0]')=a.id AND json_extract(e.value,'$[1]')=COALESCE(a.hash,''))
+               AND (summary IS NULL OR summary = ''
+                    OR summary_hash IS NULL OR summary_hash != hash){noisy_sql}
+             ORDER BY {noisy_order}(score + CASE WHEN ?3 THEN interest_boost ELSE 0 END) DESC, id DESC
+             LIMIT ?1",
+        ))?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(bind), |row| {
+            Ok(DueSummary {
+                hash: row.get(6)?,
+                id: row.get(0)?,
+                title: row.get(1)?,
+                content_html: row.get(2)?,
+                blocks_json: row.get(3)?,
+                score: row.get(4)?,
+                starred: row.get::<_, i64>(5)? != 0,
+            })
+        })?;
+        for row in rows {
+            let item = row?;
+            if crate::summary_extract::is_link_stub(
+                item.blocks_json.as_deref(),
+                item.content_html.as_deref(),
+            ) {
+                continue;
+            }
+            out.push(item);
+            if out.len() as i64 >= limit {
+                break;
+            }
+        }
+    }
     let extra = focus_summary_neutral_limit(conn)?;
     if extra > 0 && (out.len() as i64) < limit {
         let remain = (limit - out.len() as i64).min(extra);
+        let extra_fetch = remain.saturating_mul(3).max(remain);
         let seen: HashSet<i64> = out.iter().map(|d| d.id).collect();
         let visible = VISIBLE_SQL.replace("$threshold", "?1");
+        let mut bind: Vec<rusqlite::types::Value> = vec![
+            threshold.into(),
+            extra_fetch.into(),
+            excluded_json.into(),
+            cutoff.into(),
+            boost.into(),
+        ];
+        let noisy_sql = exclude_feeds_sql_values(&mut bind, &hidden_feeds);
+        let noisy_order = demote_feeds_order_sql(&mut bind, &noisy_feeds);
         let mut extra_stmt = conn.prepare(&format!(
             "SELECT id, title, content_html, blocks_json, score, starred, COALESCE(hash,'') FROM articles a
              WHERE {visible} AND (score + CASE WHEN ?5 THEN interest_boost ELSE 0 END) = 0
                AND read = 0 AND pruned_at IS NULL AND created_at >= ?4
+               AND NOT EXISTS (SELECT 1 FROM feedback fb WHERE fb.article_id = a.id AND fb.kind = 'down')
                AND NOT EXISTS (SELECT 1 FROM json_each(?3) e
                    WHERE json_extract(e.value,'$[0]')=a.id AND json_extract(e.value,'$[1]')=COALESCE(a.hash,''))
                AND (summary IS NULL OR summary = ''
-                    OR summary_hash IS NULL OR summary_hash != hash)
-             ORDER BY COALESCE(published_at, 0) DESC, id DESC
+                    OR summary_hash IS NULL OR summary_hash != hash){noisy_sql}
+             ORDER BY {noisy_order}COALESCE(published_at, 0) DESC, id DESC
              LIMIT ?2",
         ))?;
-        let extras =
-            extra_stmt.query_map(params![threshold, remain, excluded, cutoff, boost], |row| {
-                Ok(DueSummary {
-                    hash: row.get(6)?,
-                    id: row.get(0)?,
-                    title: row.get(1)?,
-                    content_html: row.get(2)?,
-                    blocks_json: row.get(3)?,
-                    score: row.get(4)?,
-                    starred: row.get::<_, i64>(5)? != 0,
-                })
-            })?;
+        let extras = extra_stmt.query_map(rusqlite::params_from_iter(bind), |row| {
+            Ok(DueSummary {
+                hash: row.get(6)?,
+                id: row.get(0)?,
+                title: row.get(1)?,
+                content_html: row.get(2)?,
+                blocks_json: row.get(3)?,
+                score: row.get(4)?,
+                starred: row.get::<_, i64>(5)? != 0,
+            })
+        })?;
+        let mut added = 0i64;
         for row in extras {
             let item = row?;
-            if seen.contains(&item.id) {
+            if seen.contains(&item.id)
+                || crate::summary_extract::is_link_stub(
+                    item.blocks_json.as_deref(),
+                    item.content_html.as_deref(),
+                )
+            {
                 continue;
             }
             out.push(item);
+            added += 1;
+            if added >= remain {
+                break;
+            }
         }
     }
     Ok(out)
+}
+
+pub(crate) fn exclude_feeds_sql_values(
+    bind: &mut Vec<rusqlite::types::Value>,
+    feeds: &[i64],
+) -> String {
+    if feeds.is_empty() {
+        return String::new();
+    }
+    let start = bind.len() + 1;
+    let placeholders: Vec<String> = feeds
+        .iter()
+        .enumerate()
+        .map(|(i, id)| {
+            bind.push((*id).into());
+            format!("?{}", start + i)
+        })
+        .collect();
+    format!(" AND a.feed_id NOT IN ({})", placeholders.join(","))
+}
+
+/// 将噪声源排到普通源之后，避免未开启「隐藏噪声源」时抢占自动摘要或简报候选前排。
+pub(crate) fn demote_feeds_order_sql(
+    bind: &mut Vec<rusqlite::types::Value>,
+    feeds: &HashSet<i64>,
+) -> String {
+    if feeds.is_empty() {
+        return String::new();
+    }
+    let mut ids: Vec<i64> = feeds.iter().copied().collect();
+    ids.sort_unstable();
+    let start = bind.len() + 1;
+    let placeholders: Vec<String> = ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| {
+            bind.push((*id).into());
+            format!("?{}", start + i)
+        })
+        .collect();
+    format!(
+        "CASE WHEN a.feed_id IN ({}) THEN 1 ELSE 0 END ASC, ",
+        placeholders.join(",")
+    )
 }
 
 #[cfg(test)]
@@ -1038,5 +1135,53 @@ mod tests {
             due_focus_summaries_excluding(&conn, 1, &excluded).unwrap()[0].id,
             first.id
         );
+    }
+
+    #[test]
+    fn due_focus_summaries_skips_read_disliked_noisy_and_link_stubs() {
+        let (_dir, conn) = open_temp();
+        let now = now_ms();
+        conn.execute_batch(
+            "INSERT INTO feeds(id,url,title,created_at) VALUES
+               (1,'https://ok.example/rss','OK',0),
+               (2,'https://noisy.example/rss','Noisy',0);",
+        )
+        .unwrap();
+        let stub_html = "<p>Article URL: https://a.example/x</p><p>Comments URL: https://c.example/1</p><p>Points: 99</p>";
+        for (id, feed, read, starred, html) in [
+            (1, 1, 0, 0, "<p>Unread focus body.</p>"),
+            (2, 1, 1, 0, "<p>Already read body.</p>"),
+            (3, 1, 1, 1, "<p>Read but starred body.</p>"),
+            (4, 1, 0, 0, "<p>Disliked focus body.</p>"),
+            (5, 1, 0, 0, stub_html),
+            (6, 2, 0, 0, "<p>Noisy feed article.</p>"),
+        ] {
+            conn.execute(
+                "INSERT INTO articles(id,feed_id,title,score,read,starred,content_html,hash,created_at)
+                 VALUES(?1,?2,?3,10,?4,?5,?6,?7,?8)",
+                params![id, feed, format!("t{id}"), read, starred, html, format!("h{id}"), now],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO feedback(article_id, kind, created_at) VALUES (4, 'down', ?1)",
+            [now],
+        )
+        .unwrap();
+        for i in 0..crate::feeds::NOISE_MIN_ARTICLES {
+            conn.execute(
+                "INSERT INTO articles(feed_id,title,score,hash,published_at,created_at) VALUES(2,?1,-20,?2,?3,?3)",
+                params![format!("n{i}"), format!("hn{i}"), now],
+            )
+            .unwrap();
+        }
+        crate::interests::set_hide_noisy_enabled(&conn, true).unwrap();
+
+        let ids: Vec<i64> = due_focus_summaries(&conn, 10)
+            .unwrap()
+            .into_iter()
+            .map(|d| d.id)
+            .collect();
+        assert_eq!(ids, vec![3, 1]);
     }
 }

@@ -43,8 +43,13 @@ webbrowser = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
+rrss-core = { workspace = true, features = ["evaluation-clock"] }
 proc-macro2 = "1"
 syn = { version = "2", features = ["full", "visit"] }
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 wiremock = "0.6"
+
+[[example]]
+name = "prompt_eval"
+test = true

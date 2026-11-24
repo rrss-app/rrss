@@ -450,87 +450,198 @@ impl DigestWindow {
     }
 }
 
-/// 简报候选：时间范围内的关注文章，先取已有摘要的，不足再补没有摘要的未读；周报另外带少量已读。
+/// 简报候选：时间范围内的关注文章，先取已有摘要的，不足再补未摘要的关注篇与中性未读；周报另外带少量已读。
+/// 排除点踩文章与已隐藏的噪声源，并按源做两轮限额，避免单一高频源垄断候选池。
 pub fn digest_candidates(
     conn: &Connection,
     limit: i64,
     window: &DigestWindow,
 ) -> Result<Vec<DigestItem>> {
+    if limit <= 0 {
+        return Ok(Vec::new());
+    }
     let threshold: i64 = crate::db::get_setting(conn, crate::db::HIDE_THRESHOLD_KEY)?
         .and_then(|s| s.parse().ok())
         .unwrap_or(-10);
     let boost = i64::from(crate::interests::boost_enabled(conn)?);
-    let query = |filter: &str, n: i64| -> Result<Vec<DigestItem>> {
+    let hidden_feeds = crate::articles::focus_excluded_feeds(conn)?;
+    let noisy_feeds = crate::feeds::noisy_feed_ids(conn)?;
+    let exclude_daily_clusters = window.exclude_daily_before == Some(i64::MAX);
+    let cluster_excl_sql = if exclude_daily_clusters {
+        format!(
+            " AND (a.cluster_id IS NULL OR a.cluster_id NOT IN (
+                SELECT a2.cluster_id FROM articles a2
+                 WHERE a2.cluster_id IS NOT NULL
+                   AND a2.id IN (
+                     SELECT CAST(j.value AS INTEGER) FROM digests d, json_tree(d.items_json) j
+                      WHERE d.period = 'daily' AND d.period_start < ?5 AND d.period_start >= ?4 - {DAY_MS}
+                        AND json_valid(d.items_json) AND j.key = 'article_id' AND j.type = 'integer')))"
+        )
+    } else {
+        String::new()
+    };
+
+    let query = |filter: &str, n: i64| -> Result<Vec<(i64, DigestItem)>> {
+        if n <= 0 {
+            return Ok(Vec::new());
+        }
+        let mut bind: Vec<rusqlite::types::Value> = vec![
+            n.into(),
+            threshold.into(),
+            boost.into(),
+            window.since_ms.into(),
+            window.exclude_daily_before.unwrap_or(i64::MIN).into(),
+        ];
+        let noisy_sql = crate::articles::exclude_feeds_sql_values(&mut bind, &hidden_feeds);
+        let noisy_order = crate::articles::demote_feeds_order_sql(&mut bind, &noisy_feeds);
         let sql = format!(
-            "SELECT a.id, a.title, COALESCE(NULLIF(a.summary, ''), a.title), a.summary_json, a.cluster_id,
-                    COALESCE(f.title, '')
+            "SELECT a.id, a.feed_id, a.title, COALESCE(a.summary, ''), a.summary_json, a.cluster_id,
+                    COALESCE(f.title, ''), a.blocks_json, a.content_html
              FROM articles a
              LEFT JOIN feeds f ON f.id = a.feed_id
              WHERE a.expires_at IS NULL AND a.score > ?2 AND a.pruned_at IS NULL
                AND a.created_at >= ?4
                AND COALESCE(a.published_at, a.created_at) >= ?4 - {DAY_MS}
+               AND NOT EXISTS (SELECT 1 FROM feedback fb WHERE fb.article_id = a.id AND fb.kind = 'down')
                AND a.id NOT IN (
                  SELECT CAST(j.value AS INTEGER) FROM digests d, json_tree(d.items_json) j
                   WHERE d.period = 'daily' AND d.period_start < ?5 AND d.period_start >= ?4 - {DAY_MS}
                     AND json_valid(d.items_json) AND j.key = 'article_id' AND j.type = 'integer')
+               {cluster_excl_sql}{noisy_sql}
                AND {filter}
-             ORDER BY (a.score + CASE WHEN ?3 THEN a.interest_boost ELSE 0 END) DESC,
+             ORDER BY {noisy_order}(a.score + CASE WHEN ?3 THEN a.interest_boost ELSE 0 END) DESC,
                       COALESCE(a.published_at, 0) DESC
              LIMIT ?1"
         );
         let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(
-            params![
-                n,
-                threshold,
-                boost,
-                window.since_ms,
-                window.exclude_daily_before.unwrap_or(i64::MIN)
-            ],
-            |row| {
-                Ok(DigestItem {
+        let rows = stmt.query_map(rusqlite::params_from_iter(bind), |row| {
+            let summary: String = row.get(3)?;
+            let summary_json: Option<String> = row.get(4)?;
+            let blocks_json: Option<String> = row.get(7)?;
+            let content_html: Option<String> = row.get(8)?;
+            let effective_summary = if summary.trim().is_empty()
+                && summary_json
+                    .as_deref()
+                    .is_none_or(|raw| raw.trim().is_empty())
+            {
+                crate::summary_extract::extract_lead_snippet(
+                    blocks_json.as_deref(),
+                    content_html.as_deref(),
+                    180,
+                )
+            } else {
+                summary
+            };
+            Ok((
+                row.get::<_, i64>(1)?,
+                DigestItem {
                     article_id: row.get(0)?,
-                    title: row.get(1)?,
-                    summary: row.get(2)?,
-                    summary_json: row.get(3)?,
-                    cluster_id: row.get(4)?,
-                    feed_title: row.get(5)?,
-                })
-            },
-        )?;
+                    title: row.get(2)?,
+                    summary: effective_summary,
+                    summary_json,
+                    cluster_id: row.get(5)?,
+                    feed_title: row.get(6)?,
+                },
+            ))
+        })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     };
     const FOCUS: &str = "(a.score + CASE WHEN ?3 THEN a.interest_boost ELSE 0 END) > 0";
     const SUMMARIZED: &str = "a.summary IS NOT NULL AND a.summary != ''";
 
+    let per_feed_cap = ((limit / 5).max(3)) as usize;
+    let diversify_group = |pool: Vec<(i64, DigestItem)>, cap: usize| -> Vec<DigestItem> {
+        // 先按源分组（保持各源内部原有优先级顺序与源首次出现顺序），再轮询穿插取前 per_feed_cap 篇，
+        // 让前排候选天然覆盖多源，避免单一高频源把前 12 位全占满；小库不足时再由溢出篇回填。
+        let mut feed_order: Vec<i64> = Vec::new();
+        let mut by_feed: std::collections::HashMap<i64, std::collections::VecDeque<DigestItem>> =
+            std::collections::HashMap::new();
+        for (feed_id, item) in pool {
+            if !by_feed.contains_key(&feed_id) {
+                feed_order.push(feed_id);
+            }
+            by_feed.entry(feed_id).or_default().push_back(item);
+        }
+        let mut out = Vec::with_capacity(cap);
+        for _round in 0..per_feed_cap {
+            let mut progressed = false;
+            for &feed_id in &feed_order {
+                if out.len() >= cap {
+                    break;
+                }
+                if let Some(item) = by_feed.get_mut(&feed_id).and_then(|q| q.pop_front()) {
+                    out.push(item);
+                    progressed = true;
+                }
+            }
+            if !progressed || out.len() >= cap {
+                break;
+            }
+        }
+        // 单源或极少源场景：前 per_feed_cap 轮没填满 cap 时，按原序继续回填剩余文章。
+        while out.len() < cap {
+            let mut progressed = false;
+            for &feed_id in &feed_order {
+                if out.len() >= cap {
+                    break;
+                }
+                if let Some(item) = by_feed.get_mut(&feed_id).and_then(|q| q.pop_front()) {
+                    out.push(item);
+                    progressed = true;
+                }
+            }
+            if !progressed {
+                break;
+            }
+        }
+        out
+    };
+    let diversify = |pool: Vec<(i64, DigestItem)>, cap: usize| -> Vec<DigestItem> {
+        let (noisy_pool, clean_pool): (Vec<_>, Vec<_>) = pool
+            .into_iter()
+            .partition(|(feed_id, _)| noisy_feeds.contains(feed_id));
+        let mut out = diversify_group(clean_pool, cap);
+        if out.len() < cap && !noisy_pool.is_empty() {
+            let remain = cap - out.len();
+            out.extend(diversify_group(noisy_pool, remain));
+        }
+        out
+    };
+
     // 周报的已读只收有摘要的关注文章，最多占四分之一。
-    let read = if window.read_limit > 0 {
+    let read_pool = if window.read_limit > 0 {
         query(
             &format!("{FOCUS} AND a.read = 1 AND {SUMMARIZED}"),
-            window.read_limit,
+            window.read_limit.saturating_mul(2),
         )?
     } else {
         Vec::new()
     };
-    let unread_limit = limit - read.len() as i64;
-    // 1. 优先取已有摘要的未读关注文章。
-    let mut items = query(
-        &format!("{FOCUS} AND a.read = 0 AND {SUMMARIZED}"),
-        unread_limit,
-    )?;
-    // 2. 不足时补没有摘要或中性的未读文章，避免库里还没摘要时生成不了。
-    if (items.len() as i64) < unread_limit {
-        let remain = unread_limit - items.len() as i64;
-        let seen: std::collections::HashSet<i64> = items.iter().map(|it| it.article_id).collect();
-        for item in query("a.read = 0", remain * 2)? {
-            if !seen.contains(&item.article_id) {
-                items.push(item);
-                if items.len() as i64 >= unread_limit {
+    let read = diversify(read_pool, window.read_limit.max(0) as usize);
+    let unread_limit = (limit - read.len() as i64).max(0) as usize;
+    let fetch_cap = (unread_limit as i64).saturating_mul(3).max(unread_limit as i64);
+
+    // 1. 优先取已有摘要的未读关注文章；2. 其次未摘要的未读关注文章；3. 最后中性未读兜底。
+    let mut unread_pool: Vec<(i64, DigestItem)> = Vec::new();
+    let mut seen: std::collections::HashSet<i64> = read.iter().map(|it| it.article_id).collect();
+    for filter in [
+        format!("{FOCUS} AND a.read = 0 AND {SUMMARIZED}"),
+        format!("{FOCUS} AND a.read = 0"),
+        "a.read = 0".to_string(),
+    ] {
+        if unread_pool.len() >= fetch_cap as usize {
+            break;
+        }
+        for (feed_id, item) in query(&filter, fetch_cap)? {
+            if seen.insert(item.article_id) {
+                unread_pool.push((feed_id, item));
+                if unread_pool.len() >= fetch_cap as usize {
                     break;
                 }
             }
         }
     }
+    let mut items = diversify(unread_pool, unread_limit);
     items.extend(read);
     Ok(items)
 }
@@ -831,18 +942,46 @@ pub fn format_digest_input(
         target,
         catalog
     );
-    if !noisy_titles.is_empty() {
-        packed.push_str("\n\nNoisy sources (lower priority when picking; never name them in the digest):\n");
-        for title in noisy_titles {
+    let mut seen_noisy = std::collections::HashSet::new();
+    let short_noisy: Vec<String> = noisy_titles
+        .iter()
+        .map(|title| crate::cluster_summary::short_source_name(title))
+        .filter(|name| !name.is_empty() && seen_noisy.insert(name.clone()))
+        .collect();
+    if !short_noisy.is_empty() {
+        packed.push_str(
+            "\n\nNoisy sources (lower priority when picking; never name them in the digest):\n",
+        );
+        for title in short_noisy {
             packed.push_str("- ");
-            packed.push_str(title);
+            packed.push_str(&title);
             packed.push('\n');
         }
     }
     packed
 }
 
-/// 选题轮：按 cluster 分组目录，每篇带 `[id:N]`。
+fn format_catalog_entry(it: &DigestItem) -> String {
+    let (ol, kp) = parse_summary_details_for_digest(&it.summary, it.summary_json.as_deref());
+    let source = crate::cluster_summary::short_source_name(&it.feed_title);
+    let source_tag = if source.is_empty() {
+        String::new()
+    } else {
+        format!(" [{source}]")
+    };
+    let blurb = ol.trim();
+    let mut line = if blurb.is_empty() || blurb == it.title.trim() {
+        format!("[id:{}] {}{source_tag}", it.article_id, it.title)
+    } else {
+        format!("[id:{}] {}{source_tag} | {blurb}", it.article_id, it.title)
+    };
+    for p in kp {
+        line.push_str(&format!("\n  * {p}"));
+    }
+    line
+}
+
+/// 选题轮：按 cluster 分组目录，每篇带 `[id:N]` 与来源短名，不把标题复读成摘要。
 pub fn format_digest_catalog(items: &[DigestItem]) -> String {
     let mut groups: Vec<(Option<i64>, Vec<&DigestItem>)> = Vec::new();
     let mut cluster_idx: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
@@ -866,22 +1005,12 @@ pub fn format_digest_catalog(items: &[DigestItem]) -> String {
             let first = group[0];
             let mut block = format!("Topic: {} ({} articles)", first.title, group.len());
             for it in group {
-                let (ol, kp) =
-                    parse_summary_details_for_digest(&it.summary, it.summary_json.as_deref());
-                block.push_str(&format!("\n[id:{}] {} | {}", it.article_id, it.title, ol));
-                for p in kp {
-                    block.push_str(&format!("\n  * {p}"));
-                }
+                block.push('\n');
+                block.push_str(&format_catalog_entry(it));
             }
             out.push(block);
         } else if let Some(it) = group.first() {
-            let (ol, kp) =
-                parse_summary_details_for_digest(&it.summary, it.summary_json.as_deref());
-            let mut line = format!("[id:{}] {} | {}", it.article_id, it.title, ol);
-            for p in kp {
-                line.push_str(&format!("\n  * {p}"));
-            }
-            out.push(line);
+            out.push(format_catalog_entry(it));
         }
     }
     out.join("\n\n")
@@ -898,19 +1027,36 @@ pub struct DigestDeepInput {
 /// 按 id 读出文章的简报条目；已删除的文章略过，保持传入顺序。
 pub fn digest_items_by_ids(conn: &Connection, ids: &[i64]) -> Result<Vec<DigestItem>> {
     let mut stmt = conn.prepare(
-        "SELECT a.id, a.title, COALESCE(NULLIF(a.summary, ''), a.title), a.summary_json, a.cluster_id,
-                COALESCE(f.title, '')
+        "SELECT a.id, a.title, COALESCE(a.summary, ''), a.summary_json, a.cluster_id,
+                COALESCE(f.title, ''), a.blocks_json, a.content_html
          FROM articles a LEFT JOIN feeds f ON f.id = a.feed_id WHERE a.id = ?1",
     )?;
     let mut out = Vec::new();
     for id in ids {
         let row = stmt
             .query_row([id], |row| {
+                let summary: String = row.get(2)?;
+                let summary_json: Option<String> = row.get(3)?;
+                let blocks_json: Option<String> = row.get(6)?;
+                let content_html: Option<String> = row.get(7)?;
+                let effective_summary = if summary.trim().is_empty()
+                    && summary_json
+                        .as_deref()
+                        .is_none_or(|raw| raw.trim().is_empty())
+                {
+                    crate::summary_extract::extract_lead_snippet(
+                        blocks_json.as_deref(),
+                        content_html.as_deref(),
+                        180,
+                    )
+                } else {
+                    summary
+                };
                 Ok(DigestItem {
                     article_id: row.get(0)?,
                     title: row.get(1)?,
-                    summary: row.get(2)?,
-                    summary_json: row.get(3)?,
+                    summary: effective_summary,
+                    summary_json,
                     cluster_id: row.get(4)?,
                     feed_title: row.get(5)?,
                 })
@@ -921,7 +1067,7 @@ pub fn digest_items_by_ids(conn: &Connection, ids: &[i64]) -> Result<Vec<DigestI
     Ok(out)
 }
 
-/// 一篇文章的一句话、要点与关键事实，已清洗分数 / 热度话术。
+/// 一篇文章的一句话、要点与关键事实，已清洗分数 / 热度话术；不复读标题。
 pub(crate) fn brief_lines(item: &DigestItem) -> String {
     let (ol, kp) = parse_summary_details_for_digest(&item.summary, item.summary_json.as_deref());
     let facts: Vec<String> = summary_facts(item.summary_json.as_deref())
@@ -930,7 +1076,7 @@ pub(crate) fn brief_lines(item: &DigestItem) -> String {
         .filter(|f| !f.is_empty() && !kp.contains(f))
         .collect();
     let mut block = String::new();
-    if !ol.is_empty() {
+    if !ol.is_empty() && ol.trim() != item.title.trim() {
         block.push_str(&format!("\n{ol}\n"));
     }
     if !kp.is_empty() {
@@ -949,8 +1095,143 @@ pub(crate) fn brief_lines(item: &DigestItem) -> String {
     block
 }
 
+/// 当文章正文摘录已包含完整短文时，去掉与正文原句重复的一句话 / 要点 / 事实；无正式摘要时跳过重复导语。
+fn brief_lines_for_deep(item: &DigestItem, excerpt: &str) -> String {
+    let excerpt_trim = excerpt.trim();
+    if item
+        .summary_json
+        .as_deref()
+        .is_none_or(|raw| raw.trim().is_empty())
+        && !excerpt_trim.is_empty()
+    {
+        let lead = item.summary.trim();
+        let lead_prefix = lead.trim_end_matches(" …").trim_end_matches('…').trim();
+        if lead.is_empty()
+            || lead == "[No body text]"
+            || lead == item.title.trim()
+            || (!lead_prefix.is_empty() && excerpt_trim.contains(lead_prefix))
+        {
+            return String::new();
+        }
+    }
+    if excerpt_trim.is_empty() || excerpt_trim.contains('…') {
+        return brief_lines(item);
+    }
+    let norm_excerpt: String = excerpt_trim
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    let repeats_excerpt = |s: &str| {
+        let norm = s.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+        !norm.is_empty() && norm_excerpt.contains(&norm)
+    };
+    let (ol, kp) = parse_summary_details_for_digest(&item.summary, item.summary_json.as_deref());
+    let kp: Vec<String> = kp.into_iter().filter(|p| !repeats_excerpt(p)).collect();
+    let facts: Vec<String> = summary_facts(item.summary_json.as_deref())
+        .into_iter()
+        .map(|f| sanitize_digest_blurb(&f))
+        .filter(|f| !f.is_empty() && !kp.contains(f) && !repeats_excerpt(f))
+        .collect();
+    let mut block = String::new();
+    if !ol.is_empty() && ol.trim() != item.title.trim() && !repeats_excerpt(&ol) {
+        block.push_str(&format!("\n{ol}\n"));
+    }
+    if !kp.is_empty() {
+        for p in kp {
+            block.push_str(&format!("\n- {p}"));
+        }
+        block.push('\n');
+    }
+    if !facts.is_empty() {
+        block.push_str("\nKey facts:");
+        for f in facts {
+            block.push_str(&format!("\n- {f}"));
+        }
+        block.push('\n');
+    }
+    block
+}
+
+/// 余额回收（water-filling）：短文只占实际需要的预算，剩余空间回流给同批较长文章（不超过单篇上限）。
+fn allocate_waterfill_budgets(demands: &[usize], total: usize, cap: usize) -> Vec<usize> {
+    let n = demands.len();
+    if n == 0 || total == 0 || cap == 0 {
+        return vec![0; n];
+    }
+    let capped: Vec<usize> = demands.iter().map(|&d| d.min(cap)).collect();
+    let mut alloc = vec![0usize; n];
+    let mut remaining_budget = total;
+    let mut active: Vec<usize> = (0..n).collect();
+    while !active.is_empty() && remaining_budget > 0 {
+        let share = remaining_budget / active.len();
+        if share == 0 {
+            for &idx in &active {
+                if remaining_budget == 0 {
+                    break;
+                }
+                if alloc[idx] < capped[idx] {
+                    alloc[idx] += 1;
+                    remaining_budget -= 1;
+                }
+            }
+            break;
+        }
+        let mut next_active = Vec::new();
+        let mut freed = false;
+        for &idx in &active {
+            let need = capped[idx].saturating_sub(alloc[idx]);
+            if need <= share {
+                alloc[idx] += need;
+                remaining_budget = remaining_budget.saturating_sub(need);
+                freed = true;
+            } else {
+                next_active.push(idx);
+            }
+        }
+        if !freed {
+            let per = remaining_budget / next_active.len();
+            for &idx in &next_active {
+                let take = per.min(capped[idx].saturating_sub(alloc[idx]));
+                alloc[idx] += take;
+                remaining_budget = remaining_budget.saturating_sub(take);
+            }
+            break;
+        }
+        active = next_active;
+    }
+    alloc
+}
+
+fn format_article_clock(ms: Option<i64>) -> String {
+    ms.and_then(chrono::DateTime::from_timestamp_millis)
+        .map(|d| {
+            d.with_timezone(&chrono::Local)
+                .format("%m-%d %H:%M")
+                .to_string()
+        })
+        .unwrap_or_default()
+}
+
+/// 精简版来源块：用于满载周报超出总预算时压缩「Source articles」，只留标题与去重后的关键事实。
+fn compact_source_block(n: usize, item: &DigestItem) -> String {
+    let facts: Vec<String> = summary_facts(item.summary_json.as_deref())
+        .into_iter()
+        .map(|f| sanitize_digest_blurb(&f))
+        .filter(|f| !f.is_empty())
+        .collect();
+    let mut block = format!("〈{n}〉{}", item.title);
+    if !facts.is_empty() {
+        for f in facts.into_iter().take(3) {
+            block.push_str(&format!("\n- {f}"));
+        }
+    }
+    block
+}
+
 /// 周报成稿输入：本周日报条目（末尾标来源序号）、来源文章的摘要与关键事实、日报未收的补充文章（带正文摘录）。
 /// 没有日报时只有补充文章。编号表先列日报来源、再列补充文章，与输入中的〈序号〉同序。
+/// 总量按 `InputTier` 约束：满载一周日报时自动压缩来源摘要并按余额回收分配补充正文预算。
 pub fn format_weekly_input(
     conn: &Connection,
     daily: &[crate::digest_sources::DailyDigestLine],
@@ -996,10 +1277,68 @@ pub fn format_weekly_input(
             refs.join("")
         ));
     }
+
+    // 补充文章的摘录最多占档位总量的三分之一（有日报时），用余额回收分配给较长文章；总预算受档位约束。
+    let weekly_total_budget = tier.digest_total_chars();
+    let share = if daily_lines.is_empty() {
+        tier.digest_total_chars()
+    } else {
+        tier.digest_total_chars() / 3
+    };
+    let mut extra_rows = Vec::new();
+    for item in supplements {
+        if number.contains_key(&item.article_id) {
+            continue;
+        }
+        numbered_items.push(item.clone());
+        let n = numbered_items.len();
+        number.insert(item.article_id, n);
+        let (title, blocks_json, content_html, published_at) =
+            article_digest_source(conn, item.article_id)?;
+        let demand = crate::summary_extract::body_weighted_len(
+            blocks_json.as_deref(),
+            content_html.as_deref(),
+        );
+        extra_rows.push((n, item, title, blocks_json, content_html, published_at, demand));
+    }
+    let demands: Vec<usize> = extra_rows.iter().map(|r| r.6).collect();
+    let budgets = allocate_waterfill_budgets(&demands, share, tier.digest_item_chars());
+    let mut extra = Vec::new();
+    for ((n, item, title, blocks_json, content_html, published_at, _), item_budget) in
+        extra_rows.into_iter().zip(budgets)
+    {
+        let excerpt = crate::summary_extract::extract_body_excerpt(
+            blocks_json.as_deref(),
+            content_html.as_deref(),
+            item_budget,
+        );
+        let clock = format_article_clock(published_at);
+        let header = if clock.is_empty() {
+            format!("〈{n}〉{title}")
+        } else {
+            format!("〈{n}〉{title} ({clock})")
+        };
+        let mut block = format!("{header}\n{}", brief_lines_for_deep(item, &excerpt));
+        if !excerpt.trim().is_empty() {
+            block.push_str(&format!("\n{excerpt}"));
+        }
+        extra.push(block.trim_end().to_string());
+    }
+
     let mut parts = Vec::new();
     if !daily_lines.is_empty() {
-        parts.push(format!("## Daily digest items\n\n{}", daily_lines.join("\n")));
-        let sources: Vec<String> = numbered_items
+        let daily_section = format!("## Daily digest items\n\n{}", daily_lines.join("\n"));
+        let daily_units = crate::summary_extract::weighted_len(&daily_section);
+        let extra_units: usize = extra
+            .iter()
+            .map(|e| crate::summary_extract::weighted_len(e))
+            .sum();
+        let source_budget = weekly_total_budget
+            .saturating_sub(daily_units)
+            .saturating_sub(extra_units);
+
+        let daily_source_count = numbered_items.len() - extra.len();
+        let full_sources: Vec<String> = numbered_items[..daily_source_count]
             .iter()
             .enumerate()
             .map(|(i, item)| {
@@ -1008,36 +1347,37 @@ pub fn format_weekly_input(
                     .to_string()
             })
             .collect();
+        let full_units: usize = full_sources
+            .iter()
+            .map(|s| crate::summary_extract::weighted_len(s) + 2)
+            .sum();
+        let sources = if full_units <= source_budget {
+            full_sources
+        } else {
+            let compact: Vec<String> = numbered_items[..daily_source_count]
+                .iter()
+                .enumerate()
+                .map(|(i, item)| compact_source_block(i + 1, item))
+                .collect();
+            let compact_units: usize = compact
+                .iter()
+                .map(|s| crate::summary_extract::weighted_len(s) + 2)
+                .sum();
+            if compact_units <= source_budget {
+                compact
+            } else {
+                // 极端满载：只保留编号与标题，保证每个来源号都能对上而不撑爆上下文。
+                numbered_items[..daily_source_count]
+                    .iter()
+                    .enumerate()
+                    .map(|(i, item)| format!("〈{}〉{}", i + 1, item.title))
+                    .collect()
+            }
+        };
+        parts.push(daily_section);
         parts.push(format!("## Source articles\n\n{}", sources.join("\n\n")));
     }
 
-    // 补充文章的摘录最多占档位总量的一半（有日报时），按篇平分。
-    let share = if daily_lines.is_empty() {
-        tier.digest_total_chars()
-    } else {
-        tier.digest_total_chars() / 2
-    };
-    let per_item = (share / supplements.len().max(1)).min(tier.digest_item_chars());
-    let mut extra = Vec::new();
-    for item in supplements {
-        if number.contains_key(&item.article_id) {
-            continue;
-        }
-        numbered_items.push(item.clone());
-        let n = numbered_items.len();
-        number.insert(item.article_id, n);
-        let (title, blocks_json, content_html) = article_digest_source(conn, item.article_id)?;
-        let excerpt = crate::summary_extract::extract_body_excerpt(
-            blocks_json.as_deref(),
-            content_html.as_deref(),
-            per_item,
-        );
-        let mut block = format!("〈{n}〉{title}\n{}", brief_lines(item));
-        if !excerpt.trim().is_empty() {
-            block.push_str(&format!("\n{excerpt}"));
-        }
-        extra.push(block.trim_end().to_string());
-    }
     if !extra.is_empty() {
         let heading = if daily_lines.is_empty() {
             "## Supplementary articles"
@@ -1063,14 +1403,12 @@ pub fn format_weekly_input(
     })
 }
 
-/// 摘录预算按输入档位：总量平分到每篇，单篇不超过档位上限。
+/// 摘录预算按输入档位与余额回收分配：短文用完即止，余量回流给同批长文（单篇不超过档位上限）。
 pub fn format_digest_deep_input(
     conn: &Connection,
     items: &[DigestItem],
     tier: crate::summary_extract::InputTier,
 ) -> Result<DigestDeepInput> {
-    let per_item = (tier.digest_total_chars() / items.len().max(1)).min(tier.digest_item_chars());
-
     let mut groups: Vec<Vec<&DigestItem>> = Vec::new();
     let mut cluster_idx: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
     for item in items {
@@ -1086,35 +1424,74 @@ pub fn format_digest_deep_input(
         }
     }
 
-    let mut global_idx = 0usize;
-    let mut numbered_items = Vec::new();
-    let mut event_blocks = Vec::new();
-    for group in groups {
-        let mut parts = Vec::new();
-        let n = group.len();
-        let header = if n > 1 {
-            format!("【Event {}】{} articles", event_blocks.len() + 1, n)
-        } else {
-            format!("【Event {}】", event_blocks.len() + 1)
-        };
-        parts.push(header);
+    let mut ordered: Vec<(usize, &DigestItem, String, Option<String>, Option<String>, Option<i64>, usize)> =
+        Vec::with_capacity(items.len());
+    for (group_idx, group) in groups.iter().enumerate() {
         for item in group {
-            global_idx += 1;
-            numbered_items.push(item.clone());
-            let (title, blocks_json, content_html) = article_digest_source(conn, item.article_id)?;
-            let excerpt = crate::summary_extract::extract_body_excerpt(
+            let (title, blocks_json, content_html, published_at) =
+                article_digest_source(conn, item.article_id)?;
+            let demand = crate::summary_extract::body_weighted_len(
                 blocks_json.as_deref(),
                 content_html.as_deref(),
-                per_item,
             );
-            let mut block = format!("〈{}〉{}\n{}", global_idx, title, brief_lines(item));
-            if !excerpt.trim().is_empty() {
-                block.push_str(&format!("\n{excerpt}"));
-            }
-            parts.push(block.trim_end().to_string());
+            ordered.push((
+                group_idx,
+                *item,
+                title,
+                blocks_json,
+                content_html,
+                published_at,
+                demand,
+            ));
         }
-        event_blocks.push(parts.join("\n\n---\n\n"));
     }
+    let demands: Vec<usize> = ordered.iter().map(|r| r.6).collect();
+    let budgets =
+        allocate_waterfill_budgets(&demands, tier.digest_total_chars(), tier.digest_item_chars());
+
+    let mut global_idx = 0usize;
+    let mut numbered_items = Vec::with_capacity(ordered.len());
+    let mut group_parts: Vec<Vec<String>> = groups
+        .iter()
+        .enumerate()
+        .map(|(i, group)| {
+            let n = group.len();
+            let header = if n > 1 {
+                format!("【Event {}】{} articles", i + 1, n)
+            } else {
+                format!("【Event {}】", i + 1)
+            };
+            vec![header]
+        })
+        .collect();
+
+    for ((group_idx, item, title, blocks_json, content_html, published_at, _), item_budget) in
+        ordered.into_iter().zip(budgets)
+    {
+        global_idx += 1;
+        numbered_items.push(item.clone());
+        let excerpt = crate::summary_extract::extract_body_excerpt(
+            blocks_json.as_deref(),
+            content_html.as_deref(),
+            item_budget,
+        );
+        let clock = format_article_clock(published_at);
+        let header = if clock.is_empty() {
+            format!("〈{global_idx}〉{title}")
+        } else {
+            format!("〈{global_idx}〉{title} ({clock})")
+        };
+        let mut block = format!("{header}\n{}", brief_lines_for_deep(item, &excerpt));
+        if !excerpt.trim().is_empty() {
+            block.push_str(&format!("\n{excerpt}"));
+        }
+        group_parts[group_idx].push(block.trim_end().to_string());
+    }
+
+    let event_blocks: Vec<String> = group_parts
+        .into_iter()
+        .map(|parts| parts.join("\n\n---\n\n"))
+        .collect();
 
     if event_blocks.is_empty() {
         return Ok(DigestDeepInput {
@@ -1179,11 +1556,11 @@ pub fn apply_digest_picks(
 fn article_digest_source(
     conn: &Connection,
     article_id: i64,
-) -> Result<(String, Option<String>, Option<String>)> {
+) -> Result<(String, Option<String>, Option<String>, Option<i64>)> {
     conn.query_row(
-        "SELECT title, blocks_json, content_html FROM articles WHERE id = ?1",
+        "SELECT title, blocks_json, content_html, published_at FROM articles WHERE id = ?1",
         [article_id],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
     )
     .map_err(Into::into)
 }
@@ -2048,5 +2425,184 @@ mod tests {
         assert!(packed.contains("* 提升编译速度"));
         assert!(packed.contains("* 修复若干回归问题"));
         assert!(packed.contains("- 独立文章标题 | 独立报道摘要。"));
+    }
+
+    #[test]
+    fn digest_candidates_exclude_disliked_noisy_diversify_feeds_and_attach_leads() {
+        let (_dir, conn) = open_temp();
+        let now = 1_900_000_000_000_i64;
+        let today = now - 8 * HOUR_MS;
+        for (id, title) in [
+            (1, "Alpha Wire - Daily"),
+            (2, "Beta Lab"),
+            (3, "Noisy Feed"),
+        ] {
+            conn.execute(
+                "INSERT INTO feeds (id, url, title, kind, created_at) VALUES (?1, ?2, ?3, 'rss', 1)",
+                rusqlite::params![id, format!("https://f{id}.example/rss"), title],
+            )
+            .unwrap();
+        }
+        // 源 1 连发 10 篇高分无摘要文章；源 2 发 3 篇；源 3 是隐藏噪声源。
+        for i in 1..=10 {
+            conn.execute(
+                "INSERT INTO articles (id, feed_id, title, hash, created_at, published_at, score, content_html)
+                 VALUES (?1, 1, ?2, ?3, ?4, ?4, 20, ?5)",
+                rusqlite::params![
+                    i,
+                    format!("Wire story {i}"),
+                    format!("hw{i}"),
+                    now - i * 60_000,
+                    format!("<p>Concrete wire lead for story {i} with 42 units.</p>")
+                ],
+            )
+            .unwrap();
+        }
+        for i in 11..=13 {
+            conn.execute(
+                "INSERT INTO articles (id, feed_id, title, hash, created_at, published_at, score, content_html)
+                 VALUES (?1, 2, ?2, ?3, ?4, ?4, 5, '<p>Beta deep report with benchmark data.</p>')",
+                rusqlite::params![i, format!("Beta story {i}"), format!("hb{i}"), now - i * 60_000],
+            )
+            .unwrap();
+        }
+        // 点踩 1 篇源 2 的文章。
+        conn.execute(
+            "INSERT INTO feedback (article_id, kind, created_at) VALUES (13, 'down', ?1)",
+            [now],
+        )
+        .unwrap();
+        // 源 3 触发噪声源且开启隐藏噪声源。
+        conn.execute(
+            "INSERT INTO articles (id, feed_id, title, hash, created_at, published_at, score, content_html)
+             VALUES (14, 3, 'Noisy top', 'hn14', ?1, ?1, 50, '<p>Body.</p>')",
+            [now - 10_000],
+        )
+        .unwrap();
+        for i in 0..crate::feeds::NOISE_MIN_ARTICLES {
+            conn.execute(
+                "INSERT INTO articles (feed_id, title, hash, created_at, published_at, score)
+                 VALUES (3, ?1, ?2, ?3, ?3, -20)",
+                rusqlite::params![format!("noise {i}"), format!("hnoise{i}"), now - 10_000],
+            )
+            .unwrap();
+        }
+        crate::interests::set_hide_noisy_enabled(&conn, true).unwrap();
+
+        let window = DigestWindow::for_period("daily", now, today, 5);
+        let items = digest_candidates(&conn, 5, &window).unwrap();
+        assert_eq!(items.len(), 5);
+        assert!(
+            items.iter().all(|i| i.article_id != 13),
+            "disliked article must be excluded"
+        );
+        assert!(
+            items.iter().all(|i| i.article_id != 14),
+            "hidden noisy feed must be excluded"
+        );
+        // limit=5 时单源上限为 max(5/5, 3) = 3，因此源 2 的 2 篇也能进入候选，不被源 1 刷满。
+        let from_beta = items.iter().filter(|i| i.feed_title == "Beta Lab").count();
+        assert_eq!(from_beta, 2);
+
+        // 选题目录带短源名、带导语，不复读标题。
+        let packed = format_digest_input(&items, &["Alpha Wire - Daily".into()], 4);
+        assert!(packed.contains("[Alpha Wire]"), "{packed}");
+        assert!(packed.contains("[Beta Lab]"), "{packed}");
+        assert!(packed.contains("Concrete wire lead"), "{packed}");
+        assert!(packed.contains("- Alpha Wire\n"), "{packed}");
+        assert!(!packed.contains("Wire story 1 | Wire story 1"), "{packed}");
+    }
+
+    #[test]
+    fn weekly_supplements_skip_clusters_already_in_daily_digests() {
+        let (_dir, conn) = open_temp();
+        let now = 1_900_000_000_000_i64;
+        conn.execute(
+            "INSERT INTO feeds (id, url, title, kind, created_at) VALUES (1, 'https://a.example/f', 'F', 'rss', 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO clusters (id, label, member_count, created_at) VALUES (9, 'Launch', 2, 1)",
+            [],
+        )
+        .unwrap();
+        for (id, cluster) in [(1, Some(9)), (2, Some(9)), (3, None)] {
+            conn.execute(
+                "INSERT INTO articles (id, feed_id, title, hash, created_at, published_at, score, cluster_id, summary)
+                 VALUES (?1, 1, ?2, ?3, ?4, ?4, 5, ?5, '摘要。')",
+                rusqlite::params![id, format!("t{id}"), format!("h{id}"), now - 2 * HOUR_MS, cluster],
+            )
+            .unwrap();
+        }
+        insert_digest(
+            &conn,
+            "daily",
+            now - DAY_MS,
+            "日报",
+            r#"{"v":2,"items":[{"section":0,"refs":[{"article_id":1,"title":"t1","feed_title":"F"}]}]}"#,
+        )
+        .unwrap();
+        let mut window = DigestWindow::for_period("weekly", now, now - DAY_MS, 30);
+        window.exclude_daily_before = Some(i64::MAX);
+        let items = digest_candidates(&conn, 30, &window).unwrap();
+        let ids: Vec<i64> = items.iter().map(|i| i.article_id).collect();
+        assert_eq!(ids, vec![3]);
+    }
+
+    #[test]
+    fn waterfill_reclaims_short_article_surplus_for_long_articles() {
+        // 总预算 1000，单篇上限 600，4 篇需求 [100, 100, 800, 800]：
+        // 平均分是每篇 250，水填后短文只拿 100，长文各拿 400（而非被压到 250）。
+        let alloc = allocate_waterfill_budgets(&[100, 100, 800, 800], 1000, 600);
+        assert_eq!(alloc, vec![100, 100, 400, 400]);
+
+        // 单篇上限 300 时，即使总预算很大也不超过上限。
+        let capped = allocate_waterfill_budgets(&[50, 900], 1000, 300);
+        assert_eq!(capped, vec![50, 300]);
+    }
+
+    #[test]
+    fn weekly_input_compacts_sources_when_busy_week_exceeds_budget() {
+        use crate::digest_sources::DailyDigestLine;
+        use crate::summary_extract::InputTier;
+        let (_dir, conn) = open_temp();
+        conn.execute(
+            "INSERT INTO feeds (id, url, title, kind, created_at) VALUES (1, 'https://a.example/f', 'F', 'rss', 1)",
+            [],
+        )
+        .unwrap();
+        let mut daily = Vec::new();
+        for id in 1..=70 {
+            let long_kp = "要点详述。".repeat(25);
+            let json = serde_json::json!({
+                "summary": "摘要。",
+                "one_liner": format!("文章 {id} 一句话。{}", "细节。".repeat(30)),
+                "key_points": [&long_kp, &long_kp, &long_kp],
+                "facts": [format!("事实 {id}：增长 42%")]
+            })
+            .to_string();
+            conn.execute(
+                "INSERT INTO articles (id, feed_id, title, hash, created_at, published_at, summary, summary_json)
+                 VALUES (?1, 1, ?2, ?3, 1, 1, '摘要。', ?4)",
+                rusqlite::params![id, format!("大事件 {id}"), format!("hw{id}"), json],
+            )
+            .unwrap();
+            daily.push(DailyDigestLine {
+                day: format!("2026-11-{:02}", 10 + (id % 7)),
+                section: "科技".into(),
+                text: format!("**项目 {id}** 发布版本，带来显著变化。"),
+                article_ids: vec![id],
+            });
+        }
+        let low = format_weekly_input(&conn, &daily, &[], InputTier::Low).unwrap();
+        // 满载 70 条日报下触发精简，不再把每篇的 3 条长要点全量塞进低档周报。
+        assert!(low.prompt.contains("〈1〉大事件 1"), "{}", low.prompt);
+        assert!(low.prompt.contains("〈70〉大事件 70"));
+        assert!(!low.prompt.contains("要点详述。要点详述。"));
+        assert!(
+            crate::summary_extract::weighted_len(&low.prompt)
+                <= InputTier::Low.digest_total_chars() * 3 / 2 + 500
+        );
     }
 }

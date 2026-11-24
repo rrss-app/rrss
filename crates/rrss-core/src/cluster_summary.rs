@@ -20,6 +20,8 @@ use crate::summary_extract::{self, InputTier};
 const MAX_CONFLICTS: usize = 4;
 /// 没有摘要的篇取正文摘录的下限，避免成员很多时每篇只剩一句。
 const MIN_EXCERPT_CHARS: usize = 300;
+/// 送入模型的单簇成员上限：超大热点簇先按源取代表篇，避免重复转述撑爆输入预算。
+pub const MAX_PROMPT_MEMBERS: usize = 12;
 
 /// 输入含模板，按 0.75 token / 字加 800 输出 token，向上取整到 500。
 pub fn estimate_tokens(input_chars: usize) -> i64 {
@@ -220,21 +222,76 @@ fn clock(ms: Option<i64>) -> String {
 
 /// 输入：每篇给〈序号〉、来源、发布时间、标题和已存的一句话 / 要点 / 关键事实；没有摘要的篇取正文摘录，
 /// 摘录预算是档位的单篇摘要上限按篇平分（整段挑选规则同单篇摘要）。
+/// 成员超过 `MAX_PROMPT_MEMBERS` 时先按来源各挑一篇代表，再补齐上限；`marks` 仍覆盖全部可见成员以准确判定新报道。
 pub fn build_input(
     conn: &Connection,
     members: &[ArticleCard],
     tier: InputTier,
 ) -> Result<ClusterInput> {
-    let per_item = (tier.summary_budget(false) / members.len().max(1)).max(MIN_EXCERPT_CHARS);
-    let mut blocks = Vec::new();
-    let mut out = Vec::new();
-    let mut marks = Vec::new();
-    let mut feeds = std::collections::HashSet::new();
+    let mut loaded: Vec<(&ArticleCard, Source, bool)> = Vec::with_capacity(members.len());
+    let mut marks = Vec::with_capacity(members.len());
     for card in members {
         let Some(source) = read_source(conn, card.id)? else {
             continue;
         };
         let summarized = has_summary(&source);
+        marks.push(mark(card.id, &source));
+        loaded.push((card, source, summarized));
+    }
+
+    let selected_indices: Vec<usize> = if loaded.len() <= MAX_PROMPT_MEMBERS {
+        (0..loaded.len()).collect()
+    } else {
+        // 按质量排序挑选代表：有摘要优先 → 分数高优先 → 较新优先。
+        let mut ranked: Vec<usize> = (0..loaded.len()).collect();
+        ranked.sort_by(|&a, &b| {
+            let (ca, _, sa) = &loaded[a];
+            let (cb, _, sb) = &loaded[b];
+            sb.cmp(sa)
+                .then_with(|| cb.score.cmp(&ca.score))
+                .then_with(|| cb.published_at.cmp(&ca.published_at))
+                .then_with(|| a.cmp(&b))
+        });
+        let mut chosen = Vec::with_capacity(MAX_PROMPT_MEMBERS);
+        let mut feed_counts: std::collections::HashMap<i64, usize> =
+            std::collections::HashMap::new();
+        let mut overflow = Vec::new();
+        // 第一轮每源取 1 篇代表；第二轮仅在仍未满时每源最多再补 1 篇，避免同源多篇转述撑爆综述输入。
+        for idx in ranked {
+            if chosen.len() >= MAX_PROMPT_MEMBERS {
+                break;
+            }
+            let feed_id = loaded[idx].0.feed_id;
+            let count = feed_counts.entry(feed_id).or_insert(0);
+            if *count == 0 {
+                *count = 1;
+                chosen.push(idx);
+            } else {
+                overflow.push(idx);
+            }
+        }
+        for idx in overflow {
+            if chosen.len() >= MAX_PROMPT_MEMBERS {
+                break;
+            }
+            let feed_id = loaded[idx].0.feed_id;
+            let count = feed_counts.entry(feed_id).or_insert(0);
+            if *count < 2 {
+                *count += 1;
+                chosen.push(idx);
+            }
+        }
+        chosen.sort_unstable();
+        chosen
+    };
+
+    let per_item = (tier.summary_budget(false) / selected_indices.len().max(2)).max(MIN_EXCERPT_CHARS);
+
+    let mut blocks = Vec::new();
+    let mut out = Vec::new();
+    let mut feeds = std::collections::HashSet::new();
+    for idx in selected_indices {
+        let (card, source, summarized) = &loaded[idx];
         let item = DigestItem {
             article_id: card.id,
             title: source.title.clone(),
@@ -243,7 +300,7 @@ pub fn build_input(
             cluster_id: card.cluster_id,
             feed_title: card.feed_title.clone(),
         };
-        let one_liner = if summarized {
+        let one_liner = if *summarized {
             digest::parse_summary_details_for_digest(&item.summary, item.summary_json.as_deref()).0
         } else {
             String::new()
@@ -260,7 +317,7 @@ pub fn build_input(
             },
             source.title
         );
-        if summarized {
+        if *summarized {
             block.push_str(digest::brief_lines(&item).trim_end());
         } else {
             let excerpt = summary_extract::extract_body_excerpt(
@@ -274,12 +331,11 @@ pub fn build_input(
         }
         blocks.push(block);
         feeds.insert(card.feed_id);
-        marks.push(mark(card.id, &source));
         out.push(Member {
             article_id: card.id,
             feed_id: card.feed_id,
             feed_title: card.feed_title.clone(),
-            title: source.title,
+            title: source.title.clone(),
             published_at: card.published_at,
             one_liner,
         });
@@ -853,5 +909,40 @@ mod tests {
         assert_eq!(counts.get(&7), Some(&1));
         assert!(!counts.contains_key(&8));
         assert!(load(&conn, 8).unwrap().is_none());
+    }
+
+    #[test]
+    fn large_cluster_caps_prompt_members_while_keeping_full_marks() {
+        let (_dir, conn) = seeded();
+        conn.execute(
+            "INSERT INTO clusters(id,label,member_count,created_at) VALUES (99,'Mega',20,0)",
+            [],
+        )
+        .unwrap();
+        for f in 10..20 {
+            conn.execute(
+                "INSERT INTO feeds(id,url,title,created_at) VALUES (?1,?2,?3,0)",
+                rusqlite::params![f, format!("https://f{f}.example/rss"), format!("源{f}")],
+            )
+            .unwrap();
+        }
+        for i in 0..20 {
+            let feed_id = 10 + (i % 10);
+            conn.execute(
+                "INSERT INTO articles(id,feed_id,title,score,published_at,cluster_id,content_html,created_at)
+                 VALUES (?1,?2,?3,5,?4,99,'<p>报道正文细节。</p>',1)",
+                rusqlite::params![100 + i, feed_id, format!("报道 {i}"), 10_000 + i],
+            )
+            .unwrap();
+        }
+        let all = visible_members(&conn, 99, FeedScope::All).unwrap();
+        assert_eq!(all.len(), 20);
+        let input = build_input(&conn, &all, InputTier::Medium).unwrap();
+        assert_eq!(input.members.len(), MAX_PROMPT_MEMBERS);
+        // marks 仍覆盖全部 20 篇可见成员，避免未送入模型的成员被误判为「新报道」。
+        assert_eq!(input.marks.len(), 20);
+        let unique_feeds: std::collections::HashSet<i64> =
+            input.members.iter().map(|m| m.feed_id).collect();
+        assert_eq!(unique_feeds.len(), 10, "each distinct feed gets a slot first");
     }
 }

@@ -1,5 +1,7 @@
 //! OpenAI 兼容 `chat/completions`。无工具、无会话文件。日志 target：`rrss_ai::complete`。
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -167,7 +169,7 @@ pub struct CompleteResponse {
     pub detected_protocol: Option<String>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ResponseFormat {
     JsonSchema,
     JsonObject,
@@ -182,6 +184,64 @@ impl ResponseFormat {
             Self::PromptOnly => "prompt_only",
         }
     }
+
+    fn fallbacks(self) -> &'static [Self] {
+        match self {
+            Self::JsonSchema => &[Self::JsonSchema, Self::JsonObject, Self::PromptOnly],
+            Self::JsonObject => &[Self::JsonObject, Self::PromptOnly],
+            Self::PromptOnly => &[Self::PromptOnly],
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct EndpointCaps {
+    format: ResponseFormat,
+    supports_temperature: bool,
+}
+
+impl Default for EndpointCaps {
+    fn default() -> Self {
+        Self {
+            format: ResponseFormat::JsonSchema,
+            supports_temperature: true,
+        }
+    }
+}
+
+type CapsKey = (String, String, &'static str);
+const MAX_CAPS_ENTRIES: usize = 256;
+
+fn caps_cache() -> &'static Mutex<HashMap<CapsKey, EndpointCaps>> {
+    static CACHE: OnceLock<Mutex<HashMap<CapsKey, EndpointCaps>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn caps_key(req: &CompleteRequest, protocol: Protocol) -> CapsKey {
+    (
+        req.base_url.trim().trim_end_matches('/').to_string(),
+        req.model.trim().to_string(),
+        protocol.as_str(),
+    )
+}
+
+fn load_caps(req: &CompleteRequest, protocol: Protocol) -> EndpointCaps {
+    let key = caps_key(req, protocol);
+    caps_cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&key)
+        .copied()
+        .unwrap_or_default()
+}
+
+fn store_caps(req: &CompleteRequest, protocol: Protocol, caps: EndpointCaps) {
+    let key = caps_key(req, protocol);
+    let mut cache = caps_cache().lock().unwrap_or_else(|e| e.into_inner());
+    if cache.len() >= MAX_CAPS_ENTRIES && !cache.contains_key(&key) {
+        cache.clear();
+    }
+    cache.insert(key, caps);
 }
 
 pub fn http_client() -> Result<reqwest::Client> {
@@ -339,55 +399,96 @@ async fn complete_via(
     admission: Option<&dyn crate::admission::Admission>,
     repair_json: bool,
 ) -> Result<CompleteResponse> {
-    for format in [
-        ResponseFormat::JsonSchema,
-        ResponseFormat::JsonObject,
-        ResponseFormat::PromptOnly,
-    ] {
-        match post_attempt(client, req, protocol, format, false, admission).await {
-            Ok(body) => match parse_observed(protocol, &body, on_usage) {
-                Ok(out) => return Ok(out),
-                Err(err)
-                    if repair_json
-                        && (matches!(&err, Error::InvalidJson(_))
-                            || matches!(&err, Error::Content { source, .. } if matches!(**source, Error::InvalidJson(_)))) =>
-                {
-                    tracing::warn!(model = %req.model, protocol = protocol.as_str(), format = format.as_str(), response_bytes = body.len(), error_kind = "invalid_json", "invalid json received; retrying with prompt-only format");
-                    let usage = match err {
-                        Error::Content { usage, .. } => usage,
-                        _ => None,
-                    };
-                    let retry = async {
-                        let body =
-                            post_attempt(client, req, protocol, ResponseFormat::PromptOnly, true, admission)
-                                .await?;
-                        let parsed = parse_observed(protocol, &body, on_usage);
-                        if parsed.is_err() {
-                            tracing::warn!(model = %req.model, protocol = protocol.as_str(), response_bytes = body.len(), error_kind = "invalid_json", "prompt-only retry still not valid json");
-                        }
-                        parsed
+    let mut caps = load_caps(req, protocol);
+    let formats = caps.format.fallbacks();
+    for &format in formats {
+        loop {
+            match post_attempt(
+                client,
+                req,
+                protocol,
+                format,
+                false,
+                caps.supports_temperature,
+                admission,
+            )
+            .await
+            {
+                Ok(body) => {
+                    if format != caps.format {
+                        caps.format = format;
+                        store_caps(req, protocol, caps);
                     }
-                    .await;
-                    return include_usage(retry, usage);
+                    match parse_observed(protocol, &body, on_usage) {
+                        Ok(out) => return Ok(out),
+                        Err(err)
+                            if repair_json
+                                && (matches!(&err, Error::InvalidJson(_))
+                                    || matches!(&err, Error::Content { source, .. } if matches!(**source, Error::InvalidJson(_)))) =>
+                        {
+                            tracing::warn!(model = %req.model, protocol = protocol.as_str(), format = format.as_str(), response_bytes = body.len(), error_kind = "invalid_json", "invalid json received; retrying with prompt-only format");
+                            let usage = match err {
+                                Error::Content { usage, .. } => usage,
+                                _ => None,
+                            };
+                            let retry = async {
+                                let body = post_attempt(
+                                    client,
+                                    req,
+                                    protocol,
+                                    ResponseFormat::PromptOnly,
+                                    true,
+                                    caps.supports_temperature,
+                                    admission,
+                                )
+                                .await?;
+                                let parsed = parse_observed(protocol, &body, on_usage);
+                                if parsed.is_err() {
+                                    tracing::warn!(model = %req.model, protocol = protocol.as_str(), response_bytes = body.len(), error_kind = "invalid_json", "prompt-only retry still not valid json");
+                                }
+                                parsed
+                            }
+                            .await;
+                            return include_usage(retry, usage);
+                        }
+                        Err(err) => return Err(err),
+                    }
+                }
+                Err(Error::Http { status, message })
+                    if caps.supports_temperature
+                        && is_temperature_rejected(
+                            reqwest::StatusCode::from_u16(status)
+                                .unwrap_or(reqwest::StatusCode::BAD_REQUEST),
+                            &message,
+                        ) =>
+                {
+                    tracing::debug!(
+                        model = %req.model,
+                        protocol = protocol.as_str(),
+                        status = status,
+                        "temperature rejected by provider; retrying without temperature"
+                    );
+                    caps.supports_temperature = false;
+                    store_caps(req, protocol, caps);
+                    continue;
+                }
+                Err(Error::Http { status, message })
+                    if is_format_rejected(
+                        reqwest::StatusCode::from_u16(status)
+                            .unwrap_or(reqwest::StatusCode::BAD_REQUEST),
+                        &message,
+                    ) =>
+                {
+                    tracing::debug!(
+                        model = %req.model,
+                        protocol = protocol.as_str(),
+                        status = status,
+                        "response_format rejected by provider; falling back"
+                    );
+                    break;
                 }
                 Err(err) => return Err(err),
-            },
-            Err(Error::Http { status, message })
-                if is_format_rejected(
-                    reqwest::StatusCode::from_u16(status)
-                        .unwrap_or(reqwest::StatusCode::BAD_REQUEST),
-                    &message,
-                ) =>
-            {
-                tracing::debug!(
-                    model = %req.model,
-                    protocol = protocol.as_str(),
-                    status = status,
-                    "response_format rejected by provider; falling back"
-                );
-                continue;
             }
-            Err(err) => return Err(err),
         }
     }
     Err(Error::EmptyContent)
@@ -399,6 +500,7 @@ async fn post_attempt(
     protocol: Protocol,
     format: ResponseFormat,
     is_retry: bool,
+    send_temperature: bool,
     admission: Option<&dyn crate::admission::Admission>,
 ) -> Result<String> {
     let _permit = match admission {
@@ -410,9 +512,12 @@ async fn post_attempt(
         async {
             Ok(match protocol {
                 Protocol::Responses => {
-                    post_responses(client, req, format, is_retry, admission).await?
+                    post_responses(client, req, format, is_retry, send_temperature, admission)
+                        .await?
                 }
-                _ => post_chat(client, req, format, is_retry, admission).await?,
+                _ => {
+                    post_chat(client, req, format, is_retry, send_temperature, admission).await?
+                }
             })
         },
     )
@@ -428,6 +533,7 @@ async fn post_chat(
     req: &CompleteRequest,
     format: ResponseFormat,
     is_retry: bool,
+    send_temperature: bool,
     admission: Option<&dyn crate::admission::Admission>,
 ) -> Result<(reqwest::StatusCode, String)> {
     let url = completions_url(&req.base_url);
@@ -452,9 +558,11 @@ async fn post_chat(
         "messages": [
             { "role": "system", "content": system },
             { "role": "user", "content": req.user }
-        ],
-        "temperature": if is_retry { 0.0 } else { 0.2 }
+        ]
     });
+    if send_temperature {
+        payload["temperature"] = json!(if is_retry { 0.0 } else { 0.2 });
+    }
     if let Some(rf) = response_format_value(req, format) {
         payload["response_format"] = rf;
     }
@@ -491,6 +599,7 @@ async fn post_responses(
     req: &CompleteRequest,
     format: ResponseFormat,
     is_retry: bool,
+    send_temperature: bool,
     admission: Option<&dyn crate::admission::Admission>,
 ) -> Result<(reqwest::StatusCode, String)> {
     let url = responses_url(&req.base_url);
@@ -515,9 +624,11 @@ async fn post_responses(
     let mut payload = json!({
         "model": req.model,
         "instructions": system,
-        "input": req.user,
-        "temperature": if is_retry { 0.0 } else { 0.2 }
+        "input": req.user
     });
+    if send_temperature {
+        payload["temperature"] = json!(if is_retry { 0.0 } else { 0.2 });
+    }
     if let Some(tf) = text_format_value(req, format) {
         payload["text"] = tf;
     }
@@ -563,6 +674,20 @@ fn system_prompt(req: &CompleteRequest, format: ResponseFormat) -> String {
             req.system
         ),
     }
+}
+
+fn is_temperature_rejected(status: reqwest::StatusCode, body: &str) -> bool {
+    if !status.is_client_error() {
+        return false;
+    }
+    let lower = body.to_lowercase();
+    lower.contains("temperature")
+        && (lower.contains("unsupported")
+            || lower.contains("not support")
+            || lower.contains("only the default")
+            || lower.contains("not allowed")
+            || lower.contains("extra_forbidden")
+            || lower.contains("invalid"))
 }
 
 fn is_format_rejected(status: reqwest::StatusCode, body: &str) -> bool {
@@ -1054,6 +1179,81 @@ mod tests {
         let out = complete(&client, &req).await.unwrap();
         assert_eq!(out.parsed.get("body").unwrap(), "fell back");
         assert_eq!(out.detected_protocol.as_deref(), Some("responses"));
+    }
+
+    #[tokio::test]
+    async fn response_format_fallback_is_cached_across_requests() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(|request: &wiremock::Request| {
+                let body: Value = serde_json::from_slice(&request.body).unwrap();
+                if body["response_format"]["type"] == "json_schema" {
+                    ResponseTemplate::new(400).set_body_json(json!({
+                        "error": { "message": "json_schema is not supported" }
+                    }))
+                } else {
+                    ResponseTemplate::new(200).set_body_json(json!({
+                        "choices": [{ "message": { "content": "{\"summary\":\"ok\"}" } }],
+                        "usage": { "prompt_tokens": 5, "completion_tokens": 3 }
+                    }))
+                }
+            })
+            .mount(&server)
+            .await;
+
+        let client = http_client().unwrap();
+        let req = CompleteRequest {
+            base_url: server.uri(),
+            api_key: None,
+            model: "cached-fmt-model".into(),
+            system: "s".into(),
+            user: "u".into(),
+            json_schema: Some(summary_json_schema()),
+            protocol: Protocol::Chat,
+        };
+        complete(&client, &req).await.unwrap();
+        complete(&client, &req).await.unwrap();
+        // 首次试探 2 次（json_schema 400 + json_object 200），第二次直接用缓存的 json_object（仅 1 次）。
+        assert_eq!(server.received_requests().await.unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn unsupported_temperature_retries_without_temperature_and_caches() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(|request: &wiremock::Request| {
+                let body: Value = serde_json::from_slice(&request.body).unwrap();
+                if body.get("temperature").is_some() {
+                    ResponseTemplate::new(400).set_body_json(json!({
+                        "error": { "message": "Unsupported parameter: temperature is only the default (1)" }
+                    }))
+                } else {
+                    ResponseTemplate::new(200).set_body_json(json!({
+                        "choices": [{ "message": { "content": "{\"summary\":\"no-temp\"}" } }],
+                        "usage": { "prompt_tokens": 4, "completion_tokens": 2 }
+                    }))
+                }
+            })
+            .mount(&server)
+            .await;
+
+        let client = http_client().unwrap();
+        let req = CompleteRequest {
+            base_url: server.uri(),
+            api_key: None,
+            model: "reasoning-model".into(),
+            system: "s".into(),
+            user: "u".into(),
+            json_schema: Some(summary_json_schema()),
+            protocol: Protocol::Chat,
+        };
+        let first = complete(&client, &req).await.unwrap();
+        assert_eq!(first.parsed["summary"], "no-temp");
+        complete(&client, &req).await.unwrap();
+        // 首次试探 2 次，第二次直接省略 temperature（共 3 次请求）。
+        assert_eq!(server.received_requests().await.unwrap().len(), 3);
     }
 }
 

@@ -1,0 +1,668 @@
+{
+  "version": 1,
+  "articles": [
+    {
+      "id": "zh-depth",
+      "language": "zh",
+      "title": "榆岸分拣系统的长期现场研究",
+      "source": "榆岸观察",
+      "url": "https://cedar-signal.example/zh-depth",
+      "format": "markdown",
+      "parts": [
+        {
+          "text": "## 研究起点\n\n榆岸实验室完成了第73轮现场试点，退货率下降17.8%。\n\n"
+        },
+        {
+          "text": "研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。\n\n",
+          "repeat": 42
+        },
+        {
+          "text": "### 实测能耗\n\n全程耗电31.4千瓦时，设备共运行960小时，维护期间不计算吞吐量。\n\n"
+        },
+        {
+          "text": "研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。\n\n",
+          "repeat": 68
+        },
+        {
+          "text": "### 研究边界\n\n该实验尚未覆盖冬季工况，最终复核日期为2027年3月15日。"
+        }
+      ],
+      "must_keep_facts": [
+        {
+          "text": "17.8%",
+          "category": "lead",
+          "alternatives": [
+            "17.8 percent"
+          ]
+        },
+        {
+          "text": "31.4千瓦时",
+          "category": "body",
+          "alternatives": [
+            "31.4 kilowatt-hours",
+            "31.4 kWh"
+          ]
+        },
+        {
+          "text": "960小时",
+          "category": "body",
+          "alternatives": [
+            "960 hours"
+          ]
+        },
+        {
+          "text": "2027年3月15日",
+          "category": "tail",
+          "alternatives": [
+            "March 15, 2027",
+            "2027-03-15"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "en-depth",
+      "language": "en",
+      "title": "Firpool storage engine field study",
+      "source": "Cedar Signal",
+      "url": "https://cedar-signal.example/en-depth",
+      "format": "markdown",
+      "parts": [
+        {
+          "text": "## Trial design\n\nFirpool reduced median commit latency to 142 ms in its controlled field trial.\n\n"
+        },
+        {
+          "text": "Engineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n",
+          "repeat": 23
+        },
+        {
+          "text": "### Mechanism\n\nThe scheduler assigns 64 shards to isolated queues and writes a checkpoint every 37 seconds.\n\n"
+        },
+        {
+          "text": "Engineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n",
+          "repeat": 34
+        },
+        {
+          "text": "### Limitation\n\nThe final recovery exercise is scheduled for 2027-03-15; power-loss testing remains incomplete."
+        }
+      ],
+      "must_keep_facts": [
+        {
+          "text": "142 ms",
+          "category": "lead",
+          "alternatives": [
+            "142 毫秒"
+          ]
+        },
+        {
+          "text": "64 shards",
+          "category": "body",
+          "alternatives": [
+            "64 个分片",
+            "64个分片"
+          ]
+        },
+        {
+          "text": "37 seconds",
+          "category": "body",
+          "alternatives": [
+            "37 秒",
+            "37秒"
+          ]
+        },
+        {
+          "text": "2027-03-15",
+          "category": "tail",
+          "alternatives": [
+            "2027年3月15日",
+            "March 15, 2027"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "markdown-table",
+      "language": "en",
+      "title": "Willow devices quarterly evaluation",
+      "source": "Cedar Signal",
+      "url": "https://cedar-signal.example/markdown-table",
+      "format": "markdown",
+      "parts": [
+        {
+          "text": "## Scope\n\nWillow tested three controller revisions under the same load.\n\n"
+        },
+        {
+          "text": "Engineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n",
+          "repeat": 28
+        },
+        {
+          "text": "### Financial and benchmark data\n\n| Measure | Result |\n| --- | --- |\n| Quarterly revenue | 87.6 million |\n| Error rate | 0.014% |\n| Median energy | 19.2 joules |\n\n"
+        },
+        {
+          "text": "Engineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n",
+          "repeat": 30
+        },
+        {
+          "text": "The audit uses the same exchange rates throughout the quarter."
+        }
+      ],
+      "must_keep_facts": [
+        {
+          "text": "three controller revisions",
+          "category": "lead",
+          "alternatives": [
+            "三个控制器版本",
+            "三版控制器"
+          ]
+        },
+        {
+          "text": "87.6 million",
+          "category": "table",
+          "alternatives": [
+            "8760 万",
+            "8760万"
+          ]
+        },
+        {
+          "text": "0.014%",
+          "category": "table",
+          "alternatives": [
+            "0.014 percent"
+          ]
+        },
+        {
+          "text": "19.2 joules",
+          "category": "table",
+          "alternatives": [
+            "19.2 焦耳",
+            "19.2焦耳"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "html-table",
+      "language": "zh",
+      "title": "柳港设备的季度财报与性能核验",
+      "source": "榆岸观察",
+      "url": "https://cedar-signal.example/html-table",
+      "format": "html",
+      "parts": [
+        {
+          "text": "<h2>口径说明</h2><p>柳港设备完成了三个季度的统一口径核验。</p>"
+        },
+        {
+          "text": "<p>研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。</p>",
+          "repeat": 90
+        },
+        {
+          "text": "<h3>核心数据</h3><table><thead><tr><th>指标</th><th>结果</th></tr></thead><tbody><tr><td>营业收入</td><td>42.7亿元</td></tr><tr><td>毛利率</td><td>28.6%</td></tr><tr><td>峰值温度</td><td>61.8摄氏度</td></tr></tbody></table>"
+        },
+        {
+          "text": "<p>研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。</p>",
+          "repeat": 60
+        },
+        {
+          "text": "<p>独立复核将于下季度结束。</p>"
+        }
+      ],
+      "must_keep_facts": [
+        {
+          "text": "三个季度",
+          "category": "lead",
+          "alternatives": [
+            "three quarters"
+          ]
+        },
+        {
+          "text": "42.7亿元",
+          "category": "table",
+          "alternatives": [
+            "4.27 billion"
+          ]
+        },
+        {
+          "text": "28.6%",
+          "category": "table",
+          "alternatives": [
+            "28.6 percent"
+          ]
+        },
+        {
+          "text": "61.8摄氏度",
+          "category": "table",
+          "alternatives": [
+            "61.8 degrees",
+            "61.8 °C"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "markdown-code",
+      "language": "en",
+      "title": "Firpool 4.2 deployment guide",
+      "source": "Cedar Signal",
+      "url": "https://cedar-signal.example/markdown-code",
+      "format": "markdown",
+      "parts": [
+        {
+          "text": "## Release\n\nFirpool 4.2 makes migrations resumable across interrupted maintenance windows.\n\n"
+        },
+        {
+          "text": "Engineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n",
+          "repeat": 23
+        },
+        {
+          "text": "### CLI and API\n\n```shell\nfirctl migrate --atomic\n```\n\n```rust\nopen_pool(capacity: u32)\n```\n\n```toml\nretry_limit = 7\n```\n\n"
+        },
+        {
+          "text": "Engineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n",
+          "repeat": 30
+        },
+        {
+          "text": "The rollout starts with a canary and waits for explicit operator confirmation."
+        }
+      ],
+      "must_keep_facts": [
+        {
+          "text": "Firpool 4.2",
+          "category": "lead"
+        },
+        {
+          "text": "firctl migrate --atomic",
+          "category": "code"
+        },
+        {
+          "text": "open_pool(capacity: u32)",
+          "category": "code"
+        },
+        {
+          "text": "retry_limit = 7",
+          "category": "code"
+        }
+      ]
+    },
+    {
+      "id": "html-code",
+      "language": "zh",
+      "title": "桦湾工具的验证接口发布",
+      "source": "榆岸观察",
+      "url": "https://cedar-signal.example/html-code",
+      "format": "html",
+      "parts": [
+        {
+          "text": "<h2>发布说明</h2><p>桦湾工具新增离线验证接口，兼容协议版本5.4。</p>"
+        },
+        {
+          "text": "<p>研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。</p>",
+          "repeat": 85
+        },
+        {
+          "text": "<h3>使用方法</h3><pre><code>birchctl verify --strict\ntimeout_ms = 2400</code></pre>"
+        },
+        {
+          "text": "<p>研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。</p>",
+          "repeat": 70
+        },
+        {
+          "text": "<p>首次启用时由操作者逐项检查结果。</p>"
+        }
+      ],
+      "must_keep_facts": [
+        {
+          "text": "5.4",
+          "category": "lead"
+        },
+        {
+          "text": "birchctl verify --strict",
+          "category": "code"
+        },
+        {
+          "text": "timeout_ms = 2400",
+          "category": "code"
+        }
+      ]
+    },
+    {
+      "id": "long-lead-tail",
+      "language": "zh",
+      "title": "松桥项目的长导语与长结尾",
+      "source": "榆岸观察",
+      "url": "https://cedar-signal.example/long-lead-tail",
+      "format": "markdown",
+      "parts": [
+        {
+          "text": "导语确认第73轮试点已结束。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。\n\n"
+        },
+        {
+          "text": "### 中间核验\n\n核验范围包括12个站点。\n\n"
+        },
+        {
+          "text": "研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。\n\n",
+          "repeat": 12
+        },
+        {
+          "text": "最终延期至2027年5月。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。研究人员逐一复核设备记录，把运输、排队和返工分别统计。现场条件随班次变化，团队保留原始观测并说明测量方法，避免把相关性当作因果关系。"
+        }
+      ],
+      "must_keep_facts": [
+        {
+          "text": "第73轮试点",
+          "category": "lead",
+          "alternatives": [
+            "73rd trial"
+          ]
+        },
+        {
+          "text": "12个站点",
+          "category": "body",
+          "alternatives": [
+            "12 sites"
+          ]
+        },
+        {
+          "text": "2027年5月",
+          "category": "tail",
+          "alternatives": [
+            "May 2027"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "near-low",
+      "language": "en",
+      "title": "Alder budget boundary low",
+      "source": "Cedar Signal",
+      "url": "https://cedar-signal.example/near-low",
+      "format": "markdown",
+      "parts": [
+        {
+          "text": "Alder trial used 83 batches.\n\nEach batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same \n\nThe final audit found 9 failures."
+        }
+      ],
+      "must_keep_facts": [
+        {
+          "text": "83 batches",
+          "category": "lead",
+          "alternatives": [
+            "83 批",
+            "83批"
+          ]
+        },
+        {
+          "text": "9 failures",
+          "category": "tail",
+          "alternatives": [
+            "9 次失败",
+            "9次失败"
+          ]
+        }
+      ],
+      "near_budget_tier": "low"
+    },
+    {
+      "id": "near-medium",
+      "language": "en",
+      "title": "Alder budget boundary medium",
+      "source": "Cedar Signal",
+      "url": "https://cedar-signal.example/near-medium",
+      "format": "markdown",
+      "parts": [
+        {
+          "text": "Alder trial used 83 batches.\n\nEach batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route\n\nThe final audit found 9 failures."
+        }
+      ],
+      "must_keep_facts": [
+        {
+          "text": "83 batches",
+          "category": "lead",
+          "alternatives": [
+            "83 批",
+            "83批"
+          ]
+        },
+        {
+          "text": "9 failures",
+          "category": "tail",
+          "alternatives": [
+            "9 次失败",
+            "9次失败"
+          ]
+        }
+      ],
+      "near_budget_tier": "medium"
+    },
+    {
+      "id": "near-high",
+      "language": "en",
+      "title": "Alder budget boundary high",
+      "source": "Cedar Signal",
+      "url": "https://cedar-signal.example/near-high",
+      "format": "markdown",
+      "parts": [
+        {
+          "text": "Alder trial used 83 batches.\n\nEach batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. Each batch followed the same planned route and retained its verification record. \n\nThe final audit found 9 failures."
+        }
+      ],
+      "must_keep_facts": [
+        {
+          "text": "83 batches",
+          "category": "lead",
+          "alternatives": [
+            "83 批",
+            "83批"
+          ]
+        },
+        {
+          "text": "9 failures",
+          "category": "tail",
+          "alternatives": [
+            "9 次失败",
+            "9次失败"
+          ]
+        }
+      ],
+      "near_budget_tier": "high"
+    },
+    {
+      "id": "nested-headings",
+      "language": "en",
+      "title": "Maple multilevel analysis",
+      "source": "Cedar Signal",
+      "url": "https://cedar-signal.example/nested-headings",
+      "format": "markdown",
+      "parts": [
+        {
+          "text": "## Maple analysis\n\nThe test covers 27 regions.\n\n"
+        },
+        {
+          "text": "### Stage 1\n\n#### Detail 1\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 2\n\n#### Detail 2\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 3\n\n#### Detail 3\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 4\n\n#### Detail 4\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 5\n\n#### Detail 5\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 6\n\n#### Detail 6\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 7\n\n#### Detail 7\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 8\n\n#### Detail 8\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 9\n\n#### Detail 9\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 10\n\n#### Detail 10\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 11\n\n#### Detail 11\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 12\n\n#### Detail 12\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 13\n\n#### Detail 13\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 14\n\n#### Detail 14\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 15\n\n#### Detail 15\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 16\n\n#### Detail 16\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 17\n\n#### Detail 17\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 18\n\n#### Detail 18\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 19\n\n#### Detail 19\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 20\n\n#### Detail 20\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 21\n\n#### Detail 21\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 22\n\n#### Detail 22\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 23\n\n#### Detail 23\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 24\n\n#### Detail 24\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 25\n\n#### Detail 25\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Stage 26\n\n#### Detail 26\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\nEngineers reviewed each queue and compared the trace with the previous run. Operators recorded every retry and kept the storage layout constant. Separate trials checked the cache and the scheduling policy without changing the workload.\n\n"
+        },
+        {
+          "text": "### Final result\n\nThe audit saved 46 hours of manual review."
+        }
+      ],
+      "must_keep_facts": [
+        {
+          "text": "27 regions",
+          "category": "lead",
+          "alternatives": [
+            "27 个地区",
+            "27个地区"
+          ]
+        },
+        {
+          "text": "46 hours",
+          "category": "tail",
+          "alternatives": [
+            "46 小时",
+            "46小时"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "community-link",
+      "language": "en",
+      "title": "Quillbox adds a local export mode",
+      "source": "Cedar Signal",
+      "url": "https://cedar-signal.example/community-link",
+      "format": "html",
+      "parts": [
+        {
+          "text": "<p>Article URL: <a href=\"https://quillbox.example/export\">https://quillbox.example/export</a></p><p>Comments URL: <a href=\"https://quillbox.example/discussion\">https://quillbox.example/discussion</a></p><p>Points: 126</p><p># Comments: 18</p>"
+        }
+      ],
+      "must_keep_facts": [],
+      "link_stub": true
+    },
+    {
+      "id": "outbound-link",
+      "language": "zh",
+      "title": "栎桥接口的外链卡片",
+      "source": "榆岸观察",
+      "url": "https://cedar-signal.example/outbound-link",
+      "format": "html",
+      "parts": [
+        {
+          "text": "<p><a href=\"https://oakbridge.example/release\">https://oakbridge.example/release</a></p><p><a href=\"https://oakbridge.example/comments\">https://oakbridge.example/comments</a></p>"
+        }
+      ],
+      "must_keep_facts": [],
+      "link_stub": true
+    },
+    {
+      "id": "empty-link",
+      "language": "en",
+      "title": "Quillbox beta announcement",
+      "source": "Cedar Signal",
+      "url": "https://cedar-signal.example/empty-link",
+      "format": "html",
+      "parts": [],
+      "must_keep_facts": [],
+      "link_stub": true
+    },
+    {
+      "id": "short-en",
+      "language": "en",
+      "title": "Cedar queue fixes a timeout",
+      "source": "Cedar Signal",
+      "url": "https://cedar-signal.example/short-en",
+      "format": "markdown",
+      "parts": [
+        {
+          "text": "Cedar queue 2.7 fixes a timeout after 16 retries.\n\nOperators can apply the update without changing their queue files.\n\nArticle URL: https://cedar-queue.example/2.7"
+        }
+      ],
+      "must_keep_facts": [
+        {
+          "text": "16 retries",
+          "category": "body",
+          "alternatives": [
+            "16 次重试",
+            "16次重试"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "short-zh",
+      "language": "zh",
+      "title": "榆岸设备新增本地检查",
+      "source": "榆岸观察",
+      "url": "https://cedar-signal.example/short-zh",
+      "format": "html",
+      "parts": [
+        {
+          "text": "<p>榆岸设备新增本地检查功能，每次检查耗时8秒。用户可以保留现有配置。</p>"
+        }
+      ],
+      "must_keep_facts": [
+        {
+          "text": "8秒",
+          "category": "body",
+          "alternatives": [
+            "8 seconds"
+          ]
+        }
+      ]
+    }
+  ]
+}

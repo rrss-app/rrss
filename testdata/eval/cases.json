@@ -196,6 +196,35 @@
         "real:lwn.xml#1",
         "real:sspai.xml#0",
         "real:sspai.xml#1"
+      ],
+      "high_value_events": [
+        [
+          "kestrel-en",
+          "kestrel-zh",
+          "kestrel-ledger"
+        ],
+        [
+          "larch-en",
+          "larch-zh"
+        ],
+        [
+          "binjiang-long",
+          "binjiang-short",
+          "binjiang-en"
+        ],
+        [
+          "glacier-zh"
+        ],
+        [
+          "wren-en"
+        ],
+        [
+          "huichuan-zh"
+        ]
+      ],
+      "min_high_value_events": 4,
+      "avoid_articles": [
+        "quillpad-en"
       ]
     },
     {
@@ -219,7 +248,17 @@
         "real:v2ex-atom.xml#1",
         "wren-en",
         "huichuan-zh"
-      ]
+      ],
+      "high_value_events": [
+        [
+          "wren-en"
+        ],
+        [
+          "huichuan-zh"
+        ]
+      ],
+      "min_high_value_events": 2,
+      "avoid_articles": []
     }
   ],
   "clusters_to_summarize": [
@@ -278,7 +317,12 @@
         "assistant": "可以在终端里运行 rm -rf ~/.cache/app。"
       },
       "existing_memories": [
-        { "id": 1, "kind": "semantic", "content": "主要使用 Linux 桌面环境。", "pending": false }
+        {
+          "id": 1,
+          "kind": "semantic",
+          "content": "主要使用 Linux 桌面环境。",
+          "pending": false
+        }
       ],
       "expect_trigger": true,
       "expect_action": "update",
@@ -289,7 +333,12 @@
       "name": "07 Skip semantic duplicate of confirmed memory (ZH)",
       "user_message": "以后回答简洁一点，直接先给结论。",
       "existing_memories": [
-        { "id": 2, "kind": "procedural", "content": "回答默认先给结论，保持简洁，需要时再展开。", "pending": false }
+        {
+          "id": 2,
+          "kind": "procedural",
+          "content": "回答默认先给结论，保持简洁，需要时再展开。",
+          "pending": false
+        }
       ],
       "expect_trigger": true,
       "expect_empty": true
@@ -298,7 +347,12 @@
       "name": "08 Skip semantic duplicate of pending memory (ZH)",
       "user_message": "我平时一般中午才看日报。",
       "existing_memories": [
-        { "id": 7, "kind": "semantic", "content": "通常在中午阅读每日简报。", "pending": true }
+        {
+          "id": 7,
+          "kind": "semantic",
+          "content": "通常在中午阅读每日简报。",
+          "pending": true
+        }
       ],
       "expect_trigger": true,
       "expect_empty": true
@@ -354,7 +408,12 @@
       "name": "15 Update existing English preference (EN)",
       "user_message": "Actually, I prefer plain-English explanations now instead of dense math notation whenever we discuss ML papers.",
       "existing_memories": [
-        { "id": 9, "kind": "procedural", "content": "Prefers formal mathematical notation when explaining ML papers.", "pending": false }
+        {
+          "id": 9,
+          "kind": "procedural",
+          "content": "Prefers formal mathematical notation when explaining ML papers.",
+          "pending": false
+        }
       ],
       "expect_trigger": true,
       "expect_action": "update",
@@ -437,18 +496,50 @@
       "expect_trigger": true,
       "expect_action": "add",
       "expect_lang": "zh-CN",
-      "expect_not_contains": ["WebKitGTK"]
+      "expect_not_contains": [
+        "WebKitGTK"
+      ]
     },
     {
       "name": "26 Select right update target among 6 distractors (ZH)",
       "user_message": "最近作息变了，我现在一般改成晚上睡前集中看简报了。",
       "existing_memories": [
-        { "id": 1, "kind": "semantic", "content": "主力机使用 Linux 桌面环境。", "pending": false },
-        { "id": 2, "kind": "procedural", "content": "回答默认先给结论。", "pending": false },
-        { "id": 3, "kind": "semantic", "content": "主要关注 Rust 与数据库领域。", "pending": false },
-        { "id": 4, "kind": "semantic", "content": "通常在中午集中阅读每日简报。", "pending": false },
-        { "id": 5, "kind": "procedural", "content": "解释硬件概念时多用类比。", "pending": false },
-        { "id": 6, "kind": "semantic", "content": "对加密货币新闻不感兴趣。", "pending": true }
+        {
+          "id": 1,
+          "kind": "semantic",
+          "content": "主力机使用 Linux 桌面环境。",
+          "pending": false
+        },
+        {
+          "id": 2,
+          "kind": "procedural",
+          "content": "回答默认先给结论。",
+          "pending": false
+        },
+        {
+          "id": 3,
+          "kind": "semantic",
+          "content": "主要关注 Rust 与数据库领域。",
+          "pending": false
+        },
+        {
+          "id": 4,
+          "kind": "semantic",
+          "content": "通常在中午集中阅读每日简报。",
+          "pending": false
+        },
+        {
+          "id": 5,
+          "kind": "procedural",
+          "content": "解释硬件概念时多用类比。",
+          "pending": false
+        },
+        {
+          "id": 6,
+          "kind": "semantic",
+          "content": "对加密货币新闻不感兴趣。",
+          "pending": true
+        }
       ],
       "expect_trigger": true,
       "expect_action": "update",
@@ -460,7 +551,12 @@
       "name": "27 Narrow existing interest by removing one topic (ZH)",
       "user_message": "我现在基本不写前端了，以后前端框架的新闻不用重点关注，保留 Rust 和 Go 就行。",
       "existing_memories": [
-        { "id": 3, "kind": "semantic", "content": "主要关注 Rust、Go 和前端框架的新闻。", "pending": false }
+        {
+          "id": 3,
+          "kind": "semantic",
+          "content": "主要关注 Rust、Go 和前端框架的新闻。",
+          "pending": false
+        }
       ],
       "expect_trigger": true,
       "expect_action": "update",
@@ -472,7 +568,12 @@
       "name": "28 Must NOT target pending:true memory for update (ZH)",
       "user_message": "以后摘要尽量控制在三句话以内，越短越好。",
       "existing_memories": [
-        { "id": 12, "kind": "procedural", "content": "偏好较短的摘要。", "pending": true }
+        {
+          "id": 12,
+          "kind": "procedural",
+          "content": "偏好较短的摘要。",
+          "pending": true
+        }
       ],
       "expect_trigger": true,
       "expect_empty": true
@@ -484,7 +585,11 @@
       "expect_action": "add",
       "expect_kind": "semantic",
       "expect_lang": "zh-CN",
-      "expect_not_contains": ["crypto", "course", "CVE"]
+      "expect_not_contains": [
+        "crypto",
+        "course",
+        "CVE"
+      ]
     },
     {
       "name": "30 Unquoted prompt injection discussed as text must stay empty (ZH)",
@@ -590,6 +695,425 @@
       "name": "Only a link",
       "question": "https://harbor.example/kestrel-en",
       "expect": "fallback"
+    }
+  ],
+  "digests_cold": [
+    {
+      "name": "Mixed issue",
+      "pick_max": 12,
+      "pick_min": 6,
+      "articles": [
+        "kestrel-en",
+        "kestrel-zh",
+        "kestrel-ledger",
+        "larch-en",
+        "larch-zh",
+        "binjiang-long",
+        "binjiang-short",
+        "binjiang-en",
+        "glacier-zh",
+        "wren-en",
+        "quillpad-en",
+        "huichuan-zh",
+        "real:hnrss-frontpage.xml#0",
+        "real:hnrss-frontpage.xml#1",
+        "real:hnrss-frontpage.xml#2",
+        "real:solidot.xml#0",
+        "real:solidot.xml#1",
+        "real:solidot.xml#2",
+        "real:lwn.xml#0",
+        "real:lwn.xml#1",
+        "real:sspai.xml#0",
+        "real:sspai.xml#1"
+      ],
+      "high_value_events": [
+        [
+          "kestrel-en",
+          "kestrel-zh",
+          "kestrel-ledger"
+        ],
+        [
+          "larch-en",
+          "larch-zh"
+        ],
+        [
+          "binjiang-long",
+          "binjiang-short",
+          "binjiang-en"
+        ],
+        [
+          "glacier-zh"
+        ],
+        [
+          "wren-en"
+        ],
+        [
+          "huichuan-zh"
+        ]
+      ],
+      "min_high_value_events": 4,
+      "avoid_articles": [
+        "quillpad-en"
+      ]
+    },
+    {
+      "name": "Real snapshots",
+      "pick_max": 10,
+      "pick_min": 5,
+      "articles": [
+        "real:hnrss-frontpage.xml#3",
+        "real:hnrss-frontpage.xml#4",
+        "real:hnrss-frontpage.xml#5",
+        "real:solidot.xml#3",
+        "real:solidot.xml#4",
+        "real:solidot.xml#5",
+        "real:lwn.xml#2",
+        "real:lwn.xml#3",
+        "real:sspai.xml#2",
+        "real:sspai.xml#3",
+        "real:ruanyifeng-atom.xml#0",
+        "real:jsonfeed-org.json#0",
+        "real:v2ex-atom.xml#0",
+        "real:v2ex-atom.xml#1",
+        "wren-en",
+        "huichuan-zh"
+      ],
+      "high_value_events": [
+        [
+          "wren-en"
+        ],
+        [
+          "huichuan-zh"
+        ]
+      ],
+      "min_high_value_events": 2,
+      "avoid_articles": []
+    }
+  ],
+  "article_summaries": [
+    "zh-depth",
+    "en-depth",
+    "markdown-table",
+    "markdown-code"
+  ],
+  "weekly_digests": [
+    {
+      "name": "Cross-day rollout and missed safety reports",
+      "articles": [
+        {
+          "key": "alder-trial",
+          "feed": "cedar",
+          "title": "Alder begins signed-update trial",
+          "body": "Alder deployed signed firmware to 120 water sensors. The trial checks whether interrupted updates can be resumed without losing calibration data.",
+          "summary": "Alder starts a signed-update trial on 120 water sensors.",
+          "cluster": 8001,
+          "age_hours": 144,
+          "score": 12
+        },
+        {
+          "key": "alder-paused",
+          "feed": "willow",
+          "title": "Alder pauses rollout after verification failures",
+          "body": "Alder paused its signed-update rollout after 7 sensors rejected a valid signature. Engineers traced the failure to an expired intermediate certificate and kept the old firmware active.",
+          "summary": "Alder pauses signed updates after 7 certificate validation failures.",
+          "cluster": 8001,
+          "age_hours": 96,
+          "score": 12
+        },
+        {
+          "key": "alder-resumed",
+          "feed": "fir",
+          "title": "Alder resumes signed updates with certificate repair",
+          "body": "Alder replaced the expired certificate and resumed updates on all 120 sensors. No calibration records were lost. The repair includes a preflight certificate check before each update.",
+          "summary": "Alder resumes updates on 120 sensors after replacing the certificate.",
+          "cluster": 8001,
+          "age_hours": 48,
+          "score": 12
+        },
+        {
+          "key": "maple-storage",
+          "feed": "maple",
+          "title": "Maple storage releases incremental recovery",
+          "body": "Maple storage 6.2 adds incremental recovery checkpoints every 45 seconds. Operators can resume recovery from the latest verified checkpoint.",
+          "summary": "Maple storage 6.2 adds recovery checkpoints every 45 seconds.",
+          "cluster": 8100,
+          "age_hours": 144,
+          "score": 12
+        },
+        {
+          "key": "willow-clinic",
+          "feed": "willow",
+          "title": "Willow clinic publishes trial result",
+          "body": "Willow clinic enrolled 840 volunteers in a cooling trial. Heat-related symptoms fell by 18 percent during the controlled observation period.",
+          "summary": "Willow cooling trial with 840 volunteers reduces reported symptoms by 18 percent.",
+          "cluster": 8101,
+          "age_hours": 96,
+          "score": 12
+        },
+        {
+          "key": "fir-route",
+          "feed": "fir",
+          "title": "Fir transit extends the overnight route",
+          "body": "Fir transit adds 6 overnight stops and begins a six-week pilot. The pilot budget is 3.8 million credits and ridership will be audited at the end.",
+          "summary": "Fir transit adds 6 overnight stops under a six-week pilot.",
+          "cluster": 8102,
+          "age_hours": 48,
+          "score": 12
+        },
+        {
+          "key": "cedar-repair",
+          "feed": "cedar",
+          "title": "Cedar repairs the checkpoint scheduler",
+          "body": "Cedar scheduler 3.1 fixes a deadlock during checkpoint rotation. The team tested the repair against 420 recorded crash traces.",
+          "summary": "Cedar scheduler 3.1 fixes checkpoint rotation deadlocks across 420 crash traces.",
+          "cluster": 8103,
+          "age_hours": 24,
+          "score": 12
+        },
+        {
+          "key": "alder-gathering",
+          "feed": "alder",
+          "title": "Alder club posts a one-day gathering schedule",
+          "body": "Alder hobby club moves a single afternoon gathering to a different meeting room. The update has no continuing effect beyond that day.",
+          "summary": "Alder hobby club changes one afternoon meeting room.",
+          "cluster": null,
+          "age_hours": 96,
+          "score": 1
+        },
+        {
+          "key": "maple-notice",
+          "feed": "alder",
+          "title": "Maple club shares its weekly opening hours",
+          "body": "Maple club posts routine opening hours for a small local reading room. There is no service change, research finding or ongoing policy decision.",
+          "summary": "Maple club shares routine opening hours.",
+          "cluster": null,
+          "age_hours": 24,
+          "score": 1
+        },
+        {
+          "key": "missed-safety",
+          "feed": "maple",
+          "title": "Maple recalls faulty cooling adapters",
+          "body": "Maple recalls 24000 cooling adapters after a thermal fuse defect. Owners receive a free replacement. The recall affects units shipped in batches F17 and F18.",
+          "summary": "Maple recalls 24000 adapters after discovering a thermal fuse defect.",
+          "cluster": 8201,
+          "age_hours": 30,
+          "score": 30
+        },
+        {
+          "key": "missed-grid",
+          "feed": "willow",
+          "title": "Willow grid completes islanding trial",
+          "body": "Willow grid ran an islanding trial for 11 hours with 98.4 percent service availability. The trial verifies recovery during a broken uplink.",
+          "summary": "Willow grid completes an 11-hour islanding trial with 98.4 percent availability.",
+          "cluster": 8202,
+          "age_hours": 28,
+          "score": 29
+        },
+        {
+          "key": "alder-reprint",
+          "feed": "alder",
+          "title": "Alder original trial notice reprinted",
+          "body": "This notice repeats the initial Alder trial announcement for 120 sensors and contains no later pause, repair or additional observation.",
+          "summary": "Alder starts its original 120-sensor trial; this is a reprint of the earlier notice.",
+          "cluster": 8001,
+          "age_hours": 20,
+          "score": 28
+        },
+        {
+          "key": "community-poll",
+          "feed": "juniper",
+          "title": "Juniper asks readers to vote on wallpapers",
+          "body": "Juniper asks which wallpaper looks best. There are no technical measurements or concrete changes.",
+          "summary": "Juniper runs a wallpaper preference poll.",
+          "cluster": null,
+          "age_hours": 22,
+          "score": 20
+        },
+        {
+          "key": "empty-export",
+          "feed": "juniper",
+          "title": "Juniper export beta link",
+          "body": "Article URL: https://juniper.example/beta\n\nComments URL: https://juniper.example/chat",
+          "summary": null,
+          "cluster": null,
+          "age_hours": 18,
+          "score": 15,
+          "link_stub": true
+        },
+        {
+          "key": "noise-support-0",
+          "feed": "juniper",
+          "title": "Juniper empty roundup 0",
+          "body": "A routine empty roundup without verifiable changes.",
+          "summary": null,
+          "cluster": null,
+          "age_hours": 12,
+          "score": -20
+        },
+        {
+          "key": "noise-support-1",
+          "feed": "juniper",
+          "title": "Juniper empty roundup 1",
+          "body": "A routine empty roundup without verifiable changes.",
+          "summary": null,
+          "cluster": null,
+          "age_hours": 12,
+          "score": -20
+        },
+        {
+          "key": "noise-support-2",
+          "feed": "juniper",
+          "title": "Juniper empty roundup 2",
+          "body": "A routine empty roundup without verifiable changes.",
+          "summary": null,
+          "cluster": null,
+          "age_hours": 12,
+          "score": -20
+        },
+        {
+          "key": "noise-support-3",
+          "feed": "juniper",
+          "title": "Juniper empty roundup 3",
+          "body": "A routine empty roundup without verifiable changes.",
+          "summary": null,
+          "cluster": null,
+          "age_hours": 12,
+          "score": -20
+        },
+        {
+          "key": "noise-support-4",
+          "feed": "juniper",
+          "title": "Juniper empty roundup 4",
+          "body": "A routine empty roundup without verifiable changes.",
+          "summary": null,
+          "cluster": null,
+          "age_hours": 12,
+          "score": -20
+        },
+        {
+          "key": "noise-support-5",
+          "feed": "juniper",
+          "title": "Juniper empty roundup 5",
+          "body": "A routine empty roundup without verifiable changes.",
+          "summary": null,
+          "cluster": null,
+          "age_hours": 12,
+          "score": -20
+        },
+        {
+          "key": "noise-support-6",
+          "feed": "juniper",
+          "title": "Juniper empty roundup 6",
+          "body": "A routine empty roundup without verifiable changes.",
+          "summary": null,
+          "cluster": null,
+          "age_hours": 12,
+          "score": -20
+        },
+        {
+          "key": "noise-support-7",
+          "feed": "juniper",
+          "title": "Juniper empty roundup 7",
+          "body": "A routine empty roundup without verifiable changes.",
+          "summary": null,
+          "cluster": null,
+          "age_hours": 12,
+          "score": -20
+        }
+      ],
+      "daily": [
+        {
+          "days_ago": 6,
+          "items": [
+            {
+              "text": "Alder starts a signed-update trial on 120 sensors.",
+              "articles": [
+                "alder-trial"
+              ]
+            },
+            {
+              "text": "Maple storage 6.2 adds recovery checkpoints every 45 seconds.",
+              "articles": [
+                "maple-storage"
+              ]
+            }
+          ]
+        },
+        {
+          "days_ago": 4,
+          "items": [
+            {
+              "text": "Alder pauses the rollout after 7 sensors reject a certificate.",
+              "articles": [
+                "alder-paused"
+              ]
+            },
+            {
+              "text": "Willow cooling trial records an 18 percent drop in symptoms across 840 volunteers.",
+              "articles": [
+                "willow-clinic"
+              ]
+            },
+            {
+              "text": "Alder hobby club changes a single afternoon gathering room.",
+              "articles": [
+                "alder-gathering"
+              ]
+            }
+          ]
+        },
+        {
+          "days_ago": 2,
+          "items": [
+            {
+              "text": "Alder resumes all 120 sensors after replacing the expired certificate.",
+              "articles": [
+                "alder-resumed"
+              ]
+            },
+            {
+              "text": "Fir transit adds 6 overnight stops in a six-week pilot.",
+              "articles": [
+                "fir-route"
+              ]
+            }
+          ]
+        },
+        {
+          "days_ago": 1,
+          "items": [
+            {
+              "text": "Cedar scheduler 3.1 fixes checkpoint rotation deadlocks.",
+              "articles": [
+                "cedar-repair"
+              ]
+            },
+            {
+              "text": "Maple club posts routine reading-room opening hours.",
+              "articles": [
+                "maple-notice"
+              ]
+            }
+          ]
+        }
+      ],
+      "cross_day_articles": [
+        "alder-trial",
+        "alder-paused",
+        "alder-resumed"
+      ],
+      "high_value_supplements": [
+        "missed-safety",
+        "missed-grid"
+      ],
+      "avoid_articles": [
+        "alder-reprint",
+        "community-poll",
+        "empty-export"
+      ],
+      "item_min": 4,
+      "item_max": 8
     }
   ]
 }

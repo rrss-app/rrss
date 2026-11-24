@@ -346,7 +346,7 @@ async fn segment_notes_payload(
     Ok(format_segment_notes(title, &notes))
 }
 
-fn format_segment_notes(title: &str, notes: &[Value]) -> String {
+pub fn format_segment_notes(title: &str, notes: &[Value]) -> String {
     let mut out = format!(
         "{title}\n\nNotes on the full text, in {} parts in the original order:",
         notes.len()

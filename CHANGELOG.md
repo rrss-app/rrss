@@ -4,6 +4,10 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Changed
+
+- Improved AI input selection and budgeting across article summaries, daily/weekly digests, and related coverage overviews: summary extraction now balances budgets across CJK and English text, retains bounded short code snippets and key table rows, avoids orphan headings and unnecessary re-segmentation, and skips read, disliked, hidden noisy, or link-only items in automatic background summaries; digests filter disliked and noisy sources, interleave feeds, include lead snippets for unsummarized articles, redistribute unused excerpt budget with publication timestamps, keep busy weekly digests and large related-coverage clusters bounded without duplicate-story collisions, narrow digest write conflict checks, and cache provider structured-output and temperature fallbacks to avoid repeated failed requests.
+
 ## [0.5.1] - 2026-11-24
 
 ### Added

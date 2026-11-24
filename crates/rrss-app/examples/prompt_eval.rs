@@ -1,26 +1,17 @@
-//! AI output language eval: runs the background-job prompts on fixed inputs in three variants and
-//! writes a side-by-side HTML report for a person to review.
-//!
-//! Variants: `baseline` (the Chinese prompts before English prompts, kept in
-//! `testdata/eval/baseline-zh.json`), `en-zh` (English prompts, Simplified Chinese output) and
-//! `en-en` (English prompts, English output). Each variant runs the same pipeline on its own
-//! throwaway database: summaries, then the daily digest (pick and write), related coverage
-//! overviews and memory candidates. Inputs are the real feed snapshots in `testdata/feeds/real/`
-//! plus fictional cases in `testdata/eval/cases.json`. It never opens the everyday database.
+//! Quantitative RRSS input/output evaluation on throwaway databases.
+//! Offline mode makes zero model calls and needs no API configuration:
 //!
 //! ```text
-//! RRSS_EVAL_BASE_URL=https://api.deepseek.com RRSS_EVAL_MODEL=deepseek-chat RRSS_EVAL_API_KEY=… \
-//!   cargo run -p rrss-app --example prompt_eval
+//! cargo run -p rrss-app --example prompt_eval -- --offline
+//! cargo run -p rrss-app --example prompt_eval -- --offline --tier high --compare baseline.json
 //! ```
 //!
-//! The citation section asks the chat assistant's system prompt (the one shipped before English
-//! prompts for `baseline`; the current one with Chinese or English as the default reply language
-//! for `en-zh` / `en-en`) about cited articles. The model gets the read-only article and memory
-//! tools, run against the eval database, and the reply language and style are checked.
-//!
-//! Options: `--variants baseline,en-zh,en-en`, `--only summaries,digests,clusters,memory,citations`,
-//! `--concurrency 4`, `--out <dir>` (default `test-results/prompt-eval`). The report is
-//! `report.html` in the output directory, with the raw results in `results.json`.
+//! Online mode reads RRSS_EVAL_BASE_URL, RRSS_EVAL_MODEL and optional
+//! RRSS_EVAL_API_KEY. Existing variants and sections remain available; weekly
+//! digests, manual article summaries and cold daily digests add coverage.
+//! Use --help for all options. Outputs go to test-results/prompt-eval by default.
+//! Fixtures are fictional (.example) or existing testdata/feeds/real snapshots.
+//! This executable never opens the everyday database or starts background jobs.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -36,7 +27,22 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::Semaphore;
 
-const TIER: InputTier = InputTier::Medium;
+#[path = "prompt_eval/cli.rs"]
+mod cli;
+#[path = "prompt_eval/compare.rs"]
+mod compare;
+#[path = "prompt_eval/corpus.rs"]
+mod corpus;
+#[path = "prompt_eval/fixtures.rs"]
+mod fixtures;
+#[path = "prompt_eval/metrics.rs"]
+mod metrics;
+#[path = "prompt_eval/offline.rs"]
+mod offline;
+#[path = "prompt_eval/online.rs"]
+mod online;
+
+use metrics::Metrics;
 
 // ---------- inputs ----------
 
@@ -51,6 +57,12 @@ struct Cases {
     memory: Vec<MemoryCase>,
     #[serde(default)]
     citations: Vec<CitationCase>,
+    #[serde(default)]
+    weekly_digests: Vec<fixtures::WeeklyCase>,
+    #[serde(default)]
+    article_summaries: Vec<String>,
+    #[serde(default)]
+    digests_cold: Vec<DigestCase>,
 }
 
 /// A chat question with a citation, asked with the chat assistant's system prompt and no tools.
@@ -101,6 +113,12 @@ struct DigestCase {
     pick_max: usize,
     pick_min: usize,
     articles: Vec<String>,
+    #[serde(default)]
+    high_value_events: Vec<Vec<String>>,
+    #[serde(default)]
+    min_high_value_events: usize,
+    #[serde(default)]
+    avoid_articles: Vec<String>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -210,7 +228,7 @@ impl Variant {
 
     fn label(self) -> &'static str {
         match self {
-            Variant::Baseline => "Chinese prompts (before)",
+            Variant::Baseline => "Baseline → Chinese",
             Variant::EnZh => "English prompts → Chinese",
             Variant::EnEn => "English prompts → English",
         }
@@ -306,11 +324,16 @@ fn to_baseline_input(text: &str, map: &BaselineInput) -> String {
             } else if let Some(rest) = line.strip_prefix("【Event ") {
                 let (number, tail) = rest.split_once('】').unwrap_or((rest, ""));
                 if tail.ends_with(" articles") {
-                    fill(&map.event_with_count, &[number, tail.trim_end_matches(" articles")])
+                    fill(
+                        &map.event_with_count,
+                        &[number, tail.trim_end_matches(" articles")],
+                    )
                 } else {
                     fill(&map.event, &[number])
                 }
-            } else if let (Some(rest), true) = (line.strip_prefix("Topic: "), line.ends_with(" articles)")) {
+            } else if let (Some(rest), true) =
+                (line.strip_prefix("Topic: "), line.ends_with(" articles)"))
+            {
                 let (title, count) = rest.rsplit_once(" (").unwrap_or((rest, ""));
                 fill(&map.topic, &[title, count.trim_end_matches(" articles)")])
             } else if line.starts_with("[id:") {
@@ -346,6 +369,7 @@ struct Call {
     prompt_tokens: u32,
     completion_tokens: u32,
     ms: u128,
+    requests: usize,
     /// Article ids the chat tools returned, which the reply may link to.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tool_ids: Vec<i64>,
@@ -354,7 +378,13 @@ struct Call {
 impl Model {
     /// A plain-text chat completion with the chat assistant's read-only tools, run against the eval
     /// database for up to four rounds, as the assistant would in the app.
-    async fn chat(&self, tag: &'static str, system: String, user: String, conn: &rusqlite::Connection) -> Call {
+    async fn chat(
+        &self,
+        tag: &'static str,
+        system: String,
+        user: String,
+        conn: &rusqlite::Connection,
+    ) -> Call {
         let _permit = self.gate.acquire().await.expect("semaphore");
         let started = Instant::now();
         let base = self.base_url.trim_end_matches('/');
@@ -363,7 +393,10 @@ impl Model {
         } else {
             format!("{base}/v1/chat/completions")
         };
-        let mut messages = vec![json!({"role": "system", "content": system}), json!({"role": "user", "content": user})];
+        let mut messages = vec![
+            json!({"role": "system", "content": system}),
+            json!({"role": "user", "content": user}),
+        ];
         let mut call = Call {
             system,
             user,
@@ -371,6 +404,7 @@ impl Model {
         };
         let mut used = Vec::new();
         for round in 0..4 {
+            call.requests += 1;
             let mut body = json!({ "model": self.model, "messages": messages });
             // The last round withholds tools so the model has to answer.
             if round < 3 {
@@ -388,14 +422,21 @@ impl Model {
             let value = match response {
                 Ok(value) => value,
                 Err(error) => {
-                    call.error = Some(error.without_url().to_string());
+                    call.error = Some(rrss_core::logsafe::scrub_secrets_with(
+                        &error.without_url().to_string(),
+                        self.api_key.as_deref(),
+                    ));
                     break;
                 }
             };
             call.prompt_tokens += value["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32;
-            call.completion_tokens += value["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32;
+            call.completion_tokens +=
+                value["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32;
             let message = value["choices"][0]["message"].clone();
-            let calls = message["tool_calls"].as_array().cloned().unwrap_or_default();
+            let calls = message["tool_calls"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
             if calls.is_empty() {
                 let text = message["content"].as_str().unwrap_or("");
                 call.content = rrss_ai::strip_thinking(text).trim().to_string();
@@ -407,32 +448,45 @@ impl Model {
             messages.push(json!({"role": "assistant", "content": message["content"].clone(), "tool_calls": calls}));
             for tool_call in &calls {
                 let name = tool_call["function"]["name"].as_str().unwrap_or("");
-                let arguments: Value = serde_json::from_str(tool_call["function"]["arguments"].as_str().unwrap_or("{}")).unwrap_or(json!({}));
+                let arguments: Value = serde_json::from_str(
+                    tool_call["function"]["arguments"].as_str().unwrap_or("{}"),
+                )
+                .unwrap_or(json!({}));
                 used.push(format!("{name}({arguments})"));
                 let mut args = vec!["rrss".to_string(), "tool".into(), name.to_string()];
                 if let Some(object) = arguments.as_object() {
                     for (key, value) in object {
                         args.push(format!("--{key}"));
-                        args.push(value.as_str().map_or_else(|| value.to_string(), str::to_string));
+                        args.push(
+                            value
+                                .as_str()
+                                .map_or_else(|| value.to_string(), str::to_string),
+                        );
                     }
                 }
-                let output = rrss_app::tool::run_on(conn, &args).unwrap_or_else(|error| format!("error: {error}"));
+                let output = rrss_app::tool::run_on(conn, &args)
+                    .unwrap_or_else(|error| format!("error: {error}"));
                 if let Ok(parsed) = serde_json::from_str::<Value>(&output) {
-                    let rows = parsed.as_array().cloned().unwrap_or_else(|| vec![parsed.clone()]);
-                    call.tool_ids.extend(rows.iter().filter_map(|row| row["id"].as_i64()));
+                    let rows = parsed
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_else(|| vec![parsed.clone()]);
+                    call.tool_ids
+                        .extend(rows.iter().filter_map(|row| row["id"].as_i64()));
                 }
                 messages.push(json!({"role": "tool", "tool_call_id": tool_call["id"].clone(), "content": output}));
             }
         }
         if !used.is_empty() {
-            call.system.push_str(&format!("\n\nTOOLS CALLED\n{}", used.join("\n")));
+            call.system
+                .push_str(&format!("\n\nTOOLS CALLED\n{}", used.join("\n")));
         }
         call.ms = started.elapsed().as_millis();
         let mut usage = self.usage.lock().expect("usage");
         let entry = usage.entry(tag).or_default();
         entry.0 += u64::from(call.prompt_tokens);
         entry.1 += u64::from(call.completion_tokens);
-        entry.2 += 1;
+        entry.2 += call.requests;
         call
     }
 
@@ -451,6 +505,7 @@ impl Model {
         let mut call = Call {
             system,
             user,
+            requests: 1,
             ..Call::default()
         };
         match rrss_ai::complete(&self.client, &req).await {
@@ -460,14 +515,19 @@ impl Model {
                 call.prompt_tokens = out.prompt_tokens;
                 call.completion_tokens = out.completion_tokens;
             }
-            Err(error) => call.error = Some(error.to_string()),
+            Err(error) => {
+                call.error = Some(rrss_core::logsafe::scrub_secrets_with(
+                    &error.to_string(),
+                    self.api_key.as_deref(),
+                ))
+            }
         }
         call.ms = started.elapsed().as_millis();
         let mut usage = self.usage.lock().expect("usage");
         let entry = usage.entry(tag).or_default();
         entry.0 += u64::from(call.prompt_tokens);
         entry.1 += u64::from(call.completion_tokens);
-        entry.2 += 1;
+        entry.2 += call.requests;
         call
     }
 }
@@ -495,6 +555,8 @@ struct Output {
     shown: String,
     checks: Vec<Check>,
     calls: Vec<Call>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    metrics: Metrics,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -554,7 +616,11 @@ const LEAKS: &[&str] = &[
 ];
 
 fn leak_check(text: &str) -> Check {
-    let found: Vec<&str> = LEAKS.iter().copied().filter(|leak| text.contains(leak)).collect();
+    let found: Vec<&str> = LEAKS
+        .iter()
+        .copied()
+        .filter(|leak| text.contains(leak))
+        .collect();
     check("no prompt leak", found.is_empty(), found.join(", "))
 }
 
@@ -585,6 +651,7 @@ fn call_failed(call: &Call) -> Option<Output> {
         shown: String::new(),
         checks: vec![check("request", false, error.clone())],
         calls: vec![call.clone()],
+        metrics: Metrics::new(),
     })
 }
 
@@ -593,14 +660,31 @@ fn summary_output(call: Call, language: OutputLanguage) -> Output {
         return failed;
     }
     let p = &call.parsed;
-    let text = |key: &str| p.get(key).and_then(Value::as_str).unwrap_or("").trim().to_string();
+    let text = |key: &str| {
+        p.get(key)
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string()
+    };
     let list = |key: &str| -> Vec<String> {
         p.get(key)
             .and_then(Value::as_array)
-            .map(|items| items.iter().filter_map(Value::as_str).map(str::to_string).collect())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
             .unwrap_or_default()
     };
-    let (summary, one_liner, points, facts) = (text("summary"), text("one_liner"), list("key_points"), list("facts"));
+    let (summary, one_liner, points, facts) = (
+        text("summary"),
+        text("one_liner"),
+        list("key_points"),
+        list("facts"),
+    );
     let mut shown = format!("{summary}\n\nOne-liner: {one_liner}");
     for point in &points {
         shown.push_str(&format!("\n• {point}"));
@@ -611,36 +695,60 @@ fn summary_output(call: Call, language: OutputLanguage) -> Output {
             shown.push_str(&format!("\n- {fact}"));
         }
     }
-    let all = [summary.clone(), one_liner.clone(), points.join(" "), facts.join(" ")].join(" ");
+    let all = [
+        summary.clone(),
+        one_liner.clone(),
+        points.join(" "),
+        facts.join(" "),
+    ]
+    .join(" ");
     let n = sentences(&summary);
     Output {
         checks: vec![
             check(
                 "fields",
-                !summary.is_empty() && !one_liner.is_empty() && p.get("key_points").is_some() && p.get("facts").is_some(),
+                !summary.is_empty()
+                    && !one_liner.is_empty()
+                    && p.get("key_points").is_some()
+                    && p.get("facts").is_some(),
                 "",
             ),
             language_check(&all, language),
-            check("length", (1..=5).contains(&n), format!("{n} sentences, {} points, {} facts", points.len(), facts.len())),
+            check(
+                "length",
+                (1..=5).contains(&n),
+                format!(
+                    "{n} sentences, {} points, {} facts",
+                    points.len(),
+                    facts.len()
+                ),
+            ),
             check("limits", points.len() <= 3 && facts.len() <= 5, ""),
             leak_check(&all),
         ],
         shown,
         calls: vec![call],
+        metrics: Metrics::new(),
     }
 }
 
 // ---------- seeding ----------
 
 struct Seeded {
-    _dir: tempfile::TempDir,
     conn: db::PooledConnection,
+    _dir: tempfile::TempDir,
     ids: HashMap<String, i64>,
 }
 
 fn seed(root: &Path, cases: &Cases) -> Result<Seeded> {
     let dir = tempfile::tempdir()?;
     let conn = db::open_at(&dir.path().join("eval.db"))?;
+    for key in [
+        ai_store::FOCUS_AUTO_SUMMARY.id,
+        ai_store::CLUSTER_AUTO_SUMMARY.id,
+    ] {
+        db::set_setting(&conn, key, "0")?;
+    }
     let now = chrono::Utc::now().timestamp_millis();
     let mut feeds = HashMap::new();
     for feed in &cases.feeds {
@@ -658,7 +766,9 @@ fn seed(root: &Path, cases: &Cases) -> Result<Seeded> {
     }
     let mut ids = HashMap::new();
     for article in &cases.articles {
-        let feed = *feeds.get(&article.feed).with_context(|| format!("unknown feed {}", article.feed))?;
+        let feed = *feeds
+            .get(&article.feed)
+            .with_context(|| format!("unknown feed {}", article.feed))?;
         let at = now - article.hours_ago * 3_600_000;
         conn.execute(
             "INSERT INTO articles (feed_id, title, hash, created_at, published_at, score, cluster_id, content_html, canonical_url)
@@ -681,8 +791,15 @@ fn seed(root: &Path, cases: &Cases) -> Result<Seeded> {
     )?;
     // Real snapshots: only the files the cases use.
     let mut files = BTreeSet::new();
-    for key in cases.summaries.iter().chain(cases.digests.iter().flat_map(|d| d.articles.iter())) {
-        if let Some((file, _)) = key.strip_prefix("real:").and_then(|rest| rest.split_once('#')) {
+    for key in cases
+        .summaries
+        .iter()
+        .chain(cases.digests.iter().flat_map(|d| d.articles.iter()))
+    {
+        if let Some((file, _)) = key
+            .strip_prefix("real:")
+            .and_then(|rest| rest.split_once('#'))
+        {
             files.insert(file.to_string());
         }
     }
@@ -692,7 +809,11 @@ fn seed(root: &Path, cases: &Cases) -> Result<Seeded> {
         let parsed = rrss_core::parse_feed_bytes(&bytes, None)?;
         conn.execute(
             "INSERT INTO feeds (url, title, created_at) VALUES (?1, ?2, ?3)",
-            rusqlite::params![format!("https://snapshot.example/{file}"), parsed.title.clone().unwrap_or_else(|| file.clone()), now],
+            rusqlite::params![
+                format!("https://snapshot.example/{file}"),
+                parsed.title.clone().unwrap_or_else(|| file.clone()),
+                now
+            ],
         )?;
         let feed = conn.last_insert_rowid();
         rrss_core::ingest::upsert_entries(&conn, feed, &parsed.entries, now)?;
@@ -709,12 +830,18 @@ fn seed(root: &Path, cases: &Cases) -> Result<Seeded> {
             }
         }
     }
-    Ok(Seeded { _dir: dir, conn, ids })
+    Ok(Seeded {
+        _dir: dir,
+        conn,
+        ids,
+    })
 }
 
 fn english_templates(conn: &rusqlite::Connection) -> Result<HashMap<String, String>> {
     let mut stmt = conn.prepare("SELECT slug, body FROM prompt_templates")?;
-    let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
     Ok(rows.collect::<rusqlite::Result<_>>()?)
 }
 
@@ -723,6 +850,7 @@ fn english_templates(conn: &rusqlite::Connection) -> Result<HashMap<String, Stri
 #[derive(Clone)]
 struct Options {
     sections: BTreeSet<String>,
+    tier: InputTier,
 }
 
 async fn run_variant(
@@ -740,8 +868,61 @@ async fn run_variant(
         baseline,
     };
     let language = variant.language();
-    let id = |key: &str| seeded.ids.get(key).copied().with_context(|| format!("no article for {key}"));
+    let id = |key: &str| {
+        seeded
+            .ids
+            .get(key)
+            .copied()
+            .with_context(|| format!("no article for {key}"))
+    };
     let mut out = Vec::new();
+    // Isolate cold digests even when the default run also generates warm summaries.
+    if options.sections.contains("digests_cold") {
+        let cold = seed(&root, &cases)?;
+        let issues = if cases.digests_cold.is_empty() {
+            &cases.digests
+        } else {
+            &cases.digests_cold
+        };
+        for digest in issues {
+            let ids = digest
+                .articles
+                .iter()
+                .map(|key| {
+                    cold.ids
+                        .get(key)
+                        .copied()
+                        .with_context(|| format!("no article for {key}"))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let items = ai_store::digest_items_by_ids(&cold.conn, &ids)?;
+            let mut row = run_digest(
+                &prompts,
+                &model,
+                &cold.conn,
+                digest,
+                &items,
+                language,
+                options.tier,
+                "digests_cold",
+                &cold.ids,
+            )
+            .await?;
+            let output = row.outputs.get_mut(variant.id()).unwrap();
+            online::pipeline_cost(output, &[]);
+            let summaries: i64 = cold.conn.query_row(
+                "SELECT COUNT(*) FROM articles WHERE COALESCE(summary,'') != ''",
+                [],
+                |r| r.get(0),
+            )?;
+            output.checks.push(check(
+                "cold pool",
+                summaries == 0,
+                "automatic summaries disabled; no prerequisite summaries",
+            ));
+            out.push(row);
+        }
+    }
     eprintln!("[{}] summaries", variant.id());
 
     // Summaries: every article a later stage needs, so the digest and overviews read this
@@ -766,12 +947,19 @@ async fn run_variant(
     let system = prompts.system(ai_store::SLUG_FOCUS_SUMMARY, ai_store::TASK_FOCUS_SUMMARY)?;
     let mut jobs = Vec::new();
     for key in &keys {
-        let (title, blocks, html): (String, Option<String>, Option<String>) = seeded.conn.query_row(
-            "SELECT title, blocks_json, content_html FROM articles WHERE id = ?1",
-            [id(key)?],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )?;
-        let input = ai_store::summary_payload(&title, blocks.as_deref(), html.as_deref(), false, TIER);
+        let (title, blocks, html): (String, Option<String>, Option<String>) =
+            seeded.conn.query_row(
+                "SELECT title, blocks_json, content_html FROM articles WHERE id = ?1",
+                [id(key)?],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )?;
+        let input = ai_store::summary_payload(
+            &title,
+            blocks.as_deref(),
+            html.as_deref(),
+            false,
+            options.tier,
+        );
         jobs.push((key.clone(), title, input));
     }
     let mut handles = Vec::new();
@@ -779,19 +967,28 @@ async fn run_variant(
         let (model, system, user) = (model.clone(), system.clone(), prompts.user(input));
         let tag = variant.id();
         handles.push(tokio::spawn(async move {
-            model.call(tag, system, user, rrss_ai::summary_json_schema()).await
+            model
+                .call(tag, system, user, rrss_ai::summary_json_schema())
+                .await
         }));
     }
     let mut calls = Vec::new();
     for handle in handles {
         calls.push(handle.await?);
     }
+    let mut summary_calls = HashMap::new();
     for ((key, title, input), call) in jobs.into_iter().zip(calls) {
+        summary_calls.insert(key.clone(), call.clone());
         if call.error.is_none()
             && let Some(summary) = call.parsed.get("summary").and_then(Value::as_str)
         {
             let raw = serde_json::to_string(&call.parsed)?;
-            rrss_core::articles::set_summary_and_json(&seeded.conn, id(&key)?, summary.trim(), Some(&raw))?;
+            rrss_core::articles::set_summary_and_json(
+                &seeded.conn,
+                id(&key)?,
+                summary.trim(),
+                Some(&raw),
+            )?;
         }
         if options.sections.contains("summaries") && cases.summaries.contains(&key) {
             out.push(Case {
@@ -807,53 +1004,120 @@ async fn run_variant(
     if options.sections.contains("digests") {
         for digest in &cases.digests {
             eprintln!("[{}] digest: {}", variant.id(), digest.name);
-            let ids: Vec<i64> = digest.articles.iter().map(|key| id(key)).collect::<Result<_>>()?;
+            let ids: Vec<i64> = digest
+                .articles
+                .iter()
+                .map(|key| id(key))
+                .collect::<Result<_>>()?;
             let items = ai_store::digest_items_by_ids(&seeded.conn, &ids)?;
-            out.push(run_digest(&prompts, &model, &seeded.conn, digest, &items, language).await?);
+            let mut row = run_digest(
+                &prompts,
+                &model,
+                &seeded.conn,
+                digest,
+                &items,
+                language,
+                options.tier,
+                "digests",
+                &seeded.ids,
+            )
+            .await?;
+            let prerequisites = digest
+                .articles
+                .iter()
+                .filter_map(|key| summary_calls.get(key))
+                .cloned()
+                .collect::<Vec<_>>();
+            online::pipeline_cost(row.outputs.get_mut(variant.id()).unwrap(), &prerequisites);
+            out.push(row);
         }
     }
 
+    if options.sections.contains("weekly_digests") {
+        out.extend(
+            online::weekly_digests(&prompts, &model, &cases.weekly_digests, options.tier).await?,
+        );
+    }
+    if options.sections.contains("article_summaries") {
+        let corpus = corpus::Corpus::load(&root)?;
+        out.extend(
+            online::article_summaries(
+                &prompts,
+                &model,
+                &corpus,
+                &cases.article_summaries,
+                options.tier,
+            )
+            .await?,
+        );
+    }
     if options.sections.contains("clusters") {
-        let system = prompts.system(ai_store::SLUG_CLUSTER_SUMMARY, ai_store::TASK_CLUSTER_SUMMARY)?;
+        let system = prompts.system(
+            ai_store::SLUG_CLUSTER_SUMMARY,
+            ai_store::TASK_CLUSTER_SUMMARY,
+        )?;
         for cluster in &cases.clusters_to_summarize {
             eprintln!("[{}] related coverage {cluster}", variant.id());
             let members = cluster_summary::visible_members(&seeded.conn, *cluster, FeedScope::All)?;
-            let input = cluster_summary::build_input(&seeded.conn, &members, TIER)?;
+            let input = cluster_summary::build_input(&seeded.conn, &members, options.tier)?;
             let call = model
-                .call(variant.id(), system.clone(), prompts.user(&input.prompt), cluster_summary::json_schema())
+                .call(
+                    variant.id(),
+                    system.clone(),
+                    prompts.user(&input.prompt),
+                    cluster_summary::json_schema(),
+                )
                 .await;
-            let label = cases.clusters.iter().find(|c| c.id == *cluster).map_or(String::new(), |c| c.label.clone());
+            let label = cases
+                .clusters
+                .iter()
+                .find(|c| c.id == *cluster)
+                .map_or(String::new(), |c| c.label.clone());
             out.push(Case {
                 section: "clusters",
                 key: format!("cluster-{cluster}"),
                 title: label,
                 input: input.prompt.clone(),
-                outputs: BTreeMap::from([(variant.id(), cluster_output(call, &input.members, language))]),
+                outputs: BTreeMap::from([(
+                    variant.id(),
+                    cluster_output(call, &input.members, language),
+                )]),
             });
         }
     }
 
     if options.sections.contains("memory") {
-        let system = prompts.system(ai_store::SLUG_MEMORY_CANDIDATE, ai_store::TASK_MEMORY_CANDIDATE)?;
+        let system = prompts.system(
+            ai_store::SLUG_MEMORY_CANDIDATE,
+            ai_store::TASK_MEMORY_CANDIDATE,
+        )?;
         let mut handles = Vec::new();
         for memory in &cases.memory {
             let memory = memory.clone();
             let clean = rrss_core::memories::clean_user_message(&memory.user_message);
-            let triggered = rrss_core::memories::should_extract_memory(&clean, memory.pending_count);
+            let triggered =
+                rrss_core::memories::should_extract_memory(&clean, memory.pending_count);
             let existing: Vec<rrss_core::memories::ExistingMemorySummary> = memory
                 .existing_memories
                 .iter()
                 .map(|m| rrss_core::memories::ExistingMemorySummary {
                     id: m.id,
-                    kind: if m.kind == "procedural" { "procedural" } else { "semantic" },
+                    kind: if m.kind == "procedural" {
+                        "procedural"
+                    } else {
+                        "semantic"
+                    },
                     content: m.content.clone(),
                     pending: m.pending,
                 })
                 .collect();
-            let prev = memory.previous_turn.as_ref().map(|p| rrss_core::memories::PreviousTurn {
-                user: p.user.clone(),
-                assistant: p.assistant.clone(),
-            });
+            let prev = memory
+                .previous_turn
+                .as_ref()
+                .map(|p| rrss_core::memories::PreviousTurn {
+                    user: p.user.clone(),
+                    assistant: p.assistant.clone(),
+                });
             let payload = serde_json::to_string(&rrss_core::memories::ExtractionInput {
                 user_message: &clean,
                 previous_turn: prev.as_ref(),
@@ -869,10 +1133,15 @@ async fn run_variant(
                         checks: vec![check(
                             "gate",
                             !memory.expect_trigger,
-                            if memory.expect_trigger { "skipped unexpectedly" } else { "skipped by gate" },
+                            if memory.expect_trigger {
+                                "skipped unexpectedly"
+                            } else {
+                                "skipped by gate"
+                            },
                         )],
                         shown: "(skipped by pre-filter gate)".into(),
                         calls: Vec::new(),
+                        metrics: Metrics::new(),
                     }
                 } else {
                     let call = model
@@ -904,10 +1173,16 @@ async fn run_variant(
             eprintln!("[{}] citation: {}", variant.id(), case.name);
             let (snaps, passage) = citation_input(&seeded.conn, case, &id)?;
             let user = match (&prompts.baseline.citation, variant) {
-                (Some(map), Variant::Baseline) => baseline_citation(map, &case.question, &snaps, passage.as_deref()),
-                _ => rrss_core::cite::expand_user_prompt(&case.question, &snaps, |_| passage.clone()),
+                (Some(map), Variant::Baseline) => {
+                    baseline_citation(map, &case.question, &snaps, passage.as_deref())
+                }
+                _ => {
+                    rrss_core::cite::expand_user_prompt(&case.question, &snaps, |_| passage.clone())
+                }
             };
-            let call = model.chat(variant.id(), system.clone(), user.clone(), &seeded.conn).await;
+            let call = model
+                .chat(variant.id(), system.clone(), user.clone(), &seeded.conn)
+                .await;
             let expect = match case.expect.as_str() {
                 "fallback" => language,
                 tag => OutputLanguage::from_tag(tag),
@@ -929,12 +1204,22 @@ async fn run_variant(
 fn chat_tools() -> Value {
     let tools: Vec<Value> = rrss_core::pi_store::DEFAULT_TOOLS
         .iter()
-        .filter(|tool| matches!(tool.name, "search_articles" | "get_article" | "search_memory"))
+        .filter(|tool| {
+            matches!(
+                tool.name,
+                "search_articles" | "get_article" | "search_memory"
+            )
+        })
         .map(|tool| {
             let properties: serde_json::Map<String, Value> = tool
                 .parameters
                 .iter()
-                .map(|(name, kind, description)| ((*name).to_string(), json!({"type": kind, "description": description})))
+                .map(|(name, kind, description)| {
+                    (
+                        (*name).to_string(),
+                        json!({"type": kind, "description": description}),
+                    )
+                })
                 .collect();
             let required: Vec<&str> = tool.parameters.iter().map(|(name, _, _)| *name).collect();
             json!({"type": "function", "function": {
@@ -972,12 +1257,22 @@ fn citation_input(
         None
     };
     let snap = rrss_core::CitationSnap {
-        kind: case.kind.clone().unwrap_or_else(|| if case.excerpt.is_empty() { "article".into() } else { "span".into() }),
+        kind: case.kind.clone().unwrap_or_else(|| {
+            if case.excerpt.is_empty() {
+                "article".into()
+            } else {
+                "span".into()
+            }
+        }),
         article_id,
         title,
         feed_title: feed,
         excerpt: case.excerpt.clone(),
-        block_id: if case.kind.as_deref() == Some("digest") { -1 } else { 1 },
+        block_id: if case.kind.as_deref() == Some("digest") {
+            -1
+        } else {
+            1
+        },
         ..rrss_core::CitationSnap::default()
     };
     Ok((vec![snap], passage))
@@ -998,18 +1293,39 @@ fn plain_text(html: &str) -> String {
 }
 
 /// The citation message in the format used before English prompts.
-fn baseline_citation(map: &BaselineCitation, question: &str, snaps: &[rrss_core::CitationSnap], passage: Option<&str>) -> String {
+fn baseline_citation(
+    map: &BaselineCitation,
+    question: &str,
+    snaps: &[rrss_core::CitationSnap],
+    passage: Option<&str>,
+) -> String {
     let question = question.trim();
     if snaps.is_empty() {
         return question.to_string();
     }
-    let mut out = if question.is_empty() { map.no_question.clone() } else { question.to_string() };
+    let mut out = if question.is_empty() {
+        map.no_question.clone()
+    } else {
+        question.to_string()
+    };
     out.push_str("\n\n");
     out.push_str(&map.header);
     for (i, c) in snaps.iter().enumerate() {
-        let title = if c.title.trim().is_empty() { map.untitled.as_str() } else { c.title.trim() };
-        let source = if c.feed_title.trim().is_empty() { String::new() } else { format!(" — {}", c.feed_title.trim()) };
-        let whole = if c.excerpt.trim().is_empty() { map.whole.as_str() } else { "" };
+        let title = if c.title.trim().is_empty() {
+            map.untitled.as_str()
+        } else {
+            c.title.trim()
+        };
+        let source = if c.feed_title.trim().is_empty() {
+            String::new()
+        } else {
+            format!(" — {}", c.feed_title.trim())
+        };
+        let whole = if c.excerpt.trim().is_empty() {
+            map.whole.as_str()
+        } else {
+            ""
+        };
         let n = (i + 1).to_string();
         let id = c.article_id.to_string();
         out.push('\n');
@@ -1017,7 +1333,11 @@ fn baseline_citation(map: &BaselineCitation, question: &str, snaps: &[rrss_core:
         if c.excerpt.trim().is_empty() {
             continue;
         }
-        let label = if c.kind == "digest" { map.digest_label.as_str() } else { map.selected.as_str() };
+        let label = if c.kind == "digest" {
+            map.digest_label.as_str()
+        } else {
+            map.selected.as_str()
+        };
         out.push('\n');
         out.push_str(&fill(&map.excerpt, &[label, c.excerpt.trim()]));
         if let Some(paragraph) = passage.filter(|p| !p.trim().is_empty()) {
@@ -1029,22 +1349,56 @@ fn baseline_citation(map: &BaselineCitation, question: &str, snaps: &[rrss_core:
 }
 
 /// Phrases that point out what the article leaves out, which the chat prompt asks the model not to list.
-const LEAVES_OUT: &[&str] = &["文章没有", "文中没有", "没有提到", "未提及", "没有说明", "doesn't say", "does not say", "doesn't mention", "does not mention", "not mentioned"];
+const LEAVES_OUT: &[&str] = &[
+    "文章没有",
+    "文中没有",
+    "没有提到",
+    "未提及",
+    "没有说明",
+    "doesn't say",
+    "does not say",
+    "doesn't mention",
+    "does not mention",
+    "not mentioned",
+];
 /// Openings that restate the question or the passage instead of answering it.
 /// Tool calls written out as text instead of made through the API.
-const FAKE_TOOL_CALLS: &[&str] = &["<tool_call", "<tool_use", "get_article(", "\"name\": \"get_article\""];
-const RESTATES: &[&str] = &["这段", "这个片段", "这段片段", "你问的", "您问的", "The passage", "This passage", "You asked", "In this passage"];
+const FAKE_TOOL_CALLS: &[&str] = &[
+    "<tool_call",
+    "<tool_use",
+    "get_article(",
+    "\"name\": \"get_article\"",
+];
+const RESTATES: &[&str] = &[
+    "这段",
+    "这个片段",
+    "这段片段",
+    "你问的",
+    "您问的",
+    "The passage",
+    "This passage",
+    "You asked",
+    "In this passage",
+];
 
 fn citation_output(call: Call, expect: OutputLanguage, cited: &[i64]) -> Output {
     if let Some(failed) = call_failed(&call) {
         return failed;
     }
     let text = call.content.clone();
-    let headings = text.lines().filter(|line| line.trim_start().starts_with('#')).count();
+    let headings = text
+        .lines()
+        .filter(|line| line.trim_start().starts_with('#'))
+        .count();
     let links: Vec<i64> = text
         .match_indices("rrss://article/")
         .filter_map(|(at, m)| {
-            text[at + m.len()..].chars().take_while(char::is_ascii_digit).collect::<String>().parse().ok()
+            text[at + m.len()..]
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>()
+                .parse()
+                .ok()
         })
         .collect();
     let invented: Vec<String> = links
@@ -1052,11 +1406,22 @@ fn citation_output(call: Call, expect: OutputLanguage, cited: &[i64]) -> Output 
         .filter(|id| !cited.contains(id) && !call.tool_ids.contains(id))
         .map(|id| id.to_string())
         .collect();
-    let leaves_out: Vec<&str> = LEAVES_OUT.iter().copied().filter(|p| text.contains(p)).collect();
+    let leaves_out: Vec<&str> = LEAVES_OUT
+        .iter()
+        .copied()
+        .filter(|p| text.contains(p))
+        .collect();
     let opening = text.chars().take(20).collect::<String>();
-    let restates: Vec<&str> = RESTATES.iter().copied().filter(|p| opening.starts_with(p)).collect();
+    let restates: Vec<&str> = RESTATES
+        .iter()
+        .copied()
+        .filter(|p| opening.starts_with(p))
+        .collect();
     let length = match expect {
-        OutputLanguage::ZhCn => format!("{} characters", text.chars().filter(|c| !c.is_whitespace()).count()),
+        OutputLanguage::ZhCn => format!(
+            "{} characters",
+            text.chars().filter(|c| !c.is_whitespace()).count()
+        ),
         OutputLanguage::En => format!("{} words", text.split_whitespace().count()),
     };
     Output {
@@ -1064,13 +1429,22 @@ fn citation_output(call: Call, expect: OutputLanguage, cited: &[i64]) -> Output 
             language_check(&text, expect),
             check("no headings", headings == 0, length),
             check("answers first", restates.is_empty(), restates.join(", ")),
-            check("no missing-info remarks", leaves_out.is_empty(), leaves_out.join(", ")),
+            check(
+                "no missing-info remarks",
+                leaves_out.is_empty(),
+                leaves_out.join(", "),
+            ),
             check("only known IDs", invented.is_empty(), invented.join(", ")),
-            check("no tool calls in text", !FAKE_TOOL_CALLS.iter().any(|p| text.contains(p)), ""),
+            check(
+                "no tool calls in text",
+                !FAKE_TOOL_CALLS.iter().any(|p| text.contains(p)),
+                "",
+            ),
             leak_check(&text),
         ],
         shown: text,
         calls: vec![call],
+        metrics: Metrics::new(),
     }
 }
 
@@ -1081,19 +1455,31 @@ async fn run_digest(
     digest: &DigestCase,
     items: &[DigestItem],
     language: OutputLanguage,
+    tier: InputTier,
+    section: &'static str,
+    ids: &HashMap<String, i64>,
 ) -> Result<Case> {
-    let shallow = ai_store::format_digest_input(items, &[], digest.pick_max);
+    let started = Instant::now();
+    let noisy = rrss_core::feeds::noisy_feed_titles(conn)?;
+    let shallow = ai_store::format_digest_input(items, &noisy, digest.pick_max);
     let pick = model
         .call(
             prompts.variant.id(),
-            prompts.system(ai_store::SLUG_DAILY_DIGEST_PICK, ai_store::TASK_DIGEST_PICK_DAILY)?,
+            prompts.system(
+                ai_store::SLUG_DAILY_DIGEST_PICK,
+                ai_store::TASK_DIGEST_PICK_DAILY,
+            )?,
             prompts.user(&shallow),
             rrss_ai::digest_pick_json_schema(),
         )
         .await;
-    let picks = if pick.error.is_none() { ai_store::parse_digest_picks(&pick.parsed) } else { Vec::new() };
+    let picks = if pick.error.is_none() {
+        ai_store::parse_digest_picks(&pick.parsed)
+    } else {
+        Vec::new()
+    };
     let selected = ai_store::apply_digest_picks(items, &picks, digest.pick_max, digest.pick_min);
-    let deep = ai_store::format_digest_deep_input(conn, &selected, TIER)?;
+    let deep = ai_store::format_digest_deep_input(conn, &selected, tier)?;
     let write = model
         .call(
             prompts.variant.id(),
@@ -1102,87 +1488,72 @@ async fn run_digest(
             rrss_ai::digest_json_schema(),
         )
         .await;
-    let input = format!("Pick input:\n\n{shallow}\n\n— — —\n\nWrite input:\n\n{}", deep.prompt);
-    let mut checks = vec![check(
-        "picks",
-        pick.error.is_none() && !picks.is_empty(),
-        format!("{} picked of {}, {} used", picks.len(), items.len(), selected.len()),
-    )];
-    let mut shown = String::new();
-    if let Some(error) = &write.error {
-        checks.push(check("request", false, error.clone()));
-    } else {
-        match ai_store::prepare_digest_draft(&write.parsed, &deep.numbered_items, language) {
-            Ok(draft) => {
-                shown = draft.body.clone();
-                let raw: Vec<String> = write.parsed["sections"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .flat_map(|section| section["items"].as_array().cloned().unwrap_or_default())
-                    .filter_map(|item| item["text"].as_str().map(str::to_string))
-                    .collect();
-                let dropped: Vec<&String> = raw.iter().filter(|text| !draft.body.contains(text.trim())).collect();
-                let items_json: Value = serde_json::from_str(&draft.items_json).unwrap_or(Value::Null);
-                let kept = items_json["items"].as_array().map_or(0, Vec::len);
-                let unsourced = items_json["items"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter(|item| item["refs"].as_array().is_none_or(Vec::is_empty))
-                    .count();
-                let events = deep.prompt.matches("【Event ").count();
-                checks.push(check("structure", true, format!("{kept} items for {events} events")));
-                checks.push(check("sources", unsourced == 0, format!("{unsourced} items without a source")));
-                checks.push(language_check(&draft.body, language));
-                checks.push(leak_check(&draft.body));
-                checks.push(check(
-                    "cleanup",
-                    true,
-                    if dropped.is_empty() {
-                        "nothing removed".to_string()
-                    } else {
-                        format!("removed or changed: {}", dropped.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(" ‖ "))
-                    },
-                ));
-            }
-            Err(error) => checks.push(check("structure", false, error.to_string())),
-        }
-    }
+    let input = format!(
+        "Pick input:\n\n{shallow}\n\n— — —\n\nWrite input:\n\n{}",
+        deep.prompt
+    );
+    let output = online::daily_output(
+        pick,
+        write,
+        &deep,
+        items,
+        &selected,
+        digest,
+        ids,
+        conn,
+        language,
+        started.elapsed().as_millis(),
+    )?;
     Ok(Case {
-        section: "digests",
+        section,
         key: digest.name.clone(),
         title: digest.name.clone(),
         input,
-        outputs: BTreeMap::from([(
-            prompts.variant.id(),
-            Output {
-                shown,
-                checks,
-                calls: vec![pick, write],
-            },
-        )]),
+        outputs: BTreeMap::from([(prompts.variant.id(), output)]),
     })
 }
 
-fn cluster_output(call: Call, members: &[cluster_summary::Member], language: OutputLanguage) -> Output {
+fn cluster_output(
+    call: Call,
+    members: &[cluster_summary::Member],
+    language: OutputLanguage,
+) -> Output {
     if let Some(failed) = call_failed(&call) {
         return failed;
     }
     match cluster_summary::parse_output(&call.parsed, members) {
         Some(parsed) => {
-            let title = |id: i64| members.iter().find(|m| m.article_id == id).map_or(String::new(), |m| m.feed_title.clone());
+            let title = |id: i64| {
+                members
+                    .iter()
+                    .find(|m| m.article_id == id)
+                    .map_or(String::new(), |m| m.feed_title.clone())
+            };
             let mut shown = parsed.overview.clone();
             for addition in &parsed.additions {
-                shown.push_str(&format!("\n\n+ [{}] {}", title(addition.article_id), addition.text));
+                shown.push_str(&format!(
+                    "\n\n+ [{}] {}",
+                    title(addition.article_id),
+                    addition.text
+                ));
             }
             for conflict in &parsed.conflicts {
                 shown.push_str(&format!("\n\n≠ {}", conflict.text));
             }
             let text = [
                 parsed.overview.clone(),
-                parsed.additions.iter().map(|a| a.text.clone()).collect::<Vec<_>>().join(" "),
-                parsed.conflicts.iter().map(|c| c.text.clone()).collect::<Vec<_>>().join(" "),
+                parsed
+                    .additions
+                    .iter()
+                    .map(|a| a.text.clone())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                parsed
+                    .conflicts
+                    .iter()
+                    .map(|c| c.text.clone())
+                    .collect::<Vec<_>>()
+                    .join(" "),
             ]
             .join(" ");
             let n = sentences(&parsed.overview);
@@ -1193,18 +1564,24 @@ fn cluster_output(call: Call, members: &[cluster_summary::Member], language: Out
                     check(
                         "length",
                         (1..=5).contains(&n),
-                        format!("{n} sentences, {} additions, {} conflicts", parsed.additions.len(), parsed.conflicts.len()),
+                        format!(
+                            "{n} sentences, {} additions, {} conflicts",
+                            parsed.additions.len(),
+                            parsed.conflicts.len()
+                        ),
                     ),
                     leak_check(&text),
                 ],
                 shown,
                 calls: vec![call],
+                metrics: Metrics::new(),
             }
         }
         None => Output {
             shown: call.content.clone(),
             checks: vec![check("fields", false, "overview missing or unusable")],
             calls: vec![call],
+            metrics: Metrics::new(),
         },
     }
 }
@@ -1219,7 +1596,8 @@ fn memory_output(
     if let Some(failed) = call_failed(&call) {
         return failed;
     }
-    let parsed = rrss_app::jobs::parse_memory_candidates(&call.parsed, clean_user_message, existing);
+    let parsed =
+        rrss_app::jobs::parse_memory_candidates(&call.parsed, clean_user_message, existing);
     let raw_count = call.parsed["candidates"].as_array().map_or(0, Vec::len);
     let (valid_schema, candidates) = match parsed {
         Ok(items) => (true, items),
@@ -1237,22 +1615,53 @@ fn memory_output(
             .collect::<Vec<_>>()
             .join("\n")
     };
-    let all: String = candidates.iter().map(|c| c.content.as_str()).collect::<Vec<_>>().join(" ");
+    let all: String = candidates
+        .iter()
+        .map(|c| c.content.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
     let mut checks = vec![
-        check("gate", case.expect_trigger, if case.expect_trigger { "" } else { "unexpected trigger" }),
+        check(
+            "gate",
+            case.expect_trigger,
+            if case.expect_trigger {
+                ""
+            } else {
+                "unexpected trigger"
+            },
+        ),
         check("fields", valid_schema, ""),
-        check("limits", candidates.len() <= 2, format!("{} candidates", candidates.len())),
+        check(
+            "limits",
+            candidates.len() <= 2,
+            format!("{} candidates", candidates.len()),
+        ),
         leak_check(&all),
     ];
     if case.expect_empty {
-        checks.push(check("empty", candidates.is_empty(), format!("got {}", candidates.len())));
+        checks.push(check(
+            "empty",
+            candidates.is_empty(),
+            format!("got {}", candidates.len()),
+        ));
     } else {
-        checks.push(check("non-empty", !candidates.is_empty(), "expected at least 1"));
+        checks.push(check(
+            "non-empty",
+            !candidates.is_empty(),
+            "expected at least 1",
+        ));
     }
     if let Some(action) = case.expect_action.as_deref() {
         let ok = candidates.iter().any(|c| {
-            let actual = if c.replaces_id.is_some() { "update" } else { "add" };
-            actual == action && case.expect_replaces_id.map_or(true, |id| c.replaces_id == Some(id))
+            let actual = if c.replaces_id.is_some() {
+                "update"
+            } else {
+                "add"
+            };
+            actual == action
+                && case
+                    .expect_replaces_id
+                    .map_or(true, |id| c.replaces_id == Some(id))
         });
         checks.push(check("action", ok, format!("want {action}")));
     }
@@ -1269,8 +1678,19 @@ fn memory_output(
         checks.push(language_check(&all, lang));
         let lower = all.to_ascii_lowercase();
         let leaked_deictic = [
-            "这篇文章", "这篇", "刚才", "这一段", "这段", "今天", "这次", "偏这边",
-            "this article", "that paragraph", "just now", "today", "this chat",
+            "这篇文章",
+            "这篇",
+            "刚才",
+            "这一段",
+            "这段",
+            "今天",
+            "这次",
+            "偏这边",
+            "this article",
+            "that paragraph",
+            "just now",
+            "today",
+            "this chat",
         ]
         .iter()
         .find(|d| lower.contains(*d));
@@ -1295,13 +1715,17 @@ fn memory_output(
         checks,
         shown,
         calls: vec![call],
+        metrics: Metrics::new(),
     }
 }
 
 // ---------- report ----------
 
 fn escape(text: &str) -> String {
-    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 const STYLE: &str = r#"
@@ -1317,18 +1741,25 @@ h3{font-size:16px;margin:28px 0 8px}.muted{color:var(--muted)}table{border-colla
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--code);padding:10px;border-radius:6px;font-size:13px;max-height:420px;overflow:auto}
 "#;
 
-fn render(cases: &[Case], variants: &[Variant], model: &str, totals: &BTreeMap<&'static str, (u64, u64, usize)>) -> String {
+fn render(
+    cases: &[Case],
+    variants: &[Variant],
+    model: &str,
+    tier: InputTier,
+    totals: &BTreeMap<&'static str, (u64, u64, usize)>,
+) -> String {
     let mut html = String::new();
     html.push_str("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Prompt eval</title><style>");
     html.push_str(STYLE);
     html.push_str("</style></head><body><main>");
     html.push_str(&format!(
-        "<h1>AI output language eval</h1><p class=\"muted\">Model {} · {} · input tier {}</p>",
+        "<h1>AI input/output evaluation</h1><p class=\"muted\">Model {} · {} · input tier {}</p>",
         escape(model),
         chrono::Local::now().format("%Y-%m-%d %H:%M"),
-        TIER.as_str()
+        tier.as_str()
     ));
-    html.push_str("<p>Check each case: is the Chinese from English prompts at least as good as before, and is the English natural? Automatic checks are hints, not verdicts.</p>");
+    html.push_str("<p>Review input packing, fact coverage, sources, language and request cost. Automatic checks are deterministic hints for human review.</p>");
+    html.push_str("<p class=\"muted\">The archived baseline covers the original tasks. Weekly and manual article summaries use the current production template with Chinese output for baseline.</p>");
     html.push_str("<table><tr><th>Variant</th><th>Checks passed</th><th>Prompt tokens</th><th>Completion tokens</th><th>Requests</th></tr>");
     for variant in variants {
         let (passed, total) = cases
@@ -1346,9 +1777,18 @@ fn render(cases: &[Case], variants: &[Variant], model: &str, totals: &BTreeMap<&
     for (section, heading) in [
         ("summaries", "Summaries"),
         ("digests", "Daily digests"),
+        ("digests_cold", "Daily digests without automatic summaries"),
+        ("weekly_digests", "Weekly digests"),
+        (
+            "article_summaries",
+            "Manual article summaries: single excerpt and compression",
+        ),
         ("clusters", "Related coverage overviews"),
         ("memory", "Memory candidates"),
-        ("citations", "Citation Q&A (chat assistant prompt with read-only tools)"),
+        (
+            "citations",
+            "Citation Q&A (chat assistant prompt with read-only tools)",
+        ),
     ] {
         let rows: Vec<&Case> = cases.iter().filter(|c| c.section == section).collect();
         if rows.is_empty() {
@@ -1357,12 +1797,18 @@ fn render(cases: &[Case], variants: &[Variant], model: &str, totals: &BTreeMap<&
         html.push_str(&format!("<h2>{heading}</h2>"));
         for case in rows {
             html.push_str(&format!("<h3>{}</h3>", escape(&case.title)));
-            html.push_str(&format!("<details><summary>Input</summary><pre>{}</pre></details><div class=\"grid\">", escape(&case.input)));
+            html.push_str(&format!(
+                "<details><summary>Input</summary><pre>{}</pre></details><div class=\"grid\">",
+                escape(&case.input)
+            ));
             for variant in variants {
                 let Some(out) = case.outputs.get(variant.id()) else {
                     continue;
                 };
-                html.push_str(&format!("<div class=\"col\"><h4>{}</h4><div class=\"checks\">", variant.label()));
+                html.push_str(&format!(
+                    "<div class=\"col\"><h4>{}</h4><div class=\"checks\">",
+                    variant.label()
+                ));
                 for c in &out.checks {
                     html.push_str(&format!(
                         "<span class=\"chk {}\" title=\"{}\">{}{}</span>",
@@ -1373,9 +1819,17 @@ fn render(cases: &[Case], variants: &[Variant], model: &str, totals: &BTreeMap<&
                     ));
                 }
                 html.push_str("</div>");
-                let notes: Vec<String> = out.checks.iter().filter(|c| !c.note.is_empty()).map(|c| format!("{}: {}", c.name, c.note)).collect();
+                let notes: Vec<String> = out
+                    .checks
+                    .iter()
+                    .filter(|c| !c.note.is_empty())
+                    .map(|c| format!("{}: {}", c.name, c.note))
+                    .collect();
                 if !notes.is_empty() {
-                    html.push_str(&format!("<p class=\"muted\" style=\"font-size:12px\">{}</p>", escape(&notes.join(" · "))));
+                    html.push_str(&format!(
+                        "<p class=\"muted\" style=\"font-size:12px\">{}</p>",
+                        escape(&notes.join(" · "))
+                    ));
                 }
                 html.push_str(&format!("<div class=\"out\">{}</div>", escape(&out.shown)));
                 for (i, call) in out.calls.iter().enumerate() {
@@ -1400,51 +1854,57 @@ fn render(cases: &[Case], variants: &[Variant], model: &str, totals: &BTreeMap<&
 
 // ---------- main ----------
 
-fn arg(args: &[String], name: &str) -> Option<String> {
-    args.iter().position(|a| a == name).and_then(|i| args.get(i + 1).cloned())
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--help") {
+        println!("{}", cli::HELP);
+        return Ok(());
+    }
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let cli = cli::Cli::parse(&args, &root)?;
+    let comparison_baseline = cli.compare.as_deref().map(compare::load).transpose()?;
+    if let Some(baseline) = &comparison_baseline {
+        compare::validate(baseline, cli.offline)?;
+    }
+    if cli.offline {
+        return offline::run(&root, &cli, comparison_baseline.as_ref());
+    }
+    // Configuration and the API client are only created after the offline return.
     let env = |name: &str| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
-    let (Some(base_url), Some(model_name)) = (env("RRSS_EVAL_BASE_URL"), env("RRSS_EVAL_MODEL")) else {
-        bail!("set RRSS_EVAL_BASE_URL and RRSS_EVAL_MODEL (and RRSS_EVAL_API_KEY if the service needs one)");
+    let (Some(base_url), Some(model_name)) = (env("RRSS_EVAL_BASE_URL"), env("RRSS_EVAL_MODEL"))
+    else {
+        bail!(
+            "set RRSS_EVAL_BASE_URL and RRSS_EVAL_MODEL (and RRSS_EVAL_API_KEY if the service needs one)"
+        );
     };
-    let variants: Vec<Variant> = match arg(&args, "--variants") {
-        Some(list) => list
-            .split(',')
-            .map(|id| Variant::ALL.into_iter().find(|v| v.id() == id.trim()).ok_or_else(|| anyhow!("unknown variant {id}")))
-            .collect::<Result<_>>()?,
-        None => Variant::ALL.to_vec(),
-    };
-    let sections: BTreeSet<String> = arg(&args, "--only")
-        .unwrap_or_else(|| "summaries,digests,clusters,memory,citations".into())
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .collect();
-    let concurrency: usize = arg(&args, "--concurrency").and_then(|n| n.parse().ok()).unwrap_or(4);
-    let out_dir = arg(&args, "--out").map(PathBuf::from).unwrap_or_else(|| root.join("test-results/prompt-eval"));
-
-    let cases: Arc<Cases> = Arc::new(serde_json::from_str(&std::fs::read_to_string(root.join("testdata/eval/cases.json"))?)?);
-    let baseline: Arc<Baseline> = Arc::new(serde_json::from_str(&std::fs::read_to_string(root.join("testdata/eval/baseline-zh.json"))?)?);
+    let cases: Arc<Cases> = Arc::new(serde_json::from_str(&std::fs::read_to_string(
+        root.join("testdata/eval/cases.json"),
+    )?)?);
+    let baseline: Arc<Baseline> = Arc::new(serde_json::from_str(&std::fs::read_to_string(
+        root.join("testdata/eval/baseline-zh.json"),
+    )?)?);
     let model = Arc::new(Model {
-        client: reqwest::Client::builder().timeout(std::time::Duration::from_secs(300)).build()?,
+        client: rrss_core::network::ProxyConfig::default().build_client_with_env(
+            rrss_core::network::NetworkScope::Api,
+            reqwest::Client::builder().timeout(std::time::Duration::from_secs(300)),
+            &rrss_core::network::ProxyEnvironment::default(),
+        )?,
         base_url,
         api_key: env("RRSS_EVAL_API_KEY"),
         model: model_name.clone(),
-        gate: Semaphore::new(concurrency.max(1)),
+        gate: Semaphore::new(cli.concurrency),
         usage: Default::default(),
     });
-
-    let options = Options { sections };
-    // Each variant holds its own SQLite connection across awaits, so the variants run as local
-    // tasks on this thread; the requests themselves are network-bound.
+    let options = Options {
+        sections: cli.sections.clone(),
+        tier: cli.tier,
+    };
     let local = tokio::task::LocalSet::new();
     let results = local
         .run_until(async {
-            let handles: Vec<_> = variants
+            let handles: Vec<_> = cli
+                .variants
                 .iter()
                 .map(|variant| {
                     tokio::task::spawn_local(run_variant(
@@ -1465,22 +1925,50 @@ async fn main() -> Result<()> {
         })
         .await;
     let mut merged: Vec<Case> = Vec::new();
-    for (variant, result) in variants.iter().zip(results) {
+    for (variant, result) in cli.variants.iter().zip(results) {
         for case in result?.with_context(|| format!("variant {}", variant.id()))? {
-            match merged.iter_mut().find(|c| c.section == case.section && c.key == case.key) {
+            match merged
+                .iter_mut()
+                .find(|c| c.section == case.section && c.key == case.key)
+            {
                 Some(existing) => existing.outputs.extend(case.outputs),
                 None => merged.push(case),
             }
         }
     }
     let totals = model.usage.lock().expect("usage").clone();
-    std::fs::create_dir_all(&out_dir)?;
-    std::fs::write(out_dir.join("results.json"), serde_json::to_string_pretty(&json!({ "model": model_name, "cases": merged }))?)?;
-    let report = out_dir.join("report.html");
-    std::fs::write(&report, render(&merged, &variants, &model_name, &totals))?;
-    for (variant, (prompt, completion, requests)) in &totals {
-        eprintln!("{variant}: {requests} requests, {prompt} prompt + {completion} completion tokens");
+    let revision = metrics::revision(&root);
+    let mut result = json!({ "schema_version":1, "mode":"online", "model":model_name,
+        "tier":cli.tier.as_str(), "source_revision":revision, "fixture_hash":metrics::fixture_hash(&root)?,
+        "production_hash":metrics::production_hash(&root)?,
+        "sections":cli.sections, "variants":cli.variants, "usage":totals,
+        "metrics":metrics::online_metrics(&merged, &totals), "cases":merged });
+    let mut html = render(&merged, &cli.variants, &model_name, cli.tier, &totals);
+    let mut markdown = online::markdown(&merged, cli.tier, &model_name, &revision);
+    if let Some(baseline) = comparison_baseline {
+        let comparison = compare::compare(&baseline, &result)?;
+        let diff = comparison.markdown();
+        println!("{diff}");
+        markdown.push_str("\n");
+        markdown.push_str(&diff);
+        html = html.replace(
+            "</main>",
+            &format!("<h2>Comparison</h2><pre>{}</pre></main>", escape(&diff)),
+        );
+        result["comparison"] = serde_json::to_value(comparison)?;
     }
-    eprintln!("report: {}", report.display());
+    std::fs::create_dir_all(&cli.out)?;
+    std::fs::write(
+        cli.out.join("results.json"),
+        serde_json::to_string_pretty(&result)? + "\n",
+    )?;
+    std::fs::write(cli.out.join("report.html"), html)?;
+    std::fs::write(cli.out.join("report.md"), markdown)?;
+    for (variant, (prompt, completion, requests)) in &totals {
+        eprintln!(
+            "{variant}: {requests} requests, {prompt} prompt + {completion} completion tokens"
+        );
+    }
+    eprintln!("report: {}", cli.out.join("report.html").display());
     Ok(())
 }

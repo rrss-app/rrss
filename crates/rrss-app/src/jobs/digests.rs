@@ -26,7 +26,6 @@ struct DigestPrep {
     pick_min: usize,
     /// 周报用到的本周日报条目；日报与没有日报的周报为空。
     daily: Vec<ai_store::DailyDigestLine>,
-    inputs: Vec<(i64, String)>,
     daily_snapshot: Option<(i64, i64, String)>,
     previous: Option<(i64, String, String)>,
     tier: ai_store::InputTier,
@@ -173,7 +172,6 @@ async fn run_digest_inner(
             return Ok(None);
         }
         Ok(Some(DigestPrep {
-            inputs: mapped.iter().map(|item| item.article_id).chain(daily.iter().flat_map(|line| line.article_ids.iter().copied())).collect::<std::collections::BTreeSet<_>>().into_iter().map(|id| Ok((id, article_version(conn, id)?))).collect::<rrss_core::Result<Vec<_>>>()?,
             daily_snapshot: if weekly { Some((now - ai_store::WEEKLY_WINDOW_MS, now, daily_version(conn, now - ai_store::WEEKLY_WINDOW_MS, now)?)) } else { None },
             previous: previous_digest(conn, period, start)?,
             tier: ai_store::input_tier(conn)?,
@@ -226,7 +224,6 @@ async fn run_digest_inner(
         pick_max,
         pick_min,
         daily,
-        inputs,
         daily_snapshot,
         previous,
         tier,
@@ -235,13 +232,25 @@ async fn run_digest_inner(
         language,
         ..
     } = prep;
-    let deep_input = spawn_db(path.clone(), move |conn| {
+    // 只锁最终入选成稿与周报引用的文章版本，避免未入选候选在后台生成摘要时白白作废整期简报。
+    let (deep_input, inputs) = spawn_db(path.clone(), move |conn| {
+        let tx = conn.unchecked_transaction()?;
+        let conn = &tx;
         let selected = ai_store::apply_digest_picks(&mapped, &pick_ids, pick_max, pick_min);
-        if weekly {
-            ai_store::format_weekly_input(conn, &daily, &selected, tier)
+        let deep = if weekly {
+            ai_store::format_weekly_input(conn, &daily, &selected, tier)?
         } else {
-            ai_store::format_digest_deep_input(conn, &selected, tier)
-        }
+            ai_store::format_digest_deep_input(conn, &selected, tier)?
+        };
+        let versions = deep
+            .numbered_items
+            .iter()
+            .map(|item| item.article_id)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .map(|id| Ok((id, article_version(conn, id)?)))
+            .collect::<rrss_core::Result<Vec<_>>>()?;
+        Ok((deep, versions))
     })
     .await?;
     if deep_input.prompt.trim().is_empty() {
@@ -440,5 +449,57 @@ mod tests {
                 .body,
             weekly.body
         );
+    }
+
+    #[tokio::test]
+    async fn updating_an_unselected_candidate_does_not_discard_the_digest() {
+        let server = MockServer::start().await;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.db");
+        {
+            let conn = db::open_at(&path).unwrap();
+            let pid = crate::test_net::fake_provider(&conn, "mock", server.uri());
+            for task in [TASK_DIGEST_PICK_DAILY, TASK_DIGEST_DAILY] {
+                ai_store::set_task_binding(&conn, task, Some(pid), Some("m")).unwrap();
+            }
+            let now = rrss_core::feeds::now_ms();
+            conn.execute(
+                "INSERT INTO feeds (id, url, title, created_at) VALUES (1, 'https://f.example/rss', 'F', 1)",
+                [],
+            )
+            .unwrap();
+            for (id, title) in [(1, "Selected story"), (2, "Unselected candidate")] {
+                conn.execute(
+                    "INSERT INTO articles (id, feed_id, title, hash, created_at, published_at, score, summary, content_html)
+                     VALUES (?1, 1, ?2, ?3, ?4, ?4, 5, '摘要。', '<p>正文。</p>')",
+                    rusqlite::params![id, title, format!("h{id}"), now - 2 * 3_600_000],
+                )
+                .unwrap();
+            }
+        }
+        let changed = path.clone();
+        Mock::given(method("POST"))
+            .respond_with(move |request: &wiremock::Request| {
+                if String::from_utf8_lossy(&request.body).contains("candidates; pick") {
+                    reply(json!({"picks": [{"article_id": 1, "reason": "core"}]}))
+                } else {
+                    // 后台在成稿期间改了未入选候选 2 的摘要，不应导致整期日报作废。
+                    db::open_at(&changed)
+                        .unwrap()
+                        .execute("UPDATE articles SET summary='后台新摘要' WHERE id=2", [])
+                        .unwrap();
+                    reply(json!({"sections": [{"title": "科技", "items": [
+                        {"text": "**Selected** 发布核心更新。", "refs": [1]}
+                    ]}]}))
+                }
+            })
+            .mount(&server)
+            .await;
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        run_digest(&path, &client, "daily", true).await.unwrap();
+        let conn = db::open_at(&path).unwrap();
+        let stored = ai_store::latest_digest(&conn, "daily").unwrap().unwrap();
+        assert!(stored.body.contains("Selected"));
     }
 }
