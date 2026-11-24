@@ -104,9 +104,49 @@ struct DigestCase {
 }
 
 #[derive(Deserialize, Clone)]
+struct MemoryPrevTurn {
+    #[serde(default)]
+    user: Option<String>,
+    assistant: String,
+}
+
+#[derive(Deserialize, Clone)]
+struct MemoryExistingFixture {
+    id: i64,
+    kind: String,
+    content: String,
+    #[serde(default)]
+    pending: bool,
+}
+
+#[derive(Deserialize, Clone)]
 struct MemoryCase {
     name: String,
-    transcript: String,
+    user_message: String,
+    #[serde(default)]
+    previous_turn: Option<MemoryPrevTurn>,
+    #[serde(default)]
+    existing_memories: Vec<MemoryExistingFixture>,
+    #[serde(default)]
+    pending_count: usize,
+    #[serde(default = "default_true")]
+    expect_trigger: bool,
+    #[serde(default)]
+    expect_empty: bool,
+    #[serde(default)]
+    expect_action: Option<String>,
+    #[serde(default)]
+    expect_replaces_id: Option<i64>,
+    #[serde(default)]
+    expect_kind: Option<String>,
+    #[serde(default)]
+    expect_lang: Option<String>,
+    #[serde(default)]
+    expect_not_contains: Vec<String>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Deserialize)]
@@ -795,18 +835,62 @@ async fn run_variant(
 
     if options.sections.contains("memory") {
         let system = prompts.system(ai_store::SLUG_MEMORY_CANDIDATE, ai_store::TASK_MEMORY_CANDIDATE)?;
+        let mut handles = Vec::new();
         for memory in &cases.memory {
-            eprintln!("[{}] memory: {}", variant.id(), memory.name);
-            let call = model
-                .call(variant.id(), system.clone(), memory.transcript.clone(), rrss_ai::facts_json_schema())
-                .await;
-            out.push(Case {
-                section: "memory",
-                key: memory.name.clone(),
-                title: memory.name.clone(),
-                input: memory.transcript.clone(),
-                outputs: BTreeMap::from([(variant.id(), memory_output(call, language))]),
+            let memory = memory.clone();
+            let clean = rrss_core::memories::clean_user_message(&memory.user_message);
+            let triggered = rrss_core::memories::should_extract_memory(&clean, memory.pending_count);
+            let existing: Vec<rrss_core::memories::ExistingMemorySummary> = memory
+                .existing_memories
+                .iter()
+                .map(|m| rrss_core::memories::ExistingMemorySummary {
+                    id: m.id,
+                    kind: if m.kind == "procedural" { "procedural" } else { "semantic" },
+                    content: m.content.clone(),
+                    pending: m.pending,
+                })
+                .collect();
+            let prev = memory.previous_turn.as_ref().map(|p| rrss_core::memories::PreviousTurn {
+                user: p.user.clone(),
+                assistant: p.assistant.clone(),
             });
+            let payload = serde_json::to_string(&rrss_core::memories::ExtractionInput {
+                user_message: &clean,
+                previous_turn: prev.as_ref(),
+                existing_memories: &existing,
+            })?;
+            let model = model.clone();
+            let system = system.clone();
+            let tag = variant.id();
+            handles.push(tokio::spawn(async move {
+                eprintln!("[{tag}] memory: {}", memory.name);
+                let output = if !triggered {
+                    Output {
+                        checks: vec![check(
+                            "gate",
+                            !memory.expect_trigger,
+                            if memory.expect_trigger { "skipped unexpectedly" } else { "skipped by gate" },
+                        )],
+                        shown: "(skipped by pre-filter gate)".into(),
+                        calls: Vec::new(),
+                    }
+                } else {
+                    let call = model
+                        .call(tag, system, payload.clone(), rrss_ai::facts_json_schema())
+                        .await;
+                    memory_output(call, &memory, &clean, &existing, language)
+                };
+                Case {
+                    section: "memory",
+                    key: memory.name.clone(),
+                    title: memory.name,
+                    input: payload,
+                    outputs: BTreeMap::from([(tag, output)]),
+                }
+            }));
+        }
+        for handle in handles {
+            out.push(handle.await?);
         }
     }
 
@@ -1125,27 +1209,90 @@ fn cluster_output(call: Call, members: &[cluster_summary::Member], language: Out
     }
 }
 
-fn memory_output(call: Call, language: OutputLanguage) -> Output {
+fn memory_output(
+    call: Call,
+    case: &MemoryCase,
+    clean_user_message: &str,
+    existing: &[rrss_core::memories::ExistingMemorySummary],
+    fallback_language: OutputLanguage,
+) -> Output {
     if let Some(failed) = call_failed(&call) {
         return failed;
     }
-    let facts: Vec<String> = call.parsed["facts"]
-        .as_array()
-        .map(|items| items.iter().filter_map(Value::as_str).map(str::to_string).collect())
-        .unwrap_or_default();
-    let shown = if facts.is_empty() {
-        "(no facts)".to_string()
-    } else {
-        facts.iter().map(|f| format!("- {f}")).collect::<Vec<_>>().join("\n")
+    let parsed = rrss_app::jobs::parse_memory_candidates(&call.parsed, clean_user_message, existing);
+    let raw_count = call.parsed["candidates"].as_array().map_or(0, Vec::len);
+    let (valid_schema, candidates) = match parsed {
+        Ok(items) => (true, items),
+        Err(_) => (false, Vec::new()),
     };
-    let all = facts.join(" ");
+    let shown = if candidates.is_empty() {
+        format!("(no candidates; raw={raw_count})")
+    } else {
+        candidates
+            .iter()
+            .map(|c| match c.replaces_id {
+                Some(id) => format!("- [update #{id} · {}] {}", c.kind.as_str(), c.content),
+                None => format!("- [add · {}] {}", c.kind.as_str(), c.content),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let all: String = candidates.iter().map(|c| c.content.as_str()).collect::<Vec<_>>().join(" ");
+    let mut checks = vec![
+        check("gate", case.expect_trigger, if case.expect_trigger { "" } else { "unexpected trigger" }),
+        check("fields", valid_schema, ""),
+        check("limits", candidates.len() <= 2, format!("{} candidates", candidates.len())),
+        leak_check(&all),
+    ];
+    if case.expect_empty {
+        checks.push(check("empty", candidates.is_empty(), format!("got {}", candidates.len())));
+    } else {
+        checks.push(check("non-empty", !candidates.is_empty(), "expected at least 1"));
+    }
+    if let Some(action) = case.expect_action.as_deref() {
+        let ok = candidates.iter().any(|c| {
+            let actual = if c.replaces_id.is_some() { "update" } else { "add" };
+            actual == action && case.expect_replaces_id.map_or(true, |id| c.replaces_id == Some(id))
+        });
+        checks.push(check("action", ok, format!("want {action}")));
+    }
+    if let Some(kind) = case.expect_kind.as_deref() {
+        let ok = candidates.iter().any(|c| c.kind.as_str() == kind);
+        checks.push(check("kind", ok, format!("want {kind}")));
+    }
+    if !all.is_empty() {
+        let lang = case
+            .expect_lang
+            .as_deref()
+            .map(OutputLanguage::from_tag)
+            .unwrap_or(fallback_language);
+        checks.push(language_check(&all, lang));
+        let lower = all.to_ascii_lowercase();
+        let leaked_deictic = [
+            "这篇文章", "这篇", "刚才", "这一段", "这段", "今天", "这次", "偏这边",
+            "this article", "that paragraph", "just now", "today", "this chat",
+        ]
+        .iter()
+        .find(|d| lower.contains(*d));
+        checks.push(check(
+            "de-contextualized",
+            leaked_deictic.is_none(),
+            leaked_deictic.map_or(String::new(), |d| format!("contains {d:?}")),
+        ));
+        if !case.expect_not_contains.is_empty() {
+            let hit = case
+                .expect_not_contains
+                .iter()
+                .find(|s| lower.contains(&s.to_ascii_lowercase()));
+            checks.push(check(
+                "forbidden",
+                hit.is_none(),
+                hit.map_or(String::new(), |s| format!("contains {s:?}")),
+            ));
+        }
+    }
     Output {
-        checks: vec![
-            check("fields", call.parsed["facts"].is_array(), ""),
-            language_check(&all, language),
-            check("limits", facts.len() <= 3, format!("{} facts", facts.len())),
-            leak_check(&all),
-        ],
+        checks,
         shown,
         calls: vec![call],
     }

@@ -510,7 +510,8 @@ pub(crate) fn knn_memories(
     let nbytes = blob.len() as i64;
     let mut stmt = conn.prepare(
         "SELECT id, kind, content, scope, pinned, strength, source, last_used_at, created_at,
-                CASE WHEN embedding IS NOT NULL AND length(embedding) > 0 THEN 1 ELSE 0 END
+                CASE WHEN embedding IS NOT NULL AND length(embedding) > 0 THEN 1 ELSE 0 END,
+                NULL, NULL, 0
          FROM model_memories
          WHERE embedding IS NOT NULL AND length(embedding) = ?1 AND space_id = ?4
          ORDER BY vec_distance_cosine(embedding, ?2) ASC

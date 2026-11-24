@@ -330,6 +330,7 @@
       "memoryAsInterest": "添加为兴趣",
       "discard": "丢弃记忆",
       "confirm": "确认记忆",
+      "replace": "替换记忆",
       "delete": "删除记忆",
       "updateInterest": "更新兴趣",
       "deleteInterest": "删除兴趣",
@@ -341,7 +342,18 @@
     },
     "content": {
       "title": "内容",
-      "hint": "对话里提到的偏好会先放在「待确认」，确认后才生效。"
+      "hint": "只在对话出现明确的长期偏好或通用规则时才生成建议，普通问答不会打扰。所有建议须确认后才生效。"
+    },
+    "group": {
+      "pending": "待确认",
+      "pendingHint": "确认前不会注入对话",
+      "active": "已生效",
+      "activeHint": "按通用规则与背景偏好分组注入"
+    },
+    "kind": {
+      "procedural": "通用规则",
+      "semantic": "背景与偏好",
+      "episode": "会话摘录"
     },
     "tabsLabel": "记忆设置分类",
     "tab": {
@@ -356,6 +368,12 @@
     "save": "保存",
     "cancel": "取消",
     "pendingTag": "待确认",
+    "updateTag": "建议更新",
+    "diff": {
+      "old": "原记忆",
+      "next": "改为",
+      "keepPin": "原记忆已置顶，替换后将保留置顶状态。"
+    },
     "pinned": "置顶",
     "unpin": "取消置顶",
     "pin": "置顶",
@@ -363,6 +381,7 @@
     "addAsInterest": "添加为兴趣",
     "ignore": "忽略",
     "confirm": "确认",
+    "replace": "替换原记忆",
     "delete": "删除",
     "deleteConfirm": {
       "title": "删除记忆",

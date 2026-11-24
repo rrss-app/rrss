@@ -2,7 +2,7 @@ use rusqlite::Connection;
 
 use crate::error::{Error, Result};
 
-pub const SCHEMA_VERSION: i32 = 50;
+pub const SCHEMA_VERSION: i32 = 51;
 
 /// 低于此版本的库不能在当前程序里升级。
 pub const MIN_UPGRADE_VERSION: i32 = 33;
@@ -39,6 +39,7 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         (48, apply_v48),
         (49, apply_v49),
         (50, apply_v50),
+        (51, apply_v51),
     ];
     let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if !(0..=SCHEMA_VERSION).contains(&version) {
@@ -72,6 +73,19 @@ pub fn migrate(conn: &Connection) -> Result<()> {
     // 补全新增 prompt / task_bindings（如 digest_pick_*）。
     crate::ai_store::seed_defaults(conn)?;
     Ok(())
+}
+
+/// Add `replaces_id` on `memories` so pending update candidates can reference
+/// the confirmed global memory they propose to replace.
+fn apply_v51(conn: &Connection) -> Result<()> {
+    crate::db::atomic_write(conn, |conn| {
+        if !column_exists(conn, "memories", "replaces_id")? {
+            conn.execute_batch(
+                "ALTER TABLE memories ADD COLUMN replaces_id INTEGER REFERENCES memories(id) ON DELETE SET NULL;",
+            )?;
+        }
+        Ok(())
+    })
 }
 
 /// 刷新间隔可按源覆盖。旧库没有写入入口，非默认值只可能来自外部改写，按覆盖保留。
@@ -1412,5 +1426,43 @@ mod tests {
                 .unwrap(),
             SCHEMA_VERSION
         );
+    }
+
+    #[test]
+    fn v51_adds_replaces_id_and_clears_reference_when_target_is_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = crate::db::open_at(&dir.path().join("v51.db")).unwrap();
+        let target = crate::memories::insert_memory(
+            &conn,
+            crate::memories::MemoryKind::Semantic,
+            "Uses Linux desktop.",
+            "chat",
+            1.0,
+        )
+        .unwrap();
+        let pending = crate::memories::insert_new_candidates(
+            &conn,
+            vec![crate::memories::MemoryCandidate {
+                kind: crate::memories::MemoryKind::Procedural,
+                content: "Uses Windows 11; prefer Windows commands.".into(),
+                replaces_id: Some(target),
+            }],
+        )
+        .unwrap();
+        assert_eq!(pending.len(), 1);
+        let candidate = crate::memories::list_memories(&conn, "")
+            .unwrap()
+            .into_iter()
+            .find(|m| m.pending())
+            .unwrap();
+        assert_eq!(candidate.replaces_id, Some(target));
+        assert_eq!(
+            candidate.replaces_content.as_deref(),
+            Some("Uses Linux desktop.")
+        );
+        crate::memories::delete_memory(&conn, target).unwrap();
+        let after = crate::memories::get_memory(&conn, candidate.id).unwrap();
+        assert_eq!(after.replaces_id, None);
+        assert_eq!(after.replaces_content, None);
     }
 }

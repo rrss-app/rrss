@@ -1132,9 +1132,14 @@ impl ChatRuntime {
                     use rrss_core::network::NetworkScope;
                     match network.client(NetworkScope::Api).await {
                         Ok(client) => {
-                            let _ =
-                                crate::jobs::extract_memory_candidates(&path, &client, &user_text)
-                                    .await;
+                            let _ = crate::jobs::extract_memory_candidates(
+                                &path,
+                                &client,
+                                Some(thread_id),
+                                Some(settled_id),
+                                &user_text,
+                            )
+                            .await;
                         }
                         Err(error) => {
                             tracing::warn!(%error, "memory extraction network unavailable")

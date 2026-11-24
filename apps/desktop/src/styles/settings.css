@@ -336,9 +336,24 @@
 .rules-advanced .field { flex: 0 1 160px; min-width: 120px; margin: 0; }
 
 /* 记忆 */
-.memory-card .memory-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
+.memory-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 12px 0 4px; padding-bottom: 4px; border-bottom: 1px solid var(--settings-hair); font-size: 12px; }
+.memory-group-head:first-of-type { margin-top: 4px; }
+.memory-group-head .section-label { margin: 0; }
+.memory-card .memory-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); margin-top: 6px; }
 .memory-card .memory-meta .meta-tag { margin-left: 0; }
-.memory-card.pending { border-color: var(--warn); }
+.memory-card .memory-meta .meta-tag.rule { background: var(--accent-tint); color: var(--accent); }
+.memory-card .memory-meta .meta-tag.update { background: var(--accent-tint-strong); color: var(--accent-strong); font-weight: 500; }
+:root[data-theme="dark"] .memory-card .memory-meta .meta-tag.update { color: var(--accent); }
+.memory-card.pending { padding-left: 12px; border-left: 2px solid var(--warn); }
+.memory-card.pending.is-update { border-left-color: var(--accent); }
+.memory-diff { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; padding: 8px 12px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); }
+.memory-diff-row { display: flex; align-items: baseline; gap: 8px; font-size: 13px; line-height: 1.55; }
+.memory-diff-tag { flex: none; min-width: 44px; font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.memory-diff-row.old { color: var(--text-muted); }
+.memory-diff-row.old .memory-diff-text { text-decoration: line-through; text-decoration-color: var(--border-strong); overflow-wrap: anywhere; }
+.memory-diff-row.next .memory-diff-tag { color: var(--accent); }
+.memory-diff-row.next .memory-diff-text { margin: 0; font-weight: 500; }
+.memory-diff-note { padding-left: 52px; font-size: 11.5px; color: var(--text-faint); }
 .memory-content { margin: 8px 0; line-height: 1.6; overflow-wrap: anywhere; }
 .memory-card { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .memory-main { flex: 1 1 240px; min-width: 0; }

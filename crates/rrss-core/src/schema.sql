@@ -448,6 +448,7 @@ CREATE TABLE memories (
     strength      REAL    NOT NULL DEFAULT 1.0,
     source        TEXT,
     last_used_at  INTEGER,
+    replaces_id   INTEGER REFERENCES memories(id) ON DELETE SET NULL,
     created_at    INTEGER NOT NULL
 );
 

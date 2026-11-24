@@ -6,6 +6,8 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ### Changed
 
+- Improved long-term memory extraction from chats: routine Q&A is skipped quietly without creating suggestions, durable preferences and reusable rules are distilled in your input language with evidence checked against your own words, and updates to existing memories show a side-by-side comparison so you can replace the original entry in place while keeping its pinned state. Pending memories now appear in a dedicated top group with localized type labels, and reusable rules no longer show "Add as interest".
+- Refined prompts and strict JSON schemas across summaries, digests, related coverage overviews, conversation titles, thread compression, and the reading assistant: fixed strict-schema validation and source-naming consistency in related coverage overviews, reduced repetition between one-liners, key points, and facts, tightened digest single-fact phrasing and unasked omission remarks in chat, aligned the assistant prompt with grouped standing rules, and added untrusted-content guardrails across feed-backed tasks.
 - Refined user-facing error messages, settings hints, and recommendation explanations in both Simplified Chinese and English: removed internal error prefixes and raw technical codes, localized built-in rule presets, updated outdated menu references (such as Settings → AI to Settings → Models), and unified terminology across Focus, Reader, Feeds, and Settings.
 
 ### Fixed

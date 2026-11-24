@@ -662,6 +662,15 @@ pub struct MemoryView {
     pub pending: bool,
     pub scope: String,
     pub strength: String,
+    #[serde(default)]
+    #[ts(optional)]
+    pub replaces_id: Option<i64>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub replaces_content: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub replaces_pinned: Option<bool>,
 }
 
 /// 模型服务连接视图（不含完整密钥）。

@@ -631,6 +631,7 @@ export type MockHostOptions = {
   /** 踩的「加一条规则…」候选；不传时由 `trainingFeatures` 生成无影响面的候选。 */
   ruleCandidates?: import("../src/bindings").RuleCandidateView[];
   rules?: RulesPage;
+  memory?: MemoryPage;
   /** 订阅时间线文章。不传时用焦点文章里 row_kind 为 0 的行。 */
   timelineArticles?: ArticleView[];
   /** `feeds_page` 每页条数，默认 50。 */
@@ -1896,11 +1897,47 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
               case "confirm_suggested_rule":
               case "apply_preset":
               case "remove_preset":
-              case "confirm_memory":
-              case "discard_memory":
+              case "confirm_memory": {
+                const id = Number(args.id);
+                const idx = state.memory.memories.findIndex((m) => m.id === id);
+                if (idx >= 0) {
+                  const item = state.memory.memories[idx];
+                  const target = item.replaces_id
+                    ? state.memory.memories.find((m) => m.id === item.replaces_id && !m.pending)
+                    : undefined;
+                  if (target) {
+                    target.content = item.content;
+                    target.kind = item.kind;
+                    state.memory.memories.splice(idx, 1);
+                  } else {
+                    item.pending = false;
+                    item.replaces_id = undefined;
+                    item.replaces_content = undefined;
+                    item.replaces_pinned = undefined;
+                  }
+                }
+                return null;
+              }
+              case "discard_memory": {
+                const id = Number(args.id);
+                state.memory.memories = state.memory.memories.filter((m) => m.id !== id);
+                for (const m of state.memory.memories) {
+                  if (m.replaces_id === id) {
+                    m.replaces_id = undefined;
+                    m.replaces_content = undefined;
+                    m.replaces_pinned = undefined;
+                  }
+                }
+                return null;
+              }
+              case "edit_memory": {
+                const id = Number(args.id);
+                const item = state.memory.memories.find((m) => m.id === id);
+                if (item && typeof args.content === "string") item.content = args.content.trim();
+                return null;
+              }
               case "pin_memory":
               case "clear_memories":
-              case "edit_memory":
               case "delete_folder":
               case "unsubscribe":
               case "toggle_pi_tool":
@@ -1955,7 +1992,7 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
       pool: options.pool ?? MOCK_POOL,
       presets: MOCK_PRESETS,
       rules: options.rules ?? MOCK_RULES,
-      memory: MOCK_MEMORY,
+      memory: options.memory ?? MOCK_MEMORY,
       pi: options.pi ?? MOCK_PI,
       probe: MOCK_PI_PROBE,
       piConfig: piConfigFixture(),

@@ -3,6 +3,7 @@
   "rrss-core/src/db/migrations.rs": "Migration SQL that matches titles written by older versions.",
   "rrss-core/src/digest.rs": "Cleanup patterns for Chinese digest output (the Chinese half of the per-language rule sets).",
   "rrss-core/src/digest_sources.rs": "Fallback section heading inside the generated digest document; follows the AI output language.",
+  "rrss-core/src/memories_gate.rs": "Chinese preference/rule cues matched in user chat messages (extraction gate, not UI).",
   "rrss-focus/src/features.rs": "Chinese stop words used by title-token feature extraction.",
   "rrss-core/src/simhash.rs": "Chinese stop words used by near-duplicate hashing.",
   "rrss-core/src/summary_extract.rs": "Chinese boilerplate markers matched in article bodies (content extraction, not UI).",

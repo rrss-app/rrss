@@ -856,7 +856,24 @@ async fn settled_memory_job_receives_user_text_without_citation_or_assistant_rep
     let excerpt = "I collect antique measuring tools.";
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "choices": [{"message": {"content": json!({"facts": [excerpt, fact]}).to_string()}}],
+            "choices": [{"message": {"content": json!({
+                "candidates": [
+                    {
+                        "action": "add",
+                        "evidence": excerpt,
+                        "kind": "semantic",
+                        "replaces_id": 0,
+                        "text": excerpt
+                    },
+                    {
+                        "action": "add",
+                        "evidence": fact,
+                        "kind": "semantic",
+                        "replaces_id": 0,
+                        "text": fact
+                    }
+                ]
+            }).to_string()}}],
         })))
         .mount(&server)
         .await;
@@ -905,7 +922,12 @@ async fn settled_memory_job_receives_user_text_without_citation_or_assistant_rep
     let requests = server.received_requests().await.unwrap();
     assert_eq!(requests.len(), 1);
     let body: Value = requests[0].body_json().unwrap();
-    assert_eq!(body["messages"][1]["content"], json!([fact]).to_string());
+    let payload: Value =
+        serde_json::from_str(body["messages"][1]["content"].as_str().unwrap()).unwrap();
+    assert_eq!(payload["user_message"], fact);
+    assert!(payload.get("previous_turn").is_none());
+    assert_eq!(payload["existing_memories"], json!([]));
+    assert!(!payload.to_string().contains(excerpt));
     assert_eq!(memories::list_memories(&conn, "").unwrap().len(), 1);
     h.chat.stop_engine().await;
 }

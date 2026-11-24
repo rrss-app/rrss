@@ -11,14 +11,22 @@ pub fn summary_json_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "summary": { "type": "string" },
-            "one_liner": { "type": "string" },
+            "summary": {
+                "type": "string",
+                "description": "Concise plain-text summary covering what happened, key specifics, and consequence."
+            },
+            "one_liner": {
+                "type": "string",
+                "description": "One standalone headline-like sentence capturing who did what and the most telling figure or outcome."
+            },
             "key_points": {
                 "type": "array",
+                "description": "At most 3 distinct plain-text points adding details not already in one_liner; [] if none.",
                 "items": { "type": "string" }
             },
             "facts": {
                 "type": "array",
+                "description": "At most 5 concrete facts (subject + number/version/date/conclusion) not already in one_liner or key_points; [] if none.",
                 "items": { "type": "string" }
             }
         },
@@ -31,9 +39,13 @@ pub fn segment_json_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "notes": { "type": "string" },
+            "notes": {
+                "type": "string",
+                "description": "3–6 plain-text sentences condensing this part's arguments, mechanisms, numbers, and conclusions."
+            },
             "facts": {
                 "type": "array",
+                "description": "At most 5 concrete facts from this part; [] if none.",
                 "items": { "type": "string" }
             }
         },
@@ -106,12 +118,41 @@ pub fn facts_json_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "facts": {
+            "candidates": {
                 "type": "array",
-                "items": { "type": "string" }
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "enum": ["add", "update"],
+                            "description": "Whether to add a new memory or update an existing confirmed memory."
+                        },
+                        "evidence": {
+                            "type": "string",
+                            "description": "Short verbatim span copied from user_message that proves this memory."
+                        },
+                        "kind": {
+                            "type": "string",
+                            "enum": ["procedural", "semantic"],
+                            "description": "procedural for reusable assistant behavior rules; semantic for user background or topic interests."
+                        },
+                        "replaces_id": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "0 when action is add; positive id of the confirmed existing memory when action is update."
+                        },
+                        "text": {
+                            "type": "string",
+                            "description": "Non-empty, concise, de-contextualized standalone memory sentence in the same language as user_message."
+                        }
+                    },
+                    "required": ["action", "evidence", "kind", "replaces_id", "text"],
+                    "additionalProperties": false
+                }
             }
         },
-        "required": ["facts"],
+        "required": ["candidates"],
         "additionalProperties": false
     })
 }
@@ -120,7 +161,12 @@ pub fn facts_json_schema() -> Value {
 pub fn episode_json_schema() -> Value {
     json!({
         "type": "object",
-        "properties": { "body": { "type": "string" } },
+        "properties": {
+            "body": {
+                "type": "string",
+                "description": "Dense plain-text thread continuity note under 300 characters preserving decisions, IDs, and open questions."
+            }
+        },
         "required": ["body"],
         "additionalProperties": false
     })
@@ -155,6 +201,18 @@ mod tests {
     #[test]
     fn episode_schema_asks_for_the_body_the_template_promises() {
         assert_eq!(episode_json_schema()["required"], json!(["body"]));
+    }
+
+    #[test]
+    fn facts_schema_requires_structured_candidates() {
+        let schema = facts_json_schema();
+        assert_eq!(schema["required"], json!(["candidates"]));
+        let item = &schema["properties"]["candidates"]["items"];
+        assert_eq!(
+            item["required"],
+            json!(["action", "evidence", "kind", "replaces_id", "text"])
+        );
+        assert_eq!(item["additionalProperties"], false);
     }
 
     #[test]

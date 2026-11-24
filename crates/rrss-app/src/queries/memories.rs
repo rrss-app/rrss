@@ -18,6 +18,9 @@ pub fn memory_page(conn: &Connection, query: &str) -> rrss_core::Result<MemoryPa
                 pending,
                 scope: m.scope,
                 strength: format!("{:.1}", m.strength),
+                replaces_id: m.replaces_id,
+                replaces_content: m.replaces_content,
+                replaces_pinned: m.replaces_id.map(|_| m.replaces_pinned),
             }
         })
         .collect();

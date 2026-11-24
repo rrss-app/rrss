@@ -29,6 +29,7 @@ pub mod kind;
 pub mod logsafe;
 pub mod media;
 pub mod memories;
+mod memories_gate;
 pub mod model_pool;
 pub mod network;
 pub mod opml;

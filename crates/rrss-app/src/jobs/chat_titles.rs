@@ -205,8 +205,15 @@ pub(crate) async fn generate(
     let client = network.client(NetworkScope::Api).await?;
     let resolved = prepared.resolved.clone();
     let schema = serde_json::json!({
-        "type": "object", "properties": {"title": {"type": "string"}},
-        "required": ["title"], "additionalProperties": false
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "description": "Concise plain-text topic title (4–16 CJK characters or 3–8 English words, max 80 chars, no quotes or trailing period)."
+            }
+        },
+        "required": ["title"],
+        "additionalProperties": false
     });
     let result = complete::execute_prepared(db_path, &client, prepared, &input, schema, |value| {
         Ok(validated_title(value).map(str::to_owned))

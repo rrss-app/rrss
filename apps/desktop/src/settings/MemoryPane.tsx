@@ -1,7 +1,7 @@
 import { formatError } from "../lib/errors";
 import { withPrefix } from "../lib/notice";
 import { useEffect, useRef, useState } from "react";
-import { api, type InterestHitView, type RankingSettings } from "../lib/api";
+import { api, type InterestHitView, type MemoryView, type RankingSettings } from "../lib/api";
 import type { RankingToggle } from "../components/FocusPane";
 import { Icon } from "../components/Icon";
 import { Segmented } from "../components/Segmented";
@@ -63,6 +63,65 @@ export function MemoryPane({ ranking, onRanking, onAsk, onOpenArticle, onChanged
     await onRanking(key, value);
   }, { readOnly: true, quiet: true }); // 焦点域负责串行保存、错误反馈和重读。
 
+  const pendingMemories = visibleMemories.filter((m) => m.pending);
+  const confirmedMemories = visibleMemories.filter((m) => !m.pending);
+  const kindLabel = (kind: string) => {
+    if (kind === "procedural") return t("memory.kind.procedural");
+    if (kind === "semantic") return t("memory.kind.semantic");
+    if (kind === "episode") return t("memory.kind.episode");
+    return kind;
+  };
+  const renderMemoryCard = (m: MemoryView) => {
+    const isUpdate = m.pending && !!m.replaces_id && !!m.replaces_content;
+    const isEditing = editing?.baseline.id === m.id;
+    const canAddInterest = m.pending && !isUpdate && m.kind !== "procedural" && m.kind !== "episode";
+    return (
+      <div key={m.id} className={`card memory-card${m.pending ? " pending" : ""}${isUpdate ? " is-update" : ""}`}>
+        <div className="memory-main">
+          {isEditing ? <>
+            {isUpdate && <div className="memory-diff">
+              <div className="memory-diff-row old">
+                <span className="memory-diff-tag">{t("memory.diff.old")}</span>
+                <span className="memory-diff-text">{m.replaces_content}</span>
+              </div>
+            </div>}
+            <textarea rows={3} aria-label={t("memory.editLabel")} value={editing.content}
+              onChange={(e) => setEditing({ ...editing, content: e.target.value })} />
+            <div className="row">
+              <button type="button" className="btn primary sm" disabled={!editing.content.trim()} onClick={() => void saveEdit()}>{t("memory.save")}</button>
+              <button type="button" className="btn sm" onClick={() => setEditing(null)}>{t("memory.cancel")}</button>
+            </div>
+          </> : isUpdate ? <div className="memory-diff">
+            <div className="memory-diff-row old">
+              <span className="memory-diff-tag">{t("memory.diff.old")}</span>
+              <span className="memory-diff-text">{m.replaces_content}</span>
+            </div>
+            <div className="memory-diff-row next">
+              <span className="memory-diff-tag">{t("memory.diff.next")}</span>
+              <span className="memory-diff-text memory-content">{m.content}</span>
+            </div>
+            {m.replaces_pinned && <div className="memory-diff-note">{t("memory.diff.keepPin")}</div>}
+          </div> : <div className="memory-head"><p className="memory-content">{m.content}</p>{m.pending && <span className="meta-tag warn">{t("memory.pendingTag")}</span>}</div>}
+          <div className="memory-meta">
+            {isUpdate && <span className="meta-tag update">{t("memory.updateTag")}</span>}
+            <span className={`meta-tag${m.kind === "procedural" ? " rule" : ""}`}>{kindLabel(m.kind)}</span>
+            {m.pinned && <span className="meta-tag accent"><Icon name="bookmark" size={11} />{t("memory.pinned")}</span>}
+            {m.scope && m.scope !== "global" && m.scope !== "thread" && <span className="muted">{m.scope}</span>}
+          </div>
+        </div>
+        <div className="row memory-actions" hidden={isEditing}>
+          {!m.pending && <button type="button" className="btn sm ghost" onClick={() => void run(t("memory.op.pin"), () => api.pinMemory(m.id, !m.pinned))}>{m.pinned ? t("memory.unpin") : t("memory.pin")}</button>}
+          <button type="button" className="btn sm ghost" onClick={() => beginEdit(m)}><Icon name="edit" size={13} />{t("memory.edit")}</button>
+          {m.pending ? <>
+            {canAddInterest && <button type="button" className="btn sm" onClick={() => void run(t("memory.op.memoryAsInterest"), () => api.memoryAsInterest(m.id), { interests: true, onSuccess: clearHits })}>{t("memory.addAsInterest")}</button>}
+            <button type="button" className="btn sm ghost memory-ignore" onClick={() => void run(t("memory.op.discard"), () => api.discardMemory(m.id))}>{t("memory.ignore")}</button>
+            <button type="button" className="btn primary sm" onClick={() => void run(isUpdate ? t("memory.op.replace") : t("memory.op.confirm"), () => api.confirmMemory(m.id))}>{isUpdate ? t("memory.replace") : t("memory.confirm")}</button>
+          </> : <button type="button" className="btn sm danger" onClick={() => onAsk(t("memory.deleteConfirm.title"), t("memory.deleteConfirm.message", { content: m.content }), () => void run(t("memory.op.delete"), () => api.discardMemory(m.id)))}>{t("memory.delete")}</button>}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="memory-pane">
       {sub === "memory" && query.isPending && !busy && <Pending className="form-status">{t("memory.loading")}</Pending>}
@@ -102,34 +161,20 @@ export function MemoryPane({ ranking, onRanking, onAsk, onOpenArticle, onChanged
                 <span className="empty-icon"><Icon name="memory" size={20} /></span>
                 <p>{filter ? t("memory.noMatch") : t("memory.empty")}</p>
               </div>}
-              {visibleMemories.map((m) => (
-                <div key={m.id} className={`card memory-card${m.pending ? " pending" : ""}`}>
-                  <div className="memory-main">
-                  {editing?.baseline.id === m.id ? <>
-                    <textarea rows={3} aria-label={t("memory.editLabel")} value={editing.content}
-                      onChange={(e) => setEditing({ ...editing, content: e.target.value })} />
-                    <div className="row">
-                      <button type="button" className="btn primary sm" disabled={!editing.content.trim()} onClick={() => void saveEdit()}>{t("memory.save")}</button>
-                      <button type="button" className="btn sm" onClick={() => setEditing(null)}>{t("memory.cancel")}</button>
-                    </div>
-                  </> : <div className="memory-head"><p className="memory-content">{m.content}</p>{m.pending && <span className="meta-tag warn">{t("memory.pendingTag")}</span>}</div>}
-                  <div className="memory-meta">
-                    <span className="meta-tag">{m.kind}</span>
-                    {m.pinned && <span className="meta-tag accent"><Icon name="bookmark" size={11} />{t("memory.pinned")}</span>}
-                    {m.scope && <span className="muted">{m.scope}</span>}
-                  </div>
-                  </div>
-                  <div className="row memory-actions" hidden={editing?.baseline.id === m.id}>
-                    <button type="button" className="btn sm ghost" onClick={() => void run(t("memory.op.pin"), () => api.pinMemory(m.id, !m.pinned))}>{m.pinned ? t("memory.unpin") : t("memory.pin")}</button>
-                    <button type="button" className="btn sm ghost" onClick={() => beginEdit(m)}><Icon name="edit" size={13} />{t("memory.edit")}</button>
-                    {m.pending ? <>
-                      <button type="button" className="btn sm" onClick={() => void run(t("memory.op.memoryAsInterest"), () => api.memoryAsInterest(m.id), { interests: true, onSuccess: clearHits })}>{t("memory.addAsInterest")}</button>
-                      <button type="button" className="btn sm ghost memory-ignore" onClick={() => void run(t("memory.op.discard"), () => api.discardMemory(m.id))}>{t("memory.ignore")}</button>
-                      <button type="button" className="btn primary sm" onClick={() => void run(t("memory.op.confirm"), () => api.confirmMemory(m.id))}>{t("memory.confirm")}</button>
-                    </> : <button type="button" className="btn sm danger" onClick={() => onAsk(t("memory.deleteConfirm.title"), t("memory.deleteConfirm.message", { content: m.content }), () => void run(t("memory.op.delete"), () => api.discardMemory(m.id)))}>{t("memory.delete")}</button>}
-                  </div>
+              {pendingMemories.length > 0 && <>
+                <div className="memory-group-head">
+                  <span className="section-label">{t("memory.group.pending")} ({pendingMemories.length})</span>
+                  <span className="muted">{t("memory.group.pendingHint")}</span>
                 </div>
-              ))}
+                {pendingMemories.map(renderMemoryCard)}
+              </>}
+              {confirmedMemories.length > 0 && <>
+                {pendingMemories.length > 0 && <div className="memory-group-head">
+                  <span className="section-label">{t("memory.group.active")} ({confirmedMemories.length})</span>
+                  <span className="muted">{t("memory.group.activeHint")}</span>
+                </div>}
+                {confirmedMemories.map(renderMemoryCard)}
+              </>}
             </>}
             {sub === "interest" && <>
               <div className="row interest-add">

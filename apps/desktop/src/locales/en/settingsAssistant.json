@@ -334,6 +334,7 @@
       "memoryAsInterest": "Interest addition",
       "discard": "Memory discard",
       "confirm": "Memory confirmation",
+      "replace": "Memory replacement",
       "delete": "Memory deletion",
       "updateInterest": "Interest update",
       "deleteInterest": "Interest deletion",
@@ -345,7 +346,18 @@
     },
     "content": {
       "title": "Content",
-      "hint": "Preferences mentioned in chats go to “Pending” first and take effect only after you confirm them."
+      "hint": "Suggestions are only created when a chat expresses a clear long-term preference or reusable rule; routine Q&A stays quiet. Nothing takes effect until confirmed."
+    },
+    "group": {
+      "pending": "Pending review",
+      "pendingHint": "Not injected into chats until confirmed",
+      "active": "Active",
+      "activeHint": "Injected as standing rules and background preferences"
+    },
+    "kind": {
+      "procedural": "General rule",
+      "semantic": "Background & preferences",
+      "episode": "Thread summary"
     },
     "tabsLabel": "Memory settings tabs",
     "tab": {
@@ -360,6 +372,12 @@
     "save": "Save",
     "cancel": "Cancel",
     "pendingTag": "Pending",
+    "updateTag": "Suggested update",
+    "diff": {
+      "old": "Current",
+      "next": "Suggested",
+      "keepPin": "Pinned status will be kept after replacing."
+    },
     "pinned": "Pinned",
     "unpin": "Unpin",
     "pin": "Pin",
@@ -367,6 +385,7 @@
     "addAsInterest": "Add as interest",
     "ignore": "Ignore",
     "confirm": "Confirm",
+    "replace": "Replace",
     "delete": "Delete",
     "deleteConfirm": {
       "title": "Delete memory",
