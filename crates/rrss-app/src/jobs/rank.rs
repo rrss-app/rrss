@@ -5,7 +5,9 @@ use rrss_core::db;
 use rrss_focus::store::{self, REFRESHED_KEY};
 use rusqlite::Connection;
 use std::{
+    collections::BTreeSet,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex, OnceLock},
     time::Duration,
 };
 
@@ -20,61 +22,83 @@ pub(crate) fn request(conn: &Connection) -> rrss_core::Result<()> {
 
 /// 增量排序的合并批次。排序要加载全库模型：逐源各算一次会让大量模型加载
 /// 同时抢 CPU，拖慢持写锁的事务，因此同一时刻只算一批。
-#[derive(Default)]
 pub(crate) struct Batches {
-    pending: std::sync::Mutex<Batch>,
-    turn: std::sync::Arc<tokio::sync::Mutex<()>>,
+    pending: Mutex<Batch>,
+    turn: Arc<tokio::sync::Mutex<()>>,
 }
 
-#[cfg(test)]
 impl Batches {
+    pub(crate) fn new(turn: Arc<tokio::sync::Mutex<()>>) -> Self {
+        Self {
+            pending: Mutex::default(),
+            turn,
+        }
+    }
+
     /// 测试用：占住轮次，模拟一次很慢的增量排序。
+    #[cfg(test)]
     pub(crate) async fn hold(&self) -> tokio::sync::OwnedMutexGuard<()> {
         self.turn.clone().lock_owned().await
     }
-}
 
-#[derive(Default)]
-struct Batch {
-    ids: std::collections::BTreeSet<i64>,
-    done: std::sync::Arc<std::sync::OnceLock<Result<(), crate::UiError>>>,
+    /// Return only after these articles have been written, or their batch failed.
+    pub(crate) async fn incremental(&self, path: &Path, ids: Vec<i64>) -> anyhow::Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let done = {
+            let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+            pending.ids.extend(ids);
+            pending.done[0].clone()
+        };
+        let turn = Arc::new(self.turn.clone().lock_owned().await);
+        // Another caller may already have completed this caller's batch.
+        if let Some(result) = done.get() {
+            return result.clone().map_err(anyhow::Error::new);
+        }
+        let batch = std::mem::take(&mut *self.pending.lock().unwrap_or_else(|e| e.into_inner()));
+        let ids: Vec<_> = batch.ids.iter().copied().collect();
+        let unfinished = Unfinished {
+            batches: self,
+            batch: Some(batch),
+        };
+        // Cancellation cannot stop a submitted blocking worker. Both the worker
+        // and the result publisher retain the turn until their work is complete.
+        let worker_turn = turn.clone();
+        let result = spawn_db(path.to_owned(), move |conn| {
+            let _turn = worker_turn;
+            store::update(conn, &ids, rrss_core::feeds::now_ms())
+        })
+        .await;
+        unfinished.finish(
+            result
+                .as_ref()
+                .map(|_| ())
+                .map_err(crate::UiError::from_anyhow_ref),
+        );
+        result.map(|_| ())
+    }
 }
 
 /// 返回时这些文章已写入排序缓存（或所在批次失败）。
 pub async fn incremental(path: &Path, ids: Vec<i64>) -> anyhow::Result<()> {
-    if ids.is_empty() {
-        return Ok(());
+    let work = crate::scheduler::BackgroundWork::for_database(path);
+    work.scope(work.rank.incremental(path, ids)).await
+}
+
+struct Batch {
+    ids: BTreeSet<i64>,
+    // Retried batches carry their original result slots along with their IDs.
+    done: Vec<Arc<OnceLock<Result<(), crate::UiError>>>>,
+}
+
+impl Default for Batch {
+    fn default() -> Self {
+        Self {
+            ids: BTreeSet::new(),
+            done: vec![Arc::default()],
+        }
     }
-    let capacity = crate::scheduler::model_capacity::Capacity::for_database(path);
-    let batches = &capacity.rank;
-    let done = {
-        let mut pending = batches.pending.lock().unwrap_or_else(|e| e.into_inner());
-        pending.ids.extend(ids);
-        pending.done.clone()
-    };
-    let _turn = batches.turn.lock().await;
-    // 前一个轮到的调用者已把本批一起算完。
-    if let Some(result) = done.get() {
-        return result.clone().map_err(anyhow::Error::new);
-    }
-    // 没算过的批次只能是当前待算批次：取批与计算都在持有 turn 时完成。
-    let batch = std::mem::take(&mut *batches.pending.lock().unwrap_or_else(|e| e.into_inner()));
-    let ids: Vec<_> = batch.ids.iter().copied().collect();
-    let unfinished = Unfinished {
-        batches,
-        batch: Some(batch),
-    };
-    let result = spawn_db(path.to_owned(), move |conn| {
-        store::update(conn, &ids, rrss_core::feeds::now_ms())
-    })
-    .await;
-    unfinished.finish(
-        result
-            .as_ref()
-            .map(|_| ())
-            .map_err(crate::UiError::from_anyhow_ref),
-    );
-    result.map(|_| ())
 }
 
 /// 计算中途被取消（如退出）时把这批文章放回待算批次，由下一个轮到的调用者补算。
@@ -86,7 +110,9 @@ struct Unfinished<'a> {
 impl Unfinished<'_> {
     fn finish(mut self, result: Result<(), crate::UiError>) {
         if let Some(batch) = self.batch.take() {
-            let _ = batch.done.set(result);
+            for done in batch.done {
+                let _ = done.set(result.clone());
+            }
         }
     }
 }
@@ -100,6 +126,7 @@ impl Drop for Unfinished<'_> {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
             pending.ids.extend(batch.ids);
+            pending.done.extend(batch.done);
         }
     }
 }
@@ -164,6 +191,148 @@ pub async fn run_loop(path: PathBuf) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{future::Future, pin::Pin, task::Poll};
+
+    fn fixture() -> (tempfile::TempDir, PathBuf, db::PooledConnection) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rank.db");
+        let conn = db::open_at(&path).unwrap();
+        conn.execute_batch(
+            "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://rank.example/feed',0);
+             INSERT INTO articles(id,feed_id,title,created_at)
+             VALUES(1,1,'First story',0),(2,1,'Second story',0),(3,1,'Third story',0);",
+        )
+        .unwrap();
+        (dir, path, conn)
+    }
+
+    async fn pending<F: Future>(mut future: Pin<&mut F>) {
+        std::future::poll_fn(|cx| {
+            assert!(future.as_mut().poll(cx).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+    }
+
+    fn ranked(conn: &Connection) -> Vec<i64> {
+        conn.prepare("SELECT article_id FROM article_rank ORDER BY article_id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_queued_waiter_keeps_its_articles_in_the_shared_batch() {
+        let (_dir, path, conn) = fixture();
+        let work = crate::scheduler::BackgroundWork::for_database(&path);
+        let held = work.rank.hold().await;
+        let mut first = Box::pin(incremental(&path, vec![1]));
+        let mut second = Box::pin(incremental(&path, vec![2]));
+        pending(first.as_mut()).await;
+        pending(second.as_mut()).await;
+        drop(first);
+        assert!(ranked(&conn).is_empty());
+        drop(held);
+        second.await.unwrap();
+        assert_eq!(ranked(&conn), vec![1, 2]);
+        assert_eq!(*work.active().borrow(), 0);
+    }
+
+    #[tokio::test]
+    async fn cancelled_executor_preserves_all_waiters_through_failure_and_repair() {
+        let (_dir, path, conn) = fixture();
+        conn.execute_batch("CREATE TRIGGER fail_rank BEFORE INSERT ON article_rank BEGIN SELECT RAISE(ABORT,'injected rank'); END;").unwrap();
+        let work = crate::scheduler::BackgroundWork::for_database(&path);
+        let held = work.rank.hold().await;
+        let permits = work
+            .db
+            .permits
+            .clone()
+            .acquire_many_owned(db::pool::BACKGROUND_CONNECTIONS as u32)
+            .await
+            .unwrap();
+        let mut first = Box::pin(incremental(&path, vec![1]));
+        let mut second = Box::pin(incremental(&path, vec![2]));
+        let mut third = Box::pin(incremental(&path, vec![3]));
+        pending(first.as_mut()).await;
+        pending(second.as_mut()).await;
+        pending(third.as_mut()).await;
+        drop(held);
+        pending(first.as_mut()).await;
+        // The executor has taken the batch but cannot submit database work yet.
+        assert!(work.rank.pending.lock().unwrap().ids.is_empty());
+        drop(first);
+        drop(permits);
+        let error = second.await.unwrap_err();
+        assert!(ranked(&conn).is_empty());
+        conn.execute_batch("DROP TRIGGER fail_rank;").unwrap();
+        // This waiter must see its own batch's failure even after the DB is fixed.
+        let other_error = third.await.unwrap_err();
+        assert_eq!(
+            serde_json::to_value(crate::UiError::from_anyhow_ref(&error)).unwrap(),
+            serde_json::to_value(crate::UiError::from_anyhow_ref(&other_error)).unwrap()
+        );
+        repair_missing(&path).await.unwrap();
+        assert_eq!(ranked(&conn), vec![1, 2, 3]);
+        assert_eq!(*work.active().borrow(), 0);
+    }
+
+    #[tokio::test]
+    async fn articles_arriving_during_execution_wait_for_the_next_batch() {
+        let (_dir, path, conn) = fixture();
+        let work = crate::scheduler::BackgroundWork::for_database(&path);
+        let permits = work
+            .db
+            .permits
+            .clone()
+            .acquire_many_owned(db::pool::BACKGROUND_CONNECTIONS as u32)
+            .await
+            .unwrap();
+        let mut first = Box::pin(incremental(&path, vec![1]));
+        pending(first.as_mut()).await;
+        let mut second = Box::pin(incremental(&path, vec![2]));
+        pending(second.as_mut()).await;
+        drop(permits);
+        first.await.unwrap();
+        assert_eq!(ranked(&conn), vec![1]);
+        second.await.unwrap();
+        assert_eq!(ranked(&conn), vec![1, 2]);
+    }
+
+    #[tokio::test]
+    async fn cancelled_submitted_worker_keeps_the_turn_until_its_transaction_ends() {
+        let (_dir, path, conn) = fixture();
+        let work = crate::scheduler::BackgroundWork::for_database(&path);
+        let writer = db::write_transaction(&conn).unwrap();
+        let mut first = Box::pin(incremental(&path, vec![1]));
+        pending(first.as_mut()).await;
+        let metrics = db::pool::metrics(&path).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !metrics
+                .activity
+                .snapshot()
+                .active
+                .iter()
+                .any(|sample| sample.stage == "writer_admission")
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        drop(first);
+        assert!(work.rank.turn.try_lock().is_err());
+        assert_eq!(*work.active().borrow(), 1);
+        let mut second = Box::pin(incremental(&path, vec![2]));
+        pending(second.as_mut()).await;
+        assert!(ranked(&conn).is_empty());
+        writer.commit().unwrap();
+        second.await.unwrap();
+        assert_eq!(ranked(&conn), vec![1, 2]);
+        assert_eq!(*work.active().borrow(), 0);
+    }
 
     #[tokio::test]
     async fn startup_incremental_debounce_and_hourly_refresh() {

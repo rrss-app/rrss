@@ -4,6 +4,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
 
 mod cooldown;
 mod offline;
+mod ownership;
 mod polling;
 mod scale;
 mod writes;
@@ -21,7 +22,7 @@ pub(super) fn capture_logs(run: impl FnOnce()) -> String {
     std::fs::read_to_string(dir.path().join("rrss.log")).unwrap()
 }
 
-const RSS: &str = "<rss version='2.0'><channel><title>Mock</title><link>https://f.test</link><description>mock</description><item><guid>a</guid><title>Article</title><description>body</description></item></channel></rss>";
+pub(super) const RSS: &str = "<rss version='2.0'><channel><title>Mock</title><link>https://f.test</link><description>mock</description><item><guid>a</guid><title>Article</title><description>body</description></item></channel></rss>";
 fn rss_response() -> Vec<u8> {
     format!(
         "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nETag: buffered-version\r\nConnection: close\r\n\r\n{RSS}",
@@ -49,8 +50,11 @@ async fn add_returns_before_fetch_and_duplicate_never_requests_and_failure_keeps
         let (url, mut arrived, release, task) = gated_response(reply).await;
         let (_dir, path) = fixture();
         let (tx, mut rx) = mpsc::unbounded_channel();
-        let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), move |event| {
-            tx.send(event).ok();
+        let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
+        let _subscription = scheduler.subscribe(move |event| {
+            if let SchedulerEvent::Feed(feed) = event {
+                let _ = tx.send(feed.clone());
+            }
         });
         let added = tokio::time::timeout(Duration::from_secs(10), scheduler.add_feed(&url))
             .await
@@ -121,8 +125,7 @@ async fn timeout_releases_slot_single_add_has_reserved_admission_and_stop_is_exp
     let mut limits = runtime::Limits::default();
     limits.pending = 1;
     limits.policy.timeout = Duration::from_secs(1);
-    let scheduler =
-        Scheduler::with_limits(path.clone(), NetworkClients::new(&path), |_| {}, limits);
+    let scheduler = Scheduler::with_limits(NetworkClients::new(&path), limits);
     let a = scheduler.add_feed(&slow.uri()).await.unwrap();
     let ticket = scheduler.submit(a.id).unwrap();
     let b = scheduler.add_feed(&fast).await.unwrap();
@@ -239,8 +242,7 @@ async fn overlapping_entries_share_limits_and_busy_host_does_not_hide_other_host
         parsing: 2,
         ..runtime::Limits::default()
     };
-    let scheduler =
-        Scheduler::with_limits(path.clone(), NetworkClients::new(&path), |_| {}, limits);
+    let scheduler = Scheduler::with_limits(NetworkClients::new(&path), limits);
     let one = scheduler.add_feed(&format!("{a}/1")).await.unwrap();
     got_a.recv().await.unwrap();
     let two = scheduler.add_feed(&format!("{a}/2")).await.unwrap();
@@ -281,9 +283,7 @@ async fn slow_downloads_leave_parse_slots_free_and_rss_capacity_is_separate_from
     let (fast, mut arrived_fast, release_fast, server_fast) = gated_response(rss_response()).await;
     let (_dir, path) = fixture();
     let scheduler = Scheduler::with_limits(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits {
             global: 3,
             host: 1,
@@ -359,7 +359,7 @@ async fn per_host_download_limit_follows_the_setting() {
         )
         .unwrap();
     }
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
     scheduler.start_refresh().await.unwrap();
     tokio::time::timeout(Duration::from_secs(10), async {
         for _ in 0..3 {
@@ -400,7 +400,7 @@ async fn many_slow_sources_do_not_hide_other_hosts_across_metadata_pages() {
         [fast],
     )
     .unwrap();
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
     scheduler.start_refresh().await.unwrap();
     let ticket = scheduler.submit(257).unwrap();
     tokio::time::timeout(Duration::from_secs(20), async {
@@ -452,9 +452,7 @@ async fn same_host_backlog_waits_in_memory_instead_of_rereading_metadata() {
         .unwrap();
     }
     let scheduler = Scheduler::with_limits(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits {
             global: 4,
             host: 1,
@@ -504,9 +502,7 @@ async fn slow_sources_on_distinct_hosts_can_fill_global_download_capacity() {
         .unwrap();
     }
     let scheduler = Scheduler::with_limits(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits {
             global: 2,
             host: 2,
@@ -550,9 +546,7 @@ async fn buffered_responses_share_generations_and_recheck_deleted_or_changed_sou
     let (c, mut got_c, release_c, server_c) = gated_response(rss_response()).await;
     let (_dir, path) = fixture();
     let scheduler = Scheduler::with_limits(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits {
             global: 3,
             parsing: 1,
@@ -671,9 +665,7 @@ async fn single_added_feed_bypasses_backpressure_and_import_queue_with_one_body_
     )
     .unwrap();
     let scheduler = Scheduler::with_limits(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits {
             pending: 1,
             parsing: 0,
@@ -733,16 +725,14 @@ async fn import_larger_than_pending_limit_is_fully_admitted_in_due_pages() {
     );
     assert!(SOURCES > runtime::Limits::default().pending);
     let scheduler = Scheduler::with_limits(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits {
             global: 4,
             pending: 8,
             ..runtime::Limits::default()
         },
     );
-    let scan = scheduler.enqueue_due();
+    let scan = scheduler.shared.enqueue_due();
     tokio::pin!(scan);
     let results = tokio::time::timeout(Duration::from_secs(60), async {
         loop {
@@ -784,9 +774,7 @@ async fn body_free_results_bypass_a_paused_parse_channel() {
     let (body_url, mut got_body, release_body, body_server) = gated_response(rss_response()).await;
     let (_dir, path) = fixture();
     let scheduler = Scheduler::with_limits(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         // Pause parsing without holding SQLite's write lock. Body-free results
         // must still finish, even while an earlier 200 response cannot be parsed.
         runtime::Limits {
@@ -848,9 +836,7 @@ async fn partial_download_bytes_backpressure_new_dispatch_and_failure_releases_t
     let (fast, mut got_fast, release_fast, server_fast) = gated_response(rss_response()).await;
     let (_dir, path) = fixture();
     let scheduler = Scheduler::with_limits(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits {
             global: 2,
             buffer_bytes: prefix.len(),
@@ -916,9 +902,7 @@ async fn backpressure_keeps_inflight_downloads_and_stop_discards_unparsed_bodies
         gated_response(rss_response()).await;
     let (_dir, path) = fixture();
     let scheduler = Scheduler::with_limits(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits {
             global: 2,
             parsing: 1,
@@ -941,6 +925,19 @@ async fn backpressure_keeps_inflight_downloads_and_stop_discards_unparsed_bodies
     let transaction = db::write_transaction(&conn).unwrap();
     release_first.add_permits(1);
     wait_for_buffered_bytes(&scheduler, RSS.len()).await;
+    // Ensure the first parser has submitted its worker before stopping. Only
+    // the second, unparsed response may release its bytes immediately.
+    let metrics = db::pool::metrics(&path).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !metrics.activity.snapshot().active.iter().any(|sample| {
+            sample.stage == "writer_admission"
+                && sample.operation.contains("response::apply_response")
+        }) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
     // The other already admitted download still completes under backpressure.
     release_second.add_permits(1);
     wait_for_buffered_bytes(&scheduler, RSS.len() * 2).await;
@@ -948,7 +945,7 @@ async fn backpressure_keeps_inflight_downloads_and_stop_discards_unparsed_bodies
     let run = scheduler.snapshot().run_id;
     scheduler.stop();
     tokio::time::timeout(Duration::from_secs(10), async {
-        while scheduler.buffered_bytes() != 0 {
+        while scheduler.buffered_bytes() != RSS.len() {
             tokio::task::yield_now().await;
         }
         assert!(first_ticket.wait().await.is_err());
@@ -958,6 +955,16 @@ async fn backpressure_keeps_inflight_downloads_and_stop_discards_unparsed_bodies
     .unwrap();
     transaction.commit().unwrap();
     assert!(scheduler.shutdown().await);
+    assert_eq!(scheduler.buffered_bytes(), 0);
+    assert_eq!(
+        conn.query_row(
+            "SELECT COUNT(*) FROM articles WHERE feed_id=?1",
+            [first.id],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        1
+    );
     let pending = rrss_core::feeds::get_feed(&conn, second.id).unwrap();
     assert!(pending.last_fetched_at.is_none());
     assert!(pending.etag.is_none());
@@ -970,7 +977,7 @@ async fn backpressure_keeps_inflight_downloads_and_stop_discards_unparsed_bodies
         .unwrap(),
         0
     );
-    let restarted = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let restarted = Scheduler::create(NetworkClients::new(&path)).unwrap();
     assert_ne!(restarted.snapshot().run_id, run);
     let ticket = restarted.submit(second.id).unwrap();
     tokio::time::timeout(Duration::from_secs(10), async {
@@ -1016,8 +1023,7 @@ async fn redirect_releases_origin_capacity_before_waiting_for_target() {
         parsing: 2,
         ..runtime::Limits::default()
     };
-    let scheduler =
-        Scheduler::with_limits(path.clone(), NetworkClients::new(&path), |_| {}, limits);
+    let scheduler = Scheduler::with_limits(NetworkClients::new(&path), limits);
     let direct = scheduler.add_feed(&target).await.unwrap();
     arrived.recv().await.unwrap();
     let redirected = scheduler.add_feed(&redirect.uri()).await.unwrap();
@@ -1055,7 +1061,7 @@ async fn blocked_model_does_not_block_add_or_refresh_and_background_generations_
         .mount(&server)
         .await;
     let (_dir, path) = fixture();
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
     let conn = db::open_at(&path).unwrap();
     conn.execute(
         "INSERT INTO ai_cache(cache_key, value, created_at) VALUES('expired', '{}', 0)",
@@ -1118,7 +1124,7 @@ async fn blocked_model_does_not_block_add_or_refresh_and_background_generations_
 async fn stopping_releases_manual_object_waiter_without_affecting_another_database() {
     let (_dir, path) = fixture();
     db::open_at(&path).unwrap().execute_batch("INSERT INTO feeds(id,url,created_at) VALUES(1,'https://fixture.invalid',0); INSERT INTO articles(id,feed_id,title,created_at) VALUES(1,1,'test',0);").unwrap();
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
     let object = scheduler.shared.capacity.object("summary:1".into());
     let _guard = object.lock().await;
     let summary = tokio::spawn({
@@ -1133,7 +1139,7 @@ async fn stopping_releases_manual_object_waiter_without_affecting_another_databa
     .await
     .unwrap();
     let (_other_dir, other_path) = fixture();
-    let other = Scheduler::start(other_path.clone(), NetworkClients::new(&other_path), |_| {});
+    let other = Scheduler::create(NetworkClients::new(&other_path)).unwrap();
     let other_object = other.shared.capacity.object("summary:1".into());
     assert!(other_object.try_lock().is_ok());
     scheduler.stop();
@@ -1147,7 +1153,8 @@ async fn stopping_releases_manual_object_waiter_without_affecting_another_databa
         "job_runtime_stopped" | "job_model_stopped_retry" | "job_model_stopped"
     ));
     assert!(!other.snapshot().stopped);
-    other.stop();
+    other.start_refresh().await.unwrap();
+    assert!(other.shutdown().await);
 }
 
 #[tokio::test]
@@ -1172,7 +1179,7 @@ async fn duplicate_manual_summary_shares_one_execution_when_a_waiter_leaves() {
         Some("test"),
     )
     .unwrap();
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
     let first = tokio::spawn({
         let scheduler = scheduler.clone();
         async move { scheduler.summarize_article(1).await }
@@ -1238,9 +1245,7 @@ async fn refresh_operations_share_generations_across_pages_and_keep_fixed_target
         .unwrap();
     }
     let scheduler = Scheduler::with_limits(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits {
             pending: 2,
             ..runtime::Limits::default()
@@ -1302,13 +1307,13 @@ async fn refresh_operations_share_generations_across_pages_and_keep_fixed_target
 
 #[tokio::test]
 async fn active_refresh_admission_is_bounded_and_stop_produces_terminal_snapshots() {
-    let (url, mut arrived, _release, server) = gated_server().await;
+    let (url, mut arrived, release_old, server) = gated_server().await;
     let (_dir, path) = fixture();
     let conn = db::open_at(&path).unwrap();
     conn.execute("INSERT INTO feeds(id,url,created_at) VALUES(1,?1,0)", [url])
         .unwrap();
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
-    let same = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
+    let same = Scheduler::get(&path).unwrap();
     assert_eq!(scheduler.snapshot().run_id, same.snapshot().run_id);
     scheduler.start_refresh().await.unwrap();
     arrived.recv().await.unwrap();
@@ -1331,21 +1336,81 @@ async fn active_refresh_admission_is_bounded_and_stop_produces_terminal_snapshot
             .all(|operation| operation.done && operation.skipped == 1)
     );
     assert!(same.start_refresh().await.is_err());
-    let restarted = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let restarted = Scheduler::create(NetworkClients::new(&path)).unwrap();
     assert_ne!(snapshot.run_id, restarted.snapshot().run_id);
     assert!(restarted.snapshot().operations.is_empty());
     let epoch = *restarted.shared.capacity.stopped.borrow();
+    let (new_url, mut arrived_new, release_new, new_server) = gated_server().await;
+    conn.execute("UPDATE feeds SET url=?1 WHERE id=1", [new_url])
+        .unwrap();
+    let new_op = restarted.start_refresh().await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5), arrived_new.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    release_old.add_permits(1);
+    assert!(scheduler.shutdown().await);
+    assert_eq!(restarted.snapshot().operations[0].completed, 0);
+    release_new.add_permits(1);
+    let completed = wait_operation(&restarted, new_op.operation_id).await;
+    assert_eq!(
+        (completed.completed, completed.skipped, completed.failed),
+        (1, 0, 0)
+    );
     drop(scheduler);
     drop(same);
     assert_eq!(*restarted.shared.capacity.stopped.borrow(), epoch);
     restarted.stop();
     server.abort();
+    new_server.abort();
+}
+
+#[tokio::test]
+async fn shutdown_cancels_scheduler_admission_while_database_permits_are_occupied() {
+    let (_dir, path) = fixture();
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
+    scheduler.shared.await_cooldown_ready().await.unwrap();
+    let background = &scheduler.shared.work;
+    let reserved = background
+        .db
+        .permits
+        .clone()
+        .acquire_many_owned(db::pool::BACKGROUND_CONNECTIONS as u32)
+        .await
+        .unwrap();
+
+    let mut summary = Box::pin(scheduler.summarize_article(1));
+    let mut refresh = Box::pin(scheduler.start_refresh());
+    tokio::select! {
+        biased;
+        _ = &mut summary => panic!("summary should be waiting for the database"),
+        _ = &mut refresh => panic!("refresh should be waiting for the database"),
+        _ = std::future::ready(()) => {}
+    }
+    scheduler.stop();
+    let (summary, refresh, drained) = tokio::time::timeout(Duration::from_secs(10), async {
+        tokio::join!(summary, refresh, scheduler.shutdown())
+    })
+    .await
+    .unwrap();
+    for error in [summary.unwrap_err(), refresh.unwrap_err()] {
+        assert!(matches!(
+            error.downcast_ref::<rrss_core::Error>(),
+            Some(rrss_core::Error::Jobs(
+                rrss_core::error::JobFailure::RuntimeStopped
+            ))
+        ));
+    }
+    assert!(drained);
+    assert_eq!(*background.active().borrow(), 0);
+    drop(reserved);
+    crate::jobs::spawn_db(path, |_| Ok(())).await.unwrap();
 }
 
 #[tokio::test]
 async fn shutdown_waits_for_a_started_blocking_transaction() {
     let (_dir, path) = fixture();
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
     let (entered, started) = tokio::sync::oneshot::channel();
     let (release, released) = std::sync::mpsc::channel();
     let write = tokio::spawn(crate::jobs::spawn_db(path.clone(), move |conn| {
@@ -1365,15 +1430,15 @@ async fn shutdown_waits_for_a_started_blocking_transaction() {
     release.send(()).unwrap();
     write.await.unwrap().unwrap();
     assert!(shutdown.await.unwrap());
-    let capacity = &scheduler.shared.capacity;
-    assert_eq!(*capacity.active_work.borrow(), 0);
+    let background = &scheduler.shared.work;
+    assert_eq!(*background.active().borrow(), 0);
     assert_eq!(
-        capacity.database.available_permits(),
+        background.db.permits.available_permits(),
         db::pool::BACKGROUND_CONNECTIONS
     );
-    let measured_work = capacity.metrics.db_work.snapshot().count;
+    let measured_work = background.db.execution_time.snapshot().count;
     assert!(measured_work >= 1);
-    assert_eq!(capacity.metrics.db_queue.snapshot().count, measured_work);
+    assert_eq!(background.db.queue_time.snapshot().count, measured_work);
     assert_eq!(
         db::get_setting(&db::open_at(&path).unwrap(), "shutdown_fixture")
             .unwrap()
@@ -1397,7 +1462,7 @@ async fn scheduled_fetch_keeps_running_without_accumulating_automatic_ai_rounds(
             [url],
         )
         .unwrap();
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
     let (blocked, _) = tokio::sync::watch::channel(None);
     *scheduler.shared.capacity.embedding.lock().unwrap() = Some(model_capacity::EmbeddingRun {
         epoch: 0,
@@ -1405,14 +1470,7 @@ async fn scheduled_fetch_keeps_running_without_accumulating_automatic_ai_rounds(
         result: blocked,
     });
     scheduler.request_background().unwrap();
-    let running = tokio::spawn({
-        let scheduler = scheduler.clone();
-        async move {
-            scheduler
-                .run_loop_with_interval(Duration::from_millis(10))
-                .await
-        }
-    });
+    scheduler.start_polling_with_interval(Duration::from_millis(10));
     tokio::time::timeout(Duration::from_secs(10), arrived.recv())
         .await
         .unwrap()
@@ -1424,8 +1482,7 @@ async fn scheduled_fetch_keeps_running_without_accumulating_automatic_ai_rounds(
         .unwrap();
     assert_eq!(scheduler.snapshot().background_requested, 1);
     assert_eq!(scheduler.snapshot().background_completed, 0);
-    scheduler.stop();
-    running.await.unwrap();
+    assert!(scheduler.shutdown().await);
     scheduler.shared.capacity.embedding.lock().unwrap().take();
     server.abort();
 }
@@ -1471,7 +1528,7 @@ async fn completed_article_embeds_while_another_summary_is_still_pending() {
         [rrss_core::feeds::now_ms()],
     )
     .unwrap();
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
     let held = scheduler.shared.capacity.object("summary:1".into());
     let guard = held.lock().await;
     let version = scheduler.request_background().unwrap();
@@ -1521,24 +1578,62 @@ async fn new_articles_publish_before_incremental_rank_finishes() {
         .await;
     let (_dir, path) = fixture();
     let conn = db::open_at(&path).unwrap();
+    conn.execute(
+        "INSERT INTO feeds(id,url,created_at) VALUES(1,?1,0),(2,?2,0)",
+        rusqlite::params![
+            format!("{}/first", server.uri()),
+            format!("{}/second", server.uri())
+        ],
+    )
+    .unwrap();
     let (tx, mut events) = mpsc::unbounded_channel();
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), move |event| {
-        let _ = tx.send(event);
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
+    let _subscription = scheduler.subscribe(move |event| {
+        if let SchedulerEvent::Feed(feed) = event {
+            let _ = tx.send(feed.clone());
+        }
     });
+    // Keep local cache repair out of this incremental-ranking scenario.
+    let _local = scheduler.shared.capacity.local.lock().await;
     // 排序一直算不完时，入库、源事件与刷新完成都不等它。
-    let slow_rank = scheduler.shared.capacity.rank.hold().await;
-    let added = scheduler.add_feed(&server.uri()).await.unwrap();
-    let event = tokio::time::timeout(Duration::from_secs(10), async {
-        loop {
+    let slow_rank = scheduler.shared.work.rank.hold().await;
+    let first = scheduler.submit(1).unwrap();
+    let second = scheduler.submit(2).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        let mut published = std::collections::HashSet::new();
+        while published.len() < 2 {
             let event = events.recv().await.unwrap();
-            if event.feed_id == Some(added.id) && event.inserted == 1 {
-                break event;
+            if let Some(id @ (1 | 2)) = event.feed_id
+                && event.inserted == 1
+            {
+                assert_eq!(event.status, "updated");
+                assert_eq!(
+                    conn.query_row(
+                        "SELECT COUNT(*) FROM articles WHERE feed_id=?1",
+                        [id],
+                        |row| row.get::<_, i64>(0)
+                    )
+                    .unwrap(),
+                    1
+                );
+                published.insert(id);
             }
+        }
+        for ticket in [first, second] {
+            assert!(matches!(
+                ticket.wait().await.unwrap().status,
+                RefreshStatus::Updated { inserted: 1, .. }
+            ));
         }
     })
     .await
     .unwrap();
-    assert_eq!(event.status, "updated");
+    assert_eq!(
+        conn.query_row("SELECT COUNT(*) FROM article_rank", [], |row| row
+            .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
     drop(slow_rank);
     tokio::time::timeout(Duration::from_secs(10), async {
         while conn
@@ -1546,7 +1641,7 @@ async fn new_articles_publish_before_incremental_rank_finishes() {
                 r.get::<_, i64>(0)
             })
             .unwrap()
-            != 1
+            != 2
         {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
@@ -1567,8 +1662,11 @@ async fn rank_failure_reports_derived_degradation_and_recovers_without_ai_or_fee
     let conn = db::open_at(&path).unwrap();
     conn.execute_batch("CREATE TRIGGER fail_rank BEFORE INSERT ON article_rank BEGIN SELECT RAISE(ABORT,'injected rank'); END;").unwrap();
     let (tx, mut events) = mpsc::unbounded_channel();
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), move |event| {
-        let _ = tx.send(event);
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
+    let _subscription = scheduler.subscribe(move |event| {
+        if let SchedulerEvent::Feed(feed) = event {
+            let _ = tx.send(feed.clone());
+        }
     });
     let added = scheduler.add_feed(&server.uri()).await.unwrap();
     // 源事件在入库提交后先发；后台增量排序失败时再补发该源的衍生降级事件。
@@ -1723,7 +1821,7 @@ async fn automatic_cluster_summary_runs_after_the_article_summary_batch() {
         };
         ResponseTemplate::new(200).set_body_json(json!({"choices":[{"message":{"content":content.to_string()}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}))
     }).mount(&server).await;
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
     let version = scheduler.request_background().unwrap();
     tokio::time::timeout(Duration::from_secs(30), scheduler.wait_background(version))
         .await

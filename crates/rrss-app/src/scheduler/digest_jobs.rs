@@ -131,7 +131,7 @@ where
         }
     };
     if owns {
-        let work = capacity.work();
+        let work = super::BackgroundWork::for_database(path);
         let mut owner = Owner {
             capacity: capacity.clone(),
             key,
@@ -143,36 +143,32 @@ where
         } else {
             current
         };
-        tokio::spawn(
-            async move {
-                let _work = work;
-                let mut stop = capacity.stopped.subscribe();
-                let mut force = force;
-                loop {
-                    let result = tokio::select! {
-                        biased;
-                        _ = stop.wait_for(|epoch| *epoch != key.2) => break,
-                        result = generate(key.1, force) => result.map_err(Failure::from),
-                    };
-                    let mut jobs = capacity.digests.0.lock().unwrap();
-                    let entry = jobs.get_mut(&key).expect("digest owner");
-                    entry.current.send_replace(Some(result));
-                    if let Some(next) = entry.next.take() {
-                        entry.current = next;
-                        force = true;
-                    } else {
-                        jobs.remove(&key);
-                        // Retire ownership under the same mutex so a new generation
-                        // cannot be removed by the old owner's Drop.
-                        owner.finished = true;
-                        break;
-                    }
+        let task = async move {
+            let mut stop = capacity.stopped.subscribe();
+            let mut force = force;
+            loop {
+                let result = tokio::select! {
+                    biased;
+                    _ = stop.wait_for(|epoch| *epoch != key.2) => break,
+                    result = generate(key.1, force) => result.map_err(Failure::from),
+                };
+                let mut jobs = capacity.digests.0.lock().unwrap();
+                let entry = jobs.get_mut(&key).expect("digest owner");
+                entry.current.send_replace(Some(result));
+                if let Some(next) = entry.next.take() {
+                    entry.current = next;
+                    force = true;
+                } else {
+                    jobs.remove(&key);
+                    // Retire ownership under the same mutex so a new generation
+                    // cannot be removed by the old owner's Drop.
+                    owner.finished = true;
+                    break;
                 }
-                drop(owner);
             }
-            .instrument(span)
-            .with_current_subscriber(),
-        );
+            drop(owner);
+        };
+        tokio::spawn(work.scope(task.instrument(span).with_current_subscriber()));
     }
     loop {
         if let Some(result) = receiver.borrow_and_update().clone() {
@@ -294,5 +290,31 @@ mod tests {
         new_release.send(Ok(())).unwrap();
         new.await.unwrap().unwrap();
         assert!(capacity.digests.0.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn digest_task_uses_its_admitting_run_after_replacement() {
+        use crate::scheduler::BackgroundWork;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().canonicalize().unwrap().join("test.db");
+        let old = BackgroundWork::for_run(&path, &path);
+        run_task(&path, "daily", false, {
+            let path = path.clone();
+            let old = old.clone();
+            move |_, _| {
+                let path = path.clone();
+                let old = old.clone();
+                async move {
+                    // Replace discovery while the old generation is being polled.
+                    let new = BackgroundWork::for_run(&path, &path);
+                    assert!(!Arc::ptr_eq(&old, &new));
+                    assert!(Arc::ptr_eq(&BackgroundWork::for_database(&path), &old));
+                    Ok(())
+                }
+            }
+        })
+        .await
+        .unwrap();
     }
 }

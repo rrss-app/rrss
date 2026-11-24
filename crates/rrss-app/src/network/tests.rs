@@ -200,7 +200,7 @@ async fn adding_a_feed_and_its_summary_use_content_and_api_routes_separately() {
     )
     .unwrap();
     let clients = NetworkClients::new(&db_path);
-    let scheduler = crate::scheduler::Scheduler::start(db_path.clone(), clients.clone(), |_| {});
+    let scheduler = crate::scheduler::Scheduler::create(clients.clone()).unwrap();
     let result = scheduler.add_feed("http://feed.invalid/rss").await.unwrap();
     scheduler.submit(result.id).unwrap().wait().await.unwrap();
     assert!(
@@ -288,7 +288,7 @@ async fn invalid_api_environment_does_not_disable_content_or_local_jobs() {
     let clients = NetworkClients::new(&db_path);
     clients.client(NetworkScope::Content).await.unwrap();
     assert!(clients.client(NetworkScope::Api).await.is_err());
-    let scheduler = crate::scheduler::Scheduler::start(db_path.clone(), clients, |_| {});
+    let scheduler = crate::scheduler::Scheduler::create(clients).unwrap();
     let version = scheduler.request_background().unwrap();
     scheduler.wait_background(version).await.unwrap();
     let remaining: i64 = conn

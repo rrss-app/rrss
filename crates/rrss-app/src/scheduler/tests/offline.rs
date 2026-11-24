@@ -217,7 +217,7 @@ async fn dns_outage_preserves_health_pauses_dispatch_and_automatic_head_probe_re
     let mut policy = limits();
     policy.offline.first_interval = Duration::from_millis(100);
     policy.offline.max_interval = Duration::from_millis(200);
-    let scheduler = Scheduler::with_limits(path.clone(), clients, |_| {}, policy);
+    let scheduler = Scheduler::with_limits(clients, policy);
     scheduler.start_refresh().await.unwrap();
     wait_until(|| scheduler.snapshot().feed_pause.is_some()).await;
     assert_eq!(health(&conn), original);
@@ -302,8 +302,7 @@ async fn refused_content_proxy_preserves_health_and_manual_probe_reports_then_re
         },
     )
     .unwrap();
-    let scheduler =
-        Scheduler::with_limits(path.clone(), NetworkClients::new(&path), |_| {}, limits());
+    let scheduler = Scheduler::with_limits(NetworkClients::new(&path), limits());
     scheduler.start_refresh().await.unwrap();
     wait_until(|| scheduler.snapshot().feed_pause.is_some()).await;
     assert_eq!(health(&conn), original);
@@ -364,8 +363,7 @@ async fn timed_out_proxy_failures_and_probes_do_not_advance_source_backoff() {
         },
     )
     .unwrap();
-    let scheduler =
-        Scheduler::with_limits(path.clone(), NetworkClients::new(&path), |_| {}, limits());
+    let scheduler = Scheduler::with_limits(NetworkClients::new(&path), limits());
     scheduler.start_refresh().await.unwrap();
     wait_until(|| scheduler.snapshot().feed_pause.is_some()).await;
     assert_eq!(health(&conn), original);
@@ -456,8 +454,7 @@ async fn one_success_in_window_prevents_offline_detection_among_mostly_slow_fail
         },
     )
     .unwrap();
-    let scheduler =
-        Scheduler::with_limits(path.clone(), NetworkClients::new(&path), |_| {}, limits());
+    let scheduler = Scheduler::with_limits(NetworkClients::new(&path), limits());
     let start = scheduler.start_refresh().await.unwrap();
     wait_until(|| {
         scheduler
@@ -502,7 +499,7 @@ async fn without_recent_successes_only_head_fallbacks_are_used() {
     let clients = NetworkClients::with_feed_builder(&path, move |builder| {
         builder.dns_resolver(dns.clone()).pool_max_idle_per_host(0)
     });
-    let scheduler = Scheduler::with_limits(path.clone(), clients, |_| {}, limits());
+    let scheduler = Scheduler::with_limits(clients, limits());
     let start = scheduler.start_refresh().await.unwrap();
     wait_until(|| {
         scheduler
@@ -550,7 +547,7 @@ async fn isolated_dns_failure_is_recorded_after_a_reachable_probe_and_keeps_base
         NetworkClients::with_feed_builder(&path, move |builder| builder.dns_resolver(dns.clone()));
     let mut policy = limits();
     policy.offline.window = Duration::from_millis(100);
-    let scheduler = Scheduler::with_limits(path.clone(), clients, |_| {}, policy);
+    let scheduler = Scheduler::with_limits(clients, policy);
     for _ in 0..2 {
         let result =
             tokio::time::timeout(Duration::from_secs(10), scheduler.submit(1).unwrap().wait())
@@ -592,7 +589,7 @@ async fn one_previously_successful_dead_host_does_not_pause_all_subscriptions() 
     });
     let clients =
         NetworkClients::with_feed_builder(&path, move |builder| builder.dns_resolver(dns.clone()));
-    let scheduler = Scheduler::with_limits(path.clone(), clients, |_| {}, limits());
+    let scheduler = Scheduler::with_limits(clients, limits());
     let result = tokio::time::timeout(Duration::from_secs(10), scheduler.submit(1).unwrap().wait())
         .await
         .unwrap()

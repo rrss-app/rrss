@@ -212,12 +212,6 @@ impl Deferred {
     pub fn ui(&self) -> crate::views::UiError {
         crate::views::UiError::from(self.error())
     }
-    pub fn status(&self) -> RefreshStatus {
-        RefreshStatus::Skipped {
-            message: self.record(),
-            retry_at: self.until,
-        }
-    }
     pub fn error(&self) -> rrss_core::Error {
         rrss_core::Error::FetchDeferred {
             until: self.until,
@@ -892,12 +886,11 @@ async fn update(
     edit: impl Fn(&mut Cooldowns, Time) -> bool + Send + Sync + 'static,
 ) -> Result<()> {
     let writing = Writing::new(state.clone());
-    let work = state.capacity.work();
+    let work = state.work.clone();
     // A received limit owns its persistence intent even if the RSS deadline
     // cancels the caller. Requests remain bounded by RSS admission. Serialization
     // waits before borrowing a SQLite connection, including across restarts.
-    tokio::spawn(async move {
-        let _work = work;
+    tokio::spawn(work.scope(async move {
         let owner = Arc::new(state.cooldown_store.serial.clone().lock_owned().await);
         let now = state.clock.now();
         let previous = state.cooldowns.lock().unwrap().clone();
@@ -936,7 +929,7 @@ async fn update(
             state.cooldowns.lock().unwrap().log_changes(&previous, state.clock.now());
         }
         result
-    })
+    }))
     .await?
 }
 

@@ -242,12 +242,11 @@ impl Queue {
 
 impl Scheduler {
     pub async fn start_refresh(&self) -> Result<views::RefreshStarted> {
+        self.while_running(self.admit_refresh()).await
+    }
+
+    async fn admit_refresh(&self) -> Result<views::RefreshStarted> {
         let started = tokio::time::Instant::now();
-        if *self.shared.stop.borrow() {
-            return Err(
-                rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped).into(),
-            );
-        }
         let online = self.shared.check_network(true).await;
         self.shared.await_cooldown_ready().await?;
         let admission = self
@@ -369,11 +368,13 @@ impl Scheduler {
         self.shared.snapshot()
     }
 
-    pub fn set_observer(
+    /// Subscribe before reading `snapshot` to resume at its run ID and version.
+    /// Dropping the token removes this listener from subsequent publications.
+    pub fn subscribe(
         &self,
-        observer: impl Fn(views::SchedulerSnapshot) + Send + Sync + 'static,
-    ) {
-        let _ = self.shared.observer.set(Arc::new(observer));
+        listener: impl Fn(SchedulerEvent<'_>) + Send + Sync + 'static,
+    ) -> Subscription {
+        self.shared.work.subscribers.subscribe(Arc::new(listener))
     }
 }
 

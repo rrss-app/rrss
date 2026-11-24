@@ -170,8 +170,6 @@ pub(crate) struct ModelMetrics {
     pub(super) background: Arc<Gauge>,
     pub(super) wait: Timing,
     pub(super) held: Arc<Timing>,
-    pub db_queue: Timing,
-    pub db_work: Timing,
     pub(super) rate_limited: AtomicU64,
     pub(super) unavailable: AtomicU64,
     pub(super) cooldown: AtomicU64,
@@ -284,8 +282,8 @@ impl runtime::Shared {
             named("download", &m.download),
             named("parse_queue", &m.parse_wait),
             named("processing", &m.processing),
-            named("db_worker_queue", &self.capacity.metrics.db_queue),
-            named("db_work", &self.capacity.metrics.db_work),
+            named("db_worker_queue", &self.work.db.queue_time),
+            named("db_work", &self.work.db.execution_time),
         ];
         if let Some(db) = db::pool::metrics(&self.path) {
             timings.extend([

@@ -298,21 +298,7 @@ pub fn apply_fetch_scheduled(
         );
     }
     if !(200..300).contains(&resp.status) {
-        let message = crate::feeds::refresh_error_json(&Error::Http {
-            status: resp.status,
-            message: String::new(),
-        });
-        return record_checked(
-            conn,
-            feed,
-            now,
-            (None, None),
-            Some(&message),
-            RefreshStatus::Failed {
-                message: message.clone(),
-            },
-            schedule,
-        );
+        return record_http_failure(conn, feed, resp.status, now, schedule, None);
     }
     let metrics = crate::db::metrics::for_connection(conn);
     let parsing = metrics.as_ref().map(|metrics| metrics.feed_parse.start());
@@ -404,6 +390,43 @@ pub fn apply_fetch_scheduled(
             derived_degraded: report.derived_degraded,
         },
     })
+}
+
+/// Record the received HTTP failure even when refresh observers report a server
+/// cooldown. Source identity is checked in the same transaction, so stale/deleted
+/// sources keep their own outcome instead of being relabeled as deferred.
+pub fn record_http_failure(
+    conn: &Connection,
+    feed: &FeedRow,
+    status: u16,
+    now: i64,
+    schedule: FetchSchedule,
+    deferred: Option<(Option<i64>, FetchDeferredReason)>,
+) -> Result<RefreshResult> {
+    let message = crate::feeds::refresh_error_json(&Error::Http {
+        status,
+        message: String::new(),
+    });
+    let outcome = match deferred.filter(|_| matches!(status, 429 | 503)) {
+        Some((until, reason)) => RefreshStatus::Skipped {
+            message: crate::feeds::refresh_error_json(&Error::FetchDeferred { until, reason }),
+            retry_at: until,
+        },
+        None => RefreshStatus::Failed {
+            message: message.clone(),
+        },
+    };
+    record_checked(
+        conn,
+        feed,
+        now,
+        (None, None),
+        Some(&message),
+        outcome,
+        schedule
+            .with_failure(FailureClass::Fast)
+            .with_error(ErrorKind::http(status), Some(status)),
+    )
 }
 
 /// 同一条生产入库路径的分段计时；夹具构造和 HTTP 不计入。
@@ -905,6 +928,78 @@ mod tests {
         let dir = tempdir().unwrap();
         let conn = open_at(&dir.path().join("rrss.db")).unwrap();
         (dir, conn)
+    }
+
+    #[test]
+    fn http_cooldown_outcomes_preserve_source_health_and_stale_snapshot_results() {
+        for status in [429, 503, 500] {
+            for source in ["current", "changed", "deleted"] {
+                let (_dir, conn) = open_temp();
+                conn.execute_batch("INSERT INTO feeds(id,url,created_at) VALUES(1,'https://source.example/feed',0);").unwrap();
+                let feed = crate::feeds::get_feed(&conn, 1).unwrap();
+                match source {
+                    "changed" => {
+                        conn.execute(
+                            "UPDATE feeds SET url='https://changed.example/feed' WHERE id=1",
+                            [],
+                        )
+                        .unwrap();
+                    }
+                    "deleted" => {
+                        conn.execute("DELETE FROM feeds WHERE id=1", []).unwrap();
+                    }
+                    _ => {}
+                }
+                let result = record_http_failure(
+                    &conn,
+                    &feed,
+                    status,
+                    1000,
+                    FetchSchedule::with_random(|| 0).not_before(9000),
+                    Some((Some(9000), FetchDeferredReason::HostLimited)),
+                )
+                .unwrap();
+                match source {
+                    "deleted" => assert_eq!(result.status, RefreshStatus::Deleted),
+                    "changed" => {
+                        assert_eq!(
+                            result.status,
+                            RefreshStatus::Failed {
+                                message: FetchFailure::StaleUrl.record()
+                            }
+                        );
+                        let current = crate::feeds::get_feed(&conn, 1).unwrap();
+                        assert!(current.error.is_none() && current.last_fetched_at.is_none());
+                    }
+                    _ => {
+                        assert_eq!(
+                            matches!(
+                                result.status,
+                                RefreshStatus::Skipped {
+                                    retry_at: Some(9000),
+                                    ..
+                                }
+                            ),
+                            status != 500
+                        );
+                        let (failures, error): (i64, String) = conn
+                            .query_row("SELECT fail_count,error FROM feeds WHERE id=1", [], |r| {
+                                Ok((r.get(0)?, r.get(1)?))
+                            })
+                            .unwrap();
+                        assert_eq!(failures, 1);
+                        assert_eq!(
+                            error,
+                            crate::feeds::refresh_error_json(&Error::Http {
+                                status,
+                                message: String::new()
+                            })
+                        );
+                        assert!(crate::feeds::get_feed(&conn, 1).unwrap().next_fetch_at >= 9000);
+                    }
+                }
+            }
+        }
     }
 
     #[test]

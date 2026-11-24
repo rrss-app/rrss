@@ -186,33 +186,24 @@ pub fn run() -> anyhow::Result<()> {
             });
             async move { rrss_app::pi::ChatRuntime::start(cfg, network, sink, true) }
         });
-        let vector_app = app.handle().clone();
-        rrss_app::jobs::vector_space::set_notifier(move |view| {
-            use tauri::Emitter;
-            if let Err(error) = vector_app.emit("vector-space:stale", view) {
-                tracing::warn!(%error, "emit vector space warning");
-            }
-        });
         let scheduler = tauri::async_runtime::block_on(async {
-            let feed_app = app.handle().clone();
-            rrss_app::scheduler::Scheduler::start(db_path.clone(), network.clone(), move |event| {
+            let scheduler = rrss_app::scheduler::Scheduler::create(network.clone())?;
+            let handle = app.handle().clone();
+            app.manage(scheduler.subscribe(move |event| {
+                use rrss_app::scheduler::SchedulerEvent;
                 use tauri::Emitter;
-                if let Err(error) = feed_app.emit("feed:updated", event) {
-                    tracing::warn!(%error, "emit feed update");
+                let result = match event {
+                    SchedulerEvent::Feed(feed) => handle.emit("feed:updated", feed),
+                    SchedulerEvent::Status(snapshot) => handle.emit("scheduler:updated", snapshot),
+                    SchedulerEvent::VectorStale(view) => handle.emit("vector-space:stale", view),
+                };
+                if let Err(error) = result {
+                    tracing::warn!(%error, "emit scheduler event");
                 }
-            })
-        });
-        let scheduled = scheduler.clone();
-        let scheduler_app = app.handle().clone();
-        scheduler.set_observer(move |snapshot| {
-            use tauri::Emitter;
-            if let Err(error) = scheduler_app.emit("scheduler:updated", snapshot) {
-                tracing::warn!(%error, "emit scheduler update");
-            }
-        });
-        tauri::async_runtime::spawn(async move {
-            scheduled.run_loop().await;
-        });
+            }));
+            scheduler.start_polling();
+            anyhow::Ok(scheduler)
+        })?;
         let install_app = app.handle().clone();
         rrss_app::pi::install::set_install_notifier(move |view| {
             use tauri::Emitter;
@@ -225,8 +216,8 @@ pub fn run() -> anyhow::Result<()> {
         tauri::async_runtime::spawn(async move {
             let _ = rrss_app::pi::install::ensure_pi_binary(&db_pi, &data_pi, false).await;
         });
-        let translation = rrss_app::translate::runtime::Runtime::new(
-            &db_path,
+        let translation = rrss_app::translate::runtime::Runtime::with_network(
+            network.clone(),
             Arc::new(events::TauriTranslationSink {
                 app: app.handle().clone(),
             }),

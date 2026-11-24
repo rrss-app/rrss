@@ -8,6 +8,41 @@ fn sqlite_error(code: i32) -> rrss_core::Error {
     ))
 }
 
+#[tokio::test]
+async fn cancelled_feed_write_releases_its_turn_while_waiting_for_database_admission() {
+    let (_dir, path) = fixture();
+    let background = BackgroundWork::for_database(&path);
+    let first_writer = background.db.feed_writes.lock().await;
+    let mut waiting = Box::pin(write_db::<(), _>(path, |_| panic!("write was cancelled")));
+    tokio::select! {
+        biased;
+        _ = &mut waiting => panic!("another writer owns the turn"),
+        _ = std::future::ready(()) => {}
+    }
+    assert_eq!(
+        background.db.permits.available_permits(),
+        db::pool::BACKGROUND_CONNECTIONS
+    );
+
+    let _permits = background
+        .db
+        .permits
+        .clone()
+        .acquire_many_owned(db::pool::BACKGROUND_CONNECTIONS as u32)
+        .await
+        .unwrap();
+    drop(first_writer);
+    tokio::select! {
+        biased;
+        _ = &mut waiting => panic!("database admission is occupied"),
+        _ = std::future::ready(()) => {}
+    }
+    assert!(background.db.feed_writes.try_lock().is_err());
+    drop(waiting);
+    assert!(background.db.feed_writes.try_lock().is_ok());
+    assert_eq!(*background.active().borrow(), 0);
+}
+
 #[tokio::test(start_paused = true)]
 async fn lock_variants_exhaust_the_original_attempt_and_backoff_budget() {
     for code in [
@@ -20,7 +55,7 @@ async fn lock_variants_exhaust_the_original_attempt_and_backoff_budget() {
         rusqlite::ffi::SQLITE_LOCKED_VTAB,
     ] {
         let (_dir, path) = fixture();
-        let capacity = model_capacity::Capacity::for_database(&path);
+        let background = BackgroundWork::for_database(&path);
         let attempts = Arc::new(AtomicU32::new(0));
         let calls = attempts.clone();
         let started = tokio::time::Instant::now();
@@ -44,13 +79,13 @@ async fn lock_variants_exhaust_the_original_attempt_and_backoff_budget() {
                 .unwrap()
                 .is_none()
         );
-        assert_eq!(*capacity.active_work.borrow(), 0);
+        assert_eq!(*background.active().borrow(), 0);
         assert_eq!(
-            capacity.database.available_permits(),
+            background.db.permits.available_permits(),
             db::pool::BACKGROUND_CONNECTIONS
         );
-        assert_eq!(capacity.metrics.db_queue.snapshot().count, 4);
-        assert_eq!(capacity.metrics.db_work.snapshot().count, 4);
+        assert_eq!(background.db.queue_time.snapshot().count, 4);
+        assert_eq!(background.db.execution_time.snapshot().count, 4);
     }
 }
 
@@ -90,7 +125,7 @@ async fn retry_restarts_the_transaction_and_returns_the_first_success() {
 async fn non_lock_errors_and_worker_panics_are_reported_without_retrying() {
     for case in 0..3 {
         let (_dir, path) = fixture();
-        let capacity = model_capacity::Capacity::for_database(&path);
+        let background = BackgroundWork::for_database(&path);
         let attempts = Arc::new(AtomicU32::new(0));
         let calls = attempts.clone();
         let started = tokio::time::Instant::now();
@@ -120,13 +155,13 @@ async fn non_lock_errors_and_worker_panics_are_reported_without_retrying() {
         }
         assert_eq!(attempts.load(Ordering::Relaxed), 1);
         assert_eq!(started.elapsed(), Duration::ZERO);
-        assert_eq!(*capacity.active_work.borrow(), 0);
+        assert_eq!(*background.active().borrow(), 0);
         assert_eq!(
-            capacity.database.available_permits(),
+            background.db.permits.available_permits(),
             db::pool::BACKGROUND_CONNECTIONS
         );
-        assert!(capacity.feed_writes.try_lock().is_ok());
-        assert_eq!(capacity.metrics.db_queue.snapshot().count, 1);
-        assert_eq!(capacity.metrics.db_work.snapshot().count, 1);
+        assert!(background.db.feed_writes.try_lock().is_ok());
+        assert_eq!(background.db.queue_time.snapshot().count, 1);
+        assert_eq!(background.db.execution_time.snapshot().count, 1);
     }
 }

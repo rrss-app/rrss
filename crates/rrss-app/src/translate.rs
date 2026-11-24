@@ -225,9 +225,8 @@ async fn complete_ephemeral(
         .context("missing translation configuration")?;
     let (usage_send, mut usage_receive) = tokio::sync::mpsc::unbounded_channel::<(u32, u32)>();
     let usage_path = db_path.to_path_buf();
-    let settling = crate::scheduler::model_capacity::Capacity::for_database(db_path).work();
-    let usage_task = tokio::spawn(async move {
-        let _settling = settling;
+    let work = crate::scheduler::BackgroundWork::for_database(db_path);
+    let usage_task = tokio::spawn(work.scope(async move {
         while let Some((prompt, completion)) = usage_receive.recv().await {
             let day = ai_store::local_day();
             spawn_db(usage_path.clone(), move |conn| {
@@ -237,7 +236,7 @@ async fn complete_ephemeral(
             .await?;
         }
         Ok::<_, anyhow::Error>(())
-    });
+    }));
     let admission = RequestAdmission::new(
         db_path,
         &task.provider.base_url,

@@ -8,14 +8,20 @@ use anyhow::Result;
 #[cfg(test)]
 use rrss_core::rag;
 use rrss_core::{ai_store, network::NetworkScope, vector_space as spaces};
-use std::{path::Path, sync::OnceLock};
-type Notifier = Box<dyn Fn(&VectorSpaceStatusView) + Send + Sync>;
-static NOTIFY: OnceLock<Notifier> = OnceLock::new();
-pub fn set_notifier(notify: impl Fn(&VectorSpaceStatusView) + Send + Sync + 'static) {
-    let _ = NOTIFY.set(Box::new(notify));
-}
+use std::path::Path;
 
 pub async fn check(db: &Path, client: &reqwest::Client, force: bool) -> Result<bool> {
+    let work = crate::scheduler::BackgroundWork::for_database(db);
+    work.bind(check_probes(db, client, force, &work.subscribers))
+        .await
+}
+
+async fn check_probes(
+    db: &Path,
+    client: &reqwest::Client,
+    force: bool,
+    events: &crate::scheduler::Subscribers,
+) -> Result<bool> {
     let capacity = crate::scheduler::model_capacity::Capacity::for_database(db);
     let mut failures = capacity.checks.lock().await;
     let plan = spawn_db(db.to_path_buf(), move |conn| {
@@ -91,8 +97,9 @@ pub async fn check(db: &Path, client: &reqwest::Client, force: bool) -> Result<b
             error_kind = "vector_fingerprint_mismatch",
             "vector fingerprint differs; writes paused"
         );
-        if let Some(notify) = NOTIFY.get() {
-            notify(&spawn_db(db.to_path_buf(), crate::queries::vector_space_status).await?);
+        if events.has_listeners() {
+            let view = spawn_db(db.to_owned(), crate::queries::vector_space_status).await?;
+            events.publish(crate::scheduler::SchedulerEvent::VectorStale(&view));
         }
     }
     Ok(result.unwrap_or(false))
@@ -238,6 +245,28 @@ mod tests {
 
     fn integer(conn: &rusqlite::Connection, sql: &str, params: impl rusqlite::Params) -> i64 {
         conn.query_row(sql, params, |row| row.get(0)).unwrap()
+    }
+
+    #[tokio::test]
+    async fn waiting_for_another_probe_does_not_count_toward_shutdown() {
+        use crate::scheduler::{BackgroundWork, model_capacity::Capacity};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.db");
+        let work = BackgroundWork::for_database(&path);
+        let capacity = Capacity::for_database(&path);
+        let checking = capacity.checks.lock().await;
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let probe = check(&path, &client, true);
+        tokio::pin!(probe);
+        tokio::select! {
+            biased;
+            _ = &mut probe => panic!("the existing probe still holds the check lock"),
+            _ = std::future::ready(()) => {}
+        }
+        assert_eq!(*work.active().borrow(), 0);
+        drop(checking);
+        assert!(!probe.await.unwrap());
     }
 
     struct DimsFixture {
@@ -398,7 +427,7 @@ mod tests {
     #[tokio::test]
     async fn rebuild_yields_after_a_bounded_step_and_resumes_remaining_inputs() {
         let fixture = DimsFixture::new(None).await;
-        let _runtime = NetworkClients::new(&fixture.path);
+        let _capacity = crate::scheduler::model_capacity::Capacity::for_database(&fixture.path);
         let conn = db::open_at(&fixture.path).unwrap();
         for id in 2..=130 {
             conn.execute(
@@ -828,7 +857,7 @@ mod tests {
             .await;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("rebuild.db");
-        let _runtime = NetworkClients::new(&path);
+        let run = crate::scheduler::Scheduler::create(NetworkClients::new(&path)).unwrap();
         let conn = db::open_at(&path).unwrap();
         db::set_setting(&conn, "pi_auto_download", "0").unwrap();
         let provider = crate::test_net::fake_provider(&conn, "fake", server.uri());
@@ -1006,12 +1035,19 @@ mod tests {
         // 切回原模型，探针漂移后暂停写入，仍保留检索向量。
         bind("text-embedding-3-small");
         embed().await.unwrap();
+        let (send, mut warnings) = tokio::sync::mpsc::unbounded_channel();
+        let _listener = run.subscribe(move |event| {
+            if let crate::scheduler::SchedulerEvent::VectorStale(view) = event {
+                send.send(view.clone()).unwrap();
+            }
+        });
         drift.store(true, Ordering::SeqCst);
         assert!(!check(&path, &client, true).await.unwrap());
         let stale = crate::queries::vector_space_status(&conn)
             .unwrap()
             .effective
             .unwrap();
+        assert_eq!(warnings.try_recv().unwrap().effective.unwrap().id, stale.id);
         assert_eq!(stale.state, "stale");
         assert!(stale.stale_reason.is_some());
         assert!(stale.checked_at.is_some());

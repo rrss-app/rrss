@@ -239,8 +239,8 @@ async fn total_deadline_includes_fallback_and_keeps_usage_from_response_before_t
     assert!(matches!(end.kind, EventKind::Error(Failure::Timeout)));
     assert_eq!(server.received_requests().await.unwrap().len(), 2);
     // Cancellation releases the window before the independent usage writer settles.
-    let capacity = crate::scheduler::model_capacity::Capacity::for_database(&h.runtime.path);
-    let mut settling = capacity.active_work.subscribe();
+    let background = crate::scheduler::BackgroundWork::for_database(&h.runtime.path);
+    let mut settling = background.active();
     tokio::time::timeout(
         Duration::from_secs(10),
         settling.wait_for(|count| *count == 0),

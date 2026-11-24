@@ -8,6 +8,13 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 - Refined user-facing error messages, settings hints, and recommendation explanations in both Simplified Chinese and English: removed internal error prefixes and raw technical codes, localized built-in rule presets, updated outdated menu references (such as Settings → AI to Settings → Models), and unified terminology across Focus, Reader, Feeds, and Settings.
 
+### Fixed
+
+- Quitting during a refresh or a manual summary now cancels requests still waiting for database access. Queued ranking work can resume after restart, and database writes already in progress are given time to finish.
+- Quitting while a feed response is being processed no longer risks a freeze. Pending embedding probes and translation requests waiting for model access no longer hold up exit.
+- Interrupted background ranking keeps pending articles and reports the same batch result to every waiting refresh. Ranking already running in the database finishes before another incremental batch starts.
+- Late feed deferrals no longer complete a newer refresh. Buffered article data remains included in diagnostics until database processing finishes, even when a refresh is stopped.
+
 ## [0.5.0] - 2026-11-23
 
 ### Added

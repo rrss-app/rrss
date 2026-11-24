@@ -288,7 +288,10 @@ async fn summarize_job_inner(
         })
     })
     .await?;
-    anyhow::ensure!(saved, rrss_core::Error::Jobs(rrss_core::error::JobFailure::SummaryDiscarded));
+    anyhow::ensure!(
+        saved,
+        rrss_core::Error::Jobs(rrss_core::error::JobFailure::SummaryDiscarded)
+    );
     Ok(summary)
 }
 
@@ -302,31 +305,34 @@ async fn segment_notes_payload(
 ) -> Result<String> {
     let total = segments.len();
     let mut set = tokio::task::JoinSet::new();
+    let work = crate::scheduler::BackgroundWork::for_database(db_path);
     for (i, segment) in segments.into_iter().enumerate() {
         let path = db_path.to_path_buf();
         let client = client.clone();
         let resolved = resolved.clone();
         let user = format!("{title}\n\n(part {} of {total})\n\n{segment}", i + 1);
         set.spawn(
-            async move {
-                let input = user.clone();
-                let prepared = spawn_db(path.clone(), move |conn| {
-                    prepare_resolved(conn, resolved, &input, false)
-                })
-                .await?;
-                let parsed = execute_prepared(
-                    &path,
-                    &client,
-                    prepared,
-                    &user,
-                    segment_json_schema(),
-                    |value| Ok(value.clone()),
-                )
-                .await?;
-                anyhow::Ok((i, parsed))
-            }
-            .in_current_span()
-            .with_current_subscriber(),
+            work.scope(
+                async move {
+                    let input = user.clone();
+                    let prepared = spawn_db(path.clone(), move |conn| {
+                        prepare_resolved(conn, resolved, &input, false)
+                    })
+                    .await?;
+                    let parsed = execute_prepared(
+                        &path,
+                        &client,
+                        prepared,
+                        &user,
+                        segment_json_schema(),
+                        |value| Ok(value.clone()),
+                    )
+                    .await?;
+                    anyhow::Ok((i, parsed))
+                }
+                .in_current_span()
+                .with_current_subscriber(),
+            ),
         );
     }
     let mut notes = vec![Value::Null; total];
@@ -732,7 +738,10 @@ mod tests {
             .iter()
             .map(|r| String::from_utf8_lossy(&r.body).into_owned())
             .collect();
-        let segments = bodies.iter().filter(|b| b.contains("one part of a long article")).count();
+        let segments = bodies
+            .iter()
+            .filter(|b| b.contains("one part of a long article"))
+            .count();
         assert!(
             (2..=summary_extract::MAX_SEGMENTS).contains(&segments),
             "{segments}"
@@ -763,7 +772,9 @@ mod tests {
             json!({"notes": "结尾讨论供货。", "facts": []}),
         ];
         let out = format_segment_notes("长文", &notes);
-        assert!(out.starts_with("长文\n\nNotes on the full text, in 2 parts in the original order:"));
+        assert!(
+            out.starts_with("长文\n\nNotes on the full text, in 2 parts in the original order:")
+        );
         let first = out
             .find("[Part 1] 开篇介绍 X2 芯片。\n- 售价 499 美元")
             .unwrap();

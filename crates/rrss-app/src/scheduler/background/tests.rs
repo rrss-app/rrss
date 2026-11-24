@@ -688,7 +688,7 @@ fn cluster_summaries_follow_summary_batches_with_independent_pause_recovery() {
 #[tokio::test]
 async fn manual_job_result_channel_retains_domain_codes() {
     let (_dir, path) = crate::scheduler::tests::fixture();
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
     // These are the same owner and watch boundary used by summary, cluster
     // summary and embedding jobs, including when their request is coalesced.
     for (key, error, code) in [

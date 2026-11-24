@@ -30,9 +30,7 @@ async fn small_multi_host_refresh_respects_capacity_peaks() {
     }
     tx.commit().unwrap();
     let scheduler = Scheduler::with_limits(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits {
             global: 4,
             host: 2,
@@ -231,7 +229,7 @@ async fn mixed_sources(cluster_upgrade: bool) {
         },
     )
     .unwrap();
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
     let mut baseline = Interactions::default();
     for i in 0..30 {
         baseline.sample(&path, i).await;
@@ -363,8 +361,7 @@ async fn large_bodies_and_shutdown(sources: usize, body_bytes: usize, limits: ru
         .unwrap();
     }
     tx.commit().unwrap();
-    let scheduler =
-        Scheduler::with_limits(path.clone(), NetworkClients::new(&path), |_| {}, limits);
+    let scheduler = Scheduler::with_limits(NetworkClients::new(&path), limits);
     scheduler.start_refresh().await.unwrap();
     tokio::time::timeout(Duration::from_secs(30), async {
         loop {
@@ -452,7 +449,7 @@ async fn scheduler_scale_many_origins_saturate_global_capacity() {
         .unwrap();
     }
     tx.commit().unwrap();
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
     let start = Instant::now();
     let operation = scheduler.start_refresh().await.unwrap();
     let result = wait_operation(&scheduler, operation.operation_id).await;
@@ -494,7 +491,7 @@ async fn scheduler_scale_model_interactive_priority() {
         .set_body_json(json!({"choices":[{"message":{"content":"{}"}}],
             "data":[{"index":0,"embedding":vec![0.1f32;64]}],"usage":{"prompt_tokens":8,"completion_tokens":2}}))).mount(&server).await;
     let (_dir, path) = fixture();
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
     let client = scheduler
         .shared
         .network

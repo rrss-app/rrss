@@ -102,15 +102,15 @@ where
     T: Send + 'static,
     F: FnOnce(&rusqlite::Connection) -> rrss_core::Result<T> + Send + 'static,
 {
-    let capacity = crate::scheduler::model_capacity::Capacity::for_database(&path);
-    let settling = capacity.work();
+    let background = crate::scheduler::BackgroundWork::for_database(&path);
+    let settling = background.track();
     let queued = std::time::Instant::now();
     let admission = db::pool::metrics(&path).map(|m| {
         db::latency::scope(std::any::type_name::<F>(), || {
             m.activity.start("background_admission")
         })
     });
-    let permit = capacity.database.clone().acquire_owned().await?;
+    let permit = background.db.permits.clone().acquire_owned().await?;
     drop(admission);
     let worker_queue = db::pool::metrics(&path).map(|m| {
         db::latency::scope(std::any::type_name::<F>(), || {
@@ -129,9 +129,9 @@ where
             let _settling = settling;
             let _permit = permit;
             drop(worker_queue);
-            capacity.metrics.db_queue.record(queued.elapsed());
+            background.db.queue_time.record(queued.elapsed());
             let conn = db::open_at(&path)?;
-            let _timing = capacity.metrics.db_work.start();
+            let _timing = background.db.execution_time.start();
             f(&conn)
         })
     })
@@ -150,7 +150,7 @@ mod skip_tests {
         for panics in [false, true] {
             let dir = tempfile::tempdir().unwrap();
             let path = dir.path().join("worker.db");
-            let capacity = crate::scheduler::model_capacity::Capacity::for_database(&path);
+            let background = crate::scheduler::BackgroundWork::for_database(&path);
             let error = spawn_db::<(), _>(path, move |_| {
                 if panics {
                     panic!("fixture database worker panic");
@@ -171,13 +171,13 @@ mod skip_tests {
                     Some(CoreError::DailyBudgetExhausted)
                 ));
             }
-            assert_eq!(*capacity.active_work.borrow(), 0);
+            assert_eq!(*background.active().borrow(), 0);
             assert_eq!(
-                capacity.database.available_permits(),
+                background.db.permits.available_permits(),
                 db::pool::BACKGROUND_CONNECTIONS
             );
-            assert_eq!(capacity.metrics.db_queue.snapshot().count, 1);
-            assert_eq!(capacity.metrics.db_work.snapshot().count, 1);
+            assert_eq!(background.db.queue_time.snapshot().count, 1);
+            assert_eq!(background.db.execution_time.snapshot().count, 1);
         }
     }
 
@@ -186,7 +186,7 @@ mod skip_tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("admission.db");
         drop(db::open_at(&path).unwrap());
-        let capacity = crate::scheduler::model_capacity::Capacity::for_database(&path);
+        let background = crate::scheduler::BackgroundWork::for_database(&path);
         let (started, mut ready) = tokio::sync::mpsc::unbounded_channel();
         let mut releases = Vec::new();
         let mut workers = Vec::new();
@@ -222,10 +222,10 @@ mod skip_tests {
             worker.await.unwrap().unwrap();
         }
         assert_eq!(
-            capacity.database.available_permits(),
+            background.db.permits.available_permits(),
             db::pool::BACKGROUND_CONNECTIONS
         );
-        assert_eq!(*capacity.active_work.borrow(), 0);
+        assert_eq!(*background.active().borrow(), 0);
     }
 
     async fn assert_skip_from_db(error: CoreError) {
@@ -256,8 +256,8 @@ mod skip_tests {
     async fn cancelled_waiter_keeps_work_accounted_until_database_work_finishes() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.db");
-        let capacity = crate::scheduler::model_capacity::Capacity::for_database(&path);
-        let mut active = capacity.active_work.subscribe();
+        let background = crate::scheduler::BackgroundWork::for_database(&path);
+        let mut active = background.active();
         let (started, waiting) = tokio::sync::oneshot::channel();
         let (release, resume) = std::sync::mpsc::channel();
         let job = tokio::spawn(spawn_db(path.clone(), move |conn| {
@@ -282,10 +282,10 @@ mod skip_tests {
             db::get_setting(&conn, "worker_test").unwrap().as_deref(),
             Some("settled")
         );
-        assert_eq!(capacity.metrics.db_queue.snapshot().count, 1);
-        assert_eq!(capacity.metrics.db_work.snapshot().count, 1);
+        assert_eq!(background.db.queue_time.snapshot().count, 1);
+        assert_eq!(background.db.execution_time.snapshot().count, 1);
         assert_eq!(
-            capacity.database.available_permits(),
+            background.db.permits.available_permits(),
             db::pool::BACKGROUND_CONNECTIONS
         );
     }

@@ -48,29 +48,32 @@ pub async fn run(db_path: &Path, data_dir: &Path, network: &crate::network::Netw
     };
     let limit = Arc::new(Semaphore::new(PRELOAD_CONCURRENCY));
     let mut set = JoinSet::new();
+    let work = crate::scheduler::BackgroundWork::for_database(&db_path);
     for job in jobs {
         let client = client.clone();
         let db_path = db_path.clone();
         let data_dir = data_dir.clone();
         let limit = limit.clone();
         set.spawn(
-            async move {
-                let Ok(_permit) = limit.acquire().await else {
-                    return;
-                };
-                let _ = crate::image_fetch::fetch_and_store_with_priority(
-                    &client,
-                    &db_path,
-                    &data_dir,
-                    job.article_id,
-                    &job.url,
-                    &job.referer,
-                    crate::scheduler::model_capacity::Priority::Background,
-                )
-                .await;
-            }
-            .in_current_span()
-            .with_current_subscriber(),
+            work.scope(
+                async move {
+                    let Ok(_permit) = limit.acquire().await else {
+                        return;
+                    };
+                    let _ = crate::image_fetch::fetch_and_store_with_priority(
+                        &client,
+                        &db_path,
+                        &data_dir,
+                        job.article_id,
+                        &job.url,
+                        &job.referer,
+                        crate::scheduler::model_capacity::Priority::Background,
+                    )
+                    .await;
+                }
+                .in_current_span()
+                .with_current_subscriber(),
+            ),
         );
     }
     while set.join_next().await.is_some() {}

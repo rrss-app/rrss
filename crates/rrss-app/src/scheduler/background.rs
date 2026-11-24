@@ -175,12 +175,10 @@ impl Scheduler {
                 rrss_core::error::JobFailure::ModelBusy
             ))
         })?;
-        let work = shared.capacity.work();
         // The request owns its result even if its IPC waiter goes away.
         let span = crate::jobs::span(period);
-        tokio::spawn(
-            async move {
-                let (_work, _admission) = (work, admission);
+        tokio::spawn(self.shared.work.scope(async move {
+                let _admission = admission;
                 let mut stop = shared.stop.subscribe();
                 tokio::select! {
                     biased;
@@ -192,8 +190,7 @@ impl Scheduler {
                 }
             }
             .instrument(span)
-            .with_current_subscriber(),
-        )
+            .with_current_subscriber()))
         .await?
     }
     pub async fn embed_now(&self) -> Result<()> {
@@ -211,12 +208,12 @@ impl Scheduler {
     }
 
     async fn manual_job(&self, job: ManualJob) -> Result<String> {
-        anyhow::ensure!(
-            !*self.shared.stop.borrow(),
-            rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped)
-        );
-        let key =
-            crate::jobs::spawn_db(self.shared.path.clone(), move |conn| job.key(conn)).await?;
+        let key = self
+            .while_running(crate::jobs::spawn_db(
+                self.shared.path.clone(),
+                move |conn| job.key(conn),
+            ))
+            .await?;
         let (mut result, owner) = {
             let mut active = self.shared.manual_jobs.lock().unwrap();
             anyhow::ensure!(
@@ -248,14 +245,12 @@ impl Scheduler {
         };
         if let Some(mut owner) = owner {
             let shared = self.shared.clone();
-            let work_guard = shared.capacity.work();
             let span = crate::jobs::span(match job {
                 ManualJob::Summary(_) => "summaries",
                 ManualJob::ClusterSummary(_, _) => "clustersummaries",
                 ManualJob::Embed => "embeddings",
             });
-            tokio::spawn(async move {
-                let _work = work_guard;
+            tokio::spawn(self.shared.work.scope(async move {
                 let mut stop = shared.stop.subscribe();
                 let work = async {
                     let _admission = shared
@@ -286,7 +281,7 @@ impl Scheduler {
                     result = work => result,
                 };
                 owner.finish(outcome.map_err(super::digest_jobs::Failure::from));
-            }.instrument(span).with_current_subscriber());
+            }.instrument(span).with_current_subscriber()));
         }
         loop {
             if let Some(result) = result.borrow_and_update().clone() {
@@ -545,11 +540,11 @@ pub(super) async fn drive(shared: Arc<Shared>) {
                 shared.capacity.summaries.send_replace(None);
                 SummaryCandidates(shared.capacity.clone(), *shared.capacity.stopped.borrow())
             });
-            let shared = shared.clone();
-            async move {
+            let state = shared.clone();
+            shared.work.scope(async move {
                 let _guard = guard;
-                execute(shared, job).await
-            }
+                execute(state, job).await
+            })
         },
         |snapshot, diagnostics, invalidate| {
             *shared.background_diagnostics.lock().unwrap() = diagnostics;

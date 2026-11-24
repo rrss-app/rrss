@@ -1,10 +1,10 @@
 //! Per-database endpoint capacity. Weak registries discover shared ownership;
-//! requests and the network runtime own the actual state, never a global worker.
+//! the scheduler and in-flight requests own the actual state.
 use rrss_core::error::JobFailure;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, OnceLock, Weak},
+    sync::{Arc, Mutex, Weak},
 };
 use tokio::sync::Notify;
 
@@ -28,17 +28,12 @@ pub(crate) struct Capacity {
     pub(crate) stopped: tokio::sync::watch::Sender<u64>,
     pub(crate) objects: Mutex<HashMap<String, Weak<tokio::sync::Mutex<()>>>>,
     pub(crate) digests: super::digest_jobs::Digests,
-    pub(crate) active_work: tokio::sync::watch::Sender<usize>,
-    pub(crate) database: Arc<tokio::sync::Semaphore>,
-    pub(crate) feed_writes: Arc<tokio::sync::Mutex<()>>,
     endpoints: Mutex<HashMap<String, Weak<Endpoint>>>,
     cooldowns: Arc<super::model_cooldown::Store>,
     background: Arc<tokio::sync::Semaphore>,
     requests: Arc<tokio::sync::Semaphore>,
     pub(crate) content: Arc<Endpoint>,
     pub(crate) local: tokio::sync::Mutex<()>,
-    // 入库后的增量排序：同一时刻只算一次，其间到达的文章并成下一批。
-    pub(crate) rank: crate::jobs::rank::Batches,
     pub(crate) images: tokio::sync::Mutex<()>,
     pub(crate) checks: tokio::sync::Mutex<ProbeChecks>,
     pub(crate) embedding: Mutex<Option<EmbeddingRun>>,
@@ -62,11 +57,6 @@ impl Default for Capacity {
             stopped: tokio::sync::watch::channel(0).0,
             objects: Mutex::default(),
             digests: super::digest_jobs::Digests::default(),
-            active_work: tokio::sync::watch::channel(0).0,
-            database: Arc::new(tokio::sync::Semaphore::new(
-                rrss_core::db::pool::BACKGROUND_CONNECTIONS,
-            )),
-            feed_writes: Arc::new(tokio::sync::Mutex::new(())),
             endpoints: Mutex::default(),
             cooldowns: Arc::default(),
             background: Arc::new(tokio::sync::Semaphore::new(BACKGROUND_REQUESTS)),
@@ -76,7 +66,6 @@ impl Default for Capacity {
                 ..Endpoint::default()
             }),
             local: tokio::sync::Mutex::new(()),
-            rank: Default::default(),
             images: tokio::sync::Mutex::new(()),
             checks: tokio::sync::Mutex::new(std::collections::BTreeMap::new()),
             embedding: Mutex::new(None),
@@ -140,21 +129,8 @@ impl Capacity {
         lock
     }
 
-    pub(crate) fn work(self: &Arc<Self>) -> Work {
-        self.active_work.send_modify(|count| *count += 1);
-        Work(self.clone())
-    }
     pub(crate) fn for_database(path: &Path) -> Arc<Self> {
-        static DATABASES: OnceLock<Mutex<HashMap<PathBuf, Weak<Capacity>>>> = OnceLock::new();
-        let mut databases = DATABASES.get_or_init(Mutex::default).lock().unwrap();
-        databases.retain(|_, capacity| capacity.strong_count() > 0);
-        let entry = databases.entry(path.to_owned()).or_default();
-        if let Some(capacity) = entry.upgrade() {
-            return capacity;
-        }
-        let capacity = Arc::new(Self::default());
-        *entry = Arc::downgrade(&capacity);
-        capacity
+        super::resources::model_capacity(path)
     }
 
     fn endpoint(&self, base: &str) -> rrss_ai::Result<Arc<Endpoint>> {
@@ -177,13 +153,6 @@ impl Capacity {
         let endpoint = Arc::new(Endpoint::default());
         *entry = Arc::downgrade(&endpoint);
         Ok(endpoint)
-    }
-}
-
-pub(crate) struct Work(Arc<Capacity>);
-impl Drop for Work {
-    fn drop(&mut self) {
-        self.0.active_work.send_modify(|count| *count -= 1);
     }
 }
 
@@ -270,6 +239,7 @@ pub(crate) type DispatchCheck =
     Arc<dyn Fn(&rusqlite::Connection) -> rrss_core::Result<bool> + Send + Sync>;
 
 pub(crate) struct RequestAdmission {
+    work: Arc<super::BackgroundWork>,
     _capacity: Arc<Capacity>,
     endpoint: Arc<Endpoint>,
     priority: Priority,
@@ -294,6 +264,7 @@ impl RequestAdmission {
     ) -> rrss_ai::Result<Self> {
         let capacity = Capacity::for_database(path);
         Ok(Self {
+            work: super::BackgroundWork::for_database(path),
             endpoint: capacity.endpoint(base)?,
             path: path.to_owned(),
             service: rrss_core::ai_store::hash_input(
@@ -337,17 +308,15 @@ impl rrss_ai::admission::Admission for RequestAdmission {
             _ => {}
         }
         let recording = capacity.cooldowns.recording();
-        let work = capacity.work();
         let path = self.path.clone();
         let service = self.service.clone();
-        let task = tokio::spawn(async move {
-            let _work = work;
+        let task = tokio::spawn(self.work.scope(async move {
             let _recording = recording;
             capacity
                 .cooldowns
                 .response(&path, &service, status, retry_after.as_deref())
                 .await
-        });
+        }));
         Box::pin(async move {
             task.await
                 .map_err(|_| rrss_ai::Error::Admission(JobFailure::LimitRecordingInterrupted))?
@@ -355,7 +324,7 @@ impl rrss_ai::admission::Admission for RequestAdmission {
     }
 
     fn acquire(&self) -> rrss_ai::admission::Acquisition<'_> {
-        Box::pin(async move {
+        Box::pin(self.work.bind(async move {
             let waiting = self
                 ._capacity
                 .requests
@@ -460,7 +429,7 @@ impl rrss_ai::admission::Admission for RequestAdmission {
                 started: std::time::Instant::now(),
             };
             Ok(Box::new((measured, permit, background, waiting)) as rrss_ai::admission::Permit)
-        })
+        }))
     }
 }
 

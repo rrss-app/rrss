@@ -358,6 +358,14 @@ impl Runtime {
 
     /// 一库一实例；所有实例仍共用进程级网络执行槽。
     pub fn new(path: &Path, sink: Arc<dyn EventSink>) -> anyhow::Result<Arc<Self>> {
+        Self::with_network(crate::network::NetworkClients::new(path), sink)
+    }
+
+    pub fn with_network(
+        network: crate::network::NetworkClients,
+        sink: Arc<dyn EventSink>,
+    ) -> anyhow::Result<Arc<Self>> {
+        let path = network.db_path();
         let _ = db::open_at(path)?;
         let path = path.canonicalize()?;
         let mut runtimes = RUNTIMES.get_or_init(Mutex::default).lock().unwrap();
@@ -369,7 +377,6 @@ impl Runtime {
         {
             return Ok(existing);
         }
-        let network = crate::network::NetworkClients::new(&path);
         let runtime = Self::build(
             path,
             Arc::new(HttpBackend(network)),

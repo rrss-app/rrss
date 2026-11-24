@@ -363,13 +363,14 @@ impl std::fmt::Display for FetchFail {
 mod tests {
     #[tokio::test]
     async fn background_cache_lookup_obeys_admission_without_blocking_foreground() {
-        use super::{Capacity, Priority, cached_on_disk};
+        use super::{Priority, cached_on_disk};
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("admission.db");
         drop(rrss_core::db::open_at(&path).unwrap());
-        let capacity = Capacity::for_database(&path);
-        let permits = capacity
-            .database
+        let background = crate::scheduler::BackgroundWork::for_database(&path);
+        let permits = background
+            .db
+            .permits
             .clone()
             .acquire_many_owned(rrss_core::db::pool::BACKGROUND_CONNECTIONS as u32)
             .await

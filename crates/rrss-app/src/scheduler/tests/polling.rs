@@ -30,8 +30,7 @@ async fn quick_failures_keep_base_interval_slow_failures_back_off_and_manual_fet
     .unwrap();
     let mut limits = runtime::Limits::default();
     limits.policy.timeout = Duration::from_secs(1);
-    let scheduler =
-        Scheduler::with_limits(path.clone(), NetworkClients::new(&path), |_| {}, limits);
+    let scheduler = Scheduler::with_limits(NetworkClients::new(&path), limits);
     let fetch = || async {
         tokio::time::timeout(Duration::from_secs(10), scheduler.submit(1).unwrap().wait())
             .await
@@ -109,15 +108,8 @@ async fn loop_wakes_for_the_earliest_deadline_and_on_reschedule() {
         rusqlite::params![server.uri(), now, now + 1_500],
     )
     .unwrap();
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
-    let running = tokio::spawn({
-        let scheduler = scheduler.clone();
-        async move {
-            scheduler
-                .run_loop_with_interval(Duration::from_secs(3600))
-                .await
-        }
-    });
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
+    scheduler.start_polling_with_interval(Duration::from_secs(3600));
     let requests = |count: usize| {
         let server = &server;
         async move {
@@ -143,6 +135,5 @@ async fn loop_wakes_for_the_earliest_deadline_and_on_reschedule() {
         .unwrap();
     scheduler.reschedule();
     requests(2).await;
-    scheduler.stop();
-    running.await.unwrap();
+    assert!(scheduler.shutdown().await);
 }

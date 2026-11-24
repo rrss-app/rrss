@@ -15,7 +15,6 @@ pub struct NetworkClients(Arc<Inner>);
 struct Inner {
     db_path: PathBuf,
     cache: Mutex<VecDeque<Cached>>,
-    _model_capacity: Arc<crate::scheduler::model_capacity::Capacity>,
     #[cfg(test)]
     feed_builder:
         Option<Arc<dyn Fn(reqwest::ClientBuilder) -> reqwest::ClientBuilder + Send + Sync>>,
@@ -33,12 +32,15 @@ impl NetworkClients {
     pub fn new(db_path: impl Into<PathBuf>) -> Self {
         let db_path = db_path.into();
         Self(Arc::new(Inner {
-            _model_capacity: crate::scheduler::model_capacity::Capacity::for_database(&db_path),
             db_path,
             cache: Mutex::new(VecDeque::new()),
             #[cfg(test)]
             feed_builder: None,
         }))
+    }
+
+    pub(crate) fn db_path(&self) -> &std::path::Path {
+        &self.0.db_path
     }
 
     #[cfg(test)]

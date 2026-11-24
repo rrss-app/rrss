@@ -96,7 +96,9 @@ pub(crate) fn prepare_resolved(
 fn caches_output(task: &str) -> bool {
     !matches!(
         task,
-        ai_store::TASK_MEMORY_CANDIDATE | ai_store::TASK_EPISODE_COMPRESS | ai_store::TASK_CHAT_TITLE
+        ai_store::TASK_MEMORY_CANDIDATE
+            | ai_store::TASK_EPISODE_COMPRESS
+            | ai_store::TASK_CHAT_TITLE
     )
 }
 
@@ -203,21 +205,22 @@ pub(crate) async fn execute_prepared_with_policy<T>(
     let (usage_send, mut usage_receive) = tokio::sync::mpsc::unbounded_channel::<(u32, u32)>();
     let usage_path = path.clone();
     // 独立持有已收到的计数：网络总期限取消调用者时仍完成有界数据库写入。
-    let settling = crate::scheduler::model_capacity::Capacity::for_database(db_path).work();
+    let work = crate::scheduler::BackgroundWork::for_database(db_path);
     let usage_task = tokio::spawn(
-        async move {
-            let _settling = settling;
-            while let Some((prompt, completion)) = usage_receive.recv().await {
-                let day = ai_store::local_day();
-                spawn_db(usage_path.clone(), move |conn| {
-                    ai_store::add_usage(conn, &day, i64::from(prompt), i64::from(completion))
-                })
-                .await?;
+        work.scope(
+            async move {
+                while let Some((prompt, completion)) = usage_receive.recv().await {
+                    let day = ai_store::local_day();
+                    spawn_db(usage_path.clone(), move |conn| {
+                        ai_store::add_usage(conn, &day, i64::from(prompt), i64::from(completion))
+                    })
+                    .await?;
+                }
+                Ok::<_, anyhow::Error>(())
             }
-            Ok::<_, anyhow::Error>(())
-        }
-        .in_current_span()
-        .with_current_subscriber(),
+            .in_current_span()
+            .with_current_subscriber(),
+        ),
     );
     let mut admission = RequestAdmission::new(
         db_path,

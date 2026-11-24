@@ -97,6 +97,7 @@ pub(super) struct Shared {
     pub cooldown_ready: watch::Sender<bool>,
     pub clock: Arc<dyn super::cooldown::Clock>,
     recovery: Arc<Semaphore>,
+    pub work: Arc<super::BackgroundWork>,
     pub capacity: Arc<super::model_capacity::Capacity>,
     pub queue: Mutex<Queue>,
     pub wake: Arc<Notify>,
@@ -110,7 +111,6 @@ pub(super) struct Shared {
     pub refresh_admission: Arc<Semaphore>,
     pub run_id: String,
     pub revision: std::sync::atomic::AtomicU64,
-    pub observer: std::sync::OnceLock<Arc<dyn Fn(views::SchedulerSnapshot) + Send + Sync>>,
     global: Arc<Semaphore>,
     /// A single added source may bypass byte backpressure. Its lease lasts
     /// through parsing/commit, bounding this exception to one extra body.
@@ -122,12 +122,10 @@ pub(super) struct Shared {
     pub automatic: watch::Sender<bool>,
     pub completed: watch::Sender<u64>,
     pub background_status: watch::Sender<Vec<views::BackgroundJobView>>,
-    pub loop_running: std::sync::atomic::AtomicBool,
     // 刷新间隔改动后唤醒到期扫描。
     pub due_changed: Notify,
     icons: watch::Sender<u64>,
     pub stop: watch::Sender<bool>,
-    sink: Arc<dyn Fn(views::FeedUpdated) + Send + Sync>,
     pub events: Notify,
     pub event_pending: Mutex<HashMap<Option<i64>, views::FeedUpdated>>,
     pub limits: Limits,
@@ -136,23 +134,16 @@ pub(super) struct Shared {
 }
 
 // The workers own Shared, not Lifetime. Dropping the last public handle stops them.
-struct Lifetime(watch::Sender<bool>, Arc<super::model_capacity::Capacity>);
+struct Lifetime(Arc<Shared>);
 type Registry = Mutex<HashMap<PathBuf, (Weak<Shared>, Weak<Lifetime>)>>;
 static RUNTIMES: std::sync::OnceLock<Registry> = std::sync::OnceLock::new();
+
 impl Drop for Lifetime {
     fn drop(&mut self) {
-        if self.0.send_if_modified(|stopped| {
-            if *stopped {
-                false
-            } else {
-                *stopped = true;
-                true
-            }
-        }) {
-            self.1.stop();
-        }
+        self.0.stop();
     }
 }
+
 #[derive(Clone)]
 pub struct Scheduler {
     pub(super) shared: Arc<Shared>,
@@ -160,27 +151,68 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn start(
-        path: PathBuf,
-        network: NetworkClients,
-        sink: impl Fn(views::FeedUpdated) + Send + Sync + 'static,
-    ) -> Self {
-        let mut runtimes = RUNTIMES.get_or_init(Mutex::default).lock().unwrap();
-        runtimes.retain(|_, (_, lifetime)| lifetime.strong_count() > 0);
-        if let Some((shared, lifetime)) = runtimes.get(&path)
-            && let (Some(shared), Some(lifetime)) = (shared.upgrade(), lifetime.upgrade())
-            && !*shared.stop.borrow()
-        {
-            return Self {
-                shared,
-                _lifetime: lifetime,
-            };
+    /// Stop accepting scheduler work even when its caller is still waiting for
+    /// metadata. A DB closure already submitted keeps its own work guard.
+    pub(super) async fn while_running<T>(
+        &self,
+        work: impl std::future::Future<Output = Result<T>>,
+    ) -> Result<T> {
+        let mut stop = self.shared.stop.subscribe();
+        tokio::select! {
+            biased;
+            _ = stop.wait_for(|stopped| *stopped) =>
+                Err(rrss_core::Error::Jobs(rrss_core::error::JobFailure::RuntimeStopped).into()),
+            result = self.shared.work.scope(work) => result,
         }
+    }
+
+    /// Create a run for this database. An existing run has its own network
+    /// configuration and subscriptions and can be obtained with `get`.
+    pub fn create(network: NetworkClients) -> Result<Self> {
         let limits = Limits {
             host_from_settings: true,
             ..Limits::default()
         };
-        let runtime = Self::with_limits(path.clone(), network, sink, limits);
+        Self::register(network, limits, Arc::new(super::cooldown::SystemClock))
+    }
+
+    pub fn get(path: &std::path::Path) -> Option<Self> {
+        let key = super::resources::database_key(path);
+        let runtimes = RUNTIMES.get()?.lock().unwrap();
+        let (_, lifetime) = runtimes.get(&key)?;
+        let lifetime = lifetime.upgrade()?;
+        if *lifetime.0.stop.borrow() {
+            return None;
+        }
+        Some(Self {
+            shared: lifetime.0.clone(),
+            _lifetime: lifetime,
+        })
+    }
+
+    pub(crate) fn diagnostics_for(path: &std::path::Path) -> Option<views::SchedulerDiagnostics> {
+        Some(Self::get(path)?.diagnostics())
+    }
+
+    fn register(
+        network: NetworkClients,
+        limits: Limits,
+        clock: Arc<dyn super::cooldown::Clock>,
+    ) -> Result<Self> {
+        let path = super::resources::database_key(network.db_path());
+        let mut runtimes = RUNTIMES.get_or_init(Mutex::default).lock().unwrap();
+        if let Some((shared, lifetime)) = runtimes.get(&path)
+            && let Some(previous) = shared.upgrade()
+        {
+            anyhow::ensure!(
+                lifetime.strong_count() == 0 || *previous.stop.borrow(),
+                "scheduler already running"
+            );
+            // The last owner's destructor may still be delivering stop.
+            previous.stop();
+        }
+        runtimes.retain(|_, (shared, _)| shared.strong_count() > 0);
+        let runtime = Self::launch(&path, network, limits, clock);
         runtimes.insert(
             path,
             (
@@ -188,31 +220,26 @@ impl Scheduler {
                 Arc::downgrade(&runtime._lifetime),
             ),
         );
-        runtime
-    }
-    pub(crate) fn diagnostics_for(path: &std::path::Path) -> Option<views::SchedulerDiagnostics> {
-        let shared = RUNTIMES.get()?.lock().unwrap().get(path)?.0.upgrade()?;
-        Some(shared.diagnostics())
-    }
-    pub(super) fn with_limits(
-        path: PathBuf,
-        network: NetworkClients,
-        sink: impl Fn(views::FeedUpdated) + Send + Sync + 'static,
-        limits: Limits,
-    ) -> Self {
-        Self::with_clock(
-            path,
-            network,
-            sink,
-            limits,
-            Arc::new(super::cooldown::SystemClock),
-        )
+        Ok(runtime)
     }
 
+    #[cfg(test)]
+    pub(super) fn with_limits(network: NetworkClients, limits: Limits) -> Self {
+        Self::register(network, limits, Arc::new(super::cooldown::SystemClock)).unwrap()
+    }
+
+    #[cfg(test)]
     pub(super) fn with_clock(
-        path: PathBuf,
         network: NetworkClients,
-        sink: impl Fn(views::FeedUpdated) + Send + Sync + 'static,
+        limits: Limits,
+        clock: Arc<dyn super::cooldown::Clock>,
+    ) -> Self {
+        Self::register(network, limits, clock).unwrap()
+    }
+
+    fn launch(
+        key: &std::path::Path,
+        network: NetworkClients,
         limits: Limits,
         clock: Arc<dyn super::cooldown::Clock>,
     ) -> Self {
@@ -220,9 +247,11 @@ impl Scheduler {
         let (completed, _) = watch::channel(0);
         let (stop, _) = watch::channel(false);
         let (icons, _) = watch::channel(0);
-        let cooldown_store = super::cooldown::Store::for_database(&path);
+        let path = network.db_path().to_owned();
+        let cooldown_store = super::cooldown::Store::for_database(key);
         let shared = Arc::new(Shared {
-            capacity: super::model_capacity::Capacity::for_database(&path),
+            work: super::BackgroundWork::for_run(key, &path),
+            capacity: super::model_capacity::Capacity::for_database(key),
             path,
             network,
             connectivity: Mutex::new(super::offline::Connectivity::new(limits.offline)),
@@ -244,7 +273,6 @@ impl Scheduler {
             }),
             refresh_admission: Arc::new(Semaphore::new(8)),
             revision: std::sync::atomic::AtomicU64::new(0),
-            observer: std::sync::OnceLock::new(),
             run_id: format!(
                 "{}-{}",
                 std::time::SystemTime::now()
@@ -270,43 +298,19 @@ impl Scheduler {
             automatic: watch::channel(false).0,
             completed,
             background_status: watch::channel(Vec::new()).0,
-            loop_running: std::sync::atomic::AtomicBool::new(false),
             due_changed: Notify::new(),
             icons,
-            stop: stop.clone(),
-            sink: Arc::new(sink),
+            stop,
             events: Notify::new(),
             event_pending: Mutex::default(),
             limits,
         });
-        let work = shared.capacity.work();
-        let events = shared.clone();
-        tokio::spawn(async move {
-            let _work = work;
-            run_events(events).await;
-        });
-        let work = shared.capacity.work();
-        let feeds = shared.clone();
-        tokio::spawn(async move {
-            let _work = work;
-            drive(feeds).await;
-        });
-        let work = shared.capacity.work();
-        let icons = shared.clone();
-        tokio::spawn(async move {
-            let _work = work;
-            run_icons(icons).await;
-        });
-        let work = shared.capacity.work();
-        let background = shared.clone();
-        tokio::spawn(async move {
-            let _work = work;
-            super::background::drive(background).await;
-        });
-        let work = shared.capacity.work();
+        tokio::spawn(shared.work.scope(run_events(shared.clone())));
+        tokio::spawn(shared.work.scope(drive(shared.clone())));
+        tokio::spawn(shared.work.scope(run_icons(shared.clone())));
+        tokio::spawn(shared.work.scope(super::background::drive(shared.clone())));
         let images = shared.clone();
-        tokio::spawn(async move {
-            let _work = work;
+        tokio::spawn(shared.work.scope(async move {
             let mut stop = images.stop.subscribe();
             if let Some(data_dir) = images.path.parent() {
                 tokio::select! {
@@ -315,10 +319,10 @@ impl Scheduler {
                     _ = crate::image_preload::run(&images.path, data_dir, &images.network) => {},
                 }
             }
-        });
+        }));
         Self {
-            shared: shared.clone(),
-            _lifetime: Arc::new(Lifetime(stop, shared.capacity.clone())),
+            _lifetime: Arc::new(Lifetime(shared.clone())),
+            shared,
         }
     }
     #[cfg(test)]
@@ -334,39 +338,46 @@ impl Scheduler {
         self.shared.lookups.load(Ordering::Acquire)
     }
     pub fn stop(&self) {
-        if self.shared.stop.send_if_modified(|stopped| {
-            if *stopped {
-                false
-            } else {
-                *stopped = true;
-                true
-            }
-        }) {
-            self.shared.capacity.stop();
-        }
-        self.shared.queue.lock().unwrap().operations.stop();
-        self.shared.notify_status();
+        self.shared.stop();
     }
 
     pub async fn shutdown(&self) -> bool {
         self.stop();
-        let mut active = self.shared.capacity.active_work.subscribe();
-        tokio::time::timeout(Duration::from_secs(5), active.wait_for(|count| *count == 0))
-            .await
-            .is_ok()
+        let mut active = self.shared.work.active();
+        matches!(
+            tokio::time::timeout(Duration::from_secs(5), active.wait_for(|count| *count == 0))
+                .await,
+            Ok(Ok(_))
+        )
     }
 
     pub fn submit(&self, id: i64) -> Result<FetchTicket> {
-        self.submit_inner(id, false, false)
+        self.shared.submit_inner(id, false, false)
     }
 
     pub(super) fn submit_added(&self, id: i64) -> Result<FetchTicket> {
-        self.submit_inner(id, true, true)
+        self.shared.submit_inner(id, true, true)
+    }
+}
+
+impl Shared {
+    fn stop(&self) {
+        let mut queue = self.queue.lock().unwrap();
+        self.stop.send_if_modified(|stopped| {
+            if *stopped {
+                return false;
+            }
+            self.capacity.stop();
+            queue.operations.stop();
+            *stopped = true;
+            self.notify_status();
+            true
+        });
     }
 
     fn submit_inner(&self, id: i64, added: bool, keep_due: bool) -> Result<FetchTicket> {
-        let mut queue = self.shared.queue.lock().unwrap();
-        if queue.stopped || *self.shared.stop.borrow() {
+        let mut queue = self.queue.lock().unwrap();
+        if queue.stopped || *self.stop.borrow() {
             return Err(
                 rrss_core::Error::Fetch(rrss_core::ingest::FetchFailure::RuntimeStopped).into(),
             );
@@ -384,18 +395,12 @@ impl Scheduler {
                 queue.wake_parked(id);
             }
             drop(queue);
-            self.shared.wake.notify_one();
+            self.wake.notify_one();
             return Ok(ticket);
         }
         // One reserved queue position keeps a single addition admissible even
         // when an import or refresh has filled the ordinary pending bound.
-        if queue.entries.len()
-            >= self
-                .shared
-                .limits
-                .pending
-                .saturating_add(usize::from(added))
-        {
+        if queue.entries.len() >= self.limits.pending.saturating_add(usize::from(added)) {
             return Err(rrss_core::Error::Fetch(rrss_core::ingest::FetchFailure::QueueFull).into());
         }
         let (slot, receiver) = watch::channel(None);
@@ -420,24 +425,23 @@ impl Scheduler {
         } else {
             queue.pending.push_back(id);
         }
-        self.shared.metrics.admitted.set(queue.entries.len());
+        self.metrics.admitted.set(queue.entries.len());
         drop(queue);
-        self.shared.wake.notify_one();
+        self.wake.notify_one();
         Ok(FetchTicket(receiver))
     }
 
     /// Paged producers wait for bounded admission instead of dropping the rest
     /// of an import. This notification is separate from the dispatch wake.
     pub(super) async fn submit_wait(&self, id: i64, due: bool) -> Result<FetchTicket> {
-        let mut stop = self.shared.stop.subscribe();
+        let mut stop = self.stop.subscribe();
         loop {
-            let space = self.shared.space.notified();
+            let space = self.space.notified();
             tokio::pin!(space);
             space.as_mut().enable();
             let full = {
-                let queue = self.shared.queue.lock().unwrap();
-                !queue.entries.contains_key(&id)
-                    && queue.entries.len() >= self.shared.limits.pending
+                let queue = self.queue.lock().unwrap();
+                !queue.entries.contains_key(&id) && queue.entries.len() >= self.limits.pending
             };
             if !full || *stop.borrow() {
                 // Another producer may claim the freed slot between the check
@@ -445,10 +449,10 @@ impl Scheduler {
                 match self.submit_inner(id, false, due) {
                     Ok(ticket) => return Ok(ticket),
                     Err(error) => {
-                        let queue = self.shared.queue.lock().unwrap();
+                        let queue = self.queue.lock().unwrap();
                         if queue.stopped
                             || *stop.borrow()
-                            || queue.entries.len() < self.shared.limits.pending
+                            || queue.entries.len() < self.limits.pending
                             || queue.entries.contains_key(&id)
                         {
                             return Err(error);
@@ -536,6 +540,13 @@ impl Drop for BufferedBytes {
     }
 }
 
+// A submitted DB worker may outlive its async parser task on shutdown.
+// Keep body accounting and the added-source bypass until the worker drops them.
+pub(super) struct ResponseLease {
+    _bytes: BufferedBytes,
+    _bypass: Option<OwnedSemaphorePermit>,
+}
+
 struct Downloaded {
     feed: FeedRow,
     generation: u64,
@@ -547,6 +558,48 @@ struct Downloaded {
     span: tracing::Span,
 }
 impl Queue {
+    fn is_current(&self, (id, generation): Claim) -> bool {
+        !self.stopped
+            && self
+                .entries
+                .get(&id)
+                .is_some_and(|entry| entry.generation == generation)
+    }
+
+    fn settle(
+        &mut self,
+        result: &RefreshResult,
+        generation: u64,
+        limit: usize,
+        retained: bool,
+    ) -> Option<bool> {
+        if !self.is_current((result.feed_id, generation)) {
+            return None;
+        }
+        self.set_resuming(result.feed_id, None);
+        let background = self.operations.finish(result, generation);
+        if retained {
+            let entry = self.entries.get_mut(&result.feed_id).unwrap();
+            entry.slot.send_replace(Some(result.clone()));
+            entry.slot = watch::channel(None).0;
+        } else {
+            let entry = self.entries.remove(&result.feed_id).unwrap();
+            self.pending.retain(|id| *id != result.feed_id);
+            self.added.retain(|id| *id != result.feed_id);
+            if let Some(host) = entry.parked
+                && let Some(waiting) = self.parked.get_mut(&host)
+            {
+                waiting.retain(|claim| *claim != (result.feed_id, generation));
+                if waiting.is_empty() {
+                    self.parked.remove(&host);
+                }
+            }
+            entry.slot.send_replace(Some(result.clone()));
+            self.fill_operations(limit);
+        }
+        Some(background)
+    }
+
     fn set_resuming(&mut self, id: i64, host: Option<String>) {
         let Some(entry) = self.entries.get_mut(&id) else {
             return;
@@ -666,50 +719,7 @@ impl Shared {
     }
 
     fn complete_deferred(&self, entry: &DeferredDownload, result: RefreshResult) {
-        let DeferredDownload {
-            feed,
-            generation,
-            deferred,
-        } = entry;
-        let generation = *generation;
-        if !matches!(result.status, RefreshStatus::Skipped { .. }) {
-            self.finish(result, generation);
-            return;
-        }
-        let keep = {
-            let queue = self.queue.lock().unwrap();
-            // Timed deferrals are already durable. Retain them for prompt thaw
-            // only while there is spare admission capacity; otherwise a host
-            // with enough cooled sources can block every later due page.
-            queue
-                .entries
-                .get(&feed.id)
-                .is_some_and(|entry| entry.keep_due)
-                && (deferred.until.is_none() || queue.entries.len() < self.limits.pending)
-        };
-        if !keep {
-            self.finish(result, generation);
-            return;
-        }
-        let background = {
-            let mut queue = self.queue.lock().unwrap();
-            let background = queue.operations.finish(&result, generation);
-            if let Some(entry) = queue.entries.get_mut(&feed.id) {
-                entry.slot.send_replace(Some(result));
-                entry.slot = watch::channel(None).0;
-            }
-            background
-        };
-        if background {
-            self.dirty.send_modify(|version| *version += 1);
-        }
-        self.park(
-            deferred.key.clone(),
-            (feed.id, generation),
-            ParkReason::Deferred,
-        );
-        self.wake.notify_one();
-        self.notify_status();
+        self.settle(result, entry.generation, Some(&entry.deferred));
     }
 
     fn unpark_ready(&self) -> bool {
@@ -886,12 +896,11 @@ impl Shared {
     /// the queue lock and a parker re-checks under it, so no wakeup is lost.
     fn park(&self, key: String, claim: (i64, u64), reason: ParkReason) {
         let mut queue = self.queue.lock().unwrap();
-        if *self.stop.borrow()
-            || queue
-                .entries
-                .get(&claim.0)
-                .is_none_or(|entry| entry.generation != claim.1)
-        {
+        self.park_locked(&mut queue, key, claim, reason);
+    }
+
+    fn park_locked(&self, queue: &mut Queue, key: String, claim: Claim, reason: ParkReason) {
+        if *self.stop.borrow() || !queue.is_current(claim) {
             return;
         }
         queue.set_resuming(claim.0, None);
@@ -918,7 +927,6 @@ impl Shared {
             } else {
                 queue.pending.push_back(claim.0);
             }
-            drop(queue);
             self.wake.notify_one();
             return;
         }
@@ -934,7 +942,7 @@ impl Shared {
             .entry(key.clone())
             .or_default()
             .push_back(claim);
-        self.unpark(&mut queue, &key);
+        self.unpark(queue, &key);
     }
     fn unpark(&self, queue: &mut Queue, key: &str) {
         if self.cooldown_store.writes.load(Ordering::Acquire) > 0 {
@@ -1094,70 +1102,92 @@ impl Shared {
             return;
         }
         let state = self.clone();
-        let work = self.capacity.work();
         tokio::spawn(
-            async move {
-                let _work = work;
-                let stopped = *state.stop.borrow();
-                let failed = if stopped {
-                    true
-                } else {
-                    match crate::jobs::rank::incremental(&state.path, ids).await {
-                        Ok(()) => false,
-                        Err(error) => {
-                            tracing::warn!(
+            self.work.scope(
+                async move {
+                    let mut stop = state.stop.subscribe();
+                    tokio::select! {
+                        biased;
+                        _ = stop.wait_for(|stopped| *stopped) => {}
+                        result = state.work.rank.incremental(&state.path, ids) => match result {
+                            Ok(()) => return,
+                            Err(error) => tracing::warn!(
                                 %error,
                                 feed_id = rrss_core::logsafe::unless_in_span("feed_id", feed_id),
                                 "incremental rank failed"
-                            );
-                            true
+                            ),
                         }
                     }
-                };
-                if !failed {
-                    return;
+                    // The articles committed before this task started. Persist the
+                    // existing recovery marker even if shutdown cancelled admission.
+                    let _ =
+                        crate::jobs::spawn_db(state.path.clone(), crate::jobs::rank::request).await;
+                    if !*state.stop.borrow() {
+                        state.emit(views::FeedUpdated {
+                            run_id: state.run_id.clone(),
+                            generation: None,
+                            status: "derived".into(),
+                            derived_degraded: true,
+                            feed_id: Some(feed_id),
+                            inserted: 0,
+                            error: None,
+                        });
+                    }
                 }
-                let _ = crate::jobs::spawn_db(state.path.clone(), crate::jobs::rank::request).await;
-                if !stopped && !*state.stop.borrow() {
-                    state.emit(views::FeedUpdated {
-                        run_id: state.run_id.clone(),
-                        generation: None,
-                        status: "derived".into(),
-                        derived_degraded: true,
-                        feed_id: Some(feed_id),
-                        inserted: 0,
-                        error: None,
-                    });
-                }
-            }
-            .instrument(span),
+                .instrument(span),
+            ),
         );
     }
     fn finish(&self, result: RefreshResult, generation: u64) {
-        let background;
-        {
+        self.settle(result, generation, None);
+    }
+
+    /// Both completed and parked results settle through the same generation check.
+    fn settle(
+        &self,
+        result: RefreshResult,
+        generation: u64,
+        deferred: Option<&super::cooldown::Deferred>,
+    ) -> bool {
+        let (background, retained) = {
             let mut queue = self.queue.lock().unwrap();
-            if *self.stop.borrow()
-                || queue
-                    .entries
-                    .get(&result.feed_id)
-                    .is_none_or(|entry| entry.generation != generation)
-            {
-                return;
+            if *self.stop.borrow() {
+                return false;
             }
-            queue.set_resuming(result.feed_id, None);
-            let entry = queue.entries.remove(&result.feed_id).unwrap();
-            queue.pending.retain(|id| *id != result.feed_id);
-            queue.added.retain(|id| *id != result.feed_id);
-            background = queue.operations.finish(&result, generation);
-            entry.slot.send_replace(Some(result.clone()));
-            queue.fill_operations(self.limits.pending);
+            // Timed deferrals are durable. Keep a prompt retry only when spare
+            // queue capacity remains; local admission waits must retain the claim.
+            let retained = deferred.filter(|deferred| {
+                matches!(result.status, RefreshStatus::Skipped { .. })
+                    && queue
+                        .entries
+                        .get(&result.feed_id)
+                        .is_some_and(|entry| entry.keep_due)
+                    && (deferred.until.is_none() || queue.entries.len() < self.limits.pending)
+            });
+            let Some(background) =
+                queue.settle(&result, generation, self.limits.pending, retained.is_some())
+            else {
+                return false;
+            };
+            if let Some(deferred) = retained {
+                self.park_locked(
+                    &mut queue,
+                    deferred.key.clone(),
+                    (result.feed_id, generation),
+                    ParkReason::Deferred,
+                );
+            }
             self.metrics.admitted.set(queue.entries.len());
-        }
+            (background, retained.is_some())
+        };
         self.wake.notify_one();
         self.space.notify_waiters();
         if background && !*self.stop.borrow() {
             self.dirty.send_modify(|version| *version += 1);
+        }
+        if retained {
+            self.notify_status();
+            return true;
         }
         let degraded = matches!(
             &result.status,
@@ -1212,6 +1242,7 @@ impl Shared {
             error,
         });
         self.notify_status();
+        true
     }
 }
 
@@ -1434,7 +1465,11 @@ async fn drive(shared: Arc<Shared>) {
         let cooldown_deadline = if cooldowns.is_empty() {
             let cooling = shared.cooldowns.lock().unwrap();
             if cooling.needs_checkpoint(clock) {
-                cooldowns.spawn(super::cooldown::checkpoint(shared.clone()));
+                cooldowns.spawn(
+                    shared
+                        .work
+                        .scope(super::cooldown::checkpoint(shared.clone())),
+                );
                 None
             } else {
                 cooling.deadline(clock)
@@ -1468,10 +1503,10 @@ async fn drive(shared: Arc<Shared>) {
             }
         }
         if probe_due && probes.is_empty() {
-            probes.spawn({
+            probes.spawn(shared.work.scope({
                 let state = shared.clone();
                 async move { state.check_network(false).await }
-            });
+            }));
         }
         let network_deadline = next_probe
             .into_iter()
@@ -1494,7 +1529,7 @@ async fn drive(shared: Arc<Shared>) {
                 break;
             };
             let claim = (body.feed.id, body.generation);
-            let task = parsers.spawn(process_response(shared.clone(), body));
+            let task = parsers.spawn(shared.work.scope(process_response(shared.clone(), body)));
             active.insert(task.id(), claim);
         }
         while recorders.len() < RESULT_WORKERS {
@@ -1502,7 +1537,7 @@ async fn drive(shared: Arc<Shared>) {
                 break;
             };
             let claim = (result.feed.id, result.generation);
-            let task = recorders.spawn(process_response(shared.clone(), result));
+            let task = recorders.spawn(shared.work.scope(process_response(shared.clone(), result)));
             active.insert(task.id(), claim);
         }
         if deferring.is_empty() && !deferred.is_empty() {
@@ -1514,9 +1549,9 @@ async fn drive(shared: Arc<Shared>) {
                 .map(|entry| (entry.feed.id, entry.generation))
                 .collect();
             let state = shared.clone();
-            deferring.spawn(async move {
+            deferring.spawn(shared.work.scope(async move {
                 state.deferred_results(batch).await;
-            });
+            }));
         }
         shared.metrics.bodies.set(bodies.len());
         shared.metrics.results.set(results.len());
@@ -1561,7 +1596,7 @@ async fn drive(shared: Arc<Shared>) {
             };
             if !claims.is_empty() {
                 metadata_ids.clone_from(&claims);
-                metadata.spawn(prepare_downloads(shared.clone(), claims));
+                metadata.spawn(shared.work.scope(prepare_downloads(shared.clone(), claims)));
             }
         }
         tokio::select! {
@@ -1581,7 +1616,7 @@ async fn drive(shared: Arc<Shared>) {
                             let claim = (feed.id, generation);
                             // 级别只决定开关：warn 与默认的 warn 事件一样开启，stderr 只看 warn 时也带编号。
                             let span = tracing::span!(parent: None, tracing::Level::WARN, "feed", feed_id = feed.id);
-                            let task = downloads.spawn(download(shared.clone(), feed, generation, permit).instrument(span));
+                            let task = downloads.spawn(shared.work.scope(download(shared.clone(), feed, generation, permit).instrument(span)));
                             active.insert(task.id(), claim);
                         }
                     },
@@ -1829,109 +1864,49 @@ async fn process_response(state: Arc<Shared>, downloaded: Downloaded) {
         span: _,
     } = downloaded;
     let id = feed.id;
-    let url = feed.url.clone();
-    let schedule = state.fetch_schedule(&feed);
-    let mut inserted_ids = Vec::new();
-    // 这个源自己的处理在它的调用链里；刷新进度、网络状态与排序调度在链外，
-    // 免得整次刷新的汇总挂到最后完成的那个源上。
-    let result = async {
-        let result = match response {
-            Ok(response) => {
-                let status = response.status;
-                let deferred = matches!(status, 429 | 503)
-                    .then(|| state.deferred(feed.id, &feed.url))
-                    .flatten();
-                apply_response(state.path.clone(), feed, response, schedule, state.clock.now().utc)
-                    .await
-                    .map(|(mut result, ids)| {
-                        inserted_ids = ids;
-                        if let Some(deferred) = deferred
-                            && matches!(&result.status, RefreshStatus::Failed { message } if message == &rrss_core::feeds::refresh_error_json(&rrss_core::Error::Http { status, message: String::new() }))
-                        {
-                            result.status = deferred.status();
-                        }
-                        result
-                    })
+    {
+        // Shared::stop takes the queue lock before writing to the watch.
+        let queue = state.queue.lock().unwrap();
+        if *state.stop.borrow() || !queue.is_current((id, generation)) {
+            return;
+        }
+    }
+    let lease = Arc::new(ResponseLease { _bytes, _bypass });
+    // Source persistence stays in its feed span. Queue settlement and refresh
+    // summaries stay outside it so the last source does not own the whole run.
+    let outcome = super::response::record(&state, feed.clone(), response, lease.clone())
+        .instrument(span.clone()).await
+        .unwrap_or_else(|error| {
+            tracing::warn!(feed_id = id, error = %crate::log::error(error.as_ref()), "feed health write failed");
+            super::response::Outcome::Complete {
+                result: RefreshResult { feed_id: id, status: RefreshStatus::Failed {
+                    message: rrss_core::ingest::FetchFailure::TaskAborted.record(),
+                } },
+                inserted_ids: Vec::new(),
             }
-            // Dispatch was re-checked just before this hop and the network had
-            // paused meanwhile. The source did not fail and is not deferred: keep
-            // the claim for the retry after connectivity returns.
-            Err(FetchFailure {
-                error: rrss_core::Error::FetchPaused,
-                ..
-            }) => {
-                state.retry_network((id, generation));
-                return None;
-            }
-            Err(FetchFailure {
-                error: rrss_core::Error::FetchDeferred { until, reason },
-                ..
-            }) => {
-                let deferred = state.deferred(feed.id, &feed.url)
-                    .unwrap_or_else(|| super::cooldown::Deferred::from_reason(until, reason));
-                state.deferred_result(&feed, generation, deferred).await;
-                return None;
-            }
-            Err(error) if error.network => match super::refresh_network_failure(
-                state.clone(),
-                feed,
-                rrss_core::feeds::refresh_error_json(&error.error),
-                schedule.with_failure(error.class).with_error(error.kind, error.status()),
-            )
-            .await
-            {
-                Ok(Some(result)) => Ok(result),
-                Ok(None) => {
-                    state.retry_network((id, generation));
-                    return None;
-                }
-                Err(error) => Err(error),
-            },
-            Err(error) => {
-                refresh_failed(
-                    state.path.clone(),
-                    feed,
-                    rrss_core::feeds::refresh_error_json(&error.error),
-                    schedule.with_failure(error.class).with_error(error.kind, error.status()),
-                )
-                .await
-            }
-        };
-        Some(result.unwrap_or_else(|error| {
-            tracing::warn!(
-                feed_id = rrss_core::logsafe::unless_in_span("feed_id", id),
-                error = %crate::log::error(error.as_ref()),
-                "feed health write failed"
+        });
+    match outcome {
+        super::response::Outcome::Retry => state.retry_network((id, generation)),
+        super::response::Outcome::Deferred(deferred) => {
+            state.deferred_result(&feed, generation, deferred).await
+        }
+        super::response::Outcome::Complete {
+            result,
+            inserted_ids,
+        } => {
+            let succeeded = matches!(
+                result.status,
+                RefreshStatus::Updated { .. } | RefreshStatus::NotModified
             );
-            RefreshResult {
-                feed_id: id,
-                status: RefreshStatus::Failed {
-                    message: rrss_core::feeds::refresh_error_json(&rrss_core::Error::Fetch(
-                        rrss_core::ingest::FetchFailure::TaskAborted,
-                    )),
-                },
+            if state.settle(result, generation, None) {
+                if succeeded {
+                    state.connectivity.lock().unwrap().succeeded(&feed.url);
+                }
+                state.rank_later(id, inserted_ids, span);
             }
-        }))
+        }
     }
-    .instrument(span.clone())
-    .await;
-    let Some(result) = result else {
-        drop(_bytes);
-        drop(_bypass);
-        state.wake.notify_one();
-        return;
-    };
-    if matches!(
-        result.status,
-        RefreshStatus::Updated { .. } | RefreshStatus::NotModified
-    ) {
-        state.connectivity.lock().unwrap().succeeded(&url);
-    }
-    let feed_id = result.feed_id;
-    state.finish(result, generation);
-    state.rank_later(feed_id, inserted_ids, span);
-    drop(_bytes);
-    drop(_bypass);
+    drop(lease);
     state.wake.notify_one();
 }
 
@@ -1979,14 +1954,23 @@ async fn run_events(shared: Arc<Shared>) {
             .event_emitted
             .fetch_add(events.len() as u64, Ordering::Relaxed);
         for event in events.into_values() {
-            (shared.sink)(event);
+            shared
+                .work
+                .subscribers
+                .publish(SchedulerEvent::Feed(&event));
         }
-        if let Some(observer) = shared.observer.get() {
-            observer(shared.snapshot());
+        if shared.work.subscribers.has_listeners() {
+            shared
+                .work
+                .subscribers
+                .publish(SchedulerEvent::Status(&shared.snapshot()));
         }
     }
-    if let Some(observer) = shared.observer.get() {
-        observer(shared.snapshot());
+    if shared.work.subscribers.has_listeners() {
+        shared
+            .work
+            .subscribers
+            .publish(SchedulerEvent::Status(&shared.snapshot()));
     }
 }
 
@@ -1994,6 +1978,180 @@ async fn run_events(shared: Arc<Shared>) {
 mod admission_tests {
     use super::*;
     use std::{future::Future, task::Poll};
+
+    #[tokio::test]
+    async fn late_completion_and_deferral_cannot_settle_or_notify_a_new_generation() {
+        let (_dir, path) = super::super::tests::fixture();
+        let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
+        let state = &scheduler.shared;
+        let _global = state
+            .global
+            .clone()
+            .acquire_many_owned(state.limits.global as u32)
+            .await
+            .unwrap();
+        state.await_cooldown_ready().await.unwrap();
+        let conn = db::open_at(&path).unwrap();
+        conn.execute_batch(
+            "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://source.example/feed',0);",
+        )
+        .unwrap();
+        let old = scheduler.submit(1).unwrap();
+        let old_generation = state.queue.lock().unwrap().entries[&1].generation;
+        let success = RefreshResult {
+            feed_id: 1,
+            status: RefreshStatus::NotModified,
+        };
+        state.finish(success.clone(), old_generation);
+        assert_eq!(old.wait().await.unwrap().status, RefreshStatus::NotModified);
+        let current = scheduler.submit(1).unwrap();
+        let (generation, version) = {
+            let mut queue = state.queue.lock().unwrap();
+            let entry = queue.entries.get_mut(&1).unwrap();
+            entry.keep_due = true;
+            (entry.generation, queue.operations.version)
+        };
+        let notifications = state.metrics.event_received.load(Ordering::Relaxed);
+        let deferred = super::super::cooldown::Deferred::from_reason(
+            None,
+            rrss_core::ingest::FetchDeferredReason::CooldownSaving,
+        );
+        state.complete_deferred(
+            &DeferredDownload {
+                feed: rrss_core::feeds::get_feed(&conn, 1).unwrap(),
+                generation: old_generation,
+                deferred: deferred.clone(),
+            },
+            RefreshResult {
+                feed_id: 1,
+                status: RefreshStatus::Skipped {
+                    message: deferred.record(),
+                    retry_at: deferred.until,
+                },
+            },
+        );
+        state.finish(success.clone(), old_generation);
+        {
+            let queue = state.queue.lock().unwrap();
+            assert_eq!(queue.entries[&1].generation, generation);
+            assert!(queue.entries[&1].parked.is_none());
+            assert_eq!(queue.operations.version, version);
+        }
+        assert!(current.0.borrow().is_none());
+        assert_eq!(
+            state.metrics.event_received.load(Ordering::Relaxed),
+            notifications
+        );
+        state.finish(success, generation);
+        assert_eq!(
+            current.wait().await.unwrap().status,
+            RefreshStatus::NotModified
+        );
+        assert!(scheduler.shutdown().await);
+    }
+
+    #[tokio::test]
+    async fn cancelled_parser_keeps_body_and_bypass_until_the_database_worker_finishes() {
+        let (_dir, path) = super::super::tests::fixture();
+        let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
+        let state = &scheduler.shared;
+        let _global = state
+            .global
+            .clone()
+            .acquire_many_owned(state.limits.global as u32)
+            .await
+            .unwrap();
+        state.await_cooldown_ready().await.unwrap();
+        let conn = db::open_at(&path).unwrap();
+        conn.execute_batch(
+            "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://source.example/feed',0);",
+        )
+        .unwrap();
+        let _ticket = scheduler.submit(1).unwrap();
+        let generation = state.queue.lock().unwrap().entries[&1].generation;
+        let body = super::super::tests::RSS.as_bytes().to_vec();
+        let mut bytes = BufferedBytes {
+            shared: state.clone(),
+            bytes: 0,
+        };
+        bytes.add(body.len());
+        let bypass = state.added_body.clone().acquire_owned().await.unwrap();
+        let writer = db::write_transaction(&conn).unwrap();
+        let mut parser = Box::pin(state.work.scope(process_response(
+            state.clone(),
+            Downloaded {
+                feed: rrss_core::feeds::get_feed(&conn, 1).unwrap(),
+                generation,
+                response: Ok(FetchResponse {
+                    status: 200,
+                    etag: None,
+                    last_modified: None,
+                    retry_after: None,
+                    body,
+                }),
+                _bytes: bytes,
+                _bypass: Some(bypass),
+                finished_at: tokio::time::Instant::now(),
+                span: tracing::Span::none(),
+            },
+        )));
+        std::future::poll_fn(|cx| {
+            assert!(parser.as_mut().poll(cx).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+        let metrics = db::pool::metrics(&path).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !metrics.activity.snapshot().active.iter().any(|sample| {
+                sample.stage == "writer_admission"
+                    && sample.operation.contains("response::apply_response")
+            }) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        drop(parser);
+        assert_eq!(scheduler.buffered_bytes(), super::super::tests::RSS.len());
+        assert_eq!(scheduler.bypass_available(), 0);
+        let shutdown = scheduler.shutdown();
+        tokio::pin!(shutdown);
+        std::future::poll_fn(|cx| {
+            assert!(shutdown.as_mut().poll(cx).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+        writer.commit().unwrap();
+        assert!(shutdown.await);
+        assert_eq!(scheduler.buffered_bytes(), 0);
+        assert_eq!(scheduler.bypass_available(), 1);
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM articles", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(state.metrics.completed.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test]
+    async fn shutdown_releases_queued_ranking_and_records_recovery() {
+        let (_dir, path) = super::super::tests::fixture();
+        let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
+        let conn = db::open_at(&path).unwrap();
+        conn.execute_batch(
+            "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://rank.example/feed',0);
+             INSERT INTO articles(id,feed_id,title,created_at) VALUES(1,1,'Story',0);",
+        )
+        .unwrap();
+        let _held = scheduler.shared.work.rank.hold().await;
+        scheduler
+            .shared
+            .rank_later(1, vec![1], tracing::Span::none());
+        tokio::task::yield_now().await;
+        assert!(scheduler.shutdown().await);
+        assert!(db::get_setting(&conn, "rank_dirty_at").unwrap().is_some());
+    }
 
     #[tokio::test]
     async fn paused_first_hop_requeues_even_when_connectivity_recovers_before_recording() {
@@ -2011,7 +2169,7 @@ mod admission_tests {
             [server.uri()],
         )
         .unwrap();
-        let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+        let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
         let state = &scheduler.shared;
         let global = state
             .global
@@ -2077,7 +2235,7 @@ mod admission_tests {
             assert!(queue.resuming.values().all(|count| *count > 0));
         }
         let (_dir, path) = super::super::tests::fixture();
-        let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+        let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
         let state = &scheduler.shared;
         let global = state
             .global
@@ -2173,9 +2331,7 @@ mod admission_tests {
         )
         .unwrap();
         let scheduler = Scheduler::with_limits(
-            path.clone(),
             NetworkClients::new(&path),
-            |_| {},
             Limits {
                 host: 1,
                 policy: rrss_core::ingest::feed_http::FeedPolicy {
@@ -2241,9 +2397,7 @@ mod admission_tests {
         let feed = rrss_core::feeds::get_feed(&conn, 1).unwrap();
         let url = reqwest::Url::parse(&feed.url).unwrap();
         let scheduler = Scheduler::with_limits(
-            path.clone(),
             NetworkClients::new(&path),
-            |_| {},
             Limits {
                 host: 1,
                 ..Default::default()
@@ -2291,12 +2445,7 @@ mod admission_tests {
         .unwrap();
         let feed = rrss_core::feeds::get_feed(&conn, 1).unwrap();
         let url = reqwest::Url::parse(&feed.url).unwrap();
-        let scheduler = Scheduler::with_limits(
-            path.clone(),
-            NetworkClients::new(&path),
-            |_| {},
-            Limits::default(),
-        );
+        let scheduler = Scheduler::with_limits(NetworkClients::new(&path), Limits::default());
         let state = &scheduler.shared;
         state.await_cooldown_ready().await.unwrap();
         let reserved = state.try_permits(&url, false).ok().unwrap();
@@ -2329,8 +2478,11 @@ mod diagnostic_tests {
     async fn burst_events_collapse_and_diagnostics_exclude_private_values() {
         let (_dir, path) = super::super::tests::fixture();
         let (events, mut received) = tokio::sync::mpsc::unbounded_channel();
-        let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), move |event| {
-            events.send(event).ok();
+        let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
+        let _subscription = scheduler.subscribe(move |event| {
+            if let SchedulerEvent::Feed(feed) = event {
+                let _ = events.send(feed.clone());
+            }
         });
         for id in 1..=1000 {
             scheduler.shared.emit(views::FeedUpdated {

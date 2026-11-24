@@ -94,9 +94,7 @@ async fn newly_received_cooldown_settles_already_parked_manual_and_due_claims() 
         }
         let clock = TestClock::new();
         let scheduler = Scheduler::with_clock(
-            path.clone(),
             NetworkClients::new(&path),
-            |_| {},
             runtime::Limits {
                 host: 1,
                 ..Default::default()
@@ -104,7 +102,7 @@ async fn newly_received_cooldown_settles_already_parked_manual_and_due_claims() 
             clock.clone(),
         );
         if due {
-            assert_eq!(scheduler.enqueue_due().await.unwrap(), SOURCES);
+            assert_eq!(scheduler.shared.enqueue_due().await.unwrap(), SOURCES);
         }
         let operation = scheduler.start_refresh().await.unwrap();
         arrived.recv().await.unwrap();
@@ -183,13 +181,7 @@ async fn rate_limit_spreads_to_peers_is_restored_before_dispatch_and_manual_repo
         host: 1,
         ..Default::default()
     };
-    let scheduler = Scheduler::with_clock(
-        path.clone(),
-        NetworkClients::new(&path),
-        |_| {},
-        limits,
-        clock.clone(),
-    );
+    let scheduler = Scheduler::with_clock(NetworkClients::new(&path), limits, clock.clone());
     assert!(matches!(
         fetch(&scheduler, 1).await.status,
         RefreshStatus::Skipped {
@@ -233,13 +225,7 @@ async fn rate_limit_spreads_to_peers_is_restored_before_dispatch_and_manual_repo
     assert_eq!(server.received_requests().await.unwrap().len(), 1);
     assert!(!saved.to_string().contains("http://") && !saved.to_string().contains("/rate"));
     assert!(scheduler.shutdown().await);
-    let restarted = Scheduler::with_clock(
-        path.clone(),
-        NetworkClients::new(&path),
-        |_| {},
-        limits,
-        clock.clone(),
-    );
+    let restarted = Scheduler::with_clock(NetworkClients::new(&path), limits, clock.clone());
     assert!(matches!(
         fetch(&restarted, 2).await.status,
         RefreshStatus::Skipped { .. }
@@ -266,7 +252,7 @@ async fn deferred_deadline_writes_do_not_block_other_hosts_from_dispatching() {
         seed(&conn, id, format!("https://cooled.invalid/{id}"));
     }
     seed(&conn, 65, healthy.uri());
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
     scheduler.shared.await_cooldown_ready().await.unwrap();
     let feed = rrss_core::feeds::get_feed(&conn, 1).unwrap();
     let url = reqwest::Url::parse(&feed.url).unwrap();
@@ -331,9 +317,7 @@ async fn missing_retry_after_uses_host_staircase_and_fast_response_resets_the_ti
     seed(&conn, 1, server.uri());
     let clock = TestClock::new();
     let scheduler = Scheduler::with_clock(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits::default(),
         clock.clone(),
     );
@@ -391,9 +375,7 @@ async fn cooled_due_sources_stay_parked_in_memory_then_resume_without_rescanning
     }
     let clock = TestClock::new();
     let scheduler = Scheduler::with_clock(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits {
             global: 4,
             host: 1,
@@ -404,7 +386,7 @@ async fn cooled_due_sources_stay_parked_in_memory_then_resume_without_rescanning
     fetch(&scheduler, 1).await;
     let mut tickets = Vec::new();
     for id in 2..=PEERS + 1 {
-        tickets.push(scheduler.submit_wait(id, true).await.unwrap());
+        tickets.push(scheduler.shared.submit_wait(id, true).await.unwrap());
     }
     for ticket in tickets {
         assert!(matches!(
@@ -469,9 +451,7 @@ async fn cooled_backlog_larger_than_queue_does_not_block_other_due_hosts() {
     }
     seed(&conn, 6, healthy.uri());
     let scheduler = Scheduler::with_limits(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits {
             pending: 2,
             host: 1,
@@ -479,7 +459,7 @@ async fn cooled_backlog_larger_than_queue_does_not_block_other_due_hosts() {
         },
     );
     fetch(&scheduler, 1).await;
-    let results = tokio::time::timeout(Duration::from_secs(5), scheduler.enqueue_due())
+    let results = tokio::time::timeout(Duration::from_secs(5), scheduler.shared.enqueue_due())
         .await
         .expect("cooled sources must leave room for later pages")
         .unwrap();
@@ -512,9 +492,7 @@ async fn clock_rollback_and_large_forward_jumps_do_not_shorten_saved_cooldowns()
     seed(&conn, 1, server.uri());
     let clock = TestClock::new();
     let scheduler = Scheduler::with_clock(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits::default(),
         clock.clone(),
     );
@@ -539,9 +517,7 @@ async fn clock_rollback_and_large_forward_jumps_do_not_shorten_saved_cooldowns()
     assert!(advanced >= clock.now().utc + 86_400_000 - 1000 && advanced >= original);
     assert!(scheduler.shutdown().await);
     let restarted = Scheduler::with_clock(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits::default(),
         clock.clone(),
     );
@@ -592,9 +568,7 @@ async fn redirected_target_cooldown_is_persisted_for_known_sources_and_address_c
     seed(&conn, 3, format!("{}/direct", target.uri()));
     let clock = TestClock::new();
     let scheduler = Scheduler::with_clock(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits::default(),
         clock.clone(),
     );
@@ -611,9 +585,7 @@ async fn redirected_target_cooldown_is_persisted_for_known_sources_and_address_c
     assert_eq!(origin.received_requests().await.unwrap().len(), 2);
     assert!(scheduler.shutdown().await);
     let restarted = Scheduler::with_clock(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits::default(),
         clock,
     );
@@ -654,8 +626,7 @@ async fn cancelled_header_wait_still_commits_before_a_restarted_runtime_can_disp
         ..Default::default()
     };
     limits.policy.timeout = Duration::from_secs(1);
-    let scheduler =
-        Scheduler::with_limits(path.clone(), NetworkClients::new(&path), |_| {}, limits);
+    let scheduler = Scheduler::with_limits(NetworkClients::new(&path), limits);
     scheduler.shared.await_cooldown_ready().await.unwrap();
     scheduler.shared.network.feed_client().await.unwrap();
     conn.execute_batch("BEGIN IMMEDIATE").unwrap();
@@ -678,8 +649,7 @@ async fn cancelled_header_wait_still_commits_before_a_restarted_runtime_can_disp
         RefreshStatus::Skipped { .. }
     ));
     scheduler.stop();
-    let restarted =
-        Scheduler::with_limits(path.clone(), NetworkClients::new(&path), |_| {}, limits);
+    let restarted = Scheduler::with_limits(NetworkClients::new(&path), limits);
     let peer = restarted.submit(2).unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert_eq!(server.received_requests().await.unwrap().len(), 1);
@@ -718,9 +688,7 @@ async fn damaged_snapshot_is_visible_and_persisted_recovery_admits_only_one_requ
     db::set_setting(&conn, SETTING, "{broken").unwrap();
     let clock = TestClock::new();
     let scheduler = Scheduler::with_clock(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits::default(),
         clock.clone(),
     );
@@ -736,7 +704,7 @@ async fn damaged_snapshot_is_visible_and_persisted_recovery_admits_only_one_requ
     assert_eq!(operation(&scheduler).await.skipped, 3);
     assert_eq!(snapshot(&conn)["recovery"], true);
     for id in 1..=3 {
-        scheduler.submit_wait(id, true).await.unwrap();
+        scheduler.shared.submit_wait(id, true).await.unwrap();
     }
     wait_until(|| {
         conn.query_row(
@@ -794,19 +762,17 @@ async fn recovery_keeps_serial_admission_across_a_slow_redirect() {
     db::set_setting(&conn, SETTING, "{broken").unwrap();
     let clock = TestClock::new();
     let scheduler = Scheduler::with_clock(
-        path.clone(),
         NetworkClients::new(&path),
-        |_| {},
         runtime::Limits::default(),
         clock.clone(),
     );
-    let first = scheduler.submit_wait(1, true).await.unwrap();
+    let first = scheduler.shared.submit_wait(1, true).await.unwrap();
     tokio::time::timeout(Duration::from_secs(5), target_arrived.recv())
         .await
         .unwrap()
         .unwrap();
     clock.advance(11_000);
-    let second = scheduler.submit_wait(2, true).await.unwrap();
+    let second = scheduler.shared.submit_wait(2, true).await.unwrap();
     tokio::select! {
         result = second.wait() => assert!(matches!(result.unwrap().status, RefreshStatus::Skipped { .. })),
         _ = peer_arrived.recv() => panic!("recovery must remain serial while a redirected body is in flight"),
@@ -837,7 +803,7 @@ async fn failed_cooldown_snapshot_write_is_visible_and_prevents_peer_dispatch() 
     let conn = db::open_at(&path).unwrap();
     seed(&conn, 1, format!("{}/rate", server.uri()));
     seed(&conn, 2, format!("{}/peer", server.uri()));
-    let scheduler = Scheduler::start(path.clone(), NetworkClients::new(&path), |_| {});
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
     scheduler.shared.await_cooldown_ready().await.unwrap();
     conn.execute_batch(&format!("CREATE TRIGGER reject_cooldown BEFORE INSERT ON settings WHEN NEW.key='{SETTING}' BEGIN SELECT RAISE(ABORT,'injected'); END;")).unwrap();
     assert!(matches!(
@@ -881,9 +847,7 @@ async fn restart_resumes_from_the_saved_deadline_so_downtime_counts_toward_the_w
     let clock = TestClock::new();
     let start = |clock: &Arc<TestClock>| {
         Scheduler::with_clock(
-            path.clone(),
             NetworkClients::new(&path),
-            |_| {},
             runtime::Limits::default(),
             clock.clone(),
         )
@@ -921,9 +885,7 @@ async fn damaged_snapshot_recovery_ends_after_its_limit_and_stays_ended_after_re
     let clock = TestClock::new();
     let start = |clock: &Arc<TestClock>| {
         Scheduler::with_clock(
-            path.clone(),
             NetworkClients::new(&path),
-            |_| {},
             runtime::Limits::default(),
             clock.clone(),
         )
@@ -943,7 +905,7 @@ async fn damaged_snapshot_recovery_ends_after_its_limit_and_stays_ended_after_re
     wait_until(|| scheduler.snapshot().feed_pause.is_none()).await;
     // Unthrottled: all sources go out without advancing the clock.
     for id in 1..=3 {
-        scheduler.submit_wait(id, true).await.unwrap();
+        scheduler.shared.submit_wait(id, true).await.unwrap();
     }
     wait_until(|| {
         conn.query_row(

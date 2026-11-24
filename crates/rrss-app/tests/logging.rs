@@ -96,11 +96,9 @@ async fn healthy_feed_round(dir: &Path) {
         .unwrap();
     }
     tx.commit().unwrap();
-    let scheduler = rrss_app::scheduler::Scheduler::start(
-        db_path.clone(),
-        rrss_app::network::NetworkClients::new(&db_path),
-        |_| {},
-    );
+    let scheduler =
+        rrss_app::scheduler::Scheduler::create(rrss_app::network::NetworkClients::new(&db_path))
+            .unwrap();
     let operation = scheduler.start_refresh().await.unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(30), async {
         loop {
@@ -178,11 +176,9 @@ async fn feed_chain_round(dir: &Path) {
         )
         .unwrap();
     }
-    let scheduler = rrss_app::scheduler::Scheduler::start(
-        db_path.clone(),
-        rrss_app::network::NetworkClients::new(&db_path),
-        |_| {},
-    );
+    let scheduler =
+        rrss_app::scheduler::Scheduler::create(rrss_app::network::NetworkClients::new(&db_path))
+            .unwrap();
     let operation = scheduler.start_refresh().await.unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(30), async {
         loop {

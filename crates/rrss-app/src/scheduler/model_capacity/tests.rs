@@ -170,6 +170,7 @@ async fn interactive_priority_cancellation_and_database_isolation() {
     enqueue(cancelled.as_mut()).await;
     let mut translate = Box::pin(interactive.acquire());
     enqueue(translate.as_mut()).await;
+    assert_eq!(*interactive.work.active().borrow(), 0);
     let snapshot = background._capacity.diagnostics();
     assert_eq!(
         (
