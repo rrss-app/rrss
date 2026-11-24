@@ -562,3 +562,54 @@ fn toggling_boost_changes_order_without_clearing_column() {
     let off = crate::list_focus_stream(&conn, 20, None).unwrap();
     assert_eq!(off[0].id, high, "boost off: sort by score only");
 }
+
+#[test]
+fn disliked_articles_leave_focus_candidates_until_undone() {
+    use rrss_core::{FeedbackKind, rate_article, undo_rating};
+    let (_dir, conn) = open_temp();
+    conn.execute_batch(
+        "INSERT INTO feeds(id,url,created_at) VALUES(1,'https://dislike.example/feed',0);
+        INSERT INTO articles(id,feed_id,title,score,interest_boost,created_at,starred) VALUES
+        (1,1,'kept',0,0,0,0),(2,1,'disliked',5,0,0,0),(3,1,'starred disliked',5,0,0,1);",
+    )
+    .unwrap();
+    conn.execute("UPDATE articles SET created_at=?1", [now_ms()])
+        .unwrap();
+    rrss_core::db::set_setting(&conn, rrss_core::db::HIDDEN_SPOT_CHECK_RATE_KEY, "0").unwrap();
+    let ids = || {
+        let mut ids: Vec<_> = list_focus_page(&conn, 40, None, &[], &[], FeedScope::All)
+            .unwrap()
+            .0
+            .into_iter()
+            .map(|c| c.id)
+            .collect();
+        ids.sort();
+        ids
+    };
+    assert_eq!(ids(), vec![1, 2, 3]);
+    let undo = rate_article(&conn, 2, FeedbackKind::Down).unwrap();
+    rate_article(&conn, 3, FeedbackKind::Down).unwrap();
+    // 续页（补位）与首屏同一候选池。
+    assert_eq!(ids(), vec![1]);
+    let (more, _) = list_focus_page(&conn, 40, None, &[1], &[], FeedScope::All).unwrap();
+    assert!(more.is_empty());
+    // 收藏列表是用户明确留下的，不因点踩消失。
+    set_list_scope(&conn, ListScope::Starred).unwrap();
+    assert_eq!(ids(), vec![3]);
+    set_list_scope(&conn, ListScope::All).unwrap();
+    // 「显示全部」本就包括被规则隐藏的文章，踩过的也列出。
+    set_focus_filter(&conn, FocusFilter::ShowAll).unwrap();
+    assert_eq!(ids(), vec![1, 2, 3]);
+    set_focus_filter(&conn, FocusFilter::HideFaded).unwrap();
+    undo_rating(
+        &conn,
+        2,
+        rrss_core::RatingUndo {
+            kind: undo.kind,
+            previous: undo.previous,
+            suggested_rule_id: undo.suggested_rule_id,
+        },
+    )
+    .unwrap();
+    assert_eq!(ids(), vec![1, 2]);
+}

@@ -19,6 +19,12 @@ mod tests;
 
 pub(crate) use order::SAME_FEED_WINDOW;
 
+/// 踩过的文章不再进焦点候选：点踩即表示不想再看到这篇，偏好降权只作用于同类。
+/// 撤销点踩会删掉或改回这条反馈，文章随之回到候选。收藏列表与「显示全部」不受影响，
+/// 踩过的文章在那里仍找得到。
+pub(crate) const NOT_DISLIKED_SQL: &str =
+    "NOT EXISTS (SELECT 1 FROM feedback f WHERE f.article_id = a.id AND f.kind = 'down')";
+
 pub fn list_focus(conn: &Connection, limit: i64) -> Result<Vec<ArticleCard>> {
     list_focus_stream(conn, limit, None)
 }
@@ -200,6 +206,11 @@ fn query_focus_cards(
     let noisy_sql = exclude_feeds_sql(&mut bind, exclude_feed_ids);
     let list_scope = list_scope(conn)?;
     let list_sql = list_scope.filter_sql();
+    let disliked_sql = if list_scope == ListScope::Starred || filter == FocusFilter::ShowAll {
+        String::new()
+    } else {
+        format!(" AND {NOT_DISLIKED_SQL}")
+    };
     let scope_index = bind.len() + 1;
     let (feed_sql, feed_id) = numbered_scope_sql(scope, scope_index);
     let rank_score = rrss_core::rank_score::SCORE_SQL;
@@ -212,7 +223,7 @@ fn query_focus_cards(
     };
     let eligible = format!(
         "a.expires_at IS NULL AND {filter_sql}
-           {list_sql}
+           {list_sql}{disliked_sql}
            {feed_sql}
            {noisy_sql}"
     );

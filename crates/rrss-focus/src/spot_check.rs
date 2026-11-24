@@ -60,8 +60,9 @@ pub(crate) fn inject(
          JOIN feeds f ON f.id = a.feed_id
          LEFT JOIN article_rank r ON r.article_id = a.id
          WHERE a.expires_at IS NULL AND a.score <= ?1 AND a.released_at IS NULL AND a.created_at BETWEEN ?2 AND ?3
-           {scope_sql} {noisy_sql}
-         ORDER BY a.id"
+           AND {not_disliked} {scope_sql} {noisy_sql}
+         ORDER BY a.id",
+        not_disliked = crate::page::NOT_DISLIKED_SQL,
     );
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query(params_from_iter(bind))?;
@@ -326,6 +327,18 @@ mod tests {
         conn.execute("UPDATE articles SET released_at=CASE WHEN id%2=0 THEN 1 END, expires_at=CASE WHEN id%2=1 THEN 999 END WHERE score<0", [])
             .unwrap();
         // 放行文章正常可见，临时文章仍不可见；两者都不能作为抽查放回。
+        assert!(spots(&page(&conn, &[], &[])).is_empty());
+    }
+
+    #[test]
+    fn disliked_hidden_articles_are_not_spot_checked() {
+        let (_dir, conn) = fixture();
+        assert_eq!(spots(&page(&conn, &[], &[])).len(), 2);
+        conn.execute(
+            "INSERT INTO feedback(article_id,kind,created_at) SELECT id,'down',1 FROM articles WHERE score<0",
+            [],
+        )
+        .unwrap();
         assert!(spots(&page(&conn, &[], &[])).is_empty());
     }
 }

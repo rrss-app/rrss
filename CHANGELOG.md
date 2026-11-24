@@ -16,6 +16,7 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ### Fixed
 
+- Articles you dislike no longer come back in Focus after a refresh, a scope change, or a restart, including as the card that replaces a dismissed one. They still appear under Starred and Show all, and undoing the dislike brings them back.
 - Quitting during a refresh or a manual summary now cancels requests still waiting for database access. Queued ranking work can resume after restart, and database writes already in progress are given time to finish.
 - Quitting while a feed response is being processed no longer risks a freeze. Pending embedding probes and translation requests waiting for model access no longer hold up exit.
 - Interrupted background ranking keeps pending articles and reports the same batch result to every waiting refresh. Ranking already running in the database finishes before another incremental batch starts.
