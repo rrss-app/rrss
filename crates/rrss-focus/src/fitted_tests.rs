@@ -99,12 +99,23 @@ fn unrelated_embedding_completion_does_not_change_fitted_score() {
     store::set_switch(&lib.conn, store::FITTED_ENABLED_KEY, true).unwrap();
     let mut model = Model::load(&lib.conn, NOW).unwrap();
     assert!(model.fitted.is_some());
-    let id = lib.tracked.iter().find(|(_, id)| lib.feed[id] == 8).unwrap().1;
-    let before = model.article_boost(id, NOW, Switches::ALL).unwrap().raw_score;
+    let id = lib
+        .tracked
+        .iter()
+        .find(|(_, id)| lib.feed[id] == 8)
+        .unwrap()
+        .1;
+    let before = model
+        .article_boost(id, NOW, Switches::ALL)
+        .unwrap()
+        .raw_score;
     let mut unrelated = vec![0.0; DIMS];
     unrelated[48] = 1.0;
     model.vectors.insert(id, unrelated);
-    let after = model.article_boost(id, NOW, Switches::ALL).unwrap().raw_score;
+    let after = model
+        .article_boost(id, NOW, Switches::ALL)
+        .unwrap()
+        .raw_score;
     assert!((before - after).abs() < 1e-10, "{before} != {after}");
 }
 
@@ -299,12 +310,14 @@ fn build(mode: Weekly) -> Lib {
     lib
 }
 
-
 // What the model learns, without the daily source draw; the draw has its own
 // contract below.
 #[test]
 fn fitted_ten_source_contract() {
-    let tuning = crate::Tuning { source_draw: (0.0, f64::INFINITY), ..crate::Tuning::DEFAULT };
+    let tuning = crate::Tuning {
+        source_draw: (0.0, f64::INFINITY),
+        ..crate::Tuning::DEFAULT
+    };
     crate::tuning::with(tuning, ten_source_contract);
 }
 
@@ -326,17 +339,27 @@ fn daily_source_draw_rotates_near_ties_and_keeps_clear_preferences() {
         let tracked = |feed, on: Option<bool>| {
             lib.tracked
                 .iter()
-                .find(|(name, id)| lib.feed[id] == feed && on.is_none_or(|on| name.contains("ON-topic") == on))
+                .find(|(name, id)| {
+                    lib.feed[id] == feed && on.is_none_or(|on| name.contains("ON-topic") == on)
+                })
                 .unwrap()
                 .1
         };
-        let (weekly, rejected, on_topic) = (tracked(6, None), tracked(10, None), tracked(7, Some(true)));
-        let (mut weekly_ranks, mut rejected_ranks, mut on_topic_ranks, mut leaders) = (vec![], vec![], vec![], BTreeSet::new());
+        let (weekly, rejected, on_topic) =
+            (tracked(6, None), tracked(10, None), tracked(7, Some(true)));
+        let (mut weekly_ranks, mut rejected_ranks, mut on_topic_ranks, mut leaders) =
+            (vec![], vec![], vec![], BTreeSet::new());
         for day in 0..28 {
             let at = NOW + day * DAY_MS;
             let mut ranked: Vec<_> = ids
                 .iter()
-                .map(|&(id, p)| (model.article_boost(id, at, Switches::ALL).unwrap().score, p, id))
+                .map(|&(id, p)| {
+                    (
+                        model.article_boost(id, at, Switches::ALL).unwrap().score,
+                        p,
+                        id,
+                    )
+                })
                 .collect();
             ranked.sort_by(|a, b| b.cmp(a));
             let rank = |id| ranked.iter().position(|r| r.2 == id).unwrap() + 1;
@@ -345,8 +368,10 @@ fn daily_source_draw_rotates_near_ties_and_keeps_clear_preferences() {
             on_topic_ranks.push(rank(on_topic));
             leaders.insert(lib.feed[&ranked.iter().find(|r| lib.feed[&r.2] <= 5).unwrap().2]);
         }
-        println!("draw unshown={unshown} weekly={weekly_ranks:?} rejected_min={} on_topic={on_topic_ranks:?} news_leaders={leaders:?}",
-            rejected_ranks.iter().min().unwrap());
+        println!(
+            "draw unshown={unshown} weekly={weekly_ranks:?} rejected_min={} on_topic={on_topic_ranks:?} news_leaders={leaders:?}",
+            rejected_ranks.iter().min().unwrap()
+        );
         // Clear preferences survive every day's draw; near ties take turns.
         assert!(weekly_ranks.iter().all(|r| *r <= 10));
         assert!(weekly_ranks.iter().filter(|r| **r <= 3).count() >= 19);
@@ -371,7 +396,10 @@ fn ten_source_contract() {
             let model = Model::load(&lib.conn, NOW + 1).unwrap();
             let fit = model.fitted.as_ref().expect("fitted model");
             // Shelf life replaces both bounded freshness features.
-            assert!(matches!(model.policy, freshness::Policy::Shelf { quadratic: true }));
+            assert!(matches!(
+                model.policy,
+                freshness::Policy::Shelf { quadratic: true }
+            ));
             assert_eq!(fit.mean[4], 0.0);
             assert!(fit.mean[2] <= 0.0);
             let mut ranked: Vec<_> = lib
@@ -431,7 +459,7 @@ fn ten_source_contract() {
                 let a = &model.articles[&id];
                 assert_eq!(
                     topic.features,
-                    fit.report.beta[0] * (model.features.raw_score(&a.chips) - fit.mean[0])
+                    fit.report.beta[0] * (model.features.bounded_score(&a.chips) - fit.mean[0])
                 );
                 let vector = model
                     .vectors
@@ -549,7 +577,10 @@ fn report_cases(lib: &Lib, model: &Model, ranked: &[(i64, i64, i64)], mode: Week
         .1;
     assert!(
         rank(on_topic(7)) < rank(own_issue)
-            && ranked.iter().take(rank(on_topic(7))).all(|r| !unrelated(r.2)),
+            && ranked
+                .iter()
+                .take(rank(on_topic(7)))
+                .all(|r| !unrelated(r.2)),
         "topic match must overcome unrelated source skips"
     );
     assert!(
@@ -570,7 +601,12 @@ fn fitted_detail(model: &Model, id: i64) -> serde_json::Value {
             if model.exempt.contains(&a.feed) {
                 0.
             } else {
-                -freshness::shelf_cost(published, model.fitted_before, model.windows[&a.feed], quadratic)
+                -freshness::shelf_cost(
+                    published,
+                    model.fitted_before,
+                    model.windows[&a.feed],
+                    quadratic,
+                )
             },
             0.,
         ),
@@ -580,7 +616,7 @@ fn fitted_detail(model: &Model, id: i64) -> serde_json::Value {
         ),
     };
     let raw = [
-        model.features.raw_score(&a.chips),
+        model.features.bounded_score(&a.chips),
         vector
             .map(|v| {
                 affinity::combined_score(
@@ -676,7 +712,10 @@ fn fitted_load_performance() {
 fn weekly_cutoff_labels_and_fallbacks() {
     // The legacy freshness features' training contract (evaluation baseline);
     // the shelf-life default is covered by the ten-source contract.
-    let tuning = crate::Tuning { freshness: Some(freshness::Policy::Legacy), ..crate::Tuning::DEFAULT };
+    let tuning = crate::Tuning {
+        freshness: Some(freshness::Policy::Legacy),
+        ..crate::Tuning::DEFAULT
+    };
     crate::tuning::with(tuning, weekly_cutoff_legacy);
 }
 
@@ -728,10 +767,10 @@ fn weekly_cutoff_legacy() -> (tempfile::TempDir, rrss_core::db::PooledConnection
     assert_eq!(fit.report.positives, trial_fit.report.positives);
     assert_eq!(fit.report.beta, trial_fit.report.beta);
     assert_eq!(
-        fitted.features.raw_score(&fitted.articles[&80].chips),
+        fitted.features.bounded_score(&fitted.articles[&80].chips),
         exploration
             .features
-            .raw_score(&exploration.articles[&80].chips)
+            .bounded_score(&exploration.articles[&80].chips)
     );
     store::set_switch(&conn, store::FITTED_ENABLED_KEY, false).unwrap();
     assert_eq!(fit.report.samples, 100);
@@ -746,7 +785,13 @@ fn weekly_cutoff_legacy() -> (tempfile::TempDir, rrss_core::db::PooledConnection
             / (80.0 + unshown_weight);
         assert!((fit.mean[j] - expected).abs() < 1e-12);
     }
-    assert!(fitted.features.raw_score(&fitted.articles[&1].chips).abs() > 0.0);
+    assert!(
+        fitted
+            .features
+            .bounded_score(&fitted.articles[&1].chips)
+            .abs()
+            > 0.0
+    );
     let off = Switches {
         features: false,
         source: false,
@@ -763,7 +808,12 @@ fn weekly_cutoff_legacy() -> (tempfile::TempDir, rrss_core::db::PooledConnection
         fitted.article_boost(1, day + DAY_MS - 1, Switches::ALL)
     );
     let (fit, feed) = (fitted.fitted.as_ref().unwrap(), fitted.articles[&1].feed);
-    let raw = |at| fitted.article_boost(1, at, Switches::ALL).unwrap().raw_score;
+    let raw = |at| {
+        fitted
+            .article_boost(1, at, Switches::ALL)
+            .unwrap()
+            .raw_score
+    };
     let drawn = fitted::source_draw(fit, feed, at + DAY_MS) - fitted::source_draw(fit, feed, at);
     assert!(drawn != 0.0 && (raw(at + DAY_MS) - raw(at) - drawn).abs() < 1e-10);
     // The switch must publish scores from its requested model, even though the
@@ -919,4 +969,200 @@ fn repeated_exposures_do_not_multiply_fitted_samples() {
         after.report.positives,
         lib.tracked.len()
     );
+}
+
+#[test]
+fn shelf_cost_cap_prevents_old_read_outlier_from_collapsing_scale_and_new_sub_backcatalog_from_surging()
+ {
+    let lib = build(Weekly::FocusSameDay);
+    // Add a single very old read on a high-frequency feed (age >> shelf life).
+    let old_pub = NOW - 45 * DAY_MS;
+    lib.conn.execute(
+        "INSERT INTO articles(id,feed_id,title,author,canonical_url,fulltext_md,published_at,created_at)
+         VALUES(90001,1,'smartphone launch archive','Author 1','https://feed1.example/90001','body',?1,?2)",
+        params![old_pub, NOW - 2 * DAY_MS],
+    ).unwrap();
+    lib.conn.execute(
+        "INSERT INTO exposures(id,article_id,surface,position,score,interest_boost,rank_score,variant,session_id,shown_at)
+         VALUES(90001,90001,'focus',0,0,0,0,'baseline','s90001',?1)",
+        params![NOW - 2 * DAY_MS + H],
+    ).unwrap();
+    lib.conn.execute(
+        "INSERT INTO read_sessions(article_id,opened_at,exposure_id,active_ms,read_chars,skimmed_chars,total_chars,reached_end,translated,ended_by,via,idle_ms,max_block)
+         VALUES(90001,?1,90001,400000,5700,0,6000,1,0,'back','focus',0,0)",
+        params![NOW - 2 * DAY_MS + 2 * H],
+    ).unwrap();
+
+    // Add a newly subscribed quiet feed with 1 fresh post and 4 pre-subscription back-catalog posts
+    // (positive timestamps since NOW = 60d in this fixture).
+    lib.conn
+        .execute(
+            "INSERT INTO feeds(id,url,created_at) VALUES(11,'https://newblog.example/rss',?1)",
+            params![NOW - H],
+        )
+        .unwrap();
+    lib.conn.execute(
+        "INSERT INTO articles(id,feed_id,title,author,canonical_url,fulltext_md,published_at,created_at)
+         VALUES(90002,11,'fresh post','Author 11','https://newblog.example/1','body',?1,?1),
+               (90003,11,'ancient archive 1','Author 11','https://newblog.example/2','body',?2,?1),
+               (90004,11,'ancient archive 2','Author 11','https://newblog.example/3','body',?3,?1),
+               (90005,11,'ancient archive 3','Author 11','https://newblog.example/4','body',?4,?1),
+               (90006,11,'ancient archive 4','Author 11','https://newblog.example/5','body',?5,?1)",
+        params![NOW - 2 * H, NOW - 45 * DAY_MS, NOW - 48 * DAY_MS, NOW - 51 * DAY_MS, NOW - 54 * DAY_MS],
+    ).unwrap();
+
+    store::set_switch(&lib.conn, store::FITTED_ENABLED_KEY, true).unwrap();
+    let model = Model::load(&lib.conn, NOW + 1).unwrap();
+    let fit = model.fitted.as_ref().expect("fitted model active");
+    // Prior scale must stay healthy (not crushed toward 0) and all slopes non-negative.
+    assert!(
+        fit.report.prior[0] > 0.1,
+        "prior[0]={}",
+        fit.report.prior[0]
+    );
+    assert!(
+        fit.report.beta.iter().all(|b| *b >= 0.0),
+        "beta={:?}",
+        fit.report.beta
+    );
+    // Daily source draw must stay bounded even for a prior-only new feed (sd = 1.0).
+    for d in 0..30 {
+        let draw = fitted::source_draw(fit, 11, NOW + d * DAY_MS);
+        assert!(draw.abs() <= 0.65 + 1e-9, "draw={draw}");
+    }
+    // Fresh post of the new subscription gets the discovery prior and exempt freshness;
+    // 120d-old pre-subscription back-catalog gets neither and stays out of Focus.
+    let fresh = model
+        .article_boost(90002, NOW, Switches::ALL)
+        .unwrap()
+        .raw_score;
+    let ancient = model
+        .article_boost(90003, NOW, Switches::ALL)
+        .unwrap()
+        .raw_score;
+    assert!(
+        fresh - ancient >= fitted::SUBSCRIPTION_PRIOR - 0.1,
+        "fresh={fresh} ancient={ancient}"
+    );
+    let fresh_only = Switches {
+        freshness: true,
+        features: false,
+        source: false,
+        coverage: false,
+        affinity: false,
+    };
+    assert!(
+        model
+            .article_boost(90002, NOW, fresh_only)
+            .unwrap()
+            .raw_score
+            > model
+                .article_boost(90003, NOW, fresh_only)
+                .unwrap()
+                .raw_score,
+        "back-catalog archive on quiet feed must still pay freshness cost"
+    );
+    #[cfg(feature = "evaluation-clock")]
+    rrss_core::evaluation_clock::at_time(NOW, || {
+        crate::store::rebuild(&lib.conn, NOW).unwrap();
+        let (page, _) = crate::list_focus_page(
+            &lib.conn,
+            400,
+            None,
+            &[],
+            &[],
+            rrss_core::feed_scope::FeedScope::All,
+        )
+        .unwrap();
+        assert!(
+            page.iter().any(|c| c.id == 90002),
+            "fresh post of new quiet feed must appear"
+        );
+        let old_in_top10 = page
+            .iter()
+            .take(10)
+            .filter(|c| (90003..=90006).contains(&c.id))
+            .count();
+        assert_eq!(
+            old_in_top10, 0,
+            "back-catalog archives must not hijack top 10"
+        );
+        // Only the single newest unread back-catalog post (90003) may enter Focus
+        // (at low priority / for exploration); older archives stay out.
+        let old_admitted: Vec<i64> = page
+            .iter()
+            .filter(|c| (90003..=90006).contains(&c.id))
+            .map(|c| c.id)
+            .collect();
+        assert_eq!(
+            old_admitted,
+            vec![90003],
+            "only newest back-catalog post should enter pool"
+        );
+    });
+}
+
+#[test]
+fn explicit_dislikes_lower_fitted_source_and_same_feed_series_without_cross_feed_leakage() {
+    let lib = build(Weekly::FocusSameDay);
+    // Add a new feed with a disliked devlog series and an unrelated feed with a neutral post.
+    lib.conn
+        .execute(
+            "INSERT INTO feeds(id,url,created_at) VALUES(12,'https://devlog.example/rss',?1)",
+            params![NOW - H],
+        )
+        .unwrap();
+    for i in 1..=3_i64 {
+        let id = 91000 + i;
+        let at = NOW - (4 - i) * H;
+        lib.conn.execute(
+            "INSERT INTO articles(id,feed_id,title,author,canonical_url,fulltext_md,published_at,created_at)
+             VALUES(?1,12,?2,'Author 12',?3,'body',?4,?4)",
+            params![id, format!("Tidewater devlog #{i} update"), format!("https://devlog.example/{i}"), at],
+        ).unwrap();
+        lib.conn.execute(
+            "INSERT INTO exposures(id,article_id,surface,position,score,interest_boost,rank_score,variant,session_id,shown_at)
+             VALUES(?1,?1,'focus',0,0,0,0,'baseline',?2,?3)",
+            params![id, format!("s{id}"), at + 60_000],
+        ).unwrap();
+        lib.conn.execute(
+            "INSERT INTO article_events(article_id,kind,exposure_id,at) VALUES(?1,'down',?1,?2)",
+            params![id, at + 120_000],
+        ).unwrap();
+    }
+    // New unread devlog on the same feed vs another feed mentioning the same term.
+    lib.conn.execute(
+        "INSERT INTO articles(id,feed_id,title,author,canonical_url,fulltext_md,published_at,created_at)
+         VALUES(91010,12,'Tidewater devlog #4 update','Author 12','https://devlog.example/4','body',?1,?1),
+               (91011,1,'Tidewater devlog #4 update','Author 1','https://feed1.example/91011','body',?1,?1)",
+        params![NOW - 30 * 60_000],
+    ).unwrap();
+    let tuning = crate::Tuning {
+        source_draw: (0.0, 0.4),
+        ..crate::Tuning::DEFAULT
+    };
+    crate::tuning::with(tuning, || {
+        store::set_switch(&lib.conn, store::FITTED_ENABLED_KEY, true).unwrap();
+        let model = Model::load(&lib.conn, NOW + 1).unwrap();
+        let fit = model.fitted.as_ref().unwrap();
+        // 3 explicit dislikes must overcome the +0.8 new-subscription prior.
+        assert!(
+            fit.sources[&12] < 0.0,
+            "feed 12 source={}",
+            fit.sources[&12]
+        );
+        let same_feed = model
+            .article_boost(91010, NOW, Switches::ALL)
+            .unwrap()
+            .raw_score;
+        let other_feed = model
+            .article_boost(91011, NOW, Switches::ALL)
+            .unwrap()
+            .raw_score;
+        assert!(same_feed < -1.0, "same_feed={same_feed}");
+        assert!(
+            same_feed < other_feed - 1.0,
+            "same_feed={same_feed} other_feed={other_feed}"
+        );
+    });
 }

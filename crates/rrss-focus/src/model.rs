@@ -37,6 +37,8 @@ pub struct Model {
     sources: BTreeMap<i64, f64>,
     fitted: Option<super::read_model::Fit<5>>,
     fitted_before: i64,
+    /// Recently subscribed feeds (created within `SUBSCRIPTION_WINDOW` of `fitted_before`).
+    subscribed: BTreeMap<i64, i64>,
     half_lives: BTreeMap<i64, i64>,
     /// Freshness policy and, under `Shelf`, per-feed shelf life and quiet feeds.
     policy: freshness::Policy,
@@ -206,7 +208,7 @@ impl Model {
         } else {
             BTreeMap::new()
         };
-        let fitted = if fitted_enabled {
+        let (fitted, subscribed) = if fitted_enabled {
             let subscribed: BTreeMap<i64, i64> = rows(
                 conn,
                 "SELECT id,created_at FROM feeds WHERE created_at>=?1 AND created_at<?2",
@@ -229,9 +231,9 @@ impl Model {
             if fit.is_none() {
                 return Self::load_with_fitted(conn, before, enabled, scope, false);
             }
-            fit
+            (fit, subscribed)
         } else {
-            None
+            (None, BTreeMap::new())
         };
         let (feature_profile, affinity, recent_affinity) =
             fitted::profiles(&articles, &vectors, &votes, before);
@@ -278,12 +280,15 @@ impl Model {
             .cloned()
             .collect();
         let source_votes = labels::evidence(&source_events, &source_sessions, &[], 0);
+        let focus_exposure_ids: BTreeSet<i64> = exposures.iter().map(|(e, _)| e.id).collect();
         let source_feedback: Vec<_> = source_votes
             .iter()
             .filter_map(|v| {
                 let exposure_id = if v.explicit {
                     let id = v.exposure_id?;
-                    (attributed(v.article_id, v.at) == Some(id)).then_some(id)?
+                    let matched = attributed(v.article_id, v.at) == Some(id)
+                        || (v.weight < 0.0 && focus_exposure_ids.contains(&id));
+                    matched.then_some(id)?
                 } else {
                     attributed(v.article_id, v.at)?
                 };
@@ -347,6 +352,7 @@ impl Model {
             features: feature_profile,
             fitted,
             fitted_before: before,
+            subscribed,
             vectors,
             sources,
             half_lives,
@@ -456,17 +462,26 @@ impl Model {
         let title = representative
             .and_then(|id| self.articles.get(&id))
             .map(|a| a.title.as_str());
-        let features = self.features.weighted(chips);
+        let features = self.features.weighted_for_feed(feed, chips);
         let feeds = cluster.and_then(|c| self.cluster_feeds.get(&c));
-        // Shelf life: quiet feeds never age; others pay an unbounded cost.
+        let back_catalog = self.subscribed.get(&feed).is_some_and(|&sub_at| {
+            sub_at > 0
+                && published.is_some_and(|p| sub_at.saturating_sub(p) > fitted::SUBSCRIPTION_WINDOW)
+        });
+        // Shelf life: quiet feeds never age for posts published around or after
+        // subscription; historical back-catalog imported on day 1 still ages.
         let shelf = match self.policy {
-            freshness::Policy::Shelf { quadratic } if !self.exempt.contains(&feed) => Some((
-                self.windows
-                    .get(&feed)
-                    .copied()
-                    .unwrap_or(30 * evidence::DAY_MS),
-                quadratic,
-            )),
+            freshness::Policy::Shelf { quadratic }
+                if !self.exempt.contains(&feed) || back_catalog =>
+            {
+                Some((
+                    self.windows
+                        .get(&feed)
+                        .copied()
+                        .unwrap_or(30 * evidence::DAY_MS),
+                    quadratic,
+                ))
+            }
             _ => None,
         };
         let shelf_on = matches!(self.policy, freshness::Policy::Shelf { .. });
@@ -491,9 +506,11 @@ impl Model {
                 .copied()
                 .unwrap_or(14 * evidence::DAY_MS);
             let published = published.or_else(|| self.articles.get(&id).map(|a| a.created));
+            let lexical_score = self.features.bounded_score(chips);
+            let same_feed_dislike = self.features.same_feed_dislike_penalty(feed, chips);
             let raw = if shelf_on {
                 [
-                    self.features.raw_score(chips),
+                    lexical_score,
                     affinity,
                     shelf.map_or(0.0, |(window, quadratic)| {
                         -freshness::shelf_cost(published, self.fitted_before, window, quadratic)
@@ -503,15 +520,32 @@ impl Model {
                 ]
             } else {
                 [
-                    self.features.raw_score(chips),
+                    lexical_score,
                     affinity,
                     freshness::value(published, self.fitted_before, interval),
                     input.coverage.1,
                     freshness::value(published, self.fitted_before, fitted::ABSOLUTE_HALF_LIFE),
                 ]
             };
-            let (c, source) = fit.contributions(feed, raw);
-            let source = source + fitted::source_draw(fit, feed, at);
+            let (mut c, mut source) = fit.contributions(feed, raw);
+            // Apply explicit same-feed lexical dislikes with at least 0.5x strength
+            // so noisy/small fitted beta[0] cannot mute explicit thumbs-down.
+            if same_feed_dislike < 0.0 {
+                c[0] += same_feed_dislike * fit.report.beta[0].max(0.5);
+            }
+            // Do not grant the new-subscription discovery prior to old back-catalog
+            // archive posts imported on day 1 (published > SUBSCRIPTION_WINDOW ago).
+            if let Some(&sub_at) = self.subscribed.get(&feed) {
+                if published.is_some_and(|p| {
+                    self.fitted_before.saturating_sub(p) > fitted::SUBSCRIPTION_WINDOW
+                }) {
+                    source -= fitted::subscription_prior(sub_at, self.fitted_before);
+                }
+            }
+            // Do not let daily random exploration draws launch pre-subscription
+            // historical back-catalog posts to the top of Focus.
+            let draw = fitted::source_draw(fit, feed, at);
+            let source = source + if back_catalog { draw.min(0.0) } else { draw };
             topic_contributions = Some((c[0], c[1]));
             [c[0], source, c[3], c[2] + c[4], c[1]]
         });

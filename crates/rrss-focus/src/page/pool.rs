@@ -24,6 +24,10 @@ const TOTAL: usize = 2048;
 const RECOVERY_TOTAL: usize = 64;
 const READ_COST: i64 = 14;
 const EXPOSURE_COST: i64 = 3;
+/// Pre-subscription historical archive posts (>30d older than feed subscription)
+/// stay in the Focus pool (newest 1 unread per feed) for the exploration slot
+/// and tail browsing, but sit below fresh articles organically.
+const BACK_CATALOG_COST: i64 = 3;
 
 // Keep this expression identical to the admission index in schema/migrations.
 // First ingestion caps future dates and missing dates; re-fetches never rejuvenate
@@ -85,12 +89,15 @@ pub(super) fn members(
          AND {DATE_SQL}>=?2 AND {DATE_SQL}<=?3)"
     ))?;
     let feeds = conn
-        .prepare("SELECT id FROM feeds ORDER BY id")?
-        .query_map([], |row| row.get::<_, i64>(0))?
+        .prepare("SELECT id,created_at FROM feeds ORDER BY id")?
+        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
+    let feed_created: HashMap<i64, i64> = feeds.iter().copied().collect();
     // Fitted ranking: each feed keeps only its shelf life, scaled by its
-    // publishing rate; quiet feeds keep 180 days and leave after repeated
-    // unread showings. No separate recovery lane under this policy.
+    // publishing rate; quiet feeds keep 180 days (with pre-subscription back-catalog
+    // limited to the newest 1 unread post at low organic priority so it stays
+    // eligible for the daily exploration slot without flooding Focus) and leave
+    // after repeated unread showings.
     let shelf = matches!(
         crate::freshness::policy(settings.fitted),
         crate::freshness::Policy::Shelf { .. }
@@ -105,7 +112,7 @@ pub(super) fn members(
     let mut recent_heap = SeedHeap::new();
     let mut recovery_heap = SeedHeap::new();
     let mut dormant = HashSet::new();
-    for feed_id in feeds {
+    for (feed_id, _) in feeds {
         args[start - 1] = feed_id;
         if shelf {
             use crate::freshness::{
@@ -248,16 +255,25 @@ pub(super) fn members(
                 .iter()
                 .any(|r| r.component != crate::combine::Component::Freshness && r.points < 0);
         let neutral_recovery = recovery && preference == 0;
+        let back_catalog = !recovery
+            && feed_created
+                .get(&feed)
+                .is_some_and(|&sub_at| sub_at > 0 && at < sub_at - RECENT_DAYS * DAY);
         let eligible = if recovery {
             !seen && (preference > 0 || (neutral_recovery && !negative && dormant.contains(&feed)))
         } else {
-            read || !repeated || (relevance > 0 && !quiet.contains(&feed))
+            read || !repeated || (relevance > 0 && !quiet.contains(&feed) && !back_catalog)
         };
         let priority = relevance
             - if read {
                 READ_COST
             } else if repeated {
                 EXPOSURE_COST
+            } else {
+                0
+            }
+            - if back_catalog && !read {
+                BACK_CATALOG_COST
             } else {
                 0
             };
@@ -267,21 +283,49 @@ pub(super) fn members(
             rusqlite::types::ValueRef::Text(_) => row.get::<_, Option<String>>(13)?,
             _ => None,
         };
-        Ok(eligible.then_some((
-            priority,
-            at,
-            id,
-            feed,
-            cluster,
-            recovery,
-            neutral_recovery,
-            lane,
-        )))
+        Ok((
+            eligible,
+            back_catalog && !read,
+            (
+                priority,
+                at,
+                id,
+                feed,
+                cluster,
+                recovery,
+                neutral_recovery,
+                lane,
+            ),
+        ))
     })?;
-    let mut ranked = rows
-        .collect::<rusqlite::Result<Vec<_>>>()?
+    let collected = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+    // Track the single newest unread pre-subscription back-catalog post per feed
+    // across ALL unread candidates (including repeated ones) so older archive posts
+    // never rotate in one-by-one after the newest archive is ignored.
+    let mut newest_back_catalog = HashMap::<i64, (i64, i64)>::new();
+    for &(_, is_bc, (_, at, id, feed, ..)) in &collected {
+        if is_bc {
+            newest_back_catalog
+                .entry(feed)
+                .and_modify(|cur| {
+                    if (at, id) > *cur {
+                        *cur = (at, id);
+                    }
+                })
+                .or_insert((at, id));
+        }
+    }
+    let mut ranked = collected
         .into_iter()
-        .flatten()
+        .filter_map(|(eligible, is_bc, item)| {
+            if !eligible {
+                return None;
+            }
+            if is_bc && newest_back_catalog.get(&item.3).map(|&(_, id)| id) != Some(item.2) {
+                return None;
+            }
+            Some(item)
+        })
         .collect::<Vec<_>>();
     ranked.sort_unstable_by(|a, b| b.cmp(a));
     let positive_recovery: HashSet<_> =

@@ -66,6 +66,7 @@ pub fn learn(
     }
     let mut positive_days = BTreeMap::<i64, BTreeSet<i64>>::new();
     let mut topics = BTreeMap::<i64, Vec<Topic>>::new();
+    let mut explicit_downs = BTreeMap::<i64, f64>::new();
     let mut qualified = false;
     for f in feedback {
         let v = f.evidence;
@@ -83,6 +84,9 @@ pub fn learn(
             continue;
         }
         qualified = true;
+        if v.explicit && v.weight < 0.0 {
+            *explicit_downs.entry(*feed).or_default() += v.weight.abs();
+        }
         let reward = if v.explicit {
             v.weight.clamp(0.0, 1.0)
         } else {
@@ -126,6 +130,12 @@ pub fn learn(
         c.1 += successes * scale;
         c.2 += 1;
     }
+    // Explicit dislikes add extra negative trials rather than behaving like a passive skip.
+    for (&feed, &downs) in &explicit_downs {
+        if let Some(c) = counts.get_mut(&feed) {
+            c.0 += downs * 1.5;
+        }
+    }
     let (n, successes) = counts
         .values()
         .fold((0.0, 0.0), |(n, s), c| (n + c.0, s + c.1));
@@ -147,10 +157,12 @@ pub fn learn(
             let raw = log_odds(posterior) - log_odds(mean);
             let broad = positive_days.get(&feed).is_some_and(|d| d.len() >= 3)
                 && topics.get(&feed).is_some_and(|t| t.len() >= 2);
-            let score = if days < 3 || (raw > 0.0 && !broad) {
+            let has_downs = explicit_downs.get(&feed).is_some_and(|d| *d > 0.0);
+            let floor = if has_downs { -0.75 } else { -0.5 };
+            let score = if (days < 3 && !has_downs) || (raw > 0.0 && !broad) {
                 0.0
             } else {
-                raw.clamp(-0.5, 0.5)
+                raw.clamp(floor, 0.5)
             };
             (feed, score)
         })

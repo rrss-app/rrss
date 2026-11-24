@@ -89,13 +89,18 @@ pub(super) fn rates(
         .collect()
 }
 
-/// Age cost in shelf-life units, unbounded: 3 at the edge (the manual weight −2
-/// makes that 6 points), quadratic by default so fresh hours cost little.
+/// Upper bound on shelf-life age cost: inside the shelf life (r <= 1) the cost
+/// stays in [0, 3]; past the edge it caps at 4 (8 hand points) so a single old
+/// training sample cannot collapse logistic regression scale or flip the slope.
+pub(super) const MAX_SHELF_COST: f64 = 4.0;
+
+/// Age cost in shelf-life units, capped past the edge: 3 at the edge (the manual
+/// weight −2 makes that 6 points), quadratic by default so fresh hours cost little.
 pub(super) fn shelf_cost(published: Option<i64>, now: i64, window: i64, quadratic: bool) -> f64 {
     published
         .map(|at| {
             let r = now.saturating_sub(at).max(0) as f64 / window.max(1) as f64;
-            3.0 * if quadratic { r * r } else { r }
+            (3.0 * if quadratic { r * r } else { r }).min(MAX_SHELF_COST)
         })
         .unwrap_or(0.0)
 }
@@ -129,6 +134,7 @@ mod tests {
         assert_eq!(shelf_cost(Some(0), w, w, true), 3.0);
         assert_eq!(shelf_cost(Some(0), w / 2, w, true), 0.75);
         assert_eq!(shelf_cost(Some(0), w / 2, w, false), 1.5);
+        assert_eq!(shelf_cost(Some(0), 10 * w, w, true), MAX_SHELF_COST);
         assert_eq!(shelf_cost(None, w, w, true), 0.0);
     }
 }

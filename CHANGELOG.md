@@ -16,6 +16,7 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ### Fixed
 
+- Improved the experimental fitted Focus ranking model: capped shelf-life age cost and calibrated scale on Focus exposures so old read articles or sidebar reading no longer collapse learned weights; added weekly baseline offsets so early reading rate changes do not invert learned feature slopes; bounded long-title lexical scores, filtered numeric and stop-word noise, and strengthened explicit dislike suppression for the same feed and series without cross-feed leakage; restrained new-subscription discovery boosts and daily random draws so newly added feeds and pre-subscription back-catalog archives no longer flood Top 10 while remaining reachable through exploration.
 - Articles you dislike no longer come back in Focus after a refresh, a scope change, or a restart, including as the card that replaces a dismissed one. They still appear under Starred and Show all, and undoing the dislike brings them back.
 - Quitting during a refresh or a manual summary now cancels requests still waiting for database access. Queued ranking work can resume after restart, and database writes already in progress are given time to finish.
 - Quitting while a feed response is being processed no longer risks a freeze. Pending embedding probes and translation requests waiting for model access no longer hold up exit.

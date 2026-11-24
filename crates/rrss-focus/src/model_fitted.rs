@@ -14,8 +14,10 @@ pub(super) const ABSOLUTE_HALF_LIFE: i64 = 3 * DAY_MS;
 pub(crate) const LAMBDA: f64 = 1.0;
 /// Daily source draw in standard deviations, and the cap on that deviation:
 /// sources whose effects differ by less than their uncertainty take turns from
-/// day to day instead of the same few always winning a tie by noise.
-pub(crate) const SOURCE_DRAW: (f64, f64) = (1.0, f64::INFINITY);
+/// day to day without letting extreme normal draws or brand-new feeds hijack top 10.
+pub(crate) const SOURCE_DRAW: (f64, f64) = (1.0, 0.4);
+const DRAW_Z_CAP: f64 = 2.5;
+const MAX_DRAW: f64 = 0.65;
 
 /// Fixed per feed and UTC day, like the daily exploration trial, so one day's
 /// pages and cache refreshes agree.
@@ -25,13 +27,18 @@ pub(super) fn source_draw(fit: &read_model::Fit<5>, feed: i64, at: i64) -> f64 {
         return 0.0;
     }
     let sd = fit.source_sd.get(&feed).copied().unwrap_or(0.0).min(cap);
-    scale * sd * read_model::daily_normal(feed, at.div_euclid(DAY_MS))
+    let z = read_model::daily_normal(feed, at.div_euclid(DAY_MS)).clamp(-DRAW_Z_CAP, DRAW_Z_CAP);
+    (scale * sd * z).clamp(-MAX_DRAW, MAX_DRAW)
 }
 
-/// Subscribing is an explicit choice: a new feed starts as if liked (log odds),
-/// fading to neutral over the window; its own Focus outcomes move it either way.
-const SUBSCRIPTION_PRIOR: f64 = 1.5;
+/// Subscribing is an explicit choice: a new feed starts slightly positive (log
+/// odds), fading to neutral over the window; its own Focus outcomes move it either way.
+pub(super) const SUBSCRIPTION_PRIOR: f64 = 0.8;
 pub(super) const SUBSCRIPTION_WINDOW: i64 = 21 * DAY_MS;
+/// Explicit thumbs-down shifts that feed's source prior center downward (capped)
+/// without distorting feature slopes with pre-dislike weekly lexical scores.
+const DISLIKE_PRIOR_STEP: f64 = 0.35;
+const DISLIKE_PRIOR_MAX: f64 = 1.5;
 const HAND_PRIOR: [f64; 5] = [
     combine::WEIGHTS[0],
     combine::WEIGHTS[4],
@@ -39,6 +46,11 @@ const HAND_PRIOR: [f64; 5] = [
     combine::WEIGHTS[2],
     -combine::WEIGHTS[3],
 ];
+
+pub(super) fn subscription_prior(subscribed_at: i64, before: i64) -> f64 {
+    let left = 1.0 - (before - subscribed_at) as f64 / SUBSCRIPTION_WINDOW as f64;
+    SUBSCRIPTION_PRIOR * left.clamp(0.0, 1.0)
+}
 
 pub(super) fn profiles(
     articles: &BTreeMap<i64, Article>,
@@ -55,7 +67,10 @@ pub(super) fn profiles(
     );
     let feedback: Vec<_> = weighted
         .iter()
-        .map(|v| (articles[&v.article_id].chips.as_slice(), *v))
+        .map(|v| {
+            let a = &articles[&v.article_id];
+            (a.chips.as_slice(), Some(a.feed), *v)
+        })
         .collect();
     let vector_weights: Vec<_> = weighted
         .iter()
@@ -74,7 +89,7 @@ pub(super) fn profiles(
         affinity::Profile::learn_temporal(&feedback, &vector_weights, recent)
     };
     (
-        Profile::learn_weighted(&feedback),
+        Profile::learn_weighted_with_feeds(&feedback),
         vector_profile(false),
         vector_profile(true),
     )
@@ -119,7 +134,11 @@ pub(super) fn train(
             exposure_id: None,
         })
         .collect();
-    eligibility.extend(votes.into_iter().filter(|v| v.weight > 0.0));
+    eligibility.extend(
+        votes
+            .into_iter()
+            .filter(|v| v.weight > 0.0 || (v.explicit && v.weight < 0.0)),
+    );
     eligibility.sort_by_key(|v| v.at);
     let eligibility: Vec<_> = eligibility
         .iter()
@@ -182,8 +201,8 @@ pub(super) fn train(
         .zip(weights(&ops))
         .map(|(o, weight)| {
             let a = &articles[&o.article];
-            let ((lexical, long, recent), sources) =
-                &weeks[&(o.at.div_euclid(7 * evidence::DAY_MS) * 7 * evidence::DAY_MS)];
+            let week_index = o.at.div_euclid(7 * evidence::DAY_MS);
+            let ((lexical, long, recent), sources) = &weeks[&(week_index * 7 * evidence::DAY_MS)];
             let vector = vectors.get(&o.article);
             let times: Vec<_> = publications
                 .get(&a.feed)
@@ -215,6 +234,7 @@ pub(super) fn train(
             let sample = read_model::Sample {
                 feed: o.feed,
                 position: o.position,
+                period: Some(week_index),
                 label: o.reward,
                 weight: weight
                     * if o.position.is_none() && o.reward > 0.0 {
@@ -223,7 +243,7 @@ pub(super) fn train(
                         1.0
                     },
                 features: [
-                    lexical.raw_score(&a.chips),
+                    lexical.bounded_score(&a.chips),
                     vector
                         .map(|v| affinity::combined_score(long.score(v).0, recent.score(v).0))
                         .unwrap_or(0.0),
@@ -264,24 +284,54 @@ pub(super) fn train(
             sample
         })
         .collect();
-    let k = read_model::point_scale(&samples, &hand_scores);
+    // Calibrate point scale on Focus-exposed samples only so positive-only sidebar
+    // reads (position = None) do not induce selection bias that crushes `k`.
+    let (focus_samples, focus_scores): (Vec<_>, Vec<_>) = samples
+        .iter()
+        .zip(&hand_scores)
+        .filter(|(s, _)| s.position.is_some())
+        .map(|(s, &h)| (s.clone(), h))
+        .unzip();
+    let k = if focus_samples.len() >= 50 {
+        read_model::point_scale(&focus_samples, &focus_scores)
+    } else {
+        read_model::point_scale(&samples, &hand_scores)
+    };
+    let mut source_prior: BTreeMap<i64, f64> = subscribed
+        .iter()
+        .map(|(&feed, &at)| (feed, subscription_prior(at, before)))
+        .filter(|(_, center)| *center > 0.0)
+        .collect();
+    let mut feed_downs = BTreeMap::<i64, f64>::new();
+    for o in &ops {
+        if o.explicit_down {
+            let age = before.saturating_sub(o.at);
+            let decay = 2_f64.powf(-age as f64 / evidence::LONG_HALF_LIFE_MS as f64);
+            *feed_downs.entry(o.feed).or_default() += decay;
+        }
+    }
+    for (feed, downs) in feed_downs {
+        let shift = (downs * DISLIKE_PRIOR_STEP).min(DISLIKE_PRIOR_MAX);
+        *source_prior.entry(feed).or_insert(0.0) -= shift;
+    }
     // Raw-unit slopes: convert hand points to log odds without SD scaling.
-    read_model::fit(
+    let mut fit = read_model::fit(
         &samples,
         read_model::Penalty {
             beta: LAMBDA,
             source: crate::tuning::current().source_penalty,
             prior: HAND_PRIOR.map(|w| k * w),
-            source_prior: subscribed
-                .iter()
-                .map(|(&feed, &at)| {
-                    let left = 1.0 - (before - at) as f64 / SUBSCRIPTION_WINDOW as f64;
-                    (feed, SUBSCRIPTION_PRIOR * left.clamp(0.0, 1.0))
-                })
-                .filter(|(_, center)| *center > 0.0)
-                .collect(),
+            source_prior,
         },
-    )
+    )?;
+    // Directional features (lexical, affinity, freshness, coverage) must never
+    // flip negative and turn dislikes or staleness into positive bonuses.
+    for b in &mut fit.report.beta {
+        if *b < 0.0 {
+            *b = 0.0;
+        }
+    }
+    Some(fit)
 }
 
 /// Median gap between consecutive publications in the window.
@@ -307,6 +357,7 @@ struct Opportunity {
     position: Option<u8>,
     reward: f64,
     positive_day: Option<i64>,
+    explicit_down: bool,
 }
 
 /// One opportunity per article: shown in Focus, or read from any entry point.
@@ -331,10 +382,12 @@ fn opportunities(
             position: Some(position_dummy(e.position)),
             reward: 0.0,
             positive_day: None,
+            explicit_down: false,
         });
         o.day = o.day.min(day);
     }
     for (v, feed) in votes.iter().filter(|(v, _)| v.at >= start && v.at < now) {
+        let is_down = v.explicit && v.weight < 0.0;
         let reward = if v.explicit {
             v.weight.clamp(0.0, 1.0)
         } else if v.weight > 1.0 {
@@ -353,10 +406,16 @@ fn opportunities(
             position: None,
             reward: 0.0,
             positive_day: None,
+            explicit_down: false,
         });
-        if reward > o.reward {
+        if is_down {
+            o.reward = 0.0;
+            o.positive_day = None;
+            o.explicit_down = true;
+        } else if reward > o.reward {
             o.reward = reward;
             o.positive_day = Some(day);
+            o.explicit_down = false;
         }
     }
     map.into_values().collect()

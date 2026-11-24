@@ -2,7 +2,7 @@
 
 use rrss_core::reasons::{Habit, ReasonMessage, ReasonPrefix, safe_text};
 use rrss_core::{features::FeatureChip, rules::Dimension};
-pub const ALGO_VERSION: i64 = 16;
+pub const ALGO_VERSION: i64 = 17;
 
 /// 文章级特征总和最多 ±4：长中文标题的二元组不能叠加压过一条 ±10 的明确规则。
 pub const MAX_FEATURE_SCORE: f64 = 4.0;

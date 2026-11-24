@@ -64,6 +64,7 @@ fn recovers_known_parameters_and_position_correction() {
                     feed,
                     features,
                     position: Some(bucket as u8),
+                    period: None,
                     label: f64::from(rng.next() < 1.0 / (1.0 + (-z).exp())),
                     weight: 1.0,
                 });
@@ -74,6 +75,7 @@ fn recovers_known_parameters_and_position_correction() {
             feed: 2,
             features: [1.0, 0.7, 1.0, 0.3, 1.0, 0.8],
             position: None,
+            period: None,
             label: 1.0,
             weight: 1.0,
         });
@@ -131,6 +133,7 @@ fn small_sample_prior_and_fractional_labels() {
             feed: i % 3,
             features: std::array::from_fn(|_| rng.next() * 2.0 - 1.0),
             position: None,
+            period: None,
             label: if i < 20 { 0.75 } else { 0.0 },
             weight: 0.1,
         })
@@ -162,6 +165,7 @@ fn calibrated_prior_survives_unidentified_features() {
             feed: 0,
             features: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0 - 0.0002 * s],
             position: None,
+            period: None,
             label: 1.0 / (1.0 + (0.4 - 1.7 * s).exp()),
             weight: 1.0,
         })
@@ -211,6 +215,7 @@ fn source_prior_centers_new_feeds_and_yields_to_their_outcomes() {
         feed,
         features: [0.0; 6],
         position: None,
+        period: None,
         label,
         weight: 1.0,
     };
@@ -244,6 +249,7 @@ fn source_uncertainty_shrinks_with_opportunities_and_daily_draws_repeat() {
         feed,
         features: [0.0; 6],
         position: None,
+        period: None,
         label,
         weight: 1.0,
     };
@@ -282,4 +288,48 @@ fn source_uncertainty_shrinks_with_opportunities_and_daily_draws_repeat() {
         "mean {mean} var {var}"
     );
     println!("source sd: {sd:?}");
+}
+
+#[test]
+fn period_intercepts_prevent_simpson_paradox_under_ctr_drift() {
+    // Week 0 (cold start): lexical score is 0 for all articles, baseline CTR is high (~65%).
+    // Weeks 1..=4: lexical profile grows positive (0.5..2.0), baseline CTR drops to ~18%,
+    // while higher lexical score genuinely increases read probability within each week.
+    let mut rng = Random(0x51a9_50a7);
+    let mut with_period = Vec::new();
+    let mut without_period = Vec::new();
+    for week in 0..5_i64 {
+        let base = if week == 0 { 0.6 } else { -2.2 };
+        for i in 0..120 {
+            let x = if week == 0 {
+                0.0
+            } else {
+                0.5 + (i % 4) as f64 * 0.5
+            };
+            let z = base + 0.65 * x;
+            let label = f64::from(rng.next() < 1.0 / (1.0 + (-z).exp()));
+            let s = Sample {
+                feed: 1,
+                features: [x],
+                position: Some(0),
+                period: Some(week),
+                label,
+                weight: 1.0,
+            };
+            with_period.push(s.clone());
+            without_period.push(Sample { period: None, ..s });
+        }
+    }
+    let no_p = fit(&without_period, Penalty::default()).unwrap();
+    let yes_p = fit(&with_period, Penalty::default()).unwrap();
+    assert!(
+        no_p.report.beta[0] < 0.0,
+        "expected Simpson's paradox without period offsets, got {}",
+        no_p.report.beta[0]
+    );
+    assert!(
+        yes_p.report.beta[0] > 0.35,
+        "period offsets must recover positive slope, got {}",
+        yes_p.report.beta[0]
+    );
 }

@@ -4,6 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 const MAX_ITERATIONS: usize = 50;
 const STEP_TOLERANCE: f64 = 1e-7;
 const WEAK_PENALTY: f64 = 0.01;
+/// L2 penalty on per-period (weekly) baseline offsets that absorb cross-week CTR drift.
+const PERIOD_PENALTY: f64 = 1.0;
 /// Position dummies after the first bucket.
 pub const POSITIONS: usize = 3;
 
@@ -14,6 +16,9 @@ pub struct Sample<const K: usize> {
     /// Bucket of the first showing; 0 (or None) is the reference: 0 positions
     /// 0–2, 1 3–9, 2 10–29, 3 30 and later.
     pub position: Option<u8>,
+    /// Optional time bucket (e.g. week index) for training-only baseline offsets
+    /// that de-confound early cold-start CTR drift from feature slopes.
+    pub period: Option<i64>,
     pub label: f64,
     pub weight: f64,
 }
@@ -111,7 +116,25 @@ pub fn fit<const K: usize>(samples: &[Sample<K>], penalty: Penalty<K>) -> Option
         .enumerate()
         .map(|(i, f)| (f, K + 1 + POSITIONS + i))
         .collect();
-    let n = K + 1 + POSITIONS + feeds.len();
+    let period_start = K + 1 + POSITIONS + feeds.len();
+    let distinct_periods: Vec<i64> = samples
+        .iter()
+        .filter_map(|s| s.period)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    // Latest period is the reference (0); earlier periods get regularized offsets
+    // so cross-week CTR drift (cold-start Simpson's paradox) does not invert slopes.
+    let periods: BTreeMap<i64, usize> = if distinct_periods.len() > 1 {
+        distinct_periods[..distinct_periods.len() - 1]
+            .iter()
+            .enumerate()
+            .map(|(i, &p)| (p, period_start + i))
+            .collect()
+    } else {
+        BTreeMap::new()
+    };
+    let n = period_start + periods.len();
     let rows: Vec<Vec<(usize, f64)>> = samples
         .iter()
         .map(|s| {
@@ -121,6 +144,9 @@ pub fn fit<const K: usize>(samples: &[Sample<K>], penalty: Penalty<K>) -> Option
                 x.push((K + p as usize, 1.0));
             }
             x.push((feeds[&s.feed], 1.0));
+            if let Some(col) = s.period.and_then(|p| periods.get(&p).copied()) {
+                x.push((col, 1.0));
+            }
             x
         })
         .collect();
@@ -130,7 +156,8 @@ pub fn fit<const K: usize>(samples: &[Sample<K>], penalty: Penalty<K>) -> Option
         centers[1 + j] = penalty.prior[j];
         lambdas[1 + j] = penalty.beta;
     }
-    lambdas[K + 1 + POSITIONS..].fill(penalty.source);
+    lambdas[K + 1 + POSITIONS..period_start].fill(penalty.source);
+    lambdas[period_start..].fill(PERIOD_PENALTY);
     for (feed, &j) in &feeds {
         centers[j] = penalty.source_prior.get(feed).copied().unwrap_or(0.0);
     }
@@ -235,6 +262,7 @@ pub fn point_scale<const K: usize>(samples: &[Sample<K>], scores: &[f64]) -> f64
             feed: 0,
             features: [score],
             position: None,
+            period: s.period,
             label: s.label,
             weight: s.weight,
         })
