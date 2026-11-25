@@ -85,9 +85,12 @@ export function TranslatePane({ onEditStateChange, onOpenModels, onChanged }: {
             <div role="group" aria-label={t("translate.service.aria")}>
               <ChipBar className="segmented" value={baseline.backend} options={TRANSLATE_BACKENDS} onChange={(value) => pick("backend", value)} />
             </div>
-            {baseline.backend === "complete" ? (
+            {baseline.backend === "complete" ? (<>
               <TranslateModel disabled={busy} onOpenModels={onOpenModels} />
-            ) : baseline.backend === "deepl" ? (
+              {/* 每次请求的原文字数只对模型翻译生效；改了不使已有译文失效，下一篇开始用。 */}
+              <SettingsRows ids={["translate_window_chars"]} label={t("translate.service.title")} disabled={busy}
+                onEditStateChange={report("window")} />
+            </>) : baseline.backend === "deepl" ? (
               <div>
                 <p className="hint">{t("translate.deepl.hint")}</p>
                 <SavedSecretField saved={query.data?.deepl_key ?? { state: "none", hint: "" }} label={t("translate.deepl.keyLabel")} value={draft.deepl_key} onChange={(value) => change("deepl_key", value)} placeholder={t("translate.deepl.keyPlaceholder")} />

@@ -87,6 +87,7 @@ export const REGISTRY = {
   translate_auto_view: { options: ["bilingual", "translated"] },
   translate_auto_max_words: { hint: true, control: true, display: "number", unit: true },
   translate_auto_scope: { hint: true, options: ["all", "en"] },
+  translate_window_chars: { hint: true, control: true, display: "number", unit: true },
   developer_tools: {},
   fetch_url_enabled: {},
   ui_debug_mode: { hint: true, on: true, off: true },

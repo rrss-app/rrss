@@ -339,6 +339,7 @@
     "prompt_template_not_found",
     "provider_compat_object_required",
     "provider_compat_preset_invalid",
+    "provider_concurrency_out_of_range",
     "provider_name_missing",
     "provider_not_found",
     "provider_preset_unknown",

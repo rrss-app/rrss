@@ -4,7 +4,10 @@ use rrss_core::error::JobFailure;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, Weak},
+    sync::{
+        Arc, Mutex, Weak,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 use tokio::sync::Notify;
 
@@ -29,6 +32,9 @@ pub(crate) struct Capacity {
     pub(crate) objects: Mutex<HashMap<String, Weak<tokio::sync::Mutex<()>>>>,
     pub(crate) digests: super::digest_jobs::Digests,
     endpoints: Mutex<HashMap<String, Weak<Endpoint>>>,
+    // Service origin -> user-configured request limit; None until loaded or
+    // after a configuration write. Missing origins stay serial.
+    limits: Mutex<Option<Arc<HashMap<String, usize>>>>,
     cooldowns: Arc<super::model_cooldown::Store>,
     background: Arc<tokio::sync::Semaphore>,
     requests: Arc<tokio::sync::Semaphore>,
@@ -58,11 +64,12 @@ impl Default for Capacity {
             objects: Mutex::default(),
             digests: super::digest_jobs::Digests::default(),
             endpoints: Mutex::default(),
+            limits: Mutex::default(),
             cooldowns: Arc::default(),
             background: Arc::new(tokio::sync::Semaphore::new(BACKGROUND_REQUESTS)),
             requests: Arc::new(tokio::sync::Semaphore::new(MAX_WAITERS + 1)),
             content: Arc::new(Endpoint {
-                limit: 8,
+                limit: AtomicUsize::new(8),
                 ..Endpoint::default()
             }),
             local: tokio::sync::Mutex::new(()),
@@ -133,17 +140,45 @@ impl Capacity {
         super::resources::model_capacity(path)
     }
 
-    fn endpoint(&self, base: &str) -> rrss_ai::Result<Arc<Endpoint>> {
-        let url = reqwest::Url::parse(base.trim())
-            .map_err(|_| rrss_ai::Error::Configuration("model endpoint URL is invalid"))?;
-        if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
-            return Err(rrss_ai::Error::Configuration(
-                "model endpoint URL is invalid",
-            ));
+    /// Provider writes call this after commit; the next admission reloads.
+    pub(crate) fn providers_changed(path: &Path) {
+        let capacity = Self::for_database(path);
+        *capacity.limits.lock().unwrap() = None;
+    }
+
+    async fn limits(&self, path: &Path) -> rrss_ai::Result<Arc<HashMap<String, usize>>> {
+        if let Some(limits) = self.limits.lock().unwrap().clone() {
+            return Ok(limits);
         }
-        // The service origin unifies /v1, completions and embedding paths and
-        // excludes credentials, query strings, model names and API keys.
-        let key = url.origin().ascii_serialization();
+        let rows = crate::jobs::spawn_db(path.to_owned(), |conn| {
+            rrss_core::ai_store::provider_concurrency_limits(conn)
+        })
+        .await
+        .map_err(|_| rrss_ai::Error::Admission(JobFailure::ConfigChanged))?;
+        let mut limits = HashMap::new();
+        let max_limit = rrss_core::ai_store::PROVIDER_CONCURRENCY_RANGE.1 as usize;
+        for (base, limit) in rows {
+            let Ok(key) = origin(&base) else { continue };
+            let limit = usize::try_from(limit).unwrap_or(1).clamp(1, max_limit);
+            let entry = limits.entry(key).or_insert(limit);
+            *entry = (*entry).max(limit);
+        }
+        let limits = Arc::new(limits);
+        *self.limits.lock().unwrap() = Some(limits.clone());
+        Ok(limits)
+    }
+
+    /// Effective concurrent request limit for a model service; serial when unknown.
+    pub(crate) async fn endpoint_limit(&self, path: &Path, base: &str) -> usize {
+        let Ok(key) = origin(base) else { return 1 };
+        match self.limits(path).await {
+            Ok(limits) => limits.get(&key).copied().unwrap_or(1),
+            Err(_) => 1,
+        }
+    }
+
+    fn endpoint(&self, base: &str) -> rrss_ai::Result<Arc<Endpoint>> {
+        let key = origin(base)?;
         let mut endpoints = self.endpoints.lock().unwrap();
         endpoints.retain(|_, endpoint| endpoint.strong_count() > 0);
         let entry = endpoints.entry(key).or_default();
@@ -156,6 +191,19 @@ impl Capacity {
     }
 }
 
+/// The service origin unifies /v1, completions and embedding paths and
+/// excludes credentials, query strings, model names and API keys.
+fn origin(base: &str) -> rrss_ai::Result<String> {
+    let url = reqwest::Url::parse(base.trim())
+        .map_err(|_| rrss_ai::Error::Configuration("model endpoint URL is invalid"))?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return Err(rrss_ai::Error::Configuration(
+            "model endpoint URL is invalid",
+        ));
+    }
+    Ok(url.origin().ascii_serialization())
+}
+
 #[derive(Default)]
 struct Queue {
     sequence: u64,
@@ -164,7 +212,7 @@ struct Queue {
 }
 
 pub(crate) struct Endpoint {
-    limit: usize,
+    limit: AtomicUsize,
     queue: Mutex<Queue>,
     pub(crate) changed: Notify,
 }
@@ -187,7 +235,7 @@ impl Drop for Permit {
 impl Default for Endpoint {
     fn default() -> Self {
         Self {
-            limit: 1,
+            limit: AtomicUsize::new(1),
             queue: Mutex::default(),
             changed: Notify::new(),
         }
@@ -195,6 +243,12 @@ impl Default for Endpoint {
 }
 
 impl Endpoint {
+    fn set_limit(&self, limit: usize) {
+        if self.limit.swap(limit.max(1), Ordering::Relaxed) != limit.max(1) {
+            self.changed.notify_waiters();
+        }
+    }
+
     pub(crate) async fn acquire(self: Arc<Self>, priority: Priority) -> rrss_ai::Result<Permit> {
         let id = {
             let mut queue = self.queue.lock().unwrap();
@@ -223,7 +277,7 @@ impl Endpoint {
                     .find(|(_, priority)| *priority == Priority::Interactive)
                     .or_else(|| queue.waiting.front())
                     .map(|(id, _)| *id);
-                if queue.active.len() < self.limit && next == Some(id) {
+                if queue.active.len() < self.limit.load(Ordering::Relaxed) && next == Some(id) {
                     queue.waiting.retain(|(waiting, _)| *waiting != id);
                     queue.active.insert(id);
                     self.changed.notify_waiters();
@@ -246,6 +300,7 @@ pub(crate) struct RequestAdmission {
     budget_path: Option<PathBuf>,
     pub(crate) budget_kind: rrss_core::ai_store::BudgetKind,
     path: PathBuf,
+    base: String,
     service: String,
     pub(crate) dispatch_check: Option<DispatchCheck>,
     pub(crate) space: Option<(
@@ -266,6 +321,7 @@ impl RequestAdmission {
         Ok(Self {
             work: super::BackgroundWork::for_database(path),
             endpoint: capacity.endpoint(base)?,
+            base: base.trim().to_owned(),
             path: path.to_owned(),
             service: rrss_core::ai_store::hash_input(
                 &reqwest::Url::parse(base.trim())
@@ -348,6 +404,8 @@ impl rrss_ai::admission::Admission for RequestAdmission {
             } else {
                 None
             };
+            self.endpoint
+                .set_limit(self._capacity.endpoint_limit(&self.path, &self.base).await);
             let permit = self.endpoint.clone().acquire(self.priority).await?;
             // Wait without a database connection, then recheck immediately before
             // each HTTP attempt, including fallback and format-repair requests.

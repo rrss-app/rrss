@@ -460,6 +460,46 @@ pub fn set_provider_compat(conn: &Connection, id: i64, compat: &serde_json::Valu
     }
 }
 
+/// 同一服务地址同时进行的模型请求上限（含两端）。
+pub const PROVIDER_CONCURRENCY_RANGE: (i64, i64) = (1, 16);
+
+pub fn provider_concurrency(conn: &Connection, id: i64) -> Result<i64> {
+    conn.query_row(
+        "SELECT max_concurrency FROM ai_providers WHERE id = ?1",
+        [id],
+        |row| row.get(0),
+    )
+    .optional()?
+    .ok_or(Error::ProviderNotFound)
+}
+
+/// 超出范围拒绝写入，保留原值。
+pub fn set_provider_concurrency(conn: &Connection, id: i64, limit: i64) -> Result<()> {
+    let (low, high) = PROVIDER_CONCURRENCY_RANGE;
+    if !(low..=high).contains(&limit) {
+        return Err(Error::InvalidProvider(
+            crate::error::models::ProviderProblem::ConcurrencyOutOfRange,
+        ));
+    }
+    let n = conn.execute(
+        "UPDATE ai_providers SET max_concurrency = ?1 WHERE id = ?2",
+        params![limit, id],
+    )?;
+    if n == 0 {
+        Err(Error::ProviderNotFound)
+    } else {
+        Ok(())
+    }
+}
+
+/// 全部连接的服务地址与并发上限；调度按服务来源合并，不含密钥。
+pub fn provider_concurrency_limits(conn: &Connection) -> Result<Vec<(String, i64)>> {
+    let mut stmt = conn.prepare("SELECT base_url, max_concurrency FROM ai_providers ORDER BY id")?;
+    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
+}
+
 /// 记下「测试」的结果。
 pub fn set_provider_test(conn: &Connection, id: i64, ok: bool, note: &str) -> Result<()> {
     let n = conn.execute(

@@ -10,21 +10,28 @@ import { probeWaitLabel, useProbe } from "./aiProbe";
 import { ChipBar, Field, SecretField } from "./chips";
 import { CompatEditor, jsonObject, prettyJson, sameJson } from "./compat";
 import { useSettingsWrite, type SettingsEditState } from "./editState";
+import { Stepper } from "./Stepper";
 import type { Ask } from "./SettingsPanel";
 import { taskTitle } from "./taskNames";
 
-type Draft = { kind: string; name: string; base_url: string; protocol: string; compat_json: string };
+type Draft = { kind: string; name: string; base_url: string; protocol: string; compat_json: string; max_concurrency: string };
 type Result = { tone: "ok" | "err"; text: string; detail?: string };
 
 const PROTOCOLS = ["chat", "responses", "auto"].map((id) => ({ id, label: id }));
+/** 与后端 `PROVIDER_CONCURRENCY_RANGE` 一致；越界由后端拒绝，这里只提前提示。 */
+const CONCURRENCY = { min: 1, max: 16 };
+const concurrency = (text: string) => {
+  const value = Number(text.trim());
+  return Number.isInteger(value) && value >= CONCURRENCY.min && value <= CONCURRENCY.max ? value : null;
+};
 
 function draftFrom(provider: ProviderView | undefined, preset: ProviderPreset | undefined): Draft {
   if (provider) {
     return { kind: provider.kind, name: provider.name, base_url: provider.base_url, protocol: provider.protocol || "chat",
-      compat_json: prettyJson(provider.compat_json) };
+      compat_json: prettyJson(provider.compat_json), max_concurrency: String(provider.max_concurrency ?? 1) };
   }
   return { kind: preset?.id ?? "openai_compat", name: preset?.name ?? "", base_url: preset?.base_url ?? "",
-    protocol: preset?.protocol ?? "chat", compat_json: prettyJson(preset?.compat_json) };
+    protocol: preset?.protocol ?? "chat", compat_json: prettyJson(preset?.compat_json), max_concurrency: "1" };
 }
 
 /** 测通结果的统一文案；错误详情去掉密钥。弹层与连接列表共用。 */
@@ -37,7 +44,7 @@ export function describeTest(test: ConnectionTestView, secrets: string[]): Resul
 }
 
 /**
- * 添加 / 编辑连接弹层：服务商、名称、API Key；地址、协议、兼容设置在「高级」里。连接不再绑模型，
+ * 添加 / 编辑连接弹层：服务商、名称、API Key；地址、协议、同时请求数、兼容设置在「高级」里。连接不再绑模型，
  * 添加成功后由模型页接着打开「添加模型」。已保存的密钥只显示首尾各 4 位，要改就重新输入。
  */
 export function ConnectionDialog({ provider, presets, onAsk, onClose, onSaved, onEditStateChange }: {
@@ -113,6 +120,8 @@ export function ConnectionDialog({ provider, presets, onAsk, onClose, onSaved, o
     if (busy) return false;
     if (!draft.base_url.trim()) { setResult({ tone: "err", text: t("connection.needUrl") }); return false; }
     if (jsonObject(draft.compat_json) === null) { setResult({ tone: "err", text: t("connection.compatInvalid") }); return false; }
+    const limit = concurrency(draft.max_concurrency);
+    if (limit === null) { setResult({ tone: "err", text: t("connection.concurrencyInvalid", CONCURRENCY) }); return false; }
     probe.stop();
     setResult(null);
     const name = draft.name.trim() || preset?.name || "";
@@ -127,6 +136,7 @@ export function ConnectionDialog({ provider, presets, onAsk, onClose, onSaved, o
         protocol: draft.protocol,
         // 省略即保留原值（新建用预设），只有改过才提交。
         compat_json: sameJson(initial.compat_json, draft.compat_json) ? undefined : draft.compat_json,
+        max_concurrency: limit === concurrency(initial.max_concurrency) ? undefined : limit,
       },
     } }, t("connection.saveFailed"), ({ savedId }) => { onSaved(savedId, t("connection.saved", { name }), !provider); onClose(); });
   };
@@ -197,6 +207,10 @@ export function ConnectionDialog({ provider, presets, onAsk, onClose, onSaved, o
         </Field>
         <Field label={t("connection.protocol")} hint={t("connection.protocolHint")}>
           <ChipBar className="segmented" value={draft.protocol} options={PROTOCOLS} disabled={busy} onChange={(v) => change("protocol", v)} />
+        </Field>
+        <Field label={t("connection.concurrency")} hint={t("connection.concurrencyHint", CONCURRENCY)}>
+          <Stepper label={t("connection.concurrency")} value={draft.max_concurrency} min={CONCURRENCY.min} max={CONCURRENCY.max}
+            disabled={busy} onChange={(v) => change("max_concurrency", v)} />
         </Field>
         <Field label={t("connection.compat")} hint={t("connection.compatHint")}>
           <CompatEditor value={draft.compat_json} onChange={(v) => change("compat_json", v)} disabled={busy} label={t("connection.compatLabel", { name: draft.name || t("connection.fallbackName") })} />

@@ -876,10 +876,16 @@ fn setting_revisions_cover_provider_pool_and_binding_changes_and_roll_back_atomi
             clear_key: None,
             protocol: "chat".into(),
             compat_json: None,
+            max_concurrency: None,
         },
     };
     crate::actions::save_ai_settings(&conn, &input).unwrap();
     assert_eq!(configuration::translation_revision(&conn).unwrap(), 3);
+    // 并发上限只影响调度，不使译文或在途作业失效。
+    input.provider.max_concurrency = Some(4);
+    crate::actions::save_ai_settings(&conn, &input).unwrap();
+    assert_eq!(configuration::translation_revision(&conn).unwrap(), 3);
+    input.provider.max_concurrency = None;
     input.provider.api_key = Some("secret".into());
     crate::actions::save_ai_settings(&conn, &input).unwrap();
     assert_eq!(configuration::translation_revision(&conn).unwrap(), 4);
@@ -1045,4 +1051,188 @@ async fn reader_protocol_does_not_attach_old_translation_to_new_source() {
     assert!(recovered.snapshot.is_none());
     assert_eq!(recovered.notice.unwrap().code(), "translate_invalidated");
     call.good();
+}
+
+/// 绑定到 Complete 后端并把服务并发设为 `limit`；调度从库里重读上限。
+fn use_complete_backend(h: &Harness, limit: i64) {
+    use crate::views::{SaveModelBindingsArgs, TaskModelInput};
+    use rrss_core::{ai_store, model_pool};
+    let conn = h.conn();
+    let pid = crate::test_net::fake_provider(&conn, "local", "http://127.0.0.1:8080/v1".into());
+    model_pool::update_pool(&conn, &[model_pool::ModelRef::new(pid, "m")], &[], None).unwrap();
+    crate::actions::save_model_bindings(
+        &conn,
+        &SaveModelBindingsArgs {
+            bindings: vec![TaskModelInput {
+                task: ai_store::TASK_ARTICLE_TRANSLATE.into(),
+                provider_id: pid,
+                model: "m".into(),
+            }],
+        },
+    )
+    .unwrap();
+    translations::set_backend(&conn, "complete").unwrap();
+    ai_store::set_provider_concurrency(&conn, pid, limit).unwrap();
+    crate::scheduler::model_capacity::Capacity::providers_changed(&h.runtime.path);
+}
+
+/// 多个持多槽的 `Controlled` 测试共用进程级 `SLOTS`，并发跑时各自占 1 槽等第 2 槽会互相死锁，这里串行化它们。
+static PARALLEL_SLOT_TEST: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+#[tokio::test]
+async fn complete_windows_run_in_parallel_up_to_the_service_limit() {
+    let _guard = PARALLEL_SLOT_TEST.lock().await;
+    let mut h = Harness::new();
+    use_complete_backend(&h, 2);
+    h.start(StartMode::Default).await;
+    let first = h.call().await;
+    let second = h.call().await;
+    assert_ne!(first.ids, second.ids);
+    // 本库已有两窗在途，第三窗要等其中一窗结束。
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), h.calls.recv())
+            .await
+            .is_err()
+    );
+    second.good();
+    let third = h.call().await;
+    third.good();
+    first.good();
+    let end = h.end().await;
+    assert_eq!(end.phase, Phase::Completed);
+    assert_eq!(end.done, 3);
+    assert_eq!(h.runtime.state.lock().unwrap().inflight, 0);
+}
+
+#[tokio::test]
+async fn failed_multi_unit_window_is_split_and_the_smaller_size_is_remembered() {
+    let mut h = Harness::with_limits(Limits::default());
+    // 准备超过跨作业记忆下限（200 字）的三段正文：标题 150 + 两段各 250 = 650 字。
+    let title = "T".repeat(150);
+    let p1 = "A".repeat(250);
+    let p2 = "B".repeat(250);
+    h.conn()
+        .execute(
+            "UPDATE articles SET title = ?1, content_html = ?2 WHERE id = 7",
+            rusqlite::params![title, format!("<p>{p1}</p><p>{p2}</p>")],
+        )
+        .unwrap();
+    h.start(StartMode::Default).await;
+    let whole = h.call().await;
+    assert_eq!(whole.ids, [0, 1, 2]);
+    whole.fail(Failure::Timeout);
+    // 650 字对半拆成 325 字，高于下限 200，跨作业记住。
+    let first = h.call().await;
+    assert_eq!(first.ids, [0]);
+    first.good();
+    let second = h.call().await;
+    assert_eq!(second.ids, [1]);
+    // 单个单元不再拆，按原错误标失败。
+    second.fail(Failure::InvalidOutput);
+    let last = h.call().await;
+    assert_eq!(last.ids, [2]);
+    last.good();
+    let end = h.end().await;
+    assert_eq!(end.phase, Phase::Partial);
+    assert_eq!((end.done, end.failed), (2, 1));
+    let state = h.runtime.state.lock().unwrap();
+    assert_eq!(state.chunk.values().copied().collect::<Vec<_>>(), [325]);
+    drop(state);
+
+    // 后续作业沿用记住的窗大小，不再先发整篇。
+    h.start(StartMode::Regenerate).await;
+    let call = h.call().await;
+    assert_eq!(call.ids, [0]);
+    call.fail(Failure::Quota);
+    h.end().await;
+}
+
+#[tokio::test]
+async fn small_tail_window_splits_locally_without_poisoning_cross_job_chunk_size() {
+    let mut h = Harness::with_limits(Limits::default());
+    h.start(StartMode::Default).await;
+    // 默认短文总计 52 字（低于下限 200），而且模拟整窗返回空数组（全部单元 InvalidOutput）。
+    let whole = h.call().await;
+    assert_eq!(whole.ids, [0, 1, 2]);
+    let _ = whole.reply.send(Ok(Vec::new()));
+    // 整窗 0 成功也会拆窗重试，且当前作业可拆到单单元。
+    for expected in [0u32, 1, 2] {
+        let one = h.call().await;
+        assert_eq!(one.ids, [expected]);
+        one.good();
+    }
+    let end = h.end().await;
+    assert_eq!(end.phase, Phase::Completed);
+    assert_eq!(end.done, 3);
+    // 小窗失败不污染跨作业记忆。
+    assert!(h.runtime.state.lock().unwrap().chunk.is_empty());
+}
+
+#[tokio::test]
+async fn concurrent_stop_error_prevents_other_inflight_window_from_splitting() {
+    let _guard = PARALLEL_SLOT_TEST.lock().await;
+    // 准备 4 个单元，拆成 2 个双单元窗并行：窗 1 报认证失败，窗 2 超时时不得拆窗再发请求。
+    let mut h = Harness::with_limits(Limits {
+        chunk_chars: 40,
+        ..Limits::default()
+    });
+    h.conn()
+        .execute(
+            "UPDATE articles SET content_html = '<p>Paragraph one text.</p><p>Paragraph two text.</p><p>Paragraph three text.</p>' WHERE id = 7",
+            [],
+        )
+        .unwrap();
+    use_complete_backend(&h, 2);
+    h.start(StartMode::Default).await;
+    let first = h.call().await;
+    let second = h.call().await;
+    assert!(first.ids.len() > 1 && second.ids.len() > 1);
+    first.fail(Failure::Authentication);
+    // 等窗 1 的认证错误真正落进作业状态，再让在途的窗 2 超时。
+    loop {
+        let ev = tokio::time::timeout(Duration::from_secs(5), h.events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        if ev.error == Some(Failure::Authentication) {
+            break;
+        }
+    }
+    second.fail(Failure::Timeout);
+    let end = h.end().await;
+    assert_eq!(end.phase, Phase::Failed);
+    assert_eq!(end.error, Some(Failure::Authentication));
+    // 不能再派发任何拆窗重试请求，也不能记录拆窗记忆。
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), h.calls.recv())
+            .await
+            .is_err()
+    );
+    assert!(h.runtime.state.lock().unwrap().chunk.is_empty());
+}
+
+#[tokio::test]
+async fn window_size_setting_applies_to_model_translation_without_changing_identity() {
+    use crate::configuration;
+    let h = Harness::new();
+    let conn = h.conn();
+    // 其他服务的批量不受这个设置影响。
+    assert_eq!(Config::read(&conn).unwrap().chunk_chars, 2800);
+    use_complete_backend(&h, 1);
+    let before = Config::read(&conn).unwrap();
+    assert_eq!(
+        before.chunk_chars,
+        translations::WINDOW_CHARS_DEFAULT as usize
+    );
+    let revision = configuration::translation_revision(&conn).unwrap();
+    crate::settings_schema::set(&conn, translations::WINDOW_CHARS_KEY, "600").unwrap();
+    let after = Config::read(&conn).unwrap();
+    assert_eq!(after.chunk_chars, 600);
+    assert_eq!(after.hash, before.hash);
+    assert_eq!(
+        configuration::translation_revision(&conn).unwrap(),
+        revision
+    );
+    assert!(crate::settings_schema::set(&conn, translations::WINDOW_CHARS_KEY, "100").is_err());
+    assert_ne!(window_key(&before), window_key(&after));
 }

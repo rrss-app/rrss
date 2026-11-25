@@ -376,6 +376,19 @@ const DEFS: &[Def] = &[
         write: None,
     },
     Def {
+        id: translations::WINDOW_CHARS_KEY,
+        domain: SettingDomain::Reader,
+        level: SettingLevel::L1,
+        kind: Kind::Int(
+            translations::WINDOW_CHARS_RANGE.0,
+            translations::WINDOW_CHARS_RANGE.1,
+        ),
+        default: "1200",
+        apply: SettingApply::Draft,
+        affects_pi: false,
+        write: None,
+    },
+    Def {
         id: translations::AUTO_SCOPE_KEY,
         domain: SettingDomain::Reader,
         level: SettingLevel::L1,

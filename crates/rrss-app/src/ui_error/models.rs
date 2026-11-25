@@ -22,6 +22,7 @@ error_codes!(ModelError {
     ProviderPresetUnknown => "provider_preset_unknown",
     ModelIdMissing => "model_id_missing",
     ChatModelUsesOwnConfig => "chat_model_uses_own_config",
+    ProviderConcurrencyOutOfRange { min: i64, max: i64 } => "provider_concurrency_out_of_range",
     ModelNotAdded { model: String } => "model_not_added",
     ModelChatDisabled { model: String } => "model_chat_disabled",
     ModelReplacementMissing { model: String } => "model_replacement_missing",
@@ -57,6 +58,10 @@ pub(super) fn classify(error: &Error) -> Option<UiErrorKind> {
             ProviderProblem::PresetUnknown => ModelError::ProviderPresetUnknown,
             ProviderProblem::ModelIdMissing => ModelError::ModelIdMissing,
             ProviderProblem::ChatUsesOwnConfig => ModelError::ChatModelUsesOwnConfig,
+            ProviderProblem::ConcurrencyOutOfRange => ModelError::ProviderConcurrencyOutOfRange {
+                min: rrss_core::ai_store::PROVIDER_CONCURRENCY_RANGE.0,
+                max: rrss_core::ai_store::PROVIDER_CONCURRENCY_RANGE.1,
+            },
         },
         Error::InvalidModelChoice(problem) => match problem {
             ModelChoiceProblem::NotAdded { model } => ModelError::ModelNotAdded {
@@ -137,6 +142,11 @@ mod tests {
         ] {
             assert_code_params(Error::InvalidProvider(problem), code, json!({}));
         }
+        assert_code_params(
+            Error::InvalidProvider(ProviderProblem::ConcurrencyOutOfRange),
+            "provider_concurrency_out_of_range",
+            json!({"min": 1, "max": 16}),
+        );
         for (problem, code) in [
             (
                 CompatProblem::ObjectRequired,

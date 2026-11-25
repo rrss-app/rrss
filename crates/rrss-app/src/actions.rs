@@ -381,6 +381,9 @@ pub fn save_ai_settings(
         if let Some(compat) = compat {
             ai_store::set_provider_compat(tx, provider_id, &compat)?;
         }
+        if let Some(limit) = input.max_concurrency {
+            ai_store::set_provider_concurrency(tx, provider_id, limit)?;
+        }
         let page = crate::queries::ai_page(tx, provider_id)?;
         Ok(page)
     })
@@ -1133,6 +1136,7 @@ mod tests {
                 clear_key: None,
                 protocol: "chat".into(),
                 compat_json: None,
+                max_concurrency: None,
             },
         }
     }

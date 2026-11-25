@@ -325,6 +325,7 @@
   "provider_preset_unknown": "未知的连接预设",
   "model_id_missing": "模型 ID 不能为空",
   "chat_model_uses_own_config": "对话模型由自有 Pi 配置决定",
+  "provider_concurrency_out_of_range": "同时请求数须是 {{min}}–{{max}} 的整数",
   "model_not_added": "{{model}} 还没有加进模型列表，先在模型页添加",
   "model_chat_disabled": "{{model}} 没有打开「用于对话」",
   "model_replacement_missing": "替换用的 {{model}} 不在模型列表里",

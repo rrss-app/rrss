@@ -301,6 +301,8 @@ CREATE TABLE ai_providers (
     protocol       TEXT    NOT NULL DEFAULT 'chat',
     created_at     INTEGER NOT NULL,
     compat_json    TEXT    NOT NULL DEFAULT '{}',
+    -- 同一服务地址同时进行的模型请求上限；按服务地址取各连接的最大值。
+    max_concurrency INTEGER NOT NULL DEFAULT 1,
     -- 最近一次「测试」：时间、是否通过、失败原因或返回的模型数。
     last_test_at   INTEGER,
     last_test_ok   INTEGER,

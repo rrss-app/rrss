@@ -37,6 +37,7 @@ export function providerFixture(overrides: Partial<ProviderView> = {}): Provider
     protocol: "chat",
     key: "none",
     key_hint: "",
+    max_concurrency: 1,
     ...overrides,
   };
 }

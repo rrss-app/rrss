@@ -2,7 +2,7 @@ use rusqlite::Connection;
 
 use crate::error::{Error, Result};
 
-pub const SCHEMA_VERSION: i32 = 52;
+pub const SCHEMA_VERSION: i32 = 53;
 
 /// 低于此版本的库不能在当前程序里升级。
 pub const MIN_UPGRADE_VERSION: i32 = 33;
@@ -41,6 +41,7 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         (50, apply_v50),
         (51, apply_v51),
         (52, apply_v52),
+        (53, apply_v53),
     ];
     let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if !(0..=SCHEMA_VERSION).contains(&version) {
@@ -105,6 +106,18 @@ fn apply_v52(conn: &Connection) -> Result<()> {
                 PRIMARY KEY (article_id, target_lang)
             );",
         )?;
+        Ok(())
+    })
+}
+
+/// 模型连接的同时请求上限，旧连接保持 1。
+fn apply_v53(conn: &Connection) -> Result<()> {
+    crate::db::atomic_write(conn, |conn| {
+        if !column_exists(conn, "ai_providers", "max_concurrency")? {
+            conn.execute_batch(
+                "ALTER TABLE ai_providers ADD COLUMN max_concurrency INTEGER NOT NULL DEFAULT 1;",
+            )?;
+        }
         Ok(())
     })
 }
@@ -900,6 +913,26 @@ mod tests {
             })
             .unwrap();
         assert_eq!(custom, 1);
+    }
+
+    #[test]
+    fn v53_adds_provider_concurrency_with_serial_default() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE ai_providers (id INTEGER PRIMARY KEY, base_url TEXT NOT NULL);
+             INSERT INTO ai_providers(id, base_url) VALUES (1, 'http://localhost:8080/v1');",
+        )
+        .unwrap();
+        apply_v53(&conn).unwrap();
+        apply_v53(&conn).unwrap();
+        let limit: i64 = conn
+            .query_row(
+                "SELECT max_concurrency FROM ai_providers WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(limit, 1);
     }
 
     #[test]

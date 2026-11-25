@@ -416,3 +416,69 @@ async fn content_total_bounds_media_and_prioritizes_reader_waiters() {
     drop(reader);
     drop(background.await.unwrap());
 }
+
+#[tokio::test]
+async fn configured_provider_concurrency_admits_parallel_requests_per_origin() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("limits.db");
+    let conn = rrss_core::db::open_at(&path).unwrap();
+    let local = rrss_core::ai_store::insert_provider(
+        &conn,
+        &rrss_core::ai_store::NewProvider {
+            name: "local".into(),
+            base_url: "http://127.0.0.1:8080/v1".into(),
+            api_key: None,
+            protocol: "chat".into(),
+        },
+    )
+    .unwrap();
+    rrss_core::ai_store::set_provider_concurrency(&conn, local, 2).unwrap();
+    assert!(rrss_core::ai_store::set_provider_concurrency(&conn, local, 0).is_err());
+    let request =
+        |base: &str| RequestAdmission::new(&path, base, Priority::Interactive, false).unwrap();
+    let a = request("http://127.0.0.1:8080/v1/chat/completions");
+    let b = request("http://127.0.0.1:8080/v1/embeddings");
+    let first = a.acquire().await.unwrap();
+    let second = b.acquire().await.unwrap();
+    let mut third = Box::pin(a.acquire());
+    enqueue(third.as_mut()).await;
+    // Other services keep the serial default.
+    let other = request("https://service.test/v1");
+    let held = other.acquire().await.unwrap();
+    let mut blocked = Box::pin(other.acquire());
+    enqueue(blocked.as_mut()).await;
+    drop(first);
+    let third = third.await.unwrap();
+    drop((second, third, held));
+    drop(blocked.await.unwrap());
+
+    // A configuration write is picked up by the next admission.
+    rrss_core::ai_store::set_provider_concurrency(&conn, local, 1).unwrap();
+    Capacity::providers_changed(&path);
+    let only = a.acquire().await.unwrap();
+    let mut waiting = Box::pin(b.acquire());
+    enqueue(waiting.as_mut()).await;
+    drop(only);
+    drop(waiting.await.unwrap());
+
+    // Unrelated configuration writes (e.g. ai_cache or ordinary settings) keep the
+    // cached limits intact; changing provider concurrency invalidates it.
+    let capacity = Capacity::for_database(&path);
+    assert!(capacity.limits.lock().unwrap().is_some());
+    crate::configuration::write(&conn, |tx| {
+        rrss_core::ai_store::cache_put(tx, "k", "{}")
+    })
+    .unwrap();
+    assert!(capacity.limits.lock().unwrap().is_some());
+    crate::configuration::write(&conn, |tx| {
+        rrss_core::ai_store::set_provider_concurrency(tx, local, 3)
+    })
+    .unwrap();
+    assert!(capacity.limits.lock().unwrap().is_none());
+    assert_eq!(
+        capacity
+            .endpoint_limit(&path, "http://127.0.0.1:8080/v1")
+            .await,
+        3
+    );
+}

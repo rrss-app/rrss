@@ -294,3 +294,32 @@ test("AI output language follows the interface by default and can be set on its 
   await expect(row.getByRole("button", { name: "English", exact: true })).toHaveAttribute("aria-pressed", "true");
   expect(await page.evaluate(() => (window as any).__mockHost.args.set_setting)).toMatchObject({ id: "ai_output_language", value: "en" });
 });
+
+test("a connection's concurrent request limit is saved only when changed and stays in range", async ({ page }) => {
+  await installMockHost(page);
+  const settings = await openModels(page);
+  const edit = async () => {
+    await settings.getByRole("button", { name: "编辑 OpenRouter", exact: true }).click();
+    const sheet = page.getByRole("dialog", { name: "编辑连接", exact: true });
+    await sheet.locator(".settings-dialog-advanced > summary").click();
+    return { sheet, limit: sheet.getByRole("spinbutton", { name: "同时请求数", exact: true }) };
+  };
+  let { sheet, limit } = await edit();
+  await expect(limit).toHaveValue("1");
+  await limit.fill("0");
+  await sheet.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(sheet).toBeVisible();
+  expect(await lastArgs(page, "save_ai_settings")).toBeUndefined();
+  await limit.fill("4");
+  await sheet.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(sheet).toHaveCount(0);
+  expect((await lastArgs(page, "save_ai_settings")).provider.max_concurrency).toBe(4);
+
+  ({ sheet, limit } = await edit());
+  await expect(limit).toHaveValue("4");
+  await sheet.getByLabel("名称", { exact: true }).fill("OpenRouter 2");
+  await sheet.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(sheet).toHaveCount(0);
+  // 没改的值不提交，后端保留原值。
+  expect((await lastArgs(page, "save_ai_settings")).provider.max_concurrency).toBeUndefined();
+});

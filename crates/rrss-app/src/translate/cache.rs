@@ -18,6 +18,8 @@ pub(super) struct Config {
     pub lang: String,
     pub complete: Option<ResolvedTask>,
     pub hash: String,
+    /// 每窗原文字数上限：模型取设置值，其他服务固定；不进入配置身份，改了不使译文失效。
+    pub chunk_chars: usize,
     // 只用于在途请求的提交检查，不持久化凭据摘要，不暴露到 IPC。
     pub(super) execution_hash: String,
     pub(super) revision: u64,
@@ -86,11 +88,19 @@ impl Config {
         let execution_hash = ai_store::hash_input(
             &serde_json::json!([hash, secret.filter(|value| !value.is_empty())]).to_string(),
         );
+        let chunk_chars = if backend == TranslateBackend::Complete {
+            crate::settings_schema::current(conn, translations::WINDOW_CHARS_KEY)?
+                .parse()
+                .unwrap_or(translations::WINDOW_CHARS_DEFAULT as usize)
+        } else {
+            SERVICE_CHUNK_CHARS
+        };
         Ok(Self {
             backend,
             lang,
             complete,
             hash,
+            chunk_chars,
             execution_hash,
             revision: crate::configuration::translation_revision(conn)?,
         })

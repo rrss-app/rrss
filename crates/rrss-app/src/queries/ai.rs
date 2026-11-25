@@ -82,6 +82,7 @@ pub(crate) fn provider_view(
             note: t.note,
         }),
         compat_json: Some(compat_json),
+        max_concurrency: ai_store::provider_concurrency(conn, p.id)?,
     })
 }
 

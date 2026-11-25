@@ -15,6 +15,8 @@ pub enum ProviderProblem {
     ModelIdMissing,
     #[error("chat model is controlled by the user's Pi configuration")]
     ChatUsesOwnConfig,
+    #[error("provider concurrency is out of range")]
+    ConcurrencyOutOfRange,
 }
 
 #[derive(Debug, thiserror::Error)]

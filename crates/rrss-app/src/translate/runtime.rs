@@ -17,31 +17,133 @@ use std::{
     },
     time::Duration,
 };
-use tokio::{
-    sync::{Mutex as AsyncMutex, Semaphore},
-    time::Instant,
-};
+use tokio::{sync::Mutex as AsyncMutex, time::Instant};
 
 pub const WINDOW_TIMEOUT: Duration = Duration::from_secs(45);
 pub const MAX_ACTIVE_JOBS: usize = 4;
 pub const MAX_TERMINAL_JOBS: usize = 4;
 pub const TERMINAL_TTL: Duration = Duration::from_secs(300);
 static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
-static EXECUTION_SLOT: OnceLock<Arc<Semaphore>> = OnceLock::new();
+/// 进程内同时在途的翻译窗上限；实际值取所用服务的并发设置。
+pub const MAX_WINDOWS: usize = rrss_core::ai_store::PROVIDER_CONCURRENCY_RANGE.1 as usize;
+/// 跨作业记住的拆窗下限：防止偶发小尾窗把后续整次会话锁死在极小窗；当前作业内仍可继续拆到单单元。
+const MIN_LEARNED_CHUNK_CHARS: usize = rrss_core::translations::WINDOW_CHARS_RANGE.0 as usize;
+static SLOTS: OnceLock<Slots> = OnceLock::new();
 static RUNTIMES: OnceLock<Mutex<Vec<Weak<Runtime>>>> = OnceLock::new();
+
+/// 拆窗记忆的键：同一配置改了窗字数设置就重新开始，不沿用旧值。
+fn window_key(config: &Config) -> String {
+    format!("{}:{}", config.hash, config.chunk_chars)
+}
+
+/// 进程级执行槽：所有库、所有作业合计，按排队先后发放给上限允许的等待者；上限随服务设置变化，所以不用固定容量的信号量。
+#[derive(Default)]
+struct Slots {
+    state: Mutex<SlotQueue>,
+    changed: tokio::sync::Notify,
+}
+
+#[derive(Default)]
+struct SlotQueue {
+    next: u64,
+    active: usize,
+    /// 排队号与该等待者的上限。
+    waiting: VecDeque<(u64, usize)>,
+}
+
+fn slots() -> &'static Slots {
+    SLOTS.get_or_init(Slots::default)
+}
+
+impl Slots {
+    async fn acquire(&'static self, limit: usize) -> Slot {
+        let ticket = {
+            let mut queue = self.state.lock().unwrap();
+            queue.next += 1;
+            let ticket = queue.next;
+            queue.waiting.push_back((ticket, limit.max(1)));
+            ticket
+        };
+        // 等待中被取消时把排队号撤掉，不挡后面的人。
+        let waiter = Waiter(self, ticket);
+        loop {
+            let changed = self.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            {
+                let mut queue = self.state.lock().unwrap();
+                // 发给最早一个自身上限允许的等待者：上限小的不会挡住上限大的。
+                let active = queue.active;
+                let next = queue
+                    .waiting
+                    .iter()
+                    .position(|(_, limit)| active < *limit);
+                if next.is_some_and(|at| queue.waiting[at].0 == ticket) {
+                    queue.waiting.remove(next.unwrap());
+                    queue.active += 1;
+                    std::mem::forget(waiter);
+                    drop(queue);
+                    self.changed.notify_waiters();
+                    return Slot(self);
+                }
+            }
+            changed.await;
+        }
+    }
+}
+
+struct Waiter(&'static Slots, u64);
+
+impl Drop for Waiter {
+    fn drop(&mut self) {
+        self.0
+            .state
+            .lock()
+            .unwrap()
+            .waiting
+            .retain(|(ticket, _)| *ticket != self.1);
+        self.0.changed.notify_waiters();
+    }
+}
+
+struct Slot(&'static Slots);
+
+/// 一个在途窗占用的本库名额与进程级执行槽，结束（含提前返回）时一并归还。
+struct Lease {
+    runtime: Arc<Runtime>,
+    _slot: Slot,
+}
+
+impl Drop for Lease {
+    fn drop(&mut self) {
+        self.runtime.state.lock().unwrap().inflight -= 1;
+        self.runtime.window_done.notify_waiters();
+    }
+}
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        self.0.state.lock().unwrap().active -= 1;
+        self.0.changed.notify_waiters();
+    }
+}
 
 #[derive(Clone, Copy)]
 struct Limits {
     timeout: Duration,
+    /// 测试用的窗字数上限；生产不另设，取配置里的设置值。
     chunk_chars: usize,
     terminal_ttl: Duration,
+    /// 多单元窗超时或输出不成形时对半重排；测试可关掉以单独观察一窗。
+    split: bool,
 }
 impl Default for Limits {
     fn default() -> Self {
         Self {
             timeout: WINDOW_TIMEOUT,
-            chunk_chars: super::COMPLETE_CHUNK_CHARS,
+            chunk_chars: usize::MAX,
             terminal_ttl: TERMINAL_TTL,
+            split: true,
         }
     }
 }
@@ -58,6 +160,8 @@ struct Work {
     title: String,
     document: Document,
     bypass: bool,
+    /// 当前作业内因拆窗收紧的窗字数上限；可以低于跨作业下限，确保本作业总能拆到单单元。
+    chunk_chars: Option<usize>,
 }
 struct Job {
     snapshot: Snapshot,
@@ -144,6 +248,10 @@ struct State {
     reader_attachment: (u64, u64),
     reader_released: bool,
     viewport: Option<Priority>,
+    /// 按翻译配置与窗字数设置记住的较小窗字数：超时或输出不成形拆分后沿用，进程内有效；改设置即重新从设置值开始。
+    chunk: HashMap<String, usize>,
+    /// 本库在途窗数；先满足本库上限再排进程级执行槽。
+    inflight: usize,
 }
 
 struct Dispatch {
@@ -172,11 +280,13 @@ impl State {
             }
         }
         let mut picked = None;
+        let mut requeue = None;
         while let Some(generation) = self.queue.pop_front() {
             let State {
                 jobs,
                 foreground,
                 viewport,
+                chunk,
                 ..
             } = &mut *self;
             let priority = viewport
@@ -191,6 +301,13 @@ impl State {
             let Some(work) = &job.work else {
                 continue;
             };
+            let base = limits.chunk_chars.min(work.source.config.chunk_chars);
+            let learned = chunk.get(&window_key(&work.source.config)).copied();
+            let chunk_chars = [Some(base), learned, work.chunk_chars]
+                .into_iter()
+                .flatten()
+                .min()
+                .unwrap_or(base);
             let mut ids = Vec::new();
             let mut chars = 0;
             let mut pending: Vec<_> = job
@@ -214,7 +331,7 @@ impl State {
             for i in pending {
                 let len = work.source.plan.units[i].t.chars().count();
                 if !ids.is_empty()
-                    && (chars + len > limits.chunk_chars
+                    && (chars + len > chunk_chars
                         || matches!(
                             work.source.config.backend,
                             super::TranslateBackend::DeepLx { .. }
@@ -230,6 +347,12 @@ impl State {
                 continue;
             }
             job.snapshot.phase = Phase::Running;
+            // 还有待译单元就放回队尾：并发时下一个执行槽可接着取，串行时与原先轮转次序相同。
+            requeue = job
+                .snapshot
+                .units
+                .contains(&UnitState::Pending)
+                .then_some(generation);
             picked = Some(Dispatch {
                 generation,
                 id: job.snapshot.identity.article_id,
@@ -238,6 +361,11 @@ impl State {
                 bypass_cache: work.bypass,
             });
             break;
+        }
+        if let Some(generation) = requeue
+            && !self.queue.contains(&generation)
+        {
+            self.queue.push_back(generation);
         }
         if picked.is_none() {
             self.worker = false;
@@ -337,6 +465,7 @@ pub struct Runtime {
     limits: Limits,
     cleanup: AtomicBool,
     executor: OnceLock<tokio::runtime::Handle>,
+    window_done: tokio::sync::Notify,
 }
 
 impl Runtime {
@@ -402,6 +531,7 @@ impl Runtime {
             gate: AsyncMutex::new(()),
             cleanup: AtomicBool::new(false),
             executor: OnceLock::new(),
+            window_done: tokio::sync::Notify::new(),
         })
     }
 
@@ -565,6 +695,7 @@ impl Runtime {
                     title,
                     document,
                     bypass,
+                    chunk_chars: None,
                 }),
                 ended: None,
             };
@@ -751,125 +882,261 @@ impl Runtime {
 
     async fn run(self: Arc<Self>) {
         loop {
-            let permit = EXECUTION_SLOT
-                .get_or_init(|| Arc::new(Semaphore::new(1)))
-                .clone()
-                .acquire_owned()
-                .await
-                .unwrap();
-            let picked = self.state.lock().unwrap().next_window(self.limits);
-            let Some(Dispatch {
-                generation,
-                id,
-                source,
-                ids,
-                bypass_cache,
-            }) = picked
-            else {
+            {
+                let mut state = self.state.lock().unwrap();
+                if state.queue.is_empty() {
+                    state.worker = false;
+                    break;
+                }
+            }
+            let limit = self.window_limit().await;
+            loop {
+                let done = self.window_done.notified();
+                tokio::pin!(done);
+                done.as_mut().enable();
+                if self.state.lock().unwrap().inflight < limit {
+                    break;
+                }
+                done.await;
+            }
+            let slot = slots().acquire(limit).await;
+            let picked = {
+                let mut state = self.state.lock().unwrap();
+                let picked = state.next_window(self.limits);
+                if picked.is_some() {
+                    state.inflight += 1;
+                }
+                picked
+            };
+            let Some(dispatch) = picked else {
                 break;
             };
-            if let Err(error) = self
-                .is_current(id, Arc::clone(&source))
-                .await
-                .and_then(|current| {
-                    if current {
-                        Ok(())
-                    } else {
-                        Err(Failure::Invalidated)
-                    }
-                })
-            {
-                drop(permit);
-                self.stop(generation, error);
-                self.prune();
-                self.schedule_cleanup();
-                continue;
-            }
-            if !self
-                .state
-                .lock()
-                .unwrap()
-                .jobs
-                .get(&generation)
-                .is_some_and(|job| job.snapshot.phase.active())
-            {
-                continue;
-            }
-            let started_at = Instant::now();
-            let dispatched = {
-                let mut state = self.state.lock().unwrap();
-                state
-                    .jobs
-                    .get_mut(&generation)
-                    .filter(|job| job.snapshot.phase.active())
-                    .map(|job| {
-                        job.event(EventKind::Delta {
-                            title: None,
-                            blocks: Vec::new(),
-                            units: ids.iter().map(|id| (*id, UnitState::Inflight)).collect(),
-                        })
-                    })
+            let lease = Lease {
+                runtime: Arc::clone(&self),
+                _slot: slot,
             };
-            if let Some(event) = dispatched {
-                self.sink.emit(event);
-            } else {
-                continue;
-            }
-            tracing::debug!(
-                article_id = id,
-                generation,
-                units = ids.len(),
-                "translation window started"
-            );
-            let result = tokio::time::timeout(
-                self.limits.timeout,
-                self.backend.execute(window::Request {
-                    path: &self.path,
-                    config: &source.config,
-                    plan: &source.plan,
-                    source: &source.document,
-                    ids: &ids,
-                    bypass_cache,
-                    article_id: Some(id),
-                }),
-            )
-            .await
-            .unwrap_or(Err(Failure::Timeout));
-            window::log_finished(
-                Some(id),
-                Some(generation),
-                ids.len(),
-                started_at.elapsed(),
-                &result,
-            );
-            drop(permit);
-            if let Err(error) = self
-                .is_current(id, Arc::clone(&source))
-                .await
-                .and_then(|current| {
-                    if current {
-                        Ok(())
-                    } else {
-                        Err(Failure::Invalidated)
-                    }
+            tokio::spawn(Arc::clone(&self).execute(dispatch, lease));
+        }
+    }
+
+    /// 并发窗数取各未结束作业所用服务的设置值中最小者；非 Complete 后端保持串行。
+    async fn window_limit(&self) -> usize {
+        let bases: Vec<Option<String>> = {
+            let state = self.state.lock().unwrap();
+            state
+                .jobs
+                .values()
+                .filter(|job| job.snapshot.phase.active())
+                .filter_map(|job| job.work.as_ref())
+                .map(|work| {
+                    work.source
+                        .config
+                        .complete
+                        .as_ref()
+                        .filter(|_| work.source.config.backend == super::TranslateBackend::Complete)
+                        .map(|task| task.provider.base_url.clone())
                 })
-            {
-                self.stop(generation, error);
-                self.prune();
-                self.schedule_cleanup();
-                continue;
+                .collect()
+        };
+        let capacity = crate::scheduler::model_capacity::Capacity::for_database(&self.path);
+        let mut limit = MAX_WINDOWS;
+        for base in bases {
+            let value = match base {
+                Some(base) => capacity.endpoint_limit(&self.path, &base).await,
+                None => 1,
+            };
+            limit = limit.min(value);
+        }
+        limit.clamp(1, MAX_WINDOWS)
+    }
+
+    /// 装箱以断开 run → execute → run 的递归 Future 类型。
+    fn execute(
+        self: Arc<Self>,
+        dispatch: Dispatch,
+        lease: Lease,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        Box::pin(self.execute_window(dispatch, lease))
+    }
+
+    /// 一个窗从发出到合并结果都占着执行槽，合并后才让出，失败停止不会多发一窗。
+    async fn execute_window(self: Arc<Self>, dispatch: Dispatch, lease: Lease) {
+        let Dispatch {
+            generation,
+            id,
+            source,
+            ids,
+            bypass_cache,
+        } = dispatch;
+        if let Err(error) = self
+            .is_current(id, Arc::clone(&source))
+            .await
+            .and_then(|current| {
+                if current {
+                    Ok(())
+                } else {
+                    Err(Failure::Invalidated)
+                }
+            })
+        {
+            drop(lease);
+            self.stop(generation, error);
+            self.prune();
+            self.schedule_cleanup();
+            return;
+        }
+        if !self
+            .state
+            .lock()
+            .unwrap()
+            .jobs
+            .get(&generation)
+            .is_some_and(|job| job.snapshot.phase.active())
+        {
+            return;
+        }
+        let started_at = Instant::now();
+        let dispatched = {
+            let mut state = self.state.lock().unwrap();
+            state
+                .jobs
+                .get_mut(&generation)
+                .filter(|job| job.snapshot.phase.active())
+                .map(|job| {
+                    job.event(EventKind::Delta {
+                        title: None,
+                        blocks: Vec::new(),
+                        units: ids.iter().map(|id| (*id, UnitState::Inflight)).collect(),
+                    })
+                })
+        };
+        if let Some(event) = dispatched {
+            self.sink.emit(event);
+        } else {
+            return;
+        }
+        tracing::debug!(
+            article_id = id,
+            generation,
+            units = ids.len(),
+            "translation window started"
+        );
+        let result = tokio::time::timeout(
+            self.limits.timeout,
+            self.backend.execute(window::Request {
+                path: &self.path,
+                config: &source.config,
+                plan: &source.plan,
+                source: &source.document,
+                ids: &ids,
+                bypass_cache,
+                article_id: Some(id),
+            }),
+        )
+        .await
+        .unwrap_or(Err(Failure::Timeout));
+        window::log_finished(
+            Some(id),
+            Some(generation),
+            ids.len(),
+            started_at.elapsed(),
+            &result,
+        );
+        if let Err(error) = self
+            .is_current(id, Arc::clone(&source))
+            .await
+            .and_then(|current| {
+                if current {
+                    Ok(())
+                } else {
+                    Err(Failure::Invalidated)
+                }
+            })
+        {
+            self.stop(generation, error);
+            self.prune();
+            self.schedule_cleanup();
+            return;
+        }
+        // 多单元窗整窗超时、输出不成形，或返回合法 JSON 但全部单元都被拒时对半重排，不算失败；
+        // 每次拆分后本作业的窗字数严格变小，单个单元仍失败才标为失败。
+        // 跨作业记忆只对达到窗字数下限的窗生效且不低于下限，避免偶发小尾窗把后续文章锁死在极小窗。
+        let whole_window_invalid = match &result {
+            Err(Failure::Timeout | Failure::InvalidOutput) => true,
+            Ok(output) => {
+                !output.is_empty()
+                    && output
+                        .iter()
+                        .all(|(_, value)| matches!(value, Err(Failure::InvalidOutput)))
             }
-            let (event, finished) = {
-                let mut state = self.state.lock().unwrap();
-                let Some(job) = state
-                    .jobs
-                    .get_mut(&generation)
-                    .filter(|job| job.snapshot.phase.active())
-                else {
-                    continue;
-                };
+            _ => false,
+        };
+        let split = if whole_window_invalid && self.limits.split && ids.len() > 1 {
+            let chars: usize = ids
+                .iter()
+                .map(|i| source.plan.units[*i as usize].t.chars().count())
+                .sum();
+            (chars >= 2).then_some((chars, chars / 2))
+        } else {
+            None
+        };
+        let (event, finished, restart) = {
+            let mut state = self.state.lock().unwrap();
+            let can_split = state.jobs.get(&generation).is_some_and(|job| {
+                job.snapshot.phase.active()
+                    && !job.snapshot.error.is_some_and(Failure::stops_job)
+            });
+            let split = split.filter(|_| can_split);
+            if let Some((chars, next)) = split {
+                if chars >= MIN_LEARNED_CHUNK_CHARS {
+                    let remembered = next.max(MIN_LEARNED_CHUNK_CHARS);
+                    let chunk = state
+                        .chunk
+                        .entry(window_key(&source.config))
+                        .or_insert(remembered);
+                    *chunk = (*chunk).min(remembered);
+                }
+                tracing::info!(
+                    article_id = id,
+                    generation,
+                    units = ids.len(),
+                    chunk_chars = next,
+                    error = ?result.as_ref().err(),
+                    "translation window split after failure"
+                );
+            }
+            let Some(job) = state
+                .jobs
+                .get_mut(&generation)
+                .filter(|job| job.snapshot.phase.active())
+            else {
+                return;
+            };
+            if let Some((_, next)) = split {
+                if let Some(work) = job.work.as_mut() {
+                    work.chunk_chars = Some(work.chunk_chars.map_or(next, |cur| cur.min(next)));
+                }
+                let updates = ids
+                    .iter()
+                    .map(|id| {
+                        job.snapshot.units[*id as usize] = UnitState::Pending;
+                        (*id, UnitState::Pending)
+                    })
+                    .collect();
+                let event = job.event(EventKind::Delta {
+                    title: None,
+                    blocks: Vec::new(),
+                    units: updates,
+                });
+                if !state.queue.contains(&generation) {
+                    state.queue.push_back(generation);
+                }
+                let restart = !state.worker;
+                state.worker = true;
+                (event, false, restart)
+            } else {
                 let Some(work) = job.work.as_mut() else {
-                    continue;
+                    return;
                 };
                 let mut title = None;
                 let mut blocks = Vec::new();
@@ -923,7 +1190,7 @@ impl Runtime {
                         Phase::Failed
                     };
                     job.ended = Some(Instant::now());
-                    if !any_done {
+                    if !any_done && job.snapshot.error.is_none() {
                         job.snapshot.error = job.snapshot.units.iter().find_map(|s| match s {
                             UnitState::Failed(error) => Some(*error),
                             _ => None,
@@ -935,17 +1202,21 @@ impl Runtime {
                     blocks,
                     units: updates,
                 });
-                if !finished {
-                    state.queue.push_back(generation);
-                }
-                (event, finished)
-            };
-            self.sink.emit(event);
-            if finished {
-                self.save(generation).await;
-                self.prune();
-                self.schedule_cleanup();
+                (event, finished, false)
             }
+        };
+        self.sink.emit(event);
+        drop(lease);
+        if restart {
+            let runtime = Arc::clone(&self);
+            tokio::spawn(async move {
+                runtime.run().await;
+            });
+        }
+        if finished {
+            self.save(generation).await;
+            self.prune();
+            self.schedule_cleanup();
         }
     }
 

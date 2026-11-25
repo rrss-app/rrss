@@ -199,3 +199,22 @@ test("automatic translation switches save through the settings registry and the 
   await limit.fill("3000");
   await expect.poll(lastSetting).toEqual({ id: "translate_auto_body", value: "1" });
 });
+
+test("the text per model request is a draft saved through the registry and only shown for model translation", async ({ page }) => {
+  const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/locales/zh-CN");
+  const registry = JSON.parse(fs.readFileSync(path.join(dir, "settingsSystem.json"), "utf8")).registry;
+  const jobs = JSON.parse(fs.readFileSync(path.join(dir, "settingsJobs.json"), "utf8"));
+  const models = JSON.parse(fs.readFileSync(path.join(dir, "settingsModels.json"), "utf8"));
+  const settings = page.getByRole("dialog", { name: "设置", exact: true });
+  const lastSetting = () => page.evaluate(() => (window as any).__mockHost.args.set_setting);
+  const size = settings.getByRole("spinbutton", { name: registry.translate_window_chars.control, exact: true });
+  await expect(size).toHaveValue("1200");
+  await size.fill("600");
+  expect(await lastSetting()).toBeUndefined();
+  const bar = settings.getByRole("group", { name: models.saveBar.group.replace("{{label}}", jobs.translate.service.title), exact: true });
+  await bar.getByRole("button", { name: models.saveBar.save, exact: true }).click();
+  await expect.poll(lastSetting).toEqual({ id: "translate_window_chars", value: "600" });
+  await expect(bar).toHaveCount(0);
+  await settings.getByRole("group", { name: jobs.translate.service.aria, exact: true }).getByRole("button", { name: jobs.translate.backend.deepl, exact: true }).click();
+  await expect(size).toHaveCount(0);
+});

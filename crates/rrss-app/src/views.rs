@@ -749,6 +749,8 @@ pub struct ProviderView {
     #[serde(default)]
     #[ts(optional)]
     pub compat_json: Option<String>,
+    // 同一服务地址同时进行的模型请求上限（1–16）。
+    pub max_concurrency: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1325,6 +1327,10 @@ pub struct ProviderInput {
     #[serde(default)]
     #[ts(optional)]
     pub compat_json: Option<String>,
+    // 省略则保留已有值（新连接为 1）。
+    #[serde(default)]
+    #[ts(optional)]
+    pub max_concurrency: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

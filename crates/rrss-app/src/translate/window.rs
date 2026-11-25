@@ -357,8 +357,7 @@ impl Backend for HttpBackend {
                 .map_err(|err| classify(&anyhow::Error::new(err)))?;
             if config.backend == TranslateBackend::Complete {
                 return complete_window(path, &client, config, &units, bypass_cache, |value| {
-                    let raw = parse_units(value)?;
-                    let stray = raw.iter().any(|unit| !ids.contains(&unit.i));
+                    let (raw, stray) = remap_units(&units, parse_units(value)?);
                     let out = validate(plan, source, ids, raw, article_id);
                     let cacheable = !stray && out.iter().all(|(_, value)| value.is_ok());
                     Ok((out, cacheable))

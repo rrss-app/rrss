@@ -1496,7 +1496,8 @@ export async function installMockHost(page: Page, options: MockHostOptions = {})
                 const saved = { id, kind: input.kind ?? old?.kind ?? "openai_compat", name: input.name, base_url: input.base_url, protocol: input.protocol,
                   key: key ? "set" as const : input.clear_key ? "none" as const : old?.key ?? "none" as const,
                   key_hint: key ? keyHint(key) : input.clear_key ? "" : old?.key_hint ?? "",
-                  last_test: old?.last_test, compat_json: input.compat_json ?? old?.compat_json ?? "{}" };
+                  last_test: old?.last_test, compat_json: input.compat_json ?? old?.compat_json ?? "{}",
+                  max_concurrency: input.max_concurrency ?? old?.max_concurrency ?? 1 };
                 state.ai = { ...state.ai, selected_id: id, providers: old
                   ? state.ai.providers.map((p) => (p.id === id ? saved : p)) : [...state.ai.providers, saved] };
                 return structuredClone(state.ai);

@@ -148,7 +148,48 @@ async fn complete_partial_output_is_not_cached_and_default_retry_only_requests_m
     let (_, units) = content.split_once('\n').unwrap();
     let units: Vec<TranslateUnit> = serde_json::from_str(units).unwrap();
     assert_eq!(units.len(), 1);
-    assert_eq!(units[0].i, 1);
+    assert_eq!(units[0].i, 0);
+    assert_eq!(units[0].t, "The first paragraph.");
+}
+
+#[tokio::test]
+async fn complete_sends_zero_based_window_ids_and_remaps_later_windows() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(|r: &Request| {
+            let body: Value = r.body_json().unwrap();
+            let user = body["messages"][1]["content"].as_str().unwrap();
+            let (_, raw) = user.split_once('\n').unwrap();
+            let units: Vec<TranslateUnit> = serde_json::from_str(raw).unwrap();
+            // 每一窗都从 0 起始编号，模拟轻量模型始终按 0..n 返回。
+            let expected: Vec<u32> = (0..units.len() as u32).collect();
+            let actual: Vec<u32> = units.iter().map(|u| u.i).collect();
+            assert_eq!(actual, expected);
+            let out: Vec<_> = units
+                .iter()
+                .enumerate()
+                .map(|(i, u)| json!({"i": i, "t": format!("译:{}", u.t)}))
+                .collect();
+            ResponseTemplate::new(200).set_body_json(json!({
+                "choices":[{"message":{"content":json!({"units":out}).to_string()}}],
+                "usage":{"prompt_tokens":10,"completion_tokens":5}
+            }))
+        })
+        .mount(&server)
+        .await;
+    let mut h = Harness::http(
+        &server.uri(),
+        "complete",
+        Limits {
+            chunk_chars: 1,
+            ..Limits::default()
+        },
+    );
+    h.start(StartMode::Default).await;
+    let end = h.end().await;
+    assert_eq!(end.phase, Phase::Completed);
+    assert_eq!(end.done, 3);
+    assert_eq!(server.received_requests().await.unwrap().len(), 3);
 }
 
 #[tokio::test]
@@ -195,7 +236,11 @@ async fn unknown_usage_creates_no_zero_usage_row_and_invalidated_response_still_
             // Invalidation event intentionally precedes the response; wait for this worker's accounting.
             tokio::time::timeout(Duration::from_secs(5), async {
                 loop {
-                    if !h.runtime.state.lock().unwrap().worker {
+                    let idle = {
+                        let state = h.runtime.state.lock().unwrap();
+                        !state.worker && state.inflight == 0
+                    };
+                    if idle {
                         break;
                     }
                     tokio::time::sleep(Duration::from_millis(5)).await;
@@ -231,6 +276,8 @@ async fn total_deadline_includes_fallback_and_keeps_usage_from_response_before_t
         "complete",
         Limits {
             timeout: Duration::from_secs(5),
+            // 只看一窗内回退共用期限；超时拆窗另有测试。
+            split: false,
             ..Limits::default()
         },
     );

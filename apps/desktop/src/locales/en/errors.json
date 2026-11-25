@@ -326,6 +326,7 @@
   "provider_preset_unknown": "Unknown connection preset",
   "model_id_missing": "Model ID can’t be empty",
   "chat_model_uses_own_config": "The chat model comes from your own Pi configuration",
+  "provider_concurrency_out_of_range": "Concurrent requests must be a whole number from {{min}} to {{max}}",
   "model_not_added": "{{model}} isn’t in the model list yet; add it on the Models page first",
   "model_chat_disabled": "“Use for chat” is off for {{model}}",
   "model_replacement_missing": "The replacement model {{model}} isn’t in the model list",

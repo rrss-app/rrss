@@ -4,7 +4,14 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- Model connections have a "Concurrent requests" setting under Advanced (1–16, default 1). Raising it for a local model server lets article translation send several parts at once; cloud services and background tasks keep their current pace.
+
 ### Changed
+
+- Model translation sends shorter parts by default (about 1,200 characters per request instead of 2,800), and the size can be changed in Settings → Translation when the model service is selected. Changing it does not discard existing translations.
+- Article translation now recovers when a part times out or comes back malformed: the part is split in half and retried, and later parts for the same model use the smaller size, instead of marking the whole part as failed. This mainly helps slower local models.
 
 - Improved AI input selection and budgeting across article summaries, daily/weekly digests, and related coverage overviews: summary extraction now balances budgets across CJK and English text, retains bounded short code snippets and key table rows, avoids orphan headings and unnecessary re-segmentation, and skips read, disliked, hidden noisy, or link-only items in automatic background summaries; digests filter disliked and noisy sources, interleave feeds, include lead snippets for unsummarized articles, redistribute unused excerpt budget with publication timestamps, keep busy weekly digests and large related-coverage clusters bounded without duplicate-story collisions, narrow digest write conflict checks, and cache provider structured-output and temperature fallbacks to avoid repeated failed requests.
 

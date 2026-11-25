@@ -239,6 +239,11 @@ pub const AUTO_VIEW_KEY: &str = "translate_auto_view";
 pub const AUTO_MAX_WORDS_KEY: &str = "translate_auto_max_words";
 pub const AUTO_SCOPE_KEY: &str = "translate_auto_scope";
 
+/// 用模型翻译时每次请求的原文字数上限（含两端）；不改变译文身份。
+pub const WINDOW_CHARS_KEY: &str = "translate_window_chars";
+pub const WINDOW_CHARS_RANGE: (i64, i64) = (200, 4000);
+pub const WINDOW_CHARS_DEFAULT: i64 = 1200;
+
 /// 订阅源对自动翻译的覆盖（标题与正文一起）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FeedAuto {

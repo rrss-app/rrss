@@ -33,7 +33,8 @@ mod types;
 mod window;
 use cache::Config;
 
-const COMPLETE_CHUNK_CHARS: usize = 2800;
+/// LibreTranslate / DeepL 每次请求的原文字数；模型翻译用设置 `translate_window_chars`。
+const SERVICE_CHUNK_CHARS: usize = 2800;
 /// DeepL 开启 XML 占位后的缓存世代；低于此值的译文会在下次点「翻译」时重拉。
 const DEEPL_XML_PROMPT_VERSION: i64 = 2;
 
@@ -119,7 +120,7 @@ async fn translate_units(
     let batches = if matches!(config.backend, TranslateBackend::DeepLx { .. }) {
         units.iter().map(|unit| vec![unit.clone()]).collect()
     } else {
-        chunk_units(units, COMPLETE_CHUNK_CHARS)
+        chunk_units(units, config.chunk_chars)
     };
     let mut merged = Vec::new();
     for batch in batches {
@@ -127,7 +128,8 @@ async fn translate_units(
             complete_ephemeral(db_path, client, config, &batch).await
         } else if config.backend == TranslateBackend::Complete {
             complete_window(db_path, client, config, &batch, false, |value| {
-                let translated = parse_units(value)?;
+                let (translated, stray) = remap_units(&batch, parse_units(value)?);
+                anyhow::ensure!(!stray, ReaderError::TranslateUnitsMissing.into_ui());
                 validate_units(&batch, &translated)?;
                 Ok((translated, true))
             })
@@ -254,7 +256,7 @@ async fn complete_ephemeral(
             user: format!(
                 "target_lang: {}\n{}",
                 config.lang,
-                serde_json::to_string(batch)?
+                serde_json::to_string(&local_units(batch))?
             ),
             json_schema: Some(translate_json_schema()),
             protocol: rrss_ai::Protocol::parse(&task.provider.protocol),
@@ -269,7 +271,8 @@ async fn complete_ephemeral(
     .await;
     drop(usage_send);
     usage_task.await??;
-    let translated = parse_units(&out?.parsed)?;
+    let (translated, stray) = remap_units(batch, parse_units(&out?.parsed)?);
+    anyhow::ensure!(!stray, ReaderError::TranslateUnitsMissing.into_ui());
     validate_units(batch, &translated)?;
     Ok(translated)
 }
@@ -285,7 +288,7 @@ async fn complete_window<T>(
     let payload = format!(
         "target_lang: {}\n{}",
         config.lang,
-        serde_json::to_string(units)?
+        serde_json::to_string(&local_units(units))?
     );
     let resolved = config
         .complete
@@ -673,6 +676,38 @@ fn truncate_err(s: &str) -> String {
 fn parse_units(parsed: &Value) -> Result<Vec<TranslateUnit>> {
     serde_json::from_value(parsed.get("units").cloned().unwrap_or(Value::Null))
         .map_err(|_| anyhow::anyhow!(ReaderError::TranslateUnitsInvalid.into_ui()))
+}
+
+/// 发给模型的单窗单元统一从 0 编号，避免轻量模型在长文后续窗把大编号重排成 0 导致整窗被拒。
+fn local_units(units: &[TranslateUnit]) -> Vec<TranslateUnit> {
+    units
+        .iter()
+        .enumerate()
+        .map(|(i, unit)| TranslateUnit {
+            i: i as u32,
+            t: unit.t.clone(),
+        })
+        .collect()
+}
+
+/// 将 0 起始的窗内编号按位置还原为文章单元编号；越界编号丢弃并标记 `stray`。
+fn remap_units(
+    source: &[TranslateUnit],
+    translated: Vec<TranslateUnit>,
+) -> (Vec<TranslateUnit>, bool) {
+    let mut out = Vec::with_capacity(translated.len());
+    let mut stray = false;
+    for unit in translated {
+        if let Some(original) = source.get(unit.i as usize) {
+            out.push(TranslateUnit {
+                i: original.i,
+                t: unit.t,
+            });
+        } else {
+            stray = true;
+        }
+    }
+    (out, stray)
 }
 
 // T1a 仍整篇返回，缺项或重复不能作为完整缓存；T1b 再按单元保留局部成功。

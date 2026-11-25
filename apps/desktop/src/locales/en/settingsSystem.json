@@ -805,6 +805,12 @@
         "all": "Anything but the target language",
         "en": "English only"
       }
+    },
+    "translate_window_chars": {
+      "label": "Text per request",
+      "hint": "How much source text each model translation request carries (200–4000 characters). Smaller is faster per request and less likely to time out, which suits local models; larger means fewer requests and more context. Parts that time out or come back malformed are split in half and retried automatically.",
+      "control": "Text per request",
+      "unit": "characters"
     }
   },
   "storage": {
