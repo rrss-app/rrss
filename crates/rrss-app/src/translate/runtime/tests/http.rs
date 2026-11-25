@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::method};
 
 mod proxy;
+mod segments;
 
 impl Harness {
     fn http(url: &str, engine: &str, limits: Limits) -> Self {
@@ -126,7 +127,15 @@ async fn complete_partial_output_is_not_cached_and_default_retry_only_requests_m
         .respond_with(|r: &Request| ResponseTemplate::new(200).set_body_json(complete_response(r)))
         .mount(&server)
         .await;
-    let mut h = Harness::http(&server.uri(), "complete", Limits::default());
+    let mut h = Harness::http(
+        &server.uri(),
+        "complete",
+        Limits {
+            // 只验局部缺项不写缓存与手动重试只发缺失单元；自动单单元补翻在 segments.rs 单独测。
+            split: false,
+            ..Limits::default()
+        },
+    );
     h.start(StartMode::Default).await;
     assert_eq!(h.end().await.phase, Phase::Partial);
     assert_eq!(

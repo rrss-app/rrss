@@ -160,8 +160,12 @@ struct Work {
     title: String,
     document: Document,
     bypass: bool,
+    /// 显式重新生成：超长单元的拆片也不读片缓存。
+    fresh: bool,
     /// 当前作业内因拆窗收紧的窗字数上限；可以低于跨作业下限，确保本作业总能拆到单单元。
     chunk_chars: Option<usize>,
+    /// 多单元模型窗局部被拒后已自动重排为单单元补翻的编号；每单元最多自动补一次。
+    retried: HashSet<u32>,
 }
 struct Job {
     snapshot: Snapshot,
@@ -260,6 +264,9 @@ struct Dispatch {
     source: Arc<Source>,
     ids: Vec<u32>,
     bypass_cache: bool,
+    fresh: bool,
+    /// 组窗时的有效窗字数，模型单单元窗据此决定是否按句拆片。
+    chunk_chars: usize,
 }
 
 struct Priority {
@@ -330,8 +337,11 @@ impl State {
             }
             for i in pending {
                 let len = work.source.plan.units[i].t.chars().count();
+                let solo = work.retried.contains(&(i as u32));
                 if !ids.is_empty()
-                    && (chars + len > chunk_chars
+                    && (solo
+                        || work.retried.contains(&ids[0])
+                        || chars + len > chunk_chars
                         || matches!(
                             work.source.config.backend,
                             super::TranslateBackend::DeepLx { .. }
@@ -359,6 +369,8 @@ impl State {
                 source: Arc::clone(&work.source),
                 ids,
                 bypass_cache: work.bypass,
+                fresh: work.fresh,
+                chunk_chars,
             });
             break;
         }
@@ -695,7 +707,9 @@ impl Runtime {
                     title,
                     document,
                     bypass,
+                    fresh: mode == StartMode::Regenerate,
                     chunk_chars: None,
+                    retried: HashSet::new(),
                 }),
                 ended: None,
             };
@@ -880,6 +894,33 @@ impl Runtime {
         })
     }
 
+    /// 在途窗分片之间的核对：作业已结束 / 失效，或别的窗已触发任务级停止时，不再发后续片。
+    async fn window_alive(
+        &self,
+        generation: u64,
+        id: i64,
+        source: Arc<Source>,
+    ) -> Result<(), Failure> {
+        {
+            let state = self.state.lock().unwrap();
+            let Some(job) = state
+                .jobs
+                .get(&generation)
+                .filter(|job| job.snapshot.phase.active())
+            else {
+                return Err(Failure::Invalidated);
+            };
+            if let Some(error) = job.snapshot.error.filter(|error| error.stops_job()) {
+                return Err(error);
+            }
+        }
+        if self.is_current(id, source).await? {
+            Ok(())
+        } else {
+            Err(Failure::Invalidated)
+        }
+    }
+
     async fn run(self: Arc<Self>) {
         loop {
             {
@@ -967,6 +1008,8 @@ impl Runtime {
             source,
             ids,
             bypass_cache,
+            fresh,
+            chunk_chars,
         } = dispatch;
         if let Err(error) = self
             .is_current(id, Arc::clone(&source))
@@ -1021,8 +1064,29 @@ impl Runtime {
             units = ids.len(),
             "translation window started"
         );
+        // 模型单单元窗由后端逐次计时（超长单元可能分片串行发出），这里只留一道总上限兜底。
+        let self_timed =
+            ids.len() == 1 && source.config.backend == super::TranslateBackend::Complete;
+        let budget = if self_timed {
+            self.limits
+                .timeout
+                .saturating_mul(rrss_render::MAX_UNIT_SEGMENTS as u32 + 1)
+        } else {
+            self.limits.timeout
+        };
+        let alive = {
+            let runtime = Arc::clone(&self);
+            let source = Arc::clone(&source);
+            move || -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = Result<(), Failure>> + Send>,
+            > {
+                let runtime = Arc::clone(&runtime);
+                let source = Arc::clone(&source);
+                Box::pin(async move { runtime.window_alive(generation, id, source).await })
+            }
+        };
         let result = tokio::time::timeout(
-            self.limits.timeout,
+            budget,
             self.backend.execute(window::Request {
                 path: &self.path,
                 config: &source.config,
@@ -1031,6 +1095,10 @@ impl Runtime {
                 ids: &ids,
                 bypass_cache,
                 article_id: Some(id),
+                chunk_chars,
+                timeout: self.limits.timeout,
+                fresh,
+                alive: &alive,
             }),
         )
         .await
@@ -1148,6 +1216,12 @@ impl Runtime {
                     .filter(|error| error.stops_job());
                 let output =
                     result.unwrap_or_else(|error| ids.iter().map(|id| (*id, Err(error))).collect());
+                let can_retry_missing = self.limits.split
+                    && ids.len() > 1
+                    && source.config.backend == super::TranslateBackend::Complete
+                    && stop.is_none()
+                    && !job.snapshot.error.is_some_and(Failure::stops_job);
+                let mut requeued = false;
                 for (id, result) in output {
                     let value = match result {
                         Ok(TranslationPatch::Title(text)) => {
@@ -1159,6 +1233,12 @@ impl Runtime {
                             work.document.blocks[index] = block.clone();
                             blocks.push(BlockPatch { index, ir: block });
                             UnitState::Done
+                        }
+                        Err(Failure::InvalidOutput)
+                            if can_retry_missing && work.retried.insert(id) =>
+                        {
+                            requeued = true;
+                            UnitState::Pending
                         }
                         Err(error) => UnitState::Failed(error),
                     };
@@ -1202,7 +1282,17 @@ impl Runtime {
                     blocks,
                     units: updates,
                 });
-                (event, finished, false)
+                let restart = if requeued && !finished {
+                    if !state.queue.contains(&generation) {
+                        state.queue.push_back(generation);
+                    }
+                    let restart = !state.worker;
+                    state.worker = true;
+                    restart
+                } else {
+                    false
+                };
+                (event, finished, restart)
             }
         };
         self.sink.emit(event);

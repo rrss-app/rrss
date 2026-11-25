@@ -1,7 +1,9 @@
 //! 一个网络窗的执行与输出验证，不持有队列，不重新切窗。
 use super::{cache::Config, *};
 use rrss_render::{Document, PatchError, TranslateUnit, TranslationPatch, TranslationPlan};
-use std::{future::Future, path::Path, pin::Pin};
+use std::{future::Future, path::Path, pin::Pin, time::Duration};
+
+mod segment;
 
 pub use crate::views::TranslationFailure as Failure;
 
@@ -22,6 +24,10 @@ impl Failure {
             Self::Capacity => ReaderError::TranslateCapacity,
         }
         .into()
+    }
+    /// 缩小输入可能就能成功的窗级失败：超时、输出不成形（含上下文超限）。
+    pub(super) fn splittable(self) -> bool {
+        matches!(self, Self::Timeout | Self::InvalidOutput)
     }
     pub(super) fn stops_job(self) -> bool {
         matches!(
@@ -78,6 +84,10 @@ pub(super) fn classify(err: &anyhow::Error) -> Failure {
                 rrss_ai::complete::Error::Admission(_) => return Failure::Configuration,
                 rrss_ai::complete::Error::Capacity => return Failure::Capacity,
                 rrss_ai::complete::Error::ServiceCooldown => return Failure::RateLimited,
+                // 输入超出模型上下文：与输出不成形一样可拆窗 / 细分，不当配置错误停掉整篇。
+                error @ rrss_ai::complete::Error::Http { .. } if error.is_context_too_long() => {
+                    return Failure::InvalidOutput;
+                }
                 rrss_ai::complete::Error::Http { status, .. } => return status_failure(*status),
                 rrss_ai::complete::Error::Request { kind } => {
                     return if *kind == rrss_ai::complete::RequestKind::Timeout {
@@ -223,6 +233,18 @@ mod proxy_tests {
             message: "safe".into(),
         });
         assert_eq!(classify(&error), Failure::Configuration);
+        let overflow = anyhow::Error::new(rrss_ai::Error::Http {
+            status: 400,
+            message: "the request exceeds the available context size (exceed_context_size_error)"
+                .into(),
+        });
+        assert_eq!(classify(&overflow), Failure::InvalidOutput);
+        assert!(classify(&overflow).splittable());
+        let bad = anyhow::Error::new(rrss_ai::Error::Http {
+            status: 400,
+            message: "invalid model".into(),
+        });
+        assert_eq!(classify(&bad), Failure::Configuration);
     }
 }
 
@@ -255,6 +277,20 @@ pub(super) fn log_finished(
         elapsed_ms = elapsed.as_millis() as u64, error = ?result.as_ref().err(), "translation window finished");
 }
 
+/// 模型在多单元 JSON 数组里漏写闭合引号时，会把 `}, {` 吞进当前译文末尾（常伴随后续单元截断）。
+/// 仅在多单元窗且原文不含该片段时判定为损坏，不误伤正文里的代码或 JSON 示例。
+fn has_json_boundary_leak(source: &str, translated: &str) -> bool {
+    let trimmed = translated.trim_end();
+    let Some(before_brace) = trimmed.strip_suffix('{') else {
+        return false;
+    };
+    let leaked = before_brace
+        .trim_end()
+        .strip_suffix(',')
+        .is_some_and(|before_comma| before_comma.trim_end().ends_with('}'));
+    leaked && !source.contains("},{") && !source.contains("}, {")
+}
+
 pub(super) fn validate(
     plan: &TranslationPlan,
     source: &Document,
@@ -271,6 +307,7 @@ pub(super) fn validate(
             .and_modify(|value| value.1 = true)
             .or_insert((unit.t, false));
     }
+    let multi = ids.len() > 1;
     ids.iter()
         .map(|id| {
             let source_text = plan
@@ -281,6 +318,9 @@ pub(super) fn validate(
             let (patch, output) = match values.remove(id) {
                 None => (Err(PatchError::MissingUnit), String::new()),
                 Some((text, true)) => (Err(PatchError::DuplicateUnit), text),
+                Some((text, false)) if multi && has_json_boundary_leak(source_text, &text) => {
+                    (Err(PatchError::Remainder), text)
+                }
                 Some((text, false)) => (plan.patch(source, *id, &text), text),
             };
             if let Err(error) = &patch {
@@ -304,6 +344,10 @@ fn log_rejected(article_id: Option<i64>, unit: u32, reason: &str, source: &str, 
     );
 }
 
+/// 拆片之间核对作业仍有效（未失效、未停止）；失败时返回应记给该单元的错误。
+pub(super) type Alive =
+    dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), Failure>> + Send>> + Send + Sync;
+
 pub(super) struct Request<'a> {
     pub path: &'a Path,
     pub config: &'a Config,
@@ -312,6 +356,13 @@ pub(super) struct Request<'a> {
     pub ids: &'a [u32],
     pub bypass_cache: bool,
     pub article_id: Option<i64>,
+    /// 本窗的有效窗字数；模型翻译的单单元超出时按句拆片。
+    pub chunk_chars: usize,
+    /// 单次模型请求的期限。模型单单元窗由后端逐次计时，其余窗由调用方整体计时。
+    pub timeout: Duration,
+    /// 显式重新生成：拆片也绕过片缓存。其余重试复用已译好的片。
+    pub fresh: bool,
+    pub alive: &'a Alive,
 }
 
 pub(super) trait Backend: Send + Sync {
@@ -339,6 +390,10 @@ impl Backend for HttpBackend {
                 ids,
                 bypass_cache,
                 article_id,
+                chunk_chars,
+                timeout,
+                fresh,
+                alive,
             } = request;
             let units: Vec<_> = ids
                 .iter()
@@ -355,6 +410,23 @@ impl Backend for HttpBackend {
                 .client(rrss_core::network::NetworkScope::Api)
                 .await
                 .map_err(|err| classify(&anyhow::Error::new(err)))?;
+            if config.backend == TranslateBackend::Complete && ids.len() == 1 {
+                return segment::Unit {
+                    path,
+                    client: &client,
+                    config,
+                    plan,
+                    source,
+                    id: ids[0],
+                    article_id,
+                    timeout,
+                    fresh,
+                    alive,
+                    requests: 0,
+                }
+                .run(chunk_chars, bypass_cache)
+                .await;
+            }
             if config.backend == TranslateBackend::Complete {
                 return complete_window(path, &client, config, &units, bypass_cache, |value| {
                     let (raw, stray) = remap_units(&units, parse_units(value)?);

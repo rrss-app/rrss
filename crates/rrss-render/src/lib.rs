@@ -19,8 +19,9 @@ pub use ir::{Block, Document, EmbedKind, IR_VERSION, Inline, InlineStyle, TableT
 pub use lang::{detect_lang, foreign_lang, word_count};
 pub use text::{inlines_to_markdown, inlines_to_plain};
 pub use translate::{
-    PatchError, TranslateUnit, TranslationPatch, TranslationPlan, already_target_lang, apply_units,
-    extract_units, units_plain,
+    MAX_UNIT_SEGMENTS, PatchError, TaggedSegment, TranslateUnit, TranslationPatch, TranslationPlan,
+    already_target_lang, apply_units, extract_units, join_translated_segments,
+    restore_segment_tags, split_tagged_unit, units_plain,
 };
 
 use thiserror::Error;

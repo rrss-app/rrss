@@ -11,6 +11,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::ir::{Block, Document, Inline, InlineStyle};
 
+mod segment;
+pub use segment::{
+    MAX_UNIT_SEGMENTS, TaggedSegment, join_translated_segments, restore_segment_tags,
+    split_tagged_unit,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TranslateUnit {
     pub i: u32,

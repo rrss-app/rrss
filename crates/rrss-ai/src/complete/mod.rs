@@ -83,6 +83,12 @@ impl RequestKind {
 }
 
 impl Error {
+    /// 服务端以 400 / 413 / 422 报输入或总长度超出上下文窗口（llama.cpp 的 `n_ctx`、OpenAI / vLLM 的
+    /// `maximum context length` 等）。调用方据此缩小输入重试，而不是当作配置错误停止。
+    pub fn is_context_too_long(&self) -> bool {
+        matches!(self, Self::Http { status, message } if context_too_long(*status, message))
+    }
+
     pub fn request_kind(&self) -> Option<RequestKind> {
         let Self::Request { kind } = self else {
             return None;
@@ -454,8 +460,10 @@ async fn complete_via(
                         Err(err) => return Err(err),
                     }
                 }
+                // 上下文超限换格式或去掉温度都不会变短，直接交给调用方缩小输入。
                 Err(Error::Http { status, message })
                     if caps.supports_temperature
+                        && !context_too_long(status, &message)
                         && is_temperature_rejected(
                             reqwest::StatusCode::from_u16(status)
                                 .unwrap_or(reqwest::StatusCode::BAD_REQUEST),
@@ -473,11 +481,12 @@ async fn complete_via(
                     continue;
                 }
                 Err(Error::Http { status, message })
-                    if is_format_rejected(
-                        reqwest::StatusCode::from_u16(status)
-                            .unwrap_or(reqwest::StatusCode::BAD_REQUEST),
-                        &message,
-                    ) =>
+                    if !context_too_long(status, &message)
+                        && is_format_rejected(
+                            reqwest::StatusCode::from_u16(status)
+                                .unwrap_or(reqwest::StatusCode::BAD_REQUEST),
+                            &message,
+                        ) =>
                 {
                     tracing::debug!(
                         model = %req.model,
@@ -674,6 +683,27 @@ fn system_prompt(req: &CompleteRequest, format: ResponseFormat) -> String {
             req.system
         ),
     }
+}
+
+/// 上下文超限报文的小写关键词；只在 400 / 413 / 422 上认。
+const CONTEXT_TOO_LONG: &[&str] = &[
+    "exceed_context_size",
+    "exceeds the available context size",
+    "n_ctx",
+    "context_length_exceeded",
+    "maximum context length",
+    "context window",
+    "prompt is too long",
+    "input is too long",
+    "too many tokens",
+];
+
+fn context_too_long(status: u16, message: &str) -> bool {
+    if !matches!(status, 400 | 413 | 422) {
+        return false;
+    }
+    let lower = message.to_lowercase();
+    CONTEXT_TOO_LONG.iter().any(|marker| lower.contains(marker))
 }
 
 fn is_temperature_rejected(status: reqwest::StatusCode, body: &str) -> bool {
@@ -906,8 +936,10 @@ pub(crate) fn http_error(
     body: &str,
     known_secret: Option<&str>,
 ) -> Error {
-    let parsed = serde_json::from_str::<ApiErrorBody>(body)
-        .ok()
+    let body_json = serde_json::from_str::<ApiErrorBody>(body).ok();
+    // 只取已知的上下文超限码补在消息后：有的服务只在 `type` / `code` 里写明，消息本身很笼统。
+    let context_code = body_json.as_ref().and_then(|b| b.error.context_code());
+    let parsed = body_json
         .and_then(|b| b.error.message)
         .filter(|s| !s.is_empty());
     // 先解析完整消息，再清洗、限长；JSON 转义和截断不能把密钥变成无法识别的片段。
@@ -915,11 +947,16 @@ pub(crate) fn http_error(
         parsed.as_deref().unwrap_or(body),
         known_secret.map(str::trim),
     );
-    let message = if parsed.is_some() {
+    let mut message = if parsed.is_some() {
         clean
     } else {
         clean.chars().take(400).collect()
     };
+    if let Some(code) = context_code
+        && !message.to_lowercase().contains(code)
+    {
+        message = format!("{message} ({code})");
+    }
     Error::Http {
         status: status.as_u16(),
         message,
@@ -1254,6 +1291,93 @@ mod tests {
         complete(&client, &req).await.unwrap();
         // 首次试探 2 次，第二次直接省略 temperature（共 3 次请求）。
         assert_eq!(server.received_requests().await.unwrap().len(), 3);
+    }
+
+    fn http(status: u16, message: &str) -> Error {
+        Error::Http {
+            status,
+            message: message.into(),
+        }
+    }
+
+    #[test]
+    fn context_overflow_is_recognised_only_on_request_size_statuses() {
+        let llama = http_error(
+            reqwest::StatusCode::BAD_REQUEST,
+            r#"{"error":{"code":400,"message":"the request exceeds the available context size, try increasing it","type":"exceed_context_size_error","n_prompt_tokens":2300,"n_ctx":2048}}"#,
+            None,
+        );
+        assert!(llama.is_context_too_long());
+        // 只在 type / code 里写明的也认，消息本身很笼统。
+        let coded = http_error(
+            reqwest::StatusCode::BAD_REQUEST,
+            r#"{"error":{"message":"Request rejected","type":"invalid_request_error","code":"context_length_exceeded"}}"#,
+            None,
+        );
+        assert!(coded.is_context_too_long(), "{coded}");
+        for (status, message) in [
+            (
+                400,
+                "This model's maximum context length is 8192 tokens. However, your messages resulted in 9100 tokens.",
+            ),
+            (
+                400,
+                "This model's maximum context length is 2048 tokens. However, you requested 3000 tokens (2000 in the messages, 1000 in the completion).",
+            ),
+            (413, "prompt is too long: 210000 tokens > 200000 maximum"),
+            (422, "Input is too long for the context window"),
+            (400, "too many tokens: requested 5000, n_ctx 4096"),
+        ] {
+            assert!(
+                http(status, message).is_context_too_long(),
+                "{status} {message}"
+            );
+        }
+        for (status, message) in [
+            (401, "maximum context length exceeded"),
+            (403, "context_length_exceeded"),
+            (404, "model not found"),
+            (429, "too many tokens per minute"),
+            (500, "exceeds the available context size"),
+            (400, "invalid model"),
+            (400, "unsupported parameter response_format"),
+            (400, "invalid_api_key"),
+        ] {
+            assert!(
+                !http(status, message).is_context_too_long(),
+                "{status} {message}"
+            );
+        }
+        assert!(!Error::EmptyContent.is_context_too_long());
+    }
+
+    #[tokio::test]
+    async fn context_overflow_is_not_retried_with_another_format_or_temperature() {
+        let server = MockServer::start().await;
+        // 报文里碰巧带格式 / 温度字样也不能触发降级重试。
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+                "error": {
+                    "message": "maximum context length exceeded; temperature and response_format are not supported by this request",
+                    "type": "exceed_context_size_error"
+                }
+            })))
+            .mount(&server)
+            .await;
+        let client = http_client().unwrap();
+        let req = CompleteRequest {
+            base_url: server.uri(),
+            api_key: None,
+            model: "m".into(),
+            system: "s".into(),
+            user: "u".into(),
+            json_schema: Some(summary_json_schema()),
+            protocol: Protocol::Chat,
+        };
+        let err = complete(&client, &req).await.unwrap_err();
+        assert!(err.is_context_too_long(), "{err}");
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
     }
 }
 

@@ -65,4 +65,19 @@ pub struct ApiErrorBody {
 #[derive(Deserialize)]
 pub struct ApiError {
     pub message: Option<String>,
+    #[serde(default, rename = "type")]
+    pub kind: Option<serde_json::Value>,
+    #[serde(default)]
+    pub code: Option<serde_json::Value>,
+}
+
+impl ApiError {
+    /// `type` / `code` 若是已知的上下文超限码则返回它（llama.cpp、OpenAI 兼容服务）。
+    pub fn context_code(&self) -> Option<&'static str> {
+        const CODES: [&str; 2] = ["exceed_context_size_error", "context_length_exceeded"];
+        [&self.kind, &self.code]
+            .into_iter()
+            .filter_map(|value| value.as_ref()?.as_str())
+            .find_map(|value| CODES.into_iter().find(|code| *code == value))
+    }
 }
