@@ -2,7 +2,7 @@ use rusqlite::Connection;
 
 use crate::error::{Error, Result};
 
-pub const SCHEMA_VERSION: i32 = 53;
+pub const SCHEMA_VERSION: i32 = 54;
 
 /// 低于此版本的库不能在当前程序里升级。
 pub const MIN_UPGRADE_VERSION: i32 = 33;
@@ -42,6 +42,7 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         (51, apply_v51),
         (52, apply_v52),
         (53, apply_v53),
+        (54, apply_v54),
     ];
     let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if !(0..=SCHEMA_VERSION).contains(&version) {
@@ -117,6 +118,19 @@ fn apply_v53(conn: &Connection) -> Result<()> {
             conn.execute_batch(
                 "ALTER TABLE ai_providers ADD COLUMN max_concurrency INTEGER NOT NULL DEFAULT 1;",
             )?;
+        }
+        Ok(())
+    })
+}
+
+/// Nullable language metadata; old articles are resolved lazily by read queries.
+fn apply_v54(conn: &Connection) -> Result<()> {
+    crate::db::atomic_write(conn, |conn| {
+        if !column_exists(conn, "feeds", "language")? {
+            conn.execute_batch("ALTER TABLE feeds ADD COLUMN language TEXT;")?;
+        }
+        if !column_exists(conn, "articles", "lang")? {
+            conn.execute_batch("ALTER TABLE articles ADD COLUMN lang TEXT;")?;
         }
         Ok(())
     })
@@ -913,6 +927,49 @@ mod tests {
             })
             .unwrap();
         assert_eq!(custom, 1);
+    }
+
+    #[test]
+    fn v54_adds_nullable_languages_without_rewriting_articles() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = crate::db::open_at(&dir.path().join("languages.db")).unwrap();
+        conn.execute_batch("ALTER TABLE feeds DROP COLUMN language;
+            ALTER TABLE articles DROP COLUMN lang;
+            INSERT INTO feeds(id,url,created_at) VALUES(1,'https://feed.example/',0);
+            INSERT INTO articles(id,feed_id,title,content_html,created_at) VALUES(1,1,'Fixture','<p>Body</p>',0);
+            PRAGMA user_version=53;
+            CREATE TRIGGER forbid_article_update BEFORE UPDATE ON articles BEGIN SELECT RAISE(ABORT,'unexpected article rewrite'); END;").unwrap();
+        let trigger: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE name='articles_au'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        migrate(&conn).unwrap();
+        apply_v54(&conn).unwrap();
+        let langs: (Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT f.language,a.lang FROM feeds f JOIN articles a ON a.feed_id=f.id",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(langs, (None, None));
+        assert_eq!(
+            conn.query_row(
+                "SELECT sql FROM sqlite_master WHERE name='articles_au'",
+                [],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            trigger
+        );
+        assert_eq!(
+            conn.pragma_query_value(None, "user_version", |r| r.get::<_, i32>(0))
+                .unwrap(),
+            SCHEMA_VERSION
+        );
     }
 
     #[test]

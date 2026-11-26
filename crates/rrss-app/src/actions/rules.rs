@@ -192,6 +192,7 @@ mod tests {
             &conn,
             feed,
             &[ParsedEntry {
+                language: None,
                 guid: "r1".into(),
                 canonical_url: Some("https://news.example.com/rust".into()),
                 title: "Rust 1.80 shipped".into(),
@@ -247,6 +248,7 @@ mod tests {
             &conn,
             feed,
             &[ParsedEntry {
+                language: None,
                 guid: "r1".into(),
                 canonical_url: Some("https://news.example.com/rust".into()),
                 title: "Rust 1.80 shipped".into(),

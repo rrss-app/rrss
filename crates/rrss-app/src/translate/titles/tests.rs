@@ -131,6 +131,11 @@ async fn feed_overrides_and_scope_decide_which_titles_count() {
 
     translations::set_feed_auto(&conn, 1, FeedAuto::Follow).unwrap();
     set(&path, translations::AUTO_SCOPE_KEY, "en");
+    conn.execute(
+        "UPDATE articles SET title=?1 WHERE id=1",
+        ["東京の自転車通勤、この10年でどう変わったか"],
+    )
+    .unwrap();
     let mut rows = vec![card(1, 1, "東京の自転車通勤、この10年でどう変わったか")];
     annotate(&conn, &mut rows).unwrap();
     assert_eq!(
@@ -247,5 +252,123 @@ fn reader_states_follow_switches_length_and_cache() {
     assert!(view.words > 500);
 
     translations::set_feed_auto(&conn, 1, FeedAuto::Never).unwrap();
+    assert!(reader_auto(&conn, &article, &doc, false).unwrap().is_none());
+}
+
+#[test]
+fn stored_languages_and_legacy_fallback_agree_without_writing() {
+    let (_dir, path) = setup("http://127.0.0.1:9");
+    set(&path, translations::AUTO_TITLES_KEY, "1");
+    let conn = db::open_at(&path).unwrap();
+    conn.execute_batch("UPDATE feeds SET language=CASE id WHEN 1 THEN 'en' ELSE 'zh' END;
+        UPDATE articles SET title='Docker 28 beta',lang='en',content_html='<p>中文正文</p>' WHERE id=1;
+        UPDATE articles SET title='PostgreSQL 18' WHERE id=2;
+        UPDATE articles SET title='iPhone 17 Pro' WHERE id=3;
+        INSERT INTO articles(id,feed_id,title,lang,created_at) VALUES(4,1,'Docker 28 beta','zh',0),(5,1,'Fixture',NULL,0),(6,1,'Fixture',NULL,0);").unwrap();
+    let chinese = "这是关于城市公共图书馆的报道，介绍了新的借阅规则。".repeat(15);
+    conn.execute(
+        "UPDATE articles SET content_html=?1 WHERE id=5",
+        [format!("<p>{chinese}</p>")],
+    )
+    .unwrap();
+    conn.execute("UPDATE articles SET fulltext_md=?1 WHERE id=6", [&chinese])
+        .unwrap();
+    conn.pragma_update(None, "query_only", true).unwrap();
+    let tx = conn.unchecked_transaction().unwrap();
+    let ids = [1, 2, 3, 4, 5, 6];
+    let mut cards: Vec<_> = ids
+        .iter()
+        .map(|id| card(*id, if *id == 3 { 2 } else { 1 }, "unused card text"))
+        .collect();
+    annotate(&tx, &mut cards).unwrap();
+    let annotated: Vec<_> = cards
+        .iter()
+        .filter_map(|a| a.title_lang.as_ref().map(|lang| (a.id, lang.as_str())))
+        .collect();
+    assert_eq!(annotated, vec![(1, "en"), (2, "en")]);
+    let Prepared::Ready { items, .. } = prepare(&tx, &ids).unwrap() else {
+        panic!("ready");
+    };
+    assert_eq!(
+        items.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+        vec![1, 2]
+    );
+    assert_eq!(
+        tx.query_row(
+            "SELECT count(*) FROM articles WHERE lang IS NULL",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        4
+    );
+    for id in [2, 3, 5, 6] {
+        let article = rrss_core::articles::get_article(&tx, id).unwrap();
+        let doc = crate::document::load_document(&article);
+        let reader = reader_auto(&tx, &article, &doc, false).unwrap();
+        assert_eq!(reader.map(|r| r.lang), cards[(id - 1) as usize].title_lang);
+    }
+    tx.commit().unwrap();
+}
+
+#[test]
+fn reader_preserves_entry_language_and_pruned_article_language() {
+    let (_dir, path) = setup("http://127.0.0.1:9");
+    set(&path, translations::AUTO_TITLES_KEY, "1");
+    let conn = db::open_at(&path).unwrap();
+    conn.execute_batch("UPDATE feeds SET language='en';
+        UPDATE articles SET title='東京都議会選挙',lang='ja',content_html='<p>東京都</p>' WHERE id=1;
+        UPDATE articles SET title='iPhone 17 Pro',lang='zh',pruned_at=1 WHERE id=2;").unwrap();
+    for id in [1, 2] {
+        let article = rrss_core::articles::get_article(&conn, id).unwrap();
+        let doc = crate::document::load_document(&article);
+        let mut cards = vec![card(id, 1, &article.title)];
+        annotate(&conn, &mut cards).unwrap();
+        assert_eq!(
+            reader_auto(&conn, &article, &doc, false)
+                .unwrap()
+                .map(|r| r.lang),
+            cards[0].title_lang
+        );
+    }
+    // Synthetic manual sources never supply priors to old title-only articles.
+    let feed = rrss_core::feeds::manual_feed(&conn).unwrap();
+    conn.execute("UPDATE feeds SET language='zh' WHERE id=?1", [feed])
+        .unwrap();
+    conn.execute("UPDATE articles SET feed_id=?1,title='Why async traits took five years',lang=NULL,content_html=NULL WHERE id=1",[feed]).unwrap();
+    let article = rrss_core::articles::get_article(&conn, 1).unwrap();
+    assert_eq!(
+        reader_auto(&conn, &article, &rrss_render::Document::new(vec![]), false)
+            .unwrap()
+            .unwrap()
+            .lang,
+        "en"
+    );
+}
+
+#[test]
+fn legacy_html_fallback_ignores_code_and_style_like_reader() {
+    let (_dir, path) = setup("http://127.0.0.1:9");
+    set(&path, translations::AUTO_TITLES_KEY, "1");
+    let conn = db::open_at(&path).unwrap();
+    let code =
+        "pub fn handle_request(context: &Context) -> Result<(), Error> { Ok(()) }\n".repeat(10);
+    let html = format!(
+        "<style>.container {{ font-family: sans-serif; margin: 0 auto; }}</style><pre><code>{code}</code></pre><p>这篇中文文章记录了图书馆系统的升级步骤和注意事项。</p>"
+    );
+    conn.execute(
+        "UPDATE articles SET title='Fixture',lang=NULL,content_html=?1 WHERE id=1",
+        [&html],
+    )
+    .unwrap();
+    let mut cards = vec![card(1, 1, "Fixture")];
+    annotate(&conn, &mut cards).unwrap();
+    assert_eq!(cards[0].title_lang, None);
+    let Prepared::Ready { items, .. } = prepare(&conn, &[1]).unwrap() else {
+        panic!("ready");
+    };
+    assert!(items.is_empty());
+    let article = rrss_core::articles::get_article(&conn, 1).unwrap();
+    let doc = crate::document::load_document(&article);
     assert!(reader_auto(&conn, &article, &doc, false).unwrap().is_none());
 }

@@ -1114,6 +1114,7 @@ mod tests {
             &conn,
             feed,
             &[ParsedEntry {
+                language: None,
                 guid: url.into(),
                 canonical_url: Some(url.into()),
                 title: "pic".into(),
@@ -1243,6 +1244,7 @@ mod tests {
             &conn,
             feed,
             &[ParsedEntry {
+                language: None,
                 guid: "https://news.example.com/1".into(),
                 canonical_url: Some("https://news.example.com/1".into()),
                 title: "pic".into(),
@@ -1308,6 +1310,7 @@ mod tests {
             &conn,
             feed,
             &[ParsedEntry {
+                language: None,
                 guid: "https://news.example.com/1".into(),
                 canonical_url: Some("https://news.example.com/1".into()),
                 title: "pic".into(),
@@ -1399,6 +1402,7 @@ mod tests {
             &conn,
             feed,
             &[ParsedEntry {
+                language: None,
                 guid: "https://news.example.com/1".into(),
                 canonical_url: Some("https://news.example.com/1".into()),
                 title: "pic".into(),
@@ -1620,6 +1624,7 @@ mod tests {
             &conn,
             feed,
             &[ParsedEntry {
+                language: None,
                 guid: "https://news.example.com/1".into(),
                 canonical_url: Some("https://news.example.com/1".into()),
                 title: "pic".into(),

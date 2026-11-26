@@ -780,6 +780,7 @@ mod tests {
 
     fn entry(title: &str, url: &str, html: &str) -> ParsedEntry {
         ParsedEntry {
+            language: None,
             guid: url.into(),
             canonical_url: Some(url.into()),
             title: title.into(),

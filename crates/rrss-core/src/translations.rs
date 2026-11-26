@@ -1,5 +1,8 @@
 //! 阅读器按需译文。不覆盖原文 `blocks_json`。日志 target：`rrss_core::translations`。
 
+mod languages;
+pub use languages::{article_languages, feed_language_evidence, feed_language_priors};
+
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::db::{get_setting, set_setting};

@@ -429,6 +429,7 @@ mod tests {
         tags: &[&str],
     ) -> ParsedEntry {
         ParsedEntry {
+            language: None,
             guid: format!("guid:{title}"),
             canonical_url: Some(url.into()),
             title: title.into(),

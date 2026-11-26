@@ -8,6 +8,10 @@ pub fn detect_lang(text: &str) -> Option<&'static str> {
     for ch in text.chars() {
         c.add(ch);
     }
+    script_lang(&c).or_else(|| (c.latin > 0).then(|| latin_lang(text)))
+}
+
+fn script_lang(c: &Counts) -> Option<&'static str> {
     let letters = c.letters();
     if letters == 0 {
         return None;
@@ -44,22 +48,595 @@ pub fn detect_lang(text: &str) -> Option<&'static str> {
     if dominant(c.devanagari) {
         return Some("hi");
     }
-    if c.latin == 0 {
-        return None;
-    }
-    Some(latin_lang(text))
+    None
 }
 
 /// 相对目标语言是外文时返回它的语言码。目标语言取主码（`zh-CN` → `zh`）。
 /// `english_only` 为真时只有英文算外文。
 pub fn foreign_lang(text: &str, target: &str, english_only: bool) -> Option<&'static str> {
+    foreign_lang_code(detect_lang(text)?, target, english_only)
+}
+
+/// Compare an already detected language with the target's primary language code.
+pub fn foreign_lang_code<'a>(
+    detected: &'a str,
+    target: &str,
+    english_only: bool,
+) -> Option<&'a str> {
     let target = target.trim().to_ascii_lowercase();
     let base = target.split(['-', '_']).next().unwrap_or_default();
-    let lang = detect_lang(text)?;
-    if base.is_empty() || lang == base || (english_only && lang != "en") {
-        return None;
+    (!base.is_empty() && detected != base && (!english_only || detected == "en"))
+        .then_some(detected)
+}
+
+/// Normalize feed declarations to an ISO 639-1 primary code.
+pub fn normalize_lang_code(raw: &str) -> Option<String> {
+    let primary = raw.split(['-', '_']).next()?.trim().to_ascii_lowercase();
+    let code = match primary.as_str() {
+        "eng" => "en",
+        "zho" | "chi" | "cmn" => "zh",
+        "jpn" => "ja",
+        "kor" => "ko",
+        "fra" | "fre" => "fr",
+        "deu" | "ger" => "de",
+        "spa" => "es",
+        "por" => "pt",
+        "ita" => "it",
+        "nld" | "dut" => "nl",
+        "rus" => "ru",
+        "ukr" => "uk",
+        "swe" => "sv",
+        "tur" => "tr",
+        "vie" => "vi",
+        "ara" => "ar",
+        "hin" => "hi",
+        "pol" => "pl",
+        "ell" | "gre" => "el",
+        "heb" => "he",
+        "tha" => "th",
+        "ces" | "cze" => "cs",
+        "dan" => "da",
+        "fin" => "fi",
+        "nor" => "no",
+        "nob" => "nb",
+        "nno" => "nn",
+        "ron" | "rum" => "ro",
+        "hun" => "hu",
+        "ind" => "id",
+        "msa" | "may" => "ms",
+        "cat" => "ca",
+        "eus" | "baq" => "eu",
+        "bul" => "bg",
+        "bel" => "be",
+        "srp" => "sr",
+        "hrv" => "hr",
+        "slk" | "slo" => "sk",
+        "slv" => "sl",
+        "est" => "et",
+        "lav" => "lv",
+        "lit" => "lt",
+        "fas" | "per" => "fa",
+        "ben" => "bn",
+        "tam" => "ta",
+        code if code.len() == 2 && ISO_639_1.split_whitespace().any(|valid| valid == code) => code,
+        _ => return None,
+    };
+    Some(code.to_owned())
+}
+
+const ISO_639_1: &str = "aa ab ae af ak am an ar as av ay az ba be bg bh bi bm bn bo br bs ca ce ch co cr cs cu cv cy da de dv dz ee el en eo es et eu fa ff fi fj fo fr fy ga gd gl gn gu gv ha he hi ho hr ht hu hy hz ia id ie ig ii ik io is it iu ja jv ka kg ki kj kk kl km kn ko kr ks ku kv kw ky la lb lg li ln lo lt lu lv mg mh mi mk ml mn mr ms mt my na nb nd ne ng nl nn no nr nv ny oc oj om or os pa pi pl ps pt qu rm rn ro ru rw sa sc sd se sg si sk sl sm sn so sq sr ss st su sv sw ta te tg th ti tk tl tn to tr ts tt tw ty ug uk ur uz ve vi vo wa wo xh yi yo za zh zu";
+
+fn latin_language(code: &str) -> bool {
+    matches!(
+        code,
+        "af" | "an"
+            | "az"
+            | "bi"
+            | "bm"
+            | "br"
+            | "bs"
+            | "ca"
+            | "ch"
+            | "co"
+            | "cs"
+            | "cy"
+            | "da"
+            | "de"
+            | "en"
+            | "eo"
+            | "es"
+            | "et"
+            | "eu"
+            | "fi"
+            | "fj"
+            | "fo"
+            | "fr"
+            | "fy"
+            | "ga"
+            | "gd"
+            | "gl"
+            | "gn"
+            | "ha"
+            | "hr"
+            | "ht"
+            | "hu"
+            | "ia"
+            | "id"
+            | "ie"
+            | "ig"
+            | "io"
+            | "is"
+            | "it"
+            | "jv"
+            | "ki"
+            | "la"
+            | "lb"
+            | "lg"
+            | "li"
+            | "ln"
+            | "lt"
+            | "lv"
+            | "mg"
+            | "mi"
+            | "ms"
+            | "mt"
+            | "nb"
+            | "nl"
+            | "nn"
+            | "no"
+            | "oc"
+            | "pl"
+            | "pt"
+            | "qu"
+            | "rm"
+            | "ro"
+            | "rw"
+            | "sc"
+            | "se"
+            | "sk"
+            | "sl"
+            | "sm"
+            | "sn"
+            | "so"
+            | "sq"
+            | "st"
+            | "su"
+            | "sv"
+            | "sw"
+            | "tl"
+            | "tr"
+            | "uz"
+            | "vi"
+            | "wa"
+            | "wo"
+            | "xh"
+            | "yo"
+            | "zu"
+    )
+}
+
+/// Whether prose can vote on a feed's language without relying on its prior.
+pub fn has_language_evidence(prose: &str) -> bool {
+    let c = Counts::of(prose);
+    script_lang(&c).is_some() || c.latin >= 120
+}
+
+/// Combine script evidence, sufficient prose and a feed/entry prior, in that order.
+pub fn detect_article_lang(title: &str, body_prose: &str, prior: Option<&str>) -> Option<String> {
+    let prior = prior.and_then(normalize_lang_code);
+    let text = format!("{title}\n{body_prose}");
+    let c = Counts::of(&text);
+    if let Some(lang) = script_lang(&c) {
+        return Some(
+            if lang == "zh" && c.kana == 0 && prior.as_deref() == Some("ja") {
+                "ja"
+            } else {
+                lang
+            }
+            .to_owned(),
+        );
     }
-    Some(lang)
+    if c.latin >= 120 {
+        return Some(latin_lang(&text).to_owned());
+    }
+    if c.latin > 0 {
+        if let Some(prior) = prior.as_deref() {
+            let diacritics = text
+                .chars()
+                .filter(|ch| {
+                    ch.is_alphabetic()
+                        && matches!(ch,
+                '\u{00C0}'..='\u{024F}' | '\u{1E00}'..='\u{1EFF}')
+                })
+                .count();
+            if (latin_language(prior) && diacritics < 2)
+                || (!latin_language(prior) && title.split_whitespace().count() <= 4 && c.latin < 30)
+            {
+                return Some(prior.to_owned());
+            }
+        }
+        return Some(latin_lang(&text).to_owned());
+    }
+    prior
+}
+
+/// Bounded prose for detection; code, media URLs and separators contribute no text.
+pub fn document_prose_preview(doc: &crate::Document, max_chars: usize) -> String {
+    use crate::Block;
+    let mut out = ProsePreview::new(max_chars);
+    for block in &doc.blocks {
+        if out.is_full() {
+            break;
+        }
+        match block {
+            Block::Heading { inlines, .. }
+            | Block::Paragraph { inlines }
+            | Block::Quote { inlines }
+            | Block::ListItem { inlines, .. } => out.inlines(inlines),
+            Block::Table { head, rows, .. } => {
+                for cell in head.iter().chain(rows.iter().flatten()) {
+                    if out.is_full() {
+                        break;
+                    }
+                    out.inlines(cell);
+                    out.push(" ");
+                }
+            }
+            Block::CodeBlock { .. } | Block::Embed { .. } | Block::Rule | Block::Image { .. } => {
+                continue;
+            }
+        }
+        out.push("\n");
+    }
+    out.text
+}
+
+/// Fast streaming Markdown prose preview for language detection; skips code blocks,
+/// inline code, images and raw HTML without building a Document.
+pub fn markdown_prose_preview(markdown: &str, max_chars: usize) -> String {
+    use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+    let mut out = ProsePreview::new(max_chars);
+    if out.is_full() {
+        return out.text;
+    }
+    let mut skip_depth = 0usize;
+    for event in Parser::new(markdown) {
+        if out.is_full() {
+            break;
+        }
+        match event {
+            Event::Start(Tag::CodeBlock(_) | Tag::Image { .. } | Tag::HtmlBlock) => {
+                skip_depth += 1;
+            }
+            Event::Start(_) if skip_depth > 0 => {
+                skip_depth += 1;
+            }
+            Event::End(_) if skip_depth > 0 => {
+                skip_depth -= 1;
+            }
+            _ if skip_depth > 0 => {}
+            Event::Text(text) => out.push(&text),
+            Event::Code(_) | Event::SoftBreak | Event::HardBreak => out.push(" "),
+            Event::End(
+                TagEnd::Paragraph
+                | TagEnd::Heading(_)
+                | TagEnd::Item
+                | TagEnd::BlockQuote(_)
+                | TagEnd::TableCell,
+            ) => out.push("\n"),
+            _ => {}
+        }
+    }
+    out.text
+}
+
+/// Fast streaming HTML prose preview for language detection; skips comments,
+/// script/style/pre/code/noscript/template subtrees and stops at `max_chars`.
+pub fn html_prose_preview(html: &str, max_chars: usize) -> String {
+    let mut out = ProsePreview::new(max_chars);
+    if out.is_full() {
+        return out.text;
+    }
+    let bytes = html.as_bytes();
+    let len = bytes.len();
+    let mut i = 0usize;
+    let mut skip_stack: Vec<&'static str> = Vec::new();
+    while i < len && !out.is_full() {
+        if bytes[i] == b'<' {
+            if bytes[i..].starts_with(b"<!--") {
+                i = find_bytes(bytes, i + 4, b"-->")
+                    .map(|pos| pos + 3)
+                    .unwrap_or(len);
+                continue;
+            }
+            if bytes[i..].starts_with(b"<![CDATA[") {
+                let start = i + 9;
+                let end = find_bytes(bytes, start, b"]]>").unwrap_or(len);
+                if skip_stack.is_empty() {
+                    out.push(&html[start..end]);
+                }
+                i = (end + 3).min(len);
+                continue;
+            }
+            let mut j = i + 1;
+            let closing = j < len && bytes[j] == b'/';
+            if closing {
+                j += 1;
+            }
+            let name_start = j;
+            if j < len && bytes[j].is_ascii_alphabetic() {
+                while j < len && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'-') {
+                    j += 1;
+                }
+                let name = &html[name_start..j];
+                let (tag_end, self_closing) = scan_html_tag_end(bytes, j);
+                if let Some(raw_tag) = raw_text_html_tag(name) {
+                    if !closing && !self_closing {
+                        i = skip_raw_text_tag(bytes, tag_end, raw_tag);
+                        continue;
+                    }
+                } else if let Some(skip_tag) = skipped_html_tag(name) {
+                    if closing {
+                        if let Some(pos) = skip_stack.iter().rposition(|&tag| tag == skip_tag) {
+                            skip_stack.truncate(pos);
+                        }
+                    } else if !self_closing {
+                        skip_stack.push(skip_tag);
+                    }
+                    if skip_stack.is_empty() {
+                        out.push_sep();
+                    }
+                } else if skip_stack.is_empty() && is_block_html_tag(name) {
+                    out.push_sep();
+                }
+                i = tag_end;
+                continue;
+            }
+            if j < len && (bytes[j] == b'!' || bytes[j] == b'?') {
+                let (tag_end, _) = scan_html_tag_end(bytes, j + 1);
+                i = tag_end;
+                continue;
+            }
+            if skip_stack.is_empty() {
+                out.push_char('<');
+            }
+            i += 1;
+            continue;
+        }
+        if !skip_stack.is_empty() {
+            i = find_byte(bytes, i + 1, b'<').unwrap_or(len);
+            continue;
+        }
+        if bytes[i] == b'&'
+            && let Some((ch, next)) = decode_html_entity(html, i)
+        {
+            out.push_char(ch);
+            i = next;
+            continue;
+        }
+        let start = i;
+        i += 1;
+        while i < len && bytes[i] != b'<' && bytes[i] != b'&' {
+            i += 1;
+        }
+        out.push(&html[start..i]);
+    }
+    out.text
+}
+
+struct ProsePreview {
+    text: String,
+    remaining: usize,
+    pending_sep: bool,
+}
+
+impl ProsePreview {
+    fn new(max_chars: usize) -> Self {
+        Self {
+            text: String::new(),
+            remaining: max_chars,
+            pending_sep: false,
+        }
+    }
+
+    fn is_full(&self) -> bool {
+        self.remaining == 0
+    }
+
+    fn push_char(&mut self, ch: char) {
+        if self.remaining == 0 {
+            return;
+        }
+        if self.pending_sep {
+            self.pending_sep = false;
+            if !ch.is_whitespace()
+                && !self.text.is_empty()
+                && !self.text.ends_with(char::is_whitespace)
+            {
+                self.text.push(' ');
+                self.remaining -= 1;
+                if self.remaining == 0 {
+                    return;
+                }
+            }
+        }
+        self.text.push(ch);
+        self.remaining -= 1;
+    }
+
+    fn push(&mut self, text: &str) {
+        for ch in text.chars() {
+            if self.remaining == 0 {
+                break;
+            }
+            self.push_char(ch);
+        }
+    }
+
+    fn push_sep(&mut self) {
+        if !self.text.is_empty() && !self.text.ends_with(char::is_whitespace) {
+            self.pending_sep = true;
+        }
+    }
+
+    fn inlines(&mut self, inlines: &[crate::Inline]) {
+        use crate::Inline;
+        for inline in inlines {
+            if self.is_full() {
+                break;
+            }
+            match inline {
+                Inline::Text { text } => self.push(text),
+                Inline::Strong { children }
+                | Inline::Emphasis { children }
+                | Inline::Styled { children, .. }
+                | Inline::Link { children, .. } => self.inlines(children),
+                Inline::Code { .. } | Inline::HardBreak => self.push(" "),
+            }
+        }
+    }
+}
+
+fn find_byte(haystack: &[u8], start: usize, needle: u8) -> Option<usize> {
+    haystack[start..]
+        .iter()
+        .position(|&b| b == needle)
+        .map(|off| start + off)
+}
+
+fn find_bytes(haystack: &[u8], start: usize, needle: &[u8]) -> Option<usize> {
+    haystack[start..]
+        .windows(needle.len())
+        .position(|window| window == needle)
+        .map(|off| start + off)
+}
+
+fn scan_html_tag_end(bytes: &[u8], mut i: usize) -> (usize, bool) {
+    let mut quote = None;
+    let mut last_non_ws = 0u8;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if let Some(q) = quote {
+            if b == q {
+                quote = None;
+            }
+        } else if b == b'"' || b == b'\'' {
+            quote = Some(b);
+        } else if b == b'>' {
+            return (i + 1, last_non_ws == b'/');
+        } else if !b.is_ascii_whitespace() {
+            last_non_ws = b;
+        }
+        i += 1;
+    }
+    (bytes.len(), false)
+}
+
+fn raw_text_html_tag(name: &str) -> Option<&'static str> {
+    if name.eq_ignore_ascii_case("script") {
+        Some("script")
+    } else if name.eq_ignore_ascii_case("style") {
+        Some("style")
+    } else {
+        None
+    }
+}
+
+fn skip_raw_text_tag(bytes: &[u8], mut i: usize, tag: &str) -> usize {
+    let tag_bytes = tag.as_bytes();
+    while let Some(pos) = find_byte(bytes, i, b'<') {
+        let mut j = pos + 1;
+        if j < bytes.len() && bytes[j] == b'/' {
+            j += 1;
+            if j + tag_bytes.len() <= bytes.len()
+                && bytes[j..j + tag_bytes.len()].eq_ignore_ascii_case(tag_bytes)
+            {
+                let after = j + tag_bytes.len();
+                if after == bytes.len()
+                    || bytes[after] == b'>'
+                    || bytes[after].is_ascii_whitespace()
+                {
+                    return find_byte(bytes, after, b'>')
+                        .map(|end| end + 1)
+                        .unwrap_or(bytes.len());
+                }
+            }
+        }
+        i = pos + 1;
+    }
+    bytes.len()
+}
+
+fn skipped_html_tag(name: &str) -> Option<&'static str> {
+    if name.eq_ignore_ascii_case("pre") {
+        Some("pre")
+    } else if name.eq_ignore_ascii_case("code") {
+        Some("code")
+    } else if name.eq_ignore_ascii_case("noscript") {
+        Some("noscript")
+    } else if name.eq_ignore_ascii_case("template") {
+        Some("template")
+    } else {
+        None
+    }
+}
+
+fn is_block_html_tag(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "p" | "div"
+            | "br"
+            | "li"
+            | "ul"
+            | "ol"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "tr"
+            | "td"
+            | "th"
+            | "blockquote"
+            | "section"
+            | "article"
+            | "header"
+            | "footer"
+            | "hr"
+            | "dd"
+            | "dt"
+            | "figcaption"
+    )
+}
+
+fn decode_html_entity(html: &str, start: usize) -> Option<(char, usize)> {
+    let bytes = html.as_bytes();
+    let max_end = (start + 12).min(bytes.len());
+    let semi = bytes[start + 1..max_end].iter().position(|&b| b == b';')?;
+    let entity = &html[start + 1..start + 1 + semi];
+    let ch = match entity {
+        "amp" => '&',
+        "lt" => '<',
+        "gt" => '>',
+        "quot" => '"',
+        "apos" => '\'',
+        "nbsp" => ' ',
+        s if s.starts_with('#') => {
+            let code = if let Some(hex) = s.strip_prefix("#x").or_else(|| s.strip_prefix("#X")) {
+                u32::from_str_radix(hex, 16).ok()?
+            } else {
+                s[1..].parse::<u32>().ok()?
+            };
+            let ch = char::from_u32(code)?;
+            if ch.is_control() && ch != '\n' && ch != '\t' {
+                return None;
+            }
+            ch
+        }
+        _ => return None,
+    };
+    Some((ch, start + 2 + semi))
 }
 
 /// 正文词数：以空格分词的文字按词计，中日韩文字按两个字一个词。
@@ -97,6 +674,14 @@ struct Counts {
 }
 
 impl Counts {
+    fn of(text: &str) -> Self {
+        let mut counts = Self::default();
+        for ch in text.chars().filter(|ch| ch.is_alphabetic()) {
+            counts.add(ch);
+        }
+        counts
+    }
+
     fn add(&mut self, ch: char) {
         match ch {
             _ if is_han(ch) => self.han += 1,
@@ -182,6 +767,208 @@ fn latin_lang(text: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalizes_feed_language_codes() {
+        for (raw, code) in [
+            (" en-US ", "en"),
+            ("ZH_cn", "zh"),
+            ("zh-Hans", "zh"),
+            ("ja-JP", "ja"),
+            ("pt-BR", "pt"),
+            ("ENG", "en"),
+            ("cmn", "zh"),
+            ("chi", "zh"),
+            ("zho", "zh"),
+            ("jpn", "ja"),
+            ("fre", "fr"),
+            ("ger", "de"),
+            ("dut", "nl"),
+            ("vie", "vi"),
+            ("pol", "pl"),
+        ] {
+            assert_eq!(normalize_lang_code(raw).as_deref(), Some(code));
+        }
+        for raw in [
+            "", "  ", "und", "mul", "zxx", "mis", "42", "e1", "e", "english", "zz", "中文", "-en",
+        ] {
+            assert_eq!(normalize_lang_code(raw), None);
+        }
+    }
+
+    #[test]
+    fn prose_preview_skips_code_media_and_stops_at_character_limit() {
+        use crate::{Block, Document, Inline};
+        let doc = crate::markdown_to_document(
+            "# Head\n\nWords `code污染` **more** [link](https://skip.example)\n\n```text\n代码污染\n```\n\n---\n\nEnd",
+        );
+        let mut blocks = vec![Block::Embed {
+            kind: crate::EmbedKind::Video,
+            url: "https://skip.example".into(),
+            title: "污染".into(),
+            poster: None,
+        }];
+        blocks.extend(doc.blocks);
+        blocks.push(Block::Paragraph {
+            inlines: vec![Inline::Text {
+                text: "汉字".repeat(10000),
+            }],
+        });
+        let doc = Document::new(blocks);
+        let prose = document_prose_preview(&doc, 80);
+        assert!(!prose.contains("污染"));
+        assert!(!prose.contains("skip.example"));
+        assert!(prose.contains("more"));
+        assert!(prose.contains("End"));
+        assert_eq!(prose.chars().count(), 80);
+        assert_eq!(document_prose_preview(&doc, 5), "Head\n");
+        assert_eq!(document_prose_preview(&doc, 0), "");
+    }
+
+    #[test]
+    fn streaming_html_and_markdown_prose_previews_skip_code_and_bound_output() {
+        let html = concat!(
+            "<!-- comment污染 --><style>body { font-family: 'pollution'; }</style>",
+            "<script>if (a < b && c > d) { alert('script_pollution'); }</script>",
+            "<pre><code>fn main() { let pollution = 1; }</pre>",
+            "<p data-info=\"a > b\">Hello&nbsp;<code>inline_pollution</code>&amp; <em>world</em></p>",
+            "<p>中文正文</p>",
+        );
+        let prose = html_prose_preview(html, 200);
+        assert!(!prose.contains("pollution"));
+        assert!(!prose.contains("comment"));
+        assert!(prose.contains("Hello"));
+        assert!(prose.contains("& world"));
+        assert!(prose.contains("中文正文"));
+        assert_eq!(html_prose_preview("<p>1 < 2 &amp; 3</p>", 50), "1 < 2 & 3");
+        assert_eq!(
+            html_prose_preview(&format!("<p>{}</p>", "汉字".repeat(500)), 40)
+                .chars()
+                .count(),
+            40
+        );
+        assert_eq!(html_prose_preview(html, 0), "");
+
+        let md = concat!(
+            "# Heading\n\n",
+            "![image_pollution](https://skip.example/a.png)\n\n",
+            "Intro `inline_pollution` and **body**.\n\n",
+            "```rust\nfn block_pollution() {}\n```\n\n",
+            "中文结尾"
+        );
+        let md_prose = markdown_prose_preview(md, 200);
+        assert!(!md_prose.contains("pollution"));
+        assert!(!md_prose.contains("skip.example"));
+        assert!(md_prose.contains("Heading"));
+        assert!(md_prose.contains("Intro"));
+        assert!(md_prose.contains("body"));
+        assert!(md_prose.contains("中文结尾"));
+        assert_eq!(
+            markdown_prose_preview(&"汉字".repeat(500), 40)
+                .chars()
+                .count(),
+            40
+        );
+        assert_eq!(markdown_prose_preview(md, 0), "");
+    }
+
+    #[test]
+    fn article_prior_resolves_ambiguous_titles_and_empty_text() {
+        for title in [
+            "Docker 28 beta",
+            "PostgreSQL 18",
+            "Apple ships new Mac",
+            "Linux 6.14",
+        ] {
+            assert_eq!(
+                detect_article_lang(title, "", Some("EN-us")).as_deref(),
+                Some("en")
+            );
+        }
+        assert_eq!(
+            detect_article_lang("iPhone 17 Pro", "", Some("zh")).as_deref(),
+            Some("zh")
+        );
+        assert_eq!(
+            detect_article_lang(
+                "Why async traits took five years to stabilize",
+                "",
+                Some("zh")
+            )
+            .as_deref(),
+            Some("en")
+        );
+        assert_eq!(
+            detect_article_lang("東京都議会選挙", "", Some("ja")).as_deref(),
+            Some("ja")
+        );
+        assert_eq!(
+            detect_article_lang("東京都議会選挙", "", None).as_deref(),
+            Some("zh")
+        );
+        assert_eq!(
+            detect_article_lang("2026 · 42%", "", Some("en")).as_deref(),
+            Some("en")
+        );
+        assert_eq!(detect_article_lang("2026 · 42%", "", None), None);
+        assert_eq!(detect_article_lang("× ÷ + = 42", "", None), None);
+        assert_eq!(
+            detect_article_lang("× ÷ + = 42", "", Some("zh")).as_deref(),
+            Some("zh")
+        );
+        for (title, lang) in [
+            ("서울 지하철 새 노선 개통", "ko"),
+            ("Новый закон о связи", "ru"),
+            ("Київ відкрив нову лінію", "uk"),
+            ("Ελληνική γλώσσα", "el"),
+            ("اللغة العربية", "ar"),
+            ("השפה העברית", "he"),
+            ("ภาษาไทย", "th"),
+            ("हिन्दी भाषा", "hi"),
+        ] {
+            assert_eq!(
+                detect_article_lang(title, "", Some("en")).as_deref(),
+                Some(lang)
+            );
+        }
+    }
+
+    #[test]
+    fn article_body_and_diacritics_override_weak_priors() {
+        let chinese = "维护者称写入吞吐提升约四成，读取延迟持平。".repeat(20);
+        for title in ["Product", "开发者の记录"] {
+            assert_eq!(
+                detect_article_lang(title, &chinese, Some("en")).as_deref(),
+                Some("zh")
+            );
+        }
+        let english =
+            "The maintainers say write throughput rose by about forty percent. ".repeat(8);
+        assert_eq!(
+            detect_article_lang("iPhone", &english, Some("zh")).as_deref(),
+            Some("en")
+        );
+        assert_eq!(
+            detect_article_lang("新 release", &english, Some("zh")).as_deref(),
+            Some("en")
+        );
+        for (title, lang) in [
+            ("La réforme des retraites est adoptée", "fr"),
+            ("Die Züge sind wieder pünktlich und schnell", "de"),
+            ("Hà Nội mở thêm tuyến đường sắt đô thị mới", "vi"),
+        ] {
+            assert_eq!(
+                detect_article_lang(title, "", Some("en")).as_deref(),
+                Some(lang)
+            );
+        }
+        assert!(!has_language_evidence("Product beta"));
+        assert!(has_language_evidence(&english));
+        assert!(has_language_evidence(&chinese));
+        assert_eq!(foreign_lang_code("en", "zh_CN", true), Some("en"));
+        assert_eq!(foreign_lang_code("en", "en-US", false), None);
+        assert_eq!(foreign_lang_code("fr", "zh", true), None);
+    }
 
     #[test]
     fn detects_scripts_in_titles() {

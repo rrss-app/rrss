@@ -297,6 +297,7 @@ mod tests {
             conn,
             feed,
             &[ParsedEntry {
+                language: None,
                 guid: guid.into(),
                 canonical_url: Some(format!("https://news.example.com/{guid}")),
                 title: title.into(),

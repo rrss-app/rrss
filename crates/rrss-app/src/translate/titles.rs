@@ -8,7 +8,7 @@ use std::time::Duration;
 use rrss_core::articles::ROW_CARD;
 use rrss_core::translations::{self, FeedAuto};
 use rrss_render::TranslateUnit;
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::Connection;
 
 use super::{Config, TranslateBackend, spawn_db, translate_units, validate_units, window};
 use crate::views::{
@@ -81,13 +81,6 @@ impl Policy {
         self.enabled && self.feed(feed_id).applies(self.body)
     }
 
-    fn title_lang(&self, feed_id: i64, title: &str) -> Option<&'static str> {
-        if !self.titles_for(feed_id) {
-            return None;
-        }
-        rrss_render::foreign_lang(title, &self.lang, self.english_only)
-    }
-
     /// 没有任何源会翻标题时跳过整页的逐条判断。
     fn any_titles(&self) -> bool {
         self.config.is_some()
@@ -119,19 +112,86 @@ fn budget_exhausted(conn: &Connection) -> rrss_core::Result<bool> {
     }
 }
 
+struct ResolvedArticle {
+    title: String,
+    foreign: Option<String>,
+}
+
+/// Shared by annotation and request preparation; safe inside a read snapshot.
+fn resolve_article_langs(
+    conn: &Connection,
+    ids: &[i64],
+    policy: &Policy,
+) -> rrss_core::Result<HashMap<i64, ResolvedArticle>> {
+    let rows = translations::article_languages(conn, ids)?;
+    let feeds: Vec<_> = rows
+        .iter()
+        .filter(|row| row.lang.is_none() && policy.titles_for(row.feed_id))
+        .map(|row| row.feed_id)
+        .collect();
+    let priors = translations::feed_language_priors(conn, &feeds)?;
+    let mut resolved = HashMap::new();
+    for row in rows {
+        if !policy.titles_for(row.feed_id) {
+            continue;
+        }
+        let detected = row.lang.or_else(|| {
+            let prose = if let Some(text) = row.fulltext_preview.filter(|s| !s.is_empty()) {
+                rrss_render::markdown_prose_preview(&text, 2000)
+            } else {
+                rrss_render::html_prose_preview(
+                    row.html_preview.as_deref().unwrap_or_default(),
+                    2000,
+                )
+            };
+            rrss_render::detect_article_lang(
+                &row.title,
+                &prose,
+                priors.get(&row.feed_id).map(String::as_str),
+            )
+        });
+        let foreign = detected
+            .as_deref()
+            .and_then(|lang| {
+                rrss_render::foreign_lang_code(lang, &policy.lang, policy.english_only)
+            })
+            .map(str::to_owned);
+        resolved.insert(
+            row.id,
+            ResolvedArticle {
+                title: row.title,
+                foreign,
+            },
+        );
+    }
+    Ok(resolved)
+}
+
 /// 给列表的文章卡片标上外文语言码、已有的标题译文和正文译文状态。
 pub fn annotate(conn: &Connection, articles: &mut [ArticleView]) -> rrss_core::Result<()> {
     let policy = Policy::read(conn)?;
     if !policy.any_titles() {
         return Ok(());
     }
+    let ids: Vec<_> = articles
+        .iter()
+        .filter(|a| a.row_kind == ROW_CARD && policy.titles_for(a.feed_id))
+        .map(|a| a.id)
+        .collect();
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let resolved = resolve_article_langs(conn, &ids, &policy)?;
     let mut foreign = Vec::new();
     for article in articles.iter_mut() {
         if article.row_kind != ROW_CARD {
             continue;
         }
-        if let Some(lang) = policy.title_lang(article.feed_id, &article.title) {
-            article.title_lang = Some(lang.into());
+        if let Some(lang) = resolved
+            .get(&article.id)
+            .and_then(|row| row.foreign.as_ref())
+        {
+            article.title_lang = Some(lang.clone());
             foreign.push(article.id);
         }
     }
@@ -171,7 +231,16 @@ fn prepare(conn: &Connection, ids: &[i64]) -> rrss_core::Result<Prepared> {
         return Ok(Prepared::Paused(PAUSED_UNCONFIGURED, Vec::new()));
     };
     let mut existing = translations::title_translations(conn, ids, &policy.lang)?;
-    let mut stmt = conn.prepare_cached("SELECT feed_id, title FROM articles WHERE id = ?1")?;
+    let missing: Vec<_> = ids
+        .iter()
+        .copied()
+        .filter(|id| !existing.contains_key(id))
+        .collect();
+    let mut resolved = if missing.is_empty() {
+        HashMap::new()
+    } else {
+        resolve_article_langs(conn, &missing, &policy)?
+    };
     let mut items = Vec::new();
     let mut stored = Vec::new();
     for &id in ids {
@@ -179,16 +248,10 @@ fn prepare(conn: &Connection, ids: &[i64]) -> rrss_core::Result<Prepared> {
             stored.push((id, title));
             continue;
         }
-        let Some((feed_id, title)) = stmt
-            .query_row([id], |row| {
-                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-            })
-            .optional()?
-        else {
-            continue;
-        };
-        if policy.title_lang(feed_id, &title).is_some() {
-            items.push((id, title));
+        if let Some(row) = resolved.remove(&id)
+            && row.foreign.is_some()
+        {
+            items.push((id, row.title));
         }
     }
     if !items.is_empty() && policy.uses_budget() && budget_exhausted(conn)? {
@@ -312,10 +375,27 @@ pub(crate) fn reader_auto(
     if !policy.enabled || !(titles || body) {
         return Ok(None);
     }
-    let plain = rrss_render::units_plain(&rrss_render::extract_units(&article.title, doc));
-    let Some(lang) = rrss_render::foreign_lang(&plain, &policy.lang, policy.english_only) else {
+    // The stored article language retains entry-specific evidence when prose is
+    // short; new, stronger body evidence still overrides it in the detector.
+    let feed_prior = if article.lang.is_none() {
+        translations::feed_language_priors(conn, &[article.feed_id])?.remove(&article.feed_id)
+    } else {
+        None
+    };
+    let prior = article.lang.as_deref().or(feed_prior.as_deref());
+    let prose = rrss_render::document_prose_preview(doc, 2000);
+    let detected = if prose.trim().is_empty() && article.lang.is_some() {
+        article.lang.clone()
+    } else {
+        rrss_render::detect_article_lang(&article.title, &prose, prior)
+    };
+    let Some(lang) = detected
+        .as_deref()
+        .and_then(|lang| rrss_render::foreign_lang_code(lang, &policy.lang, policy.english_only))
+    else {
         return Ok(None);
     };
+    let plain = rrss_render::units_plain(&rrss_render::extract_units(&article.title, doc));
     let words = i64::try_from(rrss_render::word_count(&plain)).unwrap_or(i64::MAX);
     let state = if !body {
         AutoBodyState::Off

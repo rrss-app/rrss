@@ -46,6 +46,7 @@ fn seed(conn: &Connection) {
 
 fn entry(title: &str, url: &str) -> ParsedEntry {
     ParsedEntry {
+        language: None,
         guid: url.into(),
         canonical_url: Some(url.into()),
         title: title.into(),
@@ -277,6 +278,7 @@ fn focus_page_then_more_does_not_repeat_ids() {
             &conn,
             feed,
             &[ParsedEntry {
+                language: None,
                 guid: url.clone(),
                 canonical_url: Some(url.clone()),
                 title: title.clone(),
@@ -509,6 +511,7 @@ fn seed_article(conn: &Connection, title: &str, url: &str, like: bool) -> i64 {
         conn,
         feed,
         &[ParsedEntry {
+            language: None,
             guid: url.into(),
             canonical_url: Some(url.into()),
             title: title.into(),

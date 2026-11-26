@@ -129,6 +129,7 @@ mod tests {
             conn,
             feed,
             &[ParsedEntry {
+                language: None,
                 guid: "blocks".into(),
                 canonical_url: Some("https://search.test/article".into()),
                 title: "Needle title".into(),

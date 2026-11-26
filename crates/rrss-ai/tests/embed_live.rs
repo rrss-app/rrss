@@ -164,6 +164,7 @@ fn store_title_embedding(conn: &rusqlite::Connection, title: &str, model: &str, 
 
 fn entry(guid: &str, title: &str, html: &str, published: i64) -> ParsedEntry {
     ParsedEntry {
+        language: None,
         guid: guid.into(),
         canonical_url: Some(format!("https://news.example.com/{guid}")),
         title: title.into(),

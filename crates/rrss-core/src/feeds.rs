@@ -784,6 +784,7 @@ mod tests {
                 let url = format!("https://ads.example.com/{i}");
                 let title = format!("ad promo {i}");
                 ParsedEntry {
+                    language: None,
                     guid: url.clone(),
                     canonical_url: Some(url.clone()),
                     title,
@@ -829,6 +830,7 @@ mod tests {
             &conn,
             feed,
             &[ParsedEntry {
+                language: None,
                 guid: url.into(),
                 canonical_url: Some(url.into()),
                 title: "ad promo".into(),
@@ -863,6 +865,7 @@ mod tests {
             &conn,
             feed,
             &[ParsedEntry {
+                language: None,
                 guid: url.into(),
                 canonical_url: Some(url.into()),
                 title: "hello".into(),
@@ -900,6 +903,7 @@ mod tests {
             &conn,
             feed_a,
             &[crate::parse::ParsedEntry {
+                language: None,
                 guid: "https://a.example.com/1".into(),
                 canonical_url: Some("https://a.example.com/1".into()),
                 title: "art_a".into(),
@@ -921,6 +925,7 @@ mod tests {
             &conn,
             feed_b,
             &[crate::parse::ParsedEntry {
+                language: None,
                 guid: "https://b.example.com/1".into(),
                 canonical_url: Some("https://b.example.com/1".into()),
                 title: "art_b".into(),

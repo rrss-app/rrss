@@ -839,6 +839,7 @@ mod tests {
             conn,
             feed,
             &[ParsedEntry {
+                language: None,
                 guid: url.into(),
                 canonical_url: Some(url.into()),
                 title: title.into(),

@@ -236,6 +236,7 @@ mod tests {
         let (_dir, conn) = open_temp();
         let feed_id = subscribe(&conn, "https://example.test/rss", None);
         let entry = rrss_core::parse::ParsedEntry {
+            language: None,
             guid: "training".into(),
             canonical_url: Some("https://example.test/article".into()),
             title: "融资".into(),
@@ -275,6 +276,7 @@ mod tests {
         let (_dir, conn) = open_temp();
         let feed_id = subscribe(&conn, "https://deals.example/rss", None);
         let entry = |i: usize, title: &str, tags: &[&str]| rrss_core::parse::ParsedEntry {
+            language: None,
             guid: format!("g{i}"),
             canonical_url: Some(format!("https://deals.example/{i}")),
             title: title.into(),

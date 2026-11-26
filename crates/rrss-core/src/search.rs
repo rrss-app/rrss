@@ -434,6 +434,7 @@ mod tests {
         .unwrap();
         let entries = [
             ParsedEntry {
+                language: None,
                 guid: "keep".into(),
                 canonical_url: Some("https://news.example.com/library".into()),
                 title: "City opens new library".into(),
@@ -446,6 +447,7 @@ mod tests {
                 tags: vec![],
             },
             ParsedEntry {
+                language: None,
                 guid: "hide".into(),
                 canonical_url: Some("https://news.example.com/hidden".into()),
                 title: "hidden library gossip".into(),
@@ -480,6 +482,7 @@ mod tests {
             &conn,
             other,
             &[ParsedEntry {
+                language: None,
                 guid: "other".into(),
                 title: "图书馆 library AI other".into(),
                 author: None,
@@ -735,6 +738,7 @@ mod tests {
         )
         .unwrap();
         let entries = [ParsedEntry {
+            language: None,
             guid: "lib-cn".into(),
             canonical_url: Some("https://news.example.com/lib".into()),
             title: "城市图书馆延长开放时间".into(),
@@ -781,6 +785,7 @@ mod tests {
             feed,
             &[
                 ParsedEntry {
+                    language: None,
                     guid: "exact".into(),
                     canonical_url: Some("https://news.example.com/lib-exact".into()),
                     title: "图书馆".into(),
@@ -791,6 +796,7 @@ mod tests {
                     tags: vec![],
                 },
                 ParsedEntry {
+                    language: None,
                     guid: "sub".into(),
                     canonical_url: Some("https://news.example.com/lib-sub".into()),
                     title: "城市图书馆延长开放时间".into(),
@@ -801,6 +807,7 @@ mod tests {
                     tags: vec![],
                 },
                 ParsedEntry {
+                    language: None,
                     guid: "hide".into(),
                     canonical_url: Some("https://news.example.com/lib-hide".into()),
                     title: "hidden 图书馆内参".into(),
@@ -858,6 +865,7 @@ mod tests {
             feed,
             &[
                 ParsedEntry {
+                    language: None,
                     guid: "pct".into(),
                     canonical_url: Some("https://news.example.com/pct".into()),
                     title: "图书馆%延长".into(),
@@ -868,6 +876,7 @@ mod tests {
                     tags: vec![],
                 },
                 ParsedEntry {
+                    language: None,
                     guid: "us".into(),
                     canonical_url: Some("https://news.example.com/us".into()),
                     title: "图_馆通知".into(),
@@ -878,6 +887,7 @@ mod tests {
                     tags: vec![],
                 },
                 ParsedEntry {
+                    language: None,
                     guid: "plain".into(),
                     canonical_url: Some("https://news.example.com/plain".into()),
                     title: "城市图书馆延长开放时间".into(),
@@ -948,6 +958,7 @@ mod tests {
             feed,
             &[
                 ParsedEntry {
+                    language: None,
                     guid: "ai".into(),
                     canonical_url: Some("https://news.example.com/ai".into()),
                     title: "Why AI changes everything".into(),
@@ -958,6 +969,7 @@ mod tests {
                     tags: vec![],
                 },
                 ParsedEntry {
+                    language: None,
                     guid: "go".into(),
                     canonical_url: Some("https://news.example.com/go".into()),
                     title: "Go 1.22 released".into(),
@@ -968,6 +980,7 @@ mod tests {
                     tags: vec![],
                 },
                 ParsedEntry {
+                    language: None,
                     guid: "cpp".into(),
                     canonical_url: Some("https://news.example.com/cpp".into()),
                     title: "Notes on C++ templates".into(),
@@ -978,6 +991,7 @@ mod tests {
                     tags: vec![],
                 },
                 ParsedEntry {
+                    language: None,
                     guid: "rare".into(),
                     canonical_url: Some("https://news.example.com/rare".into()),
                     title: "Only zyxxyrareword appears here".into(),
@@ -988,6 +1002,7 @@ mod tests {
                     tags: vec![],
                 },
                 ParsedEntry {
+                    language: None,
                     guid: "hide-ai".into(),
                     canonical_url: Some("https://news.example.com/hide-ai".into()),
                     title: "hidden AI gossip".into(),
@@ -998,6 +1013,7 @@ mod tests {
                     tags: vec![],
                 },
                 ParsedEntry {
+                    language: None,
                     guid: "sum-cn".into(),
                     canonical_url: Some("https://news.example.com/sum-cn".into()),
                     title: "Weather brief".into(),
@@ -1119,6 +1135,7 @@ mod tests {
             feed,
             &[
                 ParsedEntry {
+                    language: None,
                     guid: "quoted".into(),
                     canonical_url: Some("https://news.example.com/quoted".into()),
                     title: "He said \"hello\" today".into(),
@@ -1129,6 +1146,7 @@ mod tests {
                     tags: vec![],
                 },
                 ParsedEntry {
+                    language: None,
                     guid: "plain".into(),
                     canonical_url: Some("https://news.example.com/plain-hello".into()),
                     title: "He said hello today".into(),

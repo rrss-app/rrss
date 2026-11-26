@@ -19,6 +19,7 @@ pub enum FeedParseError {
 
 #[derive(Debug, Clone)]
 pub struct ParsedFeed {
+    pub language: Option<String>,
     pub title: Option<String>,
     pub updated_at: Option<i64>,
     pub site_url: Option<String>,
@@ -28,6 +29,7 @@ pub struct ParsedFeed {
 
 #[derive(Debug, Clone)]
 pub struct ParsedEntry {
+    pub language: Option<String>,
     pub guid: String,
     pub canonical_url: Option<String>,
     pub title: String,
@@ -47,7 +49,67 @@ pub fn parse_feed_bytes(bytes: &[u8], source_uri: Option<&str>) -> Result<Parsed
         .build()
         .parse(bytes)
         .map_err(|_| Error::FeedParse(FeedParseError::InvalidDocument))?;
-    Ok(from_feed(feed, source_uri))
+    let mut parsed = from_feed(feed, source_uri);
+    if parsed.wire_kind == FeedKind::Atom
+        && let Some(languages) = atom_entry_languages(bytes)
+        && languages.len() == parsed.entries.len()
+    {
+        for (entry, language) in parsed.entries.iter_mut().zip(languages) {
+            entry.language = language.or(entry.language.take());
+        }
+    }
+    Ok(parsed)
+}
+
+// feed-rs 2.4 reads content xml:lang but omits the entry's own declaration.
+// Supplement only direct Atom entries, preserving their order and namespaces.
+fn atom_entry_languages(bytes: &[u8]) -> Option<Vec<Option<String>>> {
+    use quick_xml::{NsReader, events::Event, name::ResolveResult};
+    let mut reader = NsReader::from_reader(bytes);
+    let mut depth = 0usize;
+    let mut entry_depth = None;
+    let mut languages = Vec::new();
+    loop {
+        let (namespace, event) = reader.read_resolved_event().ok()?;
+        let atom = matches!(namespace, ResolveResult::Bound(ns) if ns.as_ref() == b"http://www.w3.org/2005/Atom");
+        match event {
+            Event::Start(ref element) | Event::Empty(ref element) => {
+                if depth == 0 && atom {
+                    entry_depth = match element.local_name().as_ref() {
+                        b"feed" => Some(1),
+                        b"entry" => Some(0),
+                        _ => None,
+                    };
+                }
+                if Some(depth) == entry_depth && atom && element.local_name().as_ref() == b"entry" {
+                    let mut language = None;
+                    for attr in element.attributes() {
+                        let attr = attr.ok()?;
+                        let (ns, name) = reader.resolver().resolve_attribute(attr.key);
+                        if name.as_ref() == b"lang"
+                            && matches!(ns, ResolveResult::Bound(ns) if ns.as_ref() == b"http://www.w3.org/XML/1998/namespace")
+                        {
+                            language = rrss_render::normalize_lang_code(
+                                &attr
+                                    .decoded_and_normalized_value(
+                                        quick_xml::XmlVersion::Implicit1_0,
+                                        reader.decoder(),
+                                    )
+                                    .ok()?,
+                            );
+                        }
+                    }
+                    languages.push(language);
+                }
+                if matches!(event, Event::Start(_)) {
+                    depth += 1;
+                }
+            }
+            Event::End(_) => depth = depth.checked_sub(1)?,
+            Event::Eof => return Some(languages),
+            _ => {}
+        }
+    }
 }
 
 fn from_feed(feed: Feed, source_uri: Option<&str>) -> ParsedFeed {
@@ -71,6 +133,10 @@ fn from_feed(feed: Feed, source_uri: Option<&str>) -> ParsedFeed {
         .map(|entry| map_entry(entry, site_url.as_deref(), feed.feed_type == FeedType::JSON))
         .collect();
     ParsedFeed {
+        language: feed
+            .language
+            .as_deref()
+            .and_then(rrss_render::normalize_lang_code),
         title,
         updated_at,
         site_url,
@@ -102,6 +168,10 @@ fn map_entry(entry: &Entry, base: Option<&str>, json_feed: bool) -> ParsedEntry 
         .filter(|s| !s.trim().is_empty())
         .collect();
     ParsedEntry {
+        language: entry
+            .language
+            .as_deref()
+            .and_then(rrss_render::normalize_lang_code),
         guid: entry.id.clone(),
         canonical_url,
         title,
@@ -261,6 +331,55 @@ mod tests {
     const RSS2: &str = include_str!("../../../testdata/feeds/rss2-sample.xml");
     const ATOM: &str = include_str!("../../../testdata/feeds/atom-sample.xml");
     const JSON: &str = include_str!("../../../testdata/feeds/jsonfeed-sample.json");
+
+    #[test]
+    fn atom_entry_language_uses_namespaces_and_ignores_nested_elements() {
+        let wire = r#"<a:feed xmlns:a="http://www.w3.org/2005/Atom" xml:lang="en"><a:id>urn:feed</a:id><a:title>Fixture</a:title>
+            <a:entry xml:lang="jpn"><a:id>one</a:id><a:title>Fixture</a:title><a:content type="xhtml" xml:lang="en"><div xmlns="http://www.w3.org/1999/xhtml"><entry xml:lang="fr">text</entry></div></a:content></a:entry>
+            <entry xmlns="urn:other" xml:lang="de"/>
+            <a:entry><a:id>two</a:id><a:title>Fixture</a:title><a:content xml:lang="fr">text</a:content></a:entry>
+            <a:entry xml:lang="und"><a:id>three</a:id><a:title>Fixture</a:title></a:entry>
+            </a:feed>"#;
+        let feed = parse_feed_bytes(wire.as_bytes(), None).unwrap();
+        assert_eq!(
+            feed.entries
+                .iter()
+                .map(|e| e.language.as_deref())
+                .collect::<Vec<_>>(),
+            vec![Some("ja"), Some("fr"), None]
+        );
+    }
+
+    #[test]
+    fn parses_normalized_feed_and_entry_languages() {
+        let fixtures = [
+            (
+                r#"<rss version="2.0"><channel><title>Fixture</title><language>en-US</language><item><guid>one</guid><title>Fixture</title></item></channel></rss>"#,
+                "en",
+                None,
+            ),
+            (
+                r#"<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://purl.org/rss/1.0/" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel rdf:about="https://feed.example/"><title>Fixture</title><link>https://feed.example/</link><description>Fixture</description><dc:language>jpn</dc:language></channel><item rdf:about="https://feed.example/one"><title>Fixture</title><link>https://feed.example/one</link></item></rdf:RDF>"#,
+                "ja",
+                None,
+            ),
+            (
+                r#"<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="zh_CN"><id>urn:example:feed</id><title>Fixture</title><entry xml:lang="fr-FR"><id>urn:example:one</id><title>Fixture</title></entry></feed>"#,
+                "zh",
+                Some("fr"),
+            ),
+            (
+                r#"{"version":"https://jsonfeed.org/version/1.1","title":"Fixture","language":"pt-BR","items":[{"id":"one","content_text":"Fixture"}]}"#,
+                "pt",
+                None,
+            ),
+        ];
+        for (wire, feed_lang, entry_lang) in fixtures {
+            let feed = parse_feed_bytes(wire.as_bytes(), None).unwrap();
+            assert_eq!(feed.language.as_deref(), Some(feed_lang));
+            assert_eq!(feed.entries[0].language.as_deref(), entry_lang);
+        }
+    }
 
     #[test]
     fn podcast_and_video_attachments_reach_the_reader_once() {

@@ -93,6 +93,7 @@ impl ArticleCard {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArticleRow {
+    pub lang: Option<String>,
     pub id: i64,
     pub feed_id: i64,
     pub guid: Option<String>,
@@ -604,7 +605,7 @@ pub fn get_article(conn: &Connection, id: i64) -> Result<ArticleRow> {
         "SELECT a.id, a.feed_id, a.guid, a.canonical_url, a.title, a.author, a.published_at,
                 a.content_html, a.blocks_json, a.fulltext_md, a.read, a.starred, a.score, a.reasons_json,
                 COALESCE(f.title, f.url), a.summary, a.summary_json, a.hash, a.interest_boost,
-                a.interest_reasons_json, a.cluster_id, a.pruned_at
+                a.interest_reasons_json, a.cluster_id, a.pruned_at, a.lang
          FROM articles a
          JOIN feeds f ON f.id = a.feed_id
          WHERE a.id = ?1",
@@ -633,6 +634,7 @@ pub fn get_article(conn: &Connection, id: i64) -> Result<ArticleRow> {
                 interest_reasons_json: row.get(19)?,
                 cluster_id: row.get(20)?,
                 pruned_at: row.get(21)?,
+                lang: row.get(22)?,
             })
         },
     )
@@ -712,6 +714,14 @@ pub fn set_blocks_json(conn: &Connection, id: i64, json: &str) -> Result<()> {
         params![json, id],
     )?;
     if n == 0 {
+        Err(Error::ArticleNotFound)
+    } else {
+        Ok(())
+    }
+}
+
+pub fn set_lang(conn: &Connection, id: i64, lang: Option<&str>) -> Result<()> {
+    if conn.execute("UPDATE articles SET lang=?2 WHERE id=?1", params![id, lang])? == 0 {
         Err(Error::ArticleNotFound)
     } else {
         Ok(())
@@ -1033,6 +1043,7 @@ mod tests {
 
     fn entry(title: &str, url: &str) -> ParsedEntry {
         ParsedEntry {
+            language: None,
             guid: url.into(),
             canonical_url: Some(url.into()),
             title: title.into(),

@@ -503,6 +503,7 @@ fn small_database_work_baseline() {
     let now = rrss_core::feeds::now_ms();
     let entries = (0..30)
         .map(|index| rrss_core::parse::ParsedEntry {
+            language: None,
             guid: format!("new-{index}"),
             canonical_url: Some(format!("https://latency.example/new-{index}")),
             title: format!("New fixture article {index}"),
@@ -653,6 +654,7 @@ async fn small_mixed_background_latency() {
             execution::core_db(background_path.clone(), move |conn| {
                 let entries = (301..=330)
                     .map(|id| rrss_core::parse::ParsedEntry {
+                        language: None,
                         guid: format!("new-{id}"),
                         canonical_url: Some(format!("https://latency.example/{id}")),
                         title: format!("New fixture {id}"),

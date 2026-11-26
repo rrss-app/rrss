@@ -194,6 +194,7 @@ mod tests {
         assert_eq!(tree.uncategorized[0].icon_href, href);
         // 阅读器与搜索结果用同一份本地图标，不只焦点卡片和订阅列表。
         let entry = rrss_core::parse::ParsedEntry {
+            language: None,
             guid: "icon".into(),
             canonical_url: Some("https://example.test/icon".into()),
             title: "图标同步".into(),

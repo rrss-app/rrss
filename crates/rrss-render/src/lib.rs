@@ -16,7 +16,11 @@ pub use embed::{
     direct_media_mime, present_embed,
 };
 pub use ir::{Block, Document, EmbedKind, IR_VERSION, Inline, InlineStyle, TableTotal};
-pub use lang::{detect_lang, foreign_lang, word_count};
+pub use lang::{
+    detect_article_lang, detect_lang, document_prose_preview, foreign_lang, foreign_lang_code,
+    has_language_evidence, html_prose_preview, markdown_prose_preview, normalize_lang_code,
+    word_count,
+};
 pub use text::{inlines_to_markdown, inlines_to_plain};
 pub use translate::{
     MAX_UNIT_SEGMENTS, PatchError, TaggedSegment, TranslateUnit, TranslationPatch, TranslationPlan,

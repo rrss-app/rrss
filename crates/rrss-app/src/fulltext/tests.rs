@@ -279,3 +279,44 @@ fn fulltext_errors_have_one_typed_ui_projection() {
         assert_eq!(error.detail, detail);
     }
 }
+
+#[tokio::test]
+async fn fetched_body_recomputes_language_atomically() {
+    let dir = tempfile::tempdir().unwrap();
+    let network = clients(dir.path());
+    let db_path = dir.path().join("test.db");
+    let conn = rrss_core::db::open_at(&db_path).unwrap();
+    let server = MockServer::start().await;
+    let text = "A synthetic report about the public library and its new reading rooms. ".repeat(40);
+    let html = format!(
+        "<html><title>Fixture</title><article><h1>Fixture</h1><p>{text}</p></article></html>"
+    );
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    conn.execute_batch(
+        "INSERT INTO feeds(id,url,language,created_at) VALUES(1,'https://feed.example/','zh',0);",
+    )
+    .unwrap();
+    conn.execute("INSERT INTO articles(id,feed_id,title,lang,canonical_url,created_at) VALUES(1,1,'Product','zh',?1,0)",[format!("{}/story",server.uri())]).unwrap();
+    fetch_and_store(&network, &db_path, 1).await.unwrap();
+    let row = articles::get_article(&conn, 1).unwrap();
+    assert_eq!(row.lang.as_deref(), Some("en"));
+    assert!(row.fulltext_md.is_some());
+    server.reset().await;
+    let html = format!(
+        "<html><title>Fixture</title><article><h1>Fixture</h1><p>{}</p></article></html>",
+        "这是公共图书馆的最新报道，介绍阅读服务的调整和新的开放时间。".repeat(40)
+    );
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(html))
+        .mount(&server)
+        .await;
+    conn.execute_batch("CREATE TRIGGER reject_lang BEFORE UPDATE OF lang ON articles BEGIN SELECT RAISE(ABORT,'language write failed'); END;").unwrap();
+    assert!(fetch_and_store(&network, &db_path, 1).await.is_err());
+    let after = articles::get_article(&conn, 1).unwrap();
+    assert_eq!(after.lang, row.lang);
+    assert_eq!(after.fulltext_md, row.fulltext_md);
+    assert_eq!(after.blocks_json, row.blocks_json);
+}

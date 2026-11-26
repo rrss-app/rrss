@@ -29,7 +29,14 @@ fn hash(text: &str) -> String {
 }
 
 pub fn feed_json(html: &str, base_url: Option<&str>) -> serde_json::Result<String> {
-    serde_json::to_string(&Stored {
+    feed_document_and_json(html, base_url).map(|(_, json)| json)
+}
+
+pub fn feed_document_and_json(
+    html: &str,
+    base_url: Option<&str>,
+) -> serde_json::Result<(Document, String)> {
+    let stored = Stored {
         document: html_document(html, base_url),
         rrss_source: Some(Source {
             kind: "feed".into(),
@@ -37,7 +44,9 @@ pub fn feed_json(html: &str, base_url: Option<&str>) -> serde_json::Result<Strin
             base_url: base_url.map(str::to_owned),
             renderer: HTML_RENDER_REVISION,
         }),
-    })
+    };
+    let json = serde_json::to_string(&stored)?;
+    Ok((stored.document, json))
 }
 
 pub fn fulltext_json(document: &Document, text: &str) -> serde_json::Result<String> {

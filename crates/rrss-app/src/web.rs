@@ -91,6 +91,11 @@ pub(crate) fn store_page(
         })
         .transpose();
     let plain = rrss_render::document_to_plain(&extracted.document);
+    let lang = rrss_render::detect_article_lang(
+        &extracted.title,
+        &rrss_render::document_prose_preview(&extracted.document, 2000),
+        None,
+    );
     let json = rrss_core::body::fulltext_json(&extracted.document, &plain)
         .map_err(FulltextError::network)?;
     let tx = db::write_transaction(&conn).map_err(FulltextError::network)?;
@@ -130,6 +135,7 @@ pub(crate) fn store_page(
     if manual {
         web_extracted_at = snapshot.map(|_| now);
         let current = articles::get_article(&tx, id).map_err(FulltextError::network)?;
+        articles::set_lang(&tx, id, lang.as_deref()).map_err(FulltextError::network)?;
         let hash = crate::document::source_hash(&extracted.title, &extracted.document);
         if hash
             != crate::document::source_hash(

@@ -126,9 +126,12 @@ pub async fn fetch_and_store(
         tracing::debug!(layer = ?extracted.layer, suspicious = ?extracted.suspicious, "fulltext extraction");
         let doc = extracted.document;
         let plain = rrss_render::document_to_plain(&doc);
+        let prose = rrss_render::document_prose_preview(&doc, 2000);
         let blocks_json = rrss_core::body::fulltext_json(&doc, &plain)
             .map_err(|e| FulltextError::new(FulltextErrorKind::Empty, e))?;
         let conn = rrss_core::db::open_at(&db_path_buf).map_err(FulltextError::network)?;
+        let priors = rrss_core::translations::feed_language_priors(&conn, &[baseline.feed_id])
+            .map_err(FulltextError::network)?;
         rrss_core::db::atomic_write(&conn, |conn| {
             let current = articles::get_article(conn, id)?;
             let current_rule = crate::site_rules::resolve_site_rule(conn, page_url.host_str().unwrap_or_default())?;
@@ -139,7 +142,9 @@ pub async fn fetch_and_store(
                 || current_rule.rule != rule.rule {
                 return Err(rrss_core::Error::Web(rrss_core::error::WebFailure::PageChanged));
             }
-            articles::set_fulltext(conn, id, &plain, &blocks_json)
+            let lang = rrss_render::detect_article_lang(&current.title, &prose, priors.get(&current.feed_id).map(String::as_str));
+            articles::set_fulltext(conn, id, &plain, &blocks_json)?;
+            articles::set_lang(conn, id, lang.as_deref())
         }).map_err(|error| {
             let kind = match &error {
                 rrss_core::Error::Web(rrss_core::error::WebFailure::PageChanged) => FulltextErrorKind::Changed,

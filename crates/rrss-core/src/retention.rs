@@ -271,9 +271,17 @@ mod tests {
         let dir = tempdir().unwrap();
         let conn = open_at(&dir.path().join("r.db")).unwrap();
         seed(&conn);
+        crate::articles::set_lang(&conn, 1, Some("en")).unwrap();
         assert!(!ever_pruned(&conn).unwrap());
         assert_eq!(prune_articles(&conn, &[1], NOW).unwrap(), 1);
         assert!(ever_pruned(&conn).unwrap());
+        assert_eq!(
+            crate::articles::get_article(&conn, 1)
+                .unwrap()
+                .lang
+                .as_deref(),
+            Some("en")
+        );
         let row: (Option<String>, Option<String>, Option<String>, String, String, Option<i64>) = conn
             .query_row(
                 "SELECT content_html, blocks_json, summary_json, summary, guid, pruned_at FROM articles WHERE id = 1",

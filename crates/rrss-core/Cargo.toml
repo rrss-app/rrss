@@ -13,6 +13,7 @@ evaluation-clock = []
 chrono.workspace = true
 directories.workspace = true
 feed-rs.workspace = true
+quick-xml = { version = "0.41", features = ["encoding"] }
 html5ever.workspace = true
 httpdate = "1"
 opml.workspace = true

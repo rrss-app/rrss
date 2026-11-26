@@ -543,3 +543,56 @@ async fn redirect_uses_actual_host_for_rules_metadata_and_deduplication() {
     assert_eq!(result.article_id, next.article_id);
     assert_eq!(next.actual_url, next_url);
 }
+
+#[test]
+fn extracted_manual_page_refreshes_language_with_title_and_body() {
+    let (_dir, path, _network) = setup();
+    let url = Url::parse("https://page.example/story").unwrap();
+    let html = page(
+        "Fixture",
+        "A synthetic report about public libraries and their new reading rooms. ",
+    );
+    let opened = store_page(&path, url.as_str(), &html, &url, None).unwrap();
+    let conn = db::open_at(&path).unwrap();
+    let id = opened.article_id;
+    assert_eq!(
+        articles::get_article(&conn, id).unwrap().lang.as_deref(),
+        Some("en")
+    );
+    conn.execute("UPDATE feeds SET language='en' WHERE kind='manual'", [])
+        .unwrap();
+    let html = page(
+        "城市图书馆",
+        "这是关于图书馆新服务的报道，读者可以了解借阅规则和新的开放时间。",
+    );
+    store_page(&path, url.as_str(), &html, &url, None).unwrap();
+    let row = articles::get_article(&conn, id).unwrap();
+    assert_eq!(row.lang.as_deref(), Some("zh"));
+    let doc = crate::document::load_document(&row);
+    assert_eq!(
+        rrss_render::detect_article_lang(
+            &row.title,
+            &rrss_render::document_prose_preview(&doc, 2000),
+            None
+        ),
+        row.lang
+    );
+    conn.execute_batch("CREATE TRIGGER reject_lang BEFORE UPDATE OF lang ON articles BEGIN SELECT RAISE(ABORT,'language write failed'); END;").unwrap();
+    assert!(
+        store_page(
+            &path,
+            url.as_str(),
+            &page(
+                "Replacement",
+                "Another synthetic report about public reading rooms. "
+            ),
+            &url,
+            None
+        )
+        .is_err()
+    );
+    let after = articles::get_article(&conn, id).unwrap();
+    assert_eq!(after.title, row.title);
+    assert_eq!(after.fulltext_md, row.fulltext_md);
+    assert_eq!(after.lang, row.lang);
+}

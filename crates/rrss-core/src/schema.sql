@@ -70,7 +70,8 @@ CREATE TABLE feeds (
     next_fetch_at           INTEGER NOT NULL DEFAULT 0,
     slow_fail_count         INTEGER NOT NULL DEFAULT 0,
     -- 自动翻译：NULL 跟随全局，1 总是，0 从不（标题与正文一起）
-    auto_translate          INTEGER
+    auto_translate          INTEGER,
+    language                TEXT
 );
 
 CREATE INDEX idx_feeds_folder ON feeds (folder_id);
@@ -83,6 +84,7 @@ CREATE TABLE articles (
     guid            TEXT,
     canonical_url   TEXT,
     title           TEXT    NOT NULL DEFAULT '',
+    lang            TEXT,
     author          TEXT,
     published_at    INTEGER,
     content_html    TEXT,

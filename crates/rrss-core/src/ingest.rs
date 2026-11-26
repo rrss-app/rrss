@@ -323,46 +323,54 @@ pub fn apply_fetch_scheduled(
     };
     // 解析与正文渲染在锁外完成；源信息、文章与抓取状态在同一写事务里写入。
     let mut health_event = None;
-    let ingested = ingest_entries(conn, feed.id, &parsed.entries, now, |conn| {
-        if let Some(stale) = stale_snapshot(conn, feed)? {
-            return Ok(Some(stale));
-        }
-        // 用户或 OPML 指定的名称（title_custom）不用源标题覆盖；与源标题一致时恢复跟随。
-        if feed.kind != FeedKind::Rsshub {
-            let _ = conn.execute(
-                "UPDATE feeds SET
+    let ingested = ingest_entries(
+        conn,
+        feed.id,
+        &parsed.entries,
+        parsed.language.as_deref(),
+        now,
+        |conn| {
+            if let Some(stale) = stale_snapshot(conn, feed)? {
+                return Ok(Some(stale));
+            }
+            // 用户或 OPML 指定的名称（title_custom）不用源标题覆盖；与源标题一致时恢复跟随。
+            if feed.kind != FeedKind::Rsshub {
+                let _ = conn.execute(
+                    "UPDATE feeds SET
                      title = CASE WHEN title_custom = 1 THEN title ELSE COALESCE(?1, title) END,
                      title_custom = CASE WHEN title = ?1 THEN 0 ELSE title_custom END,
-                     site_url = COALESCE(?2, site_url), kind = ?3
+                     site_url = COALESCE(?2, site_url), kind = ?3, language = COALESCE(?5, language)
                  WHERE id = ?4",
-                params![
-                    parsed.title,
-                    parsed.site_url,
-                    parsed.wire_kind.as_str(),
-                    feed.id
-                ],
-            );
-        } else {
-            let _ = conn.execute(
-                "UPDATE feeds SET
+                    params![
+                        parsed.title,
+                        parsed.site_url,
+                        parsed.wire_kind.as_str(),
+                        feed.id,
+                        parsed.language
+                    ],
+                );
+            } else {
+                let _ = conn.execute(
+                    "UPDATE feeds SET
                      title = CASE WHEN title_custom = 1 THEN title ELSE COALESCE(?1, title) END,
                      title_custom = CASE WHEN title = ?1 THEN 0 ELSE title_custom END,
-                     site_url = COALESCE(?2, site_url)
+                     site_url = COALESCE(?2, site_url), language = COALESCE(?4, language)
                  WHERE id = ?3",
-                params![parsed.title, parsed.site_url, feed.id],
-            );
-        }
-        health_event = mark_fetched(
-            conn,
-            feed,
-            now,
-            resp.etag.as_deref(),
-            resp.last_modified.as_deref(),
-            None,
-            schedule,
-        )?;
-        Ok(None)
-    })?;
+                    params![parsed.title, parsed.site_url, feed.id, parsed.language],
+                );
+            }
+            health_event = mark_fetched(
+                conn,
+                feed,
+                now,
+                resp.etag.as_deref(),
+                resp.last_modified.as_deref(),
+                None,
+                schedule,
+            )?;
+            Ok(None)
+        },
+    )?;
     let report = match ingested {
         Ok(report) => report,
         Err(stale) => {
@@ -459,7 +467,7 @@ pub fn upsert_entries_measured(
     entries: &[ParsedEntry],
     now: i64,
 ) -> Result<IngestReport> {
-    match ingest_entries(conn, feed_id, entries, now, |_| Ok(None))? {
+    match ingest_entries(conn, feed_id, entries, None, now, |_| Ok(None))? {
         Ok(report) => Ok(report),
         Err(_) => unreachable!("no snapshot guard"),
     }
@@ -470,6 +478,7 @@ fn ingest_entries(
     conn: &Connection,
     feed_id: i64,
     entries: &[ParsedEntry],
+    declared_language: Option<&str>,
     now: i64,
     in_write: impl FnOnce(&Connection) -> Result<Option<RefreshStatus>>,
 ) -> Result<std::result::Result<IngestReport, RefreshStatus>> {
@@ -492,10 +501,61 @@ fn ingest_entries(
     let folder_ids = crate::score::folder_chain(conn, folder_id)?;
     // 正文解析和规则匹配不占写锁。写锁只包住存在性检查和插入。
     let phase = Instant::now();
-    let staged: Vec<StagedEntry<'_>> = entries
+    let mut staged: Vec<StagedEntry<'_>> = entries
         .iter()
         .map(|entry| stage_entry(entry, feed_id, &folder_ids, &compiled))
         .collect();
+    if !staged.is_empty() {
+        let mut guids = std::collections::HashSet::new();
+        let mut urls = std::collections::HashSet::new();
+        let mut hashes = std::collections::HashSet::new();
+        let mut new_indices = Vec::new();
+        for (idx, item) in staged.iter().enumerate() {
+            let entry = item.entry;
+            if !guids.insert(&entry.guid)
+                || entry
+                    .canonical_url
+                    .as_ref()
+                    .is_some_and(|url| !urls.insert(url))
+                || !hashes.insert(&entry.hash)
+                || entry_exists(conn, feed_id, entry)?
+            {
+                continue;
+            }
+            new_indices.push(idx);
+        }
+        if !new_indices.is_empty() {
+            let mut evidence = crate::translations::feed_language_evidence(conn, &[feed_id])?
+                .remove(&feed_id)
+                .unwrap_or_default();
+            if let Some(lang) = declared_language {
+                evidence.declared = rrss_render::normalize_lang_code(lang);
+            }
+            for &idx in &new_indices {
+                let item = &staged[idx];
+                if rrss_render::has_language_evidence(&item.prose)
+                    && let Some(lang) = rrss_render::detect_article_lang(
+                        "",
+                        &item.prose,
+                        item.entry
+                            .language
+                            .as_deref()
+                            .or(evidence.declared.as_deref()),
+                    )
+                {
+                    evidence.observed.push(lang);
+                }
+            }
+            let measured = evidence.measured();
+            for &idx in &new_indices {
+                let item = &mut staged[idx];
+                let prior = measured
+                    .or(item.entry.language.as_deref())
+                    .or(evidence.declared.as_deref());
+                item.lang = rrss_render::detect_article_lang(&item.entry.title, &item.prose, prior);
+            }
+        }
+    }
     report.prepare = phase.elapsed();
     let mut inserted = 0u32;
     let mut skipped = 0u32;
@@ -517,8 +577,8 @@ fn ingest_entries(
         tx.execute(
             "INSERT INTO articles (
                 feed_id, guid, canonical_url, title, author, published_at,
-                content_html, blocks_json, hash, simhash, score, reasons_json, created_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                content_html, blocks_json, hash, simhash, score, reasons_json, created_at, lang
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 feed_id,
                 entry.guid,
@@ -532,7 +592,8 @@ fn ingest_entries(
                 staged.simhash,
                 staged.score,
                 staged.reasons_json,
-                now
+                now,
+                staged.lang
             ],
         )?;
         let article_id = tx.last_insert_rowid();
@@ -575,6 +636,8 @@ fn ingest_entries(
 struct StagedEntry<'a> {
     entry: &'a ParsedEntry,
     blocks_json: Option<String>,
+    prose: String,
+    lang: Option<String>,
     score: i64,
     reasons_json: Option<String>,
     simhash: i64,
@@ -586,10 +649,14 @@ fn stage_entry<'a>(
     folder_ids: &[i64],
     compiled: &[crate::score::CompiledRule],
 ) -> StagedEntry<'a> {
-    let blocks_json = entry
+    let (prose, blocks_json) = entry
         .content_html
         .as_deref()
-        .and_then(|html| crate::body::feed_json(html, entry.canonical_url.as_deref()).ok());
+        .and_then(|html| {
+            crate::body::feed_document_and_json(html, entry.canonical_url.as_deref()).ok()
+        })
+        .map(|(doc, json)| (rrss_render::document_prose_preview(&doc, 2000), Some(json)))
+        .unwrap_or_default();
     let result = if compiled.is_empty() {
         None
     } else {
@@ -610,6 +677,8 @@ fn stage_entry<'a>(
     StagedEntry {
         entry,
         blocks_json,
+        prose,
+        lang: None,
         score: result.as_ref().map(|r| r.score).unwrap_or(0),
         reasons_json: result.as_ref().map(crate::score::stored_reasons_json),
         simhash: crate::simhash::fingerprint_article(&entry.title, entry.content_html.as_deref()),
@@ -928,6 +997,165 @@ mod tests {
         let dir = tempdir().unwrap();
         let conn = open_at(&dir.path().join("rrss.db")).unwrap();
         (dir, conn)
+    }
+
+    #[test]
+    fn batch_prose_prior_overrides_bad_declaration_and_survives_refresh() {
+        for kind in ["rss", "rsshub"] {
+            let (_dir, conn) = open_temp();
+            conn.execute(
+                "INSERT INTO feeds(id,url,kind,created_at) VALUES(1,'https://feed.example/',?1,0)",
+                [kind],
+            )
+            .unwrap();
+            let body = "这是关于城市公共图书馆服务的报道，读者可以了解新的借阅规则。".repeat(15);
+            // Put the ambiguous title first: prior estimation must not depend on order.
+            let mut items =
+                "<item><guid>product</guid><title>iPhone 17 Pro</title></item>".to_string();
+            for id in 0..3 {
+                items.push_str(&format!("<item><guid>story-{id}</guid><title>Report {id}</title><description>{body}</description></item>"));
+            }
+            let wire = format!(
+                "<rss version='2.0'><channel><title>Fixture</title><language>en-us</language>{items}</channel></rss>"
+            );
+            let response = FetchResponse {
+                status: 200,
+                etag: None,
+                last_modified: None,
+                retry_after: None,
+                body: wire.into_bytes(),
+            };
+            let feed = crate::feeds::get_feed(&conn, 1).unwrap();
+            let result = apply_fetch(&conn, &feed, &response, 1).unwrap();
+            assert!(matches!(
+                result.status,
+                RefreshStatus::Updated { inserted: 4, .. }
+            ));
+            assert_eq!(
+                conn.query_row("SELECT language FROM feeds WHERE id=1", [], |r| r
+                    .get::<_, String>(0))
+                    .unwrap(),
+                "en"
+            );
+            assert_eq!(
+                conn.query_row("SELECT count(*) FROM articles WHERE lang='zh'", [], |r| r
+                    .get::<_, i64>(
+                    0
+                ))
+                .unwrap(),
+                4
+            );
+            assert_eq!(
+                crate::translations::feed_language_priors(&conn, &[1])
+                    .unwrap()
+                    .get(&1)
+                    .map(String::as_str),
+                Some("zh")
+            );
+            let next = parse_feed_bytes(br#"<feed xmlns="http://www.w3.org/2005/Atom"><id>urn:feed</id><title>Fixture</title><entry xml:lang="en"><id>another</id><title>RTX 5090 Ti</title></entry></feed>"#,None).unwrap();
+            upsert_entries(&conn, 1, &next.entries, 2).unwrap();
+            assert_eq!(
+                conn.query_row("SELECT lang FROM articles WHERE guid='another'", [], |r| {
+                    r.get::<_, String>(0)
+                })
+                .unwrap(),
+                "zh"
+            );
+            // An absent declaration must not erase a previously stored one.
+            let response = FetchResponse {
+                body: b"<rss version='2.0'><channel><title>Fixture</title></channel></rss>"
+                    .to_vec(),
+                ..response
+            };
+            apply_fetch(&conn, &feed, &response, 3).unwrap();
+            assert_eq!(
+                conn.query_row("SELECT language FROM feeds WHERE id=1", [], |r| r
+                    .get::<_, String>(0))
+                    .unwrap(),
+                "en"
+            );
+        }
+    }
+
+    #[test]
+    fn entry_prior_and_title_only_rows_cannot_create_a_measured_majority() {
+        let (_dir, conn) = open_temp();
+        conn.execute_batch("INSERT INTO feeds(id,url,language,created_at) VALUES(1,'https://feed.example/','en',0);").unwrap();
+        let mut feed = parse_feed_bytes(br#"<feed xmlns="http://www.w3.org/2005/Atom"><id>urn:feed</id><title>Fixture</title><entry xml:lang="ja"><id>one</id><title>Product 18</title></entry></feed>"#,None).unwrap();
+        for id in 0..5 {
+            feed.entries[0].guid = format!("entry-{id}");
+            feed.entries[0].hash = format!("hash-{id}");
+            upsert_entries(&conn, 1, &feed.entries, id).unwrap();
+        }
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM articles WHERE lang='ja'", [], |r| r
+                .get::<_, i64>(
+                0
+            ))
+            .unwrap(),
+            5
+        );
+        assert_eq!(
+            crate::translations::feed_language_priors(&conn, &[1])
+                .unwrap()
+                .get(&1)
+                .map(String::as_str),
+            Some("en")
+        );
+    }
+
+    #[test]
+    fn japanese_han_prose_keeps_the_declaration_during_cold_start() {
+        let (_dir, conn) = open_temp();
+        conn.execute_batch("INSERT INTO feeds(id,url,language,created_at) VALUES(1,'https://feed.example/','ja',0);").unwrap();
+        let body = "東京都議会選挙".repeat(35);
+        let entries: String = (0..3).map(|id|format!("<item><guid>{id}</guid><title>東京都議会選挙 {id}</title><description>{body}</description></item>")).collect();
+        let wire =
+            format!("<rss version='2.0'><channel><title>Fixture</title>{entries}</channel></rss>");
+        let feed = parse_feed_bytes(wire.as_bytes(), None).unwrap();
+        upsert_entries(&conn, 1, &feed.entries, 1).unwrap();
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM articles WHERE lang='ja'", [], |r| r
+                .get::<_, i64>(
+                0
+            ))
+            .unwrap(),
+            3
+        );
+    }
+
+    #[test]
+    fn repeated_body_entries_do_not_vote_twice_on_refresh() {
+        let (_dir, conn) = open_temp();
+        conn.execute_batch("INSERT INTO feeds(id,url,language,created_at) VALUES(1,'https://feed.example/','en',0);").unwrap();
+        let body = "关于图书馆服务的报道。".repeat(30);
+        let wire = format!(
+            "<rss version='2.0'><channel><title>Fixture</title><item><guid>one</guid><title>Fixture</title><description>{body}</description></item></channel></rss>"
+        );
+        let feed = parse_feed_bytes(wire.as_bytes(), None).unwrap();
+        let mut entries = vec![feed.entries[0].clone(); 4];
+        let mut product = feed.entries[0].clone();
+        product.guid = "product".into();
+        product.hash = "product".into();
+        product.title = "Linux 6.14".into();
+        product.content_html = None;
+        entries.push(product);
+        upsert_entries(&conn, 1, &entries, 1).unwrap();
+        assert_eq!(
+            conn.query_row("SELECT lang FROM articles WHERE guid='product'", [], |r| {
+                r.get::<_, String>(0)
+            })
+            .unwrap(),
+            "en"
+        );
+        upsert_entries(&conn, 1, &entries, 2).unwrap();
+        assert_eq!(
+            crate::translations::feed_language_priors(&conn, &[1])
+                .unwrap()
+                .get(&1)
+                .map(String::as_str),
+            Some("en")
+        );
     }
 
     #[test]

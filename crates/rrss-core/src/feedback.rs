@@ -237,6 +237,7 @@ mod tests {
             let url = format!("https://news.example.com/s{i}");
             let html = "<p>x</p>";
             let entry = ParsedEntry {
+                language: None,
                 guid: format!("g{i}"),
                 canonical_url: Some(url.clone()),
                 title: title.clone(),

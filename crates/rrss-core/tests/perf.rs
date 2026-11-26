@@ -51,6 +51,7 @@ fn entry(seed: usize) -> ParsedEntry {
     }
     body.push_str("</p>");
     ParsedEntry {
+        language: None,
         guid: format!("perf-{seed}"),
         canonical_url: Some(format!("https://perf.example/a-{seed}")),
         title: format!(

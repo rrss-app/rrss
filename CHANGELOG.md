@@ -10,6 +10,8 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 ### Changed
 
+- Automatic translation now uses feed language hints and article text to identify languages more accurately and keep lists and the reader consistent, including short English titles, product names in Chinese feeds, and Japanese titles written only in kanji.
+
 - Model translation sends shorter parts by default (about 1,200 characters per request instead of 2,800), and the size can be changed in Settings → Translation when the model service is selected. Changing it does not discard existing translations.
 - Article translation now recovers when a part times out or comes back malformed: the part is split in half and retried, and later parts for the same model use the smaller size, instead of marking the whole part as failed. This mainly helps slower local models.
 - Model translation now handles very long paragraphs: a paragraph longer than the per-request size is translated a few sentences at a time and joined back with its links and formatting intact, and a paragraph that still times out or exceeds the model's context is split further. When a local model server reports that the input is longer than its context window, the part is split and retried instead of stopping the whole article.
