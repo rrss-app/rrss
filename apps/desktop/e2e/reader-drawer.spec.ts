@@ -50,6 +50,38 @@ test("drawer follows navigation, keyboard selection, shared scope and return foc
   await expect(page.locator(".article.focused")).toContainText("WebKitGTK");
 });
 
+test("the source view opens a detour that pages within the source and returns to the list article in one step", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openReader(page);
+  const reader = page.locator(".drawer.reader");
+  const drawer = page.locator(".reader-article-drawer");
+  const row = (id: keyof typeof READERS) => drawer.locator(".reader-article-drawer-main").filter({ hasText: READERS[id].title });
+  await expect(reader.locator(".reader-title")).toHaveText(READERS[1].title);
+  // 同源三篇按时间：1、3、6。
+  await reader.locator("button.reader-source").click();
+  await expect(drawer).toHaveClass(/is-source/);
+  await expect(row(1)).toHaveAttribute("aria-current", "true");
+  await row(3).click();
+  await expect(reader.locator(".reader-title")).toHaveText(READERS[3].title);
+  await expect(drawer).toHaveCount(0);
+  await expect(reader.locator(".reader-position")).toContainText("2 / 3");
+  await page.keyboard.press("j");
+  await expect(reader.locator(".reader-title")).toHaveText(READERS[6].title);
+  await expect(reader.locator(".reader-position")).toContainText("3 / 3");
+  // 岔路里连看两篇，返回一步回到原文，抽屉回到来源视图并选中刚离开的那篇。
+  await reader.locator(".reader-back").click();
+  await expect(reader.locator(".reader-title")).toHaveText(READERS[1].title);
+  await expect(drawer).toHaveClass(/is-source/);
+  await expect(drawer.locator(".reader-article-drawer-row.selected")).toContainText(READERS[6].title);
+  // L 切回列表视图，再按收起；原文的上下篇照旧在焦点列表里走。
+  await page.keyboard.press("l");
+  await expect(drawer).not.toHaveClass(/is-source/);
+  await page.keyboard.press("l");
+  await expect(drawer).toHaveCount(0);
+  await page.keyboard.press("j");
+  await expect(reader.locator(".reader-title")).toHaveText(READERS[2].title);
+});
+
 test("edge hover needs a pause, and drawer shots cover both themes", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openReader(page);

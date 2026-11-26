@@ -82,6 +82,8 @@
 .settings-option strong { display: block; font-size: 13px; font-weight: 500; }
 .settings-option .hint { margin: 4px 0 0; }
 .settings-option > :is(button, .toggle) { flex: none; align-self: flex-start; }
+/* 分段控件本身是 div，别被上面给说明列的 `flex: 1` 拉宽：只占选项的宽度，窄栏换行后靠左。 */
+.settings-option > .chips.segmented { flex: 0 1 auto; }
 .settings-option > input[type="time"] { flex: none; width: 8.5em; }
 /* 注册表草稿行的数字 / 文本框：定宽，不挤占左侧标签与说明。 */
 .settings-option > input:not([type="time"]) { flex: none; width: 12em; max-width: 100%; }
@@ -959,6 +961,7 @@ details.manage-section > summary { cursor: pointer; font-weight: 500; }
   .settings-option > div:first-child, .settings-list-row > div:first-child { flex-basis: 100%; }
   .settings-option > :is(input, .menu-select, .chips, .advanced-inline, .retention-days, .model-picker), .settings-option > div.use-control, .settings-option > div.translate-model { flex: 1 1 100%; width: 100%; }
   .settings-option > .chips { flex-wrap: wrap; }
+  .settings-option > .chips.segmented { width: auto; }
   .settings-option .model-picker[data-variant="field"], .settings-option .model-picker[data-variant="field"] .model-picker-trigger { width: 100%; min-width: 0; }
   .advanced-inline { justify-content: flex-start; }
   .advanced-inline > :is(input, .menu-select) { width: 100%; }

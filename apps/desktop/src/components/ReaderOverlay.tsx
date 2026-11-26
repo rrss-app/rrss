@@ -8,6 +8,7 @@ import { ReaderSelectionTranslation } from "./ReaderSelectionTranslation";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { Icon } from "./Icon";
 import { ReaderMasthead } from "./ReaderMasthead";
+import { SourceAvatar } from "./ArticleCard";
 import { ReaderEnding, type NextArticle } from "./ReaderEnding";
 import { ReasonRow } from "./ReasonRow";
 import { RelativeTime } from "./RelativeTime";
@@ -68,7 +69,9 @@ export function ReaderOverlay({
   onFetchFulltext,
   onStar,
   drawerOpen = false,
-  sourcePanel,
+  drawerView = "list",
+  drawerSource,
+  restorePosition = false,
   onSourceToggle,
   drawerPinned = false,
   canPinDrawer = false,
@@ -93,6 +96,7 @@ export function ReaderOverlay({
   onDrawerSelect,
   onDrawerOpenArticle,
   onDrawerRate,
+  onRateNext,
   onDrawerLoadMore,
   onDrawerEdgeEnter,
   onDrawerEdgeLeave,
@@ -160,7 +164,11 @@ export function ReaderOverlay({
   onFetchFulltext?: () => void;
   onStar?: () => void;
   drawerOpen?: boolean;
-  sourcePanel?: ReactNode;
+  /** 篇目抽屉显示哪一种：进入阅读器的列表，或当前这篇所属订阅源的时间线。 */
+  drawerView?: "list" | "source";
+  drawerSource?: ReaderDrawerSource;
+  /** 从来源岔路回到这篇：按记下的阅读位置恢复，不再跳到打开时的锚点。 */
+  restorePosition?: boolean;
   onSourceToggle?: () => void;
   drawerPinned?: boolean;
   canPinDrawer?: boolean;
@@ -186,6 +194,8 @@ export function ReaderOverlay({
   onDrawerSelect?: (id: number) => void;
   onDrawerOpenArticle?: (id: number) => void;
   onDrawerRate?: (id: number) => void;
+  /** 顶栏「踩并看下一篇」：在当前这篇的上下篇里走（列表，或来源岔路）。 */
+  onRateNext?: () => void;
   onDrawerLoadMore?: () => void;
   onDrawerEdgeEnter?: () => void;
   onDrawerEdgeLeave?: () => void;
@@ -239,7 +249,7 @@ export function ReaderOverlay({
     searchHits.onDismiss();
     body?.focus({ preventScroll: true });
   } : undefined;
-  const escapeState = { open: drawerOpen || !!sourcePanel, pinned: drawerPinned && !sourcePanel, close: sourcePanel ? onSourceToggle : onDrawerClose, trayEscape: onTrayEscape, dismissHits };
+  const escapeState = { open: drawerOpen, pinned: drawerPinned, close: onDrawerClose, trayEscape: onTrayEscape, dismissHits };
   const escapeRef = useRef(escapeState);
   escapeRef.current = escapeState;
   useEffect(() => {
@@ -285,7 +295,7 @@ export function ReaderOverlay({
   const webReader = webNav != null || webActions != null;
 
   return (
-    <div ref={stageRef} className="overlay reader-stage" data-drawer-open={drawerOpen || !!sourcePanel || undefined} data-drawer-pinned={drawerPinned || (!!sourcePanel && canPinDrawer) || undefined} style={style} {...(inert ? { inert: true } : {})}>
+    <div ref={stageRef} className="overlay reader-stage" data-drawer-open={drawerOpen || undefined} data-drawer-pinned={drawerPinned || undefined} style={style} {...(inert ? { inert: true } : {})}>
       <div className={`drawer reader${reader.translation_ready ? " has-translation" : ""}`} data-citation-tray={!!citationTray || undefined} data-search-hits={(searchHits && !inert) || undefined}>
         <div className="drawer-head reader-head" data-tauri-drag-region="deep">
           <div className="reader-head-nav">
@@ -304,7 +314,7 @@ export function ReaderOverlay({
                 {onNext ? <ReaderTool label={t("head.nextArticle")} shortcut="J" disabled={!hasNext} onClick={onNext}><Icon name="chevronRight" size={16} /></ReaderTool> : null}
               </div> : null}
               {positionLabel ? <span className="reader-position" aria-label={t("head.position", { label: positionLabel })}>{positionLabel}</span> : null}
-              {onDrawerRate ? <ReaderTool label={t("head.rateNext")} shortcut="X" onClick={() => onDrawerRate(reader.id)}><ThumbIcon down /></ReaderTool> : null}
+              {onRateNext ? <ReaderTool label={t("head.rateNext")} shortcut="X" onClick={onRateNext}><ThumbIcon down /></ReaderTool> : null}
             </>}
           </div>
           <ReaderScrollTitle body={body} title={title} />
@@ -349,11 +359,11 @@ export function ReaderOverlay({
             ))}
           </div>
         ) : null}
-        <ReadingPosition key={`${reader.id}/${reader.source_hash}`} sourceHash={reader.source_hash} initial={readingPosition} restorePosition={!!sourcePanel} anchor={anchor} onPosition={onReadingPosition} onBody={bindBody} onContextMenu={showContextMenu}>
+        <ReadingPosition key={`${reader.id}/${reader.source_hash}`} sourceHash={reader.source_hash} initial={readingPosition} restorePosition={restorePosition} anchor={anchor} onPosition={onReadingPosition} onBody={bindBody} onContextMenu={showContextMenu}>
           {webTip}
           <div className={`reader-column${origin ? " web-column" : ""}`}>
             {origin}
-            <ReaderMasthead web={!!origin || webReader} reader={reader} article={article} title={title} onSource={onSourceToggle} sourceOpen={!!sourcePanel} originalTitle={translateMode === "bilingual" && reader.translated_title ? reader.title : undefined}
+            <ReaderMasthead web={!!origin || webReader} reader={reader} article={article} title={title} onSource={onSourceToggle} sourceOpen={drawerOpen && drawerView === "source"} originalTitle={translateMode === "bilingual" && reader.translated_title ? reader.title : undefined}
               titleTranslation={translateMode === "original" ? reader.auto_translate?.title ?? undefined : undefined} />
             {autoStrip}
             {fetchingFulltext ? <span className="reader-progress" role="status"><Icon name="spinner" size={14} className="spin" />{t("body.fetchingFulltext")}</span> : null}
@@ -460,14 +470,14 @@ export function ReaderOverlay({
           onTranslate={onTranslate} onRegenerate={onRegenerate ?? onTranslate} onSummarize={onSummarize}
           onCollect={onCollect} collecting={collecting} onContinueAsking={onContinueAsking} onCite={onCiteArticle} onStar={onStar} onTop={() => scrollReaderToTop(body)} /> : null}
       </div>
-      {sourcePanel && !canPinDrawer ? <button type="button" className="reader-drawer-scrim" aria-label={t("drawer.collapse")} onClick={onSourceToggle} /> : null}
-      {sourcePanel}
-      {onDrawerOpen && !sourcePanel ? <div className="reader-drawer-edge" onMouseEnter={onDrawerEdgeEnter} onMouseLeave={onDrawerEdgeLeave} aria-hidden="true" /> : null}
+      {onDrawerOpen ? <div className="reader-drawer-edge" onMouseEnter={onDrawerEdgeEnter} onMouseLeave={onDrawerEdgeLeave} aria-hidden="true" /> : null}
       {scrimShown && onDrawerClose ? <button type="button" className="reader-drawer-scrim" aria-label={t("drawer.collapse")} data-closing={drawerClosing || undefined}
         tabIndex={drawerClosing ? -1 : undefined} onClick={drawerClosing ? undefined : onDrawerClose} /> : null}
       {drawerShown && onDrawerClose ? <ReaderArticleDrawer
         closing={drawerClosing}
         active={drawerOpen && !drawerClosing && dismissible && !inert}
+        view={drawerView}
+        source={drawerSource}
         rows={drawerRows}
         title={drawerTitle ?? t("drawer.defaultTitle")}
         currentId={reader.id}
@@ -494,9 +504,25 @@ export function ReaderOverlay({
 /** 数据库文章 ID 为正；合辑选中键独立编码，避免与文章 ID 碰撞。 */
 export function readerDrawerKey(row: ArticleView): number { return row.row_kind === 1 ? -row.cluster_id : row.id; }
 
-function ReaderArticleDrawer({ closing, active, rows, title, currentId, selectedId, expandedCluster, onExpand, scope, pinned, canPin, hasMore, loadingMore, onClose, onPin, onScope, onSelect, onOpen, onRate, onLoadMore }: {
+/** 篇目抽屉的来源视图：当前这篇所属订阅源的时间线（样子同列表视图，数据与筛选自持）。 */
+export type ReaderDrawerSource = {
+  title: string;
+  iconHref?: string;
+  /** 有可导航列表时显示在表头上方，点它切回列表视图。 */
+  listTitle?: string;
+  onList?: () => void;
+  onOpenFeeds: () => void;
+  pending: boolean;
+  error: boolean;
+  loadError: boolean;
+  onRetry: () => void;
+};
+
+function ReaderArticleDrawer({ closing, active, view, source, rows, title, currentId, selectedId, expandedCluster, onExpand, scope, pinned, canPin, hasMore, loadingMore, onClose, onPin, onScope, onSelect, onOpen, onRate, onLoadMore }: {
   closing: boolean;
   active: boolean;
+  view: "list" | "source";
+  source?: ReaderDrawerSource;
   rows: ArticleView[];
   title: string;
   currentId: number;
@@ -518,36 +544,55 @@ function ReaderArticleDrawer({ closing, active, rows, title, currentId, selected
 }) {
   const { t } = useTranslation("reader");
   const listRef = useRef<HTMLDivElement>(null);
-  const observe = useExposureTracker({ surface: "drawer", root: listRef, active });
+  const sourceView = view === "source" && !!source;
+  // 来源视图是一条订阅时间线，曝光按订阅时间线记，不混进篇目（推荐）的数据。
+  const observe = useExposureTracker({ surface: sourceView ? "feeds" : "drawer", root: listRef, active });
   useEffect(() => {
     if (!selectedId) return;
     listRef.current?.querySelector<HTMLElement>(`[data-reader-drawer-row="${selectedId}"]`)?.scrollIntoView?.({ block: "nearest" });
-  }, [selectedId]);
+  }, [selectedId, view]);
+  const canLoad = hasMore && !loadingMore && !(sourceView && source.loadError);
   const onScroll = () => {
     const list = listRef.current;
-    if (list && hasMore && !loadingMore && list.scrollTop + list.clientHeight >= list.scrollHeight - 80) onLoadMore?.();
+    if (list && canLoad && list.scrollTop + list.clientHeight >= list.scrollHeight - 80) onLoadMore?.();
   };
+  // 来源视图一页没铺满时没有滚动可等，直接接着取下一页。
+  useEffect(() => {
+    const list = listRef.current;
+    if (sourceView && list && canLoad && rows.length > 0 && list.scrollHeight <= list.clientHeight) onLoadMore?.();
+  });
   const scopes = ["all", "unread", "starred"] as const;
   let articlePosition = 0;
-  return <aside className="reader-article-drawer" aria-label={t("head.drawer")} data-closing={closing || undefined} {...(closing ? { inert: true } : {})}>
+  const empty = sourceView && !source.pending && !source.error && rows.length === 0;
+  return <aside className={`reader-article-drawer${sourceView ? " is-source" : ""}`} aria-label={sourceView ? source.title : t("head.drawer")} data-closing={closing || undefined} {...(closing ? { inert: true } : {})}>
+    {sourceView && source.listTitle && source.onList ? <button type="button" className="reader-drawer-crumb" title={t("drawer.backToList", { title: source.listTitle })} onClick={source.onList}>
+      <Icon name="chevronLeft" size={12} />{source.listTitle}
+    </button> : null}
     <div className="reader-article-drawer-head">
-      <strong>{title}</strong><span className="reader-article-drawer-count">{rows.filter((row) => row.row_kind === 0).length}</span><span className="drawer-head-spacer" />
+      {sourceView ? <><SourceAvatar title={source.title} size={20} iconHref={source.iconHref} /><strong title={source.title}>{source.title}</strong></>
+        : <><strong>{title}</strong><span className="reader-article-drawer-count">{rows.filter((row) => row.row_kind === 0).length}</span></>}
+      <span className="drawer-head-spacer" />
+      {sourceView ? <button type="button" className="tool-btn icon-only reader-source-all" aria-label={t("source.openFeeds")} title={t("source.openFeeds")} onClick={source.onOpenFeeds}><Icon name="rss" size={15} /></button> : null}
       {canPin && onPin ? <button type="button" className="tool-btn icon-only" aria-label={pinned ? t("drawer.unpin") : t("drawer.pin")} aria-pressed={pinned} title={pinned ? t("drawer.unpin") : t("drawer.pin")} onClick={onPin}><Icon name="pin" size={15} /></button> : null}
-      <button type="button" className="tool-btn icon-only" aria-label={t("drawer.collapse")} title={t("drawer.collapseTitle")} onClick={onClose}><Icon name="close" size={15} /></button>
+      <button type="button" className="tool-btn icon-only" aria-label={t("drawer.collapse")} title={sourceView && source.listTitle ? t("drawer.collapse") : t("drawer.collapseTitle")} onClick={onClose}><Icon name="close" size={15} /></button>
     </div>
     <Segmented className="reader-article-drawer-scopes" role="group" aria-label={t("drawer.filter")}>
       {scopes.map((id) => <button key={id} type="button" aria-pressed={scope === id} onClick={() => onScope?.(id)}>{t(`drawer.scope.${id}`)}</button>)}
     </Segmented>
-    <div className="reader-article-drawer-list" ref={listRef} onScroll={onScroll}>
+    <div className="reader-article-drawer-list" key={view} ref={listRef} onScroll={onScroll}>
+      {sourceView && source.pending ? <div className="reader-article-drawer-loading" role="status">{t("source.loading")}</div> : null}
+      {sourceView && source.error ? <button type="button" className="tool-btn reader-article-drawer-retry" onClick={source.onRetry}>{t("source.retry")}</button> : null}
+      {empty ? <p className="reader-article-drawer-empty">{scope === "all" ? t("source.empty") : t("source.emptyScope")}</p> : null}
       {rows.map((row) => {
         const cluster = row.row_kind === 1;
         const key = readerDrawerKey(row);
         const position = articlePosition;
         if (row.row_kind === 0) articlePosition++;
-        // 时间与焦点列表同一种相对时间，不跟随浏览器区域格式。
+        // 时间与焦点列表同一种相对时间，不跟随浏览器区域格式；来源视图里不重复来源名。
+        const feed = sourceView ? "" : row.feed_title;
         const meta = cluster
           ? [t("drawer.clusterSize", { count: row.cluster_size }), row.cluster_span].filter(Boolean).join(" · ")
-          : <>{row.feed_title}{row.published_at ? <>{row.feed_title ? " · " : ""}<RelativeTime ms={row.published_at} /></> : null}</>;
+          : <>{feed}{row.published_at ? <>{feed ? " · " : ""}<RelativeTime ms={row.published_at} /></> : null}</>;
         const copy = <span className="reader-article-drawer-copy"><strong>{cluster ? <><span className="reader-article-drawer-cluster">{t("drawer.cluster")}</span>{row.cluster_label}</> : row.title}</strong><small>{meta}</small></span>;
         const gutter = <span className="reader-article-drawer-gutter" aria-hidden="true"><span className="reader-article-drawer-dot" /></span>;
         return <ReaderDrawerRow key={`${row.row_kind}-${row.id}`} row={row} currentId={currentId} selectedId={selectedId} position={position} observe={observe}>
@@ -556,8 +601,9 @@ function ReaderArticleDrawer({ closing, active, rows, title, currentId, selected
         </ReaderDrawerRow>;
       })}
       {loadingMore ? <div className="reader-article-drawer-loading">{t("drawer.loading")}</div> : null}
+      {sourceView && source.loadError && !loadingMore ? <button type="button" className="tool-btn reader-article-drawer-retry" onClick={onLoadMore}>{t("source.retry")}</button> : null}
     </div>
-    <div className="reader-article-drawer-foot"><span><kbd>↑↓</kbd>{t("drawer.footMove")}</span><span><kbd>Enter</kbd>{t("drawer.footOpen")}</span><span><kbd>X</kbd>{t("ending.rating.down")}</span><span><kbd>L</kbd>{t("drawer.footCollapse")}</span></div>
+    <div className="reader-article-drawer-foot"><span><kbd>↑↓</kbd>{t("drawer.footMove")}</span><span><kbd>Enter</kbd>{t("drawer.footOpen")}</span><span><kbd>X</kbd>{t("ending.rating.down")}</span><span><kbd>L</kbd>{sourceView && source.listTitle ? t("drawer.footBackToList") : t("drawer.footCollapse")}</span></div>
   </aside>;
 }
 

@@ -45,7 +45,7 @@ import type { FulltextError, WebVerifyStateEvent } from "../../bindings";
 import type { ReadSessionVia } from "../../bindings";
 import { i18n, useTranslation } from "../../i18n";
 import { inferReadingVia, useReadingSession } from "./useReadingSession";
-import { ReaderSourcePanel } from "./ReaderSourcePanel";
+import { markSourceRead, sourceArticles, useSourceTimeline } from "./sourceTimeline";
 import { AutoTranslateStrip } from "./AutoTranslateStrip";
 import { feedKeys } from "../../lib/feedQuery";
 
@@ -168,7 +168,9 @@ export const READING_POSITION_LIMIT = 200;
 /** 阅读区宽度达到该值才真正钉住篇目抽屉；窄于此时钉住偏好仍保留，但按浮层显示。 */
 export const READER_DRAWER_PIN_MIN_WIDTH = 1100;
 
-type Session = { web?: WebPage; ticket: ReaderTicket; view: ReaderView; skipNav: boolean; returnToList: boolean; readingVia: ReadSessionVia; openedAt: number | null; fromThread?: Extract<ReaderCitationSource, { kind: "thread" }>; returnThread?: ReaderOpenOptions["returnThread"]; anchor?: ReaderOpenOptions["anchor"]; search?: SearchSession; detour?: boolean; sourceOpen?: boolean };
+type Session = { web?: WebPage; ticket: ReaderTicket; view: ReaderView; skipNav: boolean; returnToList: boolean; readingVia: ReadSessionVia; openedAt: number | null; fromThread?: Extract<ReaderCitationSource, { kind: "thread" }>; returnThread?: ReaderOpenOptions["returnThread"]; anchor?: ReaderOpenOptions["anchor"]; search?: SearchSession; detour?: "related" | "source"; sourceReturn?: boolean };
+/** 抽屉显示进入阅读器的列表，还是当前这篇所属订阅源的时间线。 */
+type DrawerView = "list" | "source";
 type ReturnFrame = Omit<Session, "ticket" | "view" | "openedAt" | "anchor"> & { id: number };
 type ReturnEntry = Pick<ReturnFrame, "skipNav" | "returnToList" | "returnThread" | "search" | "detour"> & { parents: ReturnFrame[] };
 type RestoredEntry = { frame: ReturnFrame; parents: Session[] };
@@ -226,6 +228,11 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   const [ops, setOps] = useState<Partial<Record<ReaderOpKind, ReaderOpTicket>>>({});
   const [translateMode, setTranslateMode] = useState<TranslateMode>("original");
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerView, setDrawerViewState] = useState<DrawerView>("list");
+  const drawerViewRef = useRef<DrawerView>("list");
+  const setDrawerView = (view: DrawerView) => { drawerViewRef.current = view; setDrawerViewState(view); };
+  /** 来源视图的「全部 / 未读 / 收藏」：只属于来源视图，换了订阅源回到「全部」。 */
+  const [sourceFilter, setSourceFilter] = useState<{ feedId: number; scope: string }>({ feedId: 0, scope: "all" });
   const [drawerPinned, setDrawerPinned] = useState(false);
   const [drawerSelectedId, setDrawerSelectedId] = useState<number | undefined>();
   const drawerSelectedRef = useRef<number | undefined>(undefined);
@@ -238,8 +245,8 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   const drawerPinnedRef = useRef(false);
   const canPinRef = useRef(false);
   const edgeTimer = useRef<number | undefined>(undefined);
-  const drawerActionsRef = useRef<{ close: () => void; open: () => void; openArticle: (id: number) => void; rate: (id: number) => Promise<void>; rows: () => ArticleView[] }>({
-    close: () => {}, open: () => {}, openArticle: () => {}, rate: async () => {}, rows: () => [],
+  const drawerActionsRef = useRef<{ close: () => void; toggle: () => void; openArticle: (id: number) => void; rate: (id: number) => Promise<void>; rateCurrent: () => Promise<void>; rows: () => ArticleView[] }>({
+    close: () => {}, toggle: () => {}, openArticle: () => {}, rate: async () => {}, rateCurrent: async () => {}, rows: () => [],
   });
 
   // 快捷键与异步续作读取最新状态，不依赖闭包快照。
@@ -281,6 +288,15 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     staleTime: 5 * 60_000,
     retry: false,
   });
+  // 来源视图与来源岔路的数据：当前这篇所属订阅源的时间线。
+  const sourceFeedId = session && !session.web && props.onShowFeed ? session.view.feed_id : 0;
+  const sourceDetour = session?.detour === "source";
+  const sourceScope = sourceFilter.feedId === sourceFeedId ? sourceFilter.scope : "all";
+  const source = useSourceTimeline(sourceFeedId, sourceScope, open && ((drawerOpen && drawerView === "source") || sourceDetour));
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
+  const sourceFeedRef = useRef(sourceFeedId);
+  sourceFeedRef.current = sourceFeedId;
   const debug = settings.data?.values.some(value => value.id === "ui_debug_mode" && value.value === "1") ?? false;
   const currentNav = () => navRef.current.getCurrent?.() ?? navRef.current;
   drawerPinnedRef.current = drawerPinned;
@@ -299,6 +315,14 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   const listedRows = () => {
     void dismissedRevision;
     return currentNav().articles.filter((article) => article.row_kind === 1 || (article.row_kind === 0 && !dismissedIds.current.has(article.id)));
+  };
+  /** 进入阅读器的那篇：岔路（相关阅读、来源）里是岔开之前的那篇。 */
+  const originOf = (cur: Session) => cur.detour ? returns.current.find(item => !item.detour) ?? cur : cur;
+  /** 有可导航列表时才有列表视图；从搜索、对话引用等打开时只有来源视图。 */
+  const hasList = (cur: Session | null) => !!cur && !originOf(cur).skipNav;
+  const visibleSourceRows = (data = sourceRef.current.data) => {
+    void dismissedRevision;
+    return sourceArticles(data).filter((article) => !dismissedIds.current.has(article.id));
   };
   const articleForRate = (view: ReaderView): ArticleView => currentNav().articles.find((article) => article.row_kind === 0 && article.id === view.id) ?? {
     id: view.id, title: view.title, feed_id: 0, feed_title: "", feed_icon_href: "", published_at: null, url: view.url,
@@ -404,15 +428,16 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   }, [nav.reset, nav.scope]);
   useEffect(() => {
     if (!drawerOpen) return;
-    const rows = (navRef.current.getCurrent?.() ?? navRef.current).articles
-      .filter((article) => article.row_kind === 1 || (article.row_kind === 0 && !dismissedIds.current.has(article.id)));
+    const rows = drawerViewRef.current === "source" ? sourceArticles(sourceRef.current.data).filter((article) => !dismissedIds.current.has(article.id))
+      : (navRef.current.getCurrent?.() ?? navRef.current).articles
+        .filter((article) => article.row_kind === 1 || (article.row_kind === 0 && !dismissedIds.current.has(article.id)));
     const currentId = sessionRef.current?.view.id;
     const selected = drawerSelectedRef.current;
     const next = rows.some((row) => readerDrawerKey(row) === selected)
       ? selected
       : rows.find((row) => row.row_kind === 0 && row.id === currentId)?.id ?? (rows[0] ? readerDrawerKey(rows[0]) : undefined);
     if (next !== selected) selectDrawerRow(next);
-  }, [drawerOpen, nav.articles, nav.scope, nav.reset, session?.view.id, selectDrawerRow]);
+  }, [drawerOpen, drawerView, source.data, nav.articles, nav.scope, nav.reset, session?.view.id, selectDrawerRow]);
 
   /** 显示一份阅读视图并把它记为当前会话；之前会话的工具 busy 状态随之作废。 */
   const showReader = (ticket: ReaderTicket, view: ReaderView, skipNav: boolean, returnToList: boolean, options?: ReaderOpenOptions, openedAt: number | null = null, web?: WebPage, restored?: ReturnFrame) => {
@@ -426,7 +451,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     const returnThread = options?.returnThread !== undefined ? options.returnThread
       : options?.citationSource ? fromThread : sameArticle?.returnThread;
     const next = { web, ticket, view, skipNav, returnToList, openedAt, readingVia: inferReadingVia(options, propsRef.current.listVia), anchor: options?.anchor,
-      detour: options?.via === "related" || options?.via === "source" || undefined,
+      detour: options?.via === "related" ? "related" as const : options?.via === "source" ? "source" as const : undefined,
       search: options?.search ? searchSession(earlyHitBlocks.current?.ticket === ticket && !options.search.blocks
         ? { ...options.search, blocks: earlyHitBlocks.current.blocks } : options.search) : undefined,
       ...restored, fromThread, returnThread };
@@ -637,18 +662,32 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     } finally { setExtractingSession(old => old === cur.ticket.session ? null : old); }
   };
 
-  /** 来源侧栏换篇：当前这篇（连同打开的侧栏）进返回栈；目标已在返回路径上时回到那一层，不重复压栈。 */
-  const openFromSource = (id: number) => {
+  /**
+   * 在来源岔路里打开一篇（来源视图点行、岔路里的上下篇）。岔路只进一次返回栈：
+   * 从原文进来时原文入栈，岔路里换篇不再压栈，返回一步回到原文；目标已在返回路径上时回到那一层。
+   */
+  const openInSource = (id: number) => {
     const cur = sessionRef.current;
     if (!cur || !requests.owns(cur.ticket) || cur.view.id === id) return;
     const existing = returns.current.findIndex(session => session.view.id === id);
     if (existing >= 0) {
-      restoreArticleAt(existing);
+      restoreArticleAt(existing, id);
       return;
     }
-    returns.current.push(cur);
+    selectDrawerRow(id);
+    markSourceRead(queryClient, cur.view.feed_id, id);
+    if (cur.detour !== "source") returns.current.push({ ...cur, sourceReturn: drawerOpenRef.current && drawerViewRef.current === "source" });
     readingSession.finish("next");
     void openArticle(id, { skipNav: true, via: "source" });
+  };
+  /** 来源视图点行：与篇目一样，未钉住时收起抽屉。 */
+  const openFromSource = (id: number) => {
+    if (sessionRef.current?.view.id === id) {
+      if (!pinnedNow()) dismissDrawer();
+      return;
+    }
+    if (!pinnedNow()) setDrawerOpen(false);
+    openInSource(id);
   };
 
   /** 打开文末的相关阅读：当前这篇进返回栈，Esc / 「回到上一篇」回到它的文末；上下篇仍按原来的列表走。 */
@@ -660,14 +699,20 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       restoreArticleAt(existing);
       return;
     }
-    returns.current.push(cur);
+    returns.current.push({ ...cur, sourceReturn: undefined });
     readingSession.finish("next");
     queryClient.setQueryData<RelatedArticleView[]>(relatedKey(cur.view.id), rows => rows?.map(row => row.article_id === item.article_id ? { ...row, read: true } : row));
     void openArticle(item.article_id, { skipNav: true, via: "related" });
   };
 
-  function restoreArticleAt(index: number) {
+  /** 回到返回路径上的一篇。离开它时抽屉开在来源视图，就重新打开来源视图并选中刚离开（或刚点）的那篇。 */
+  function restoreArticleAt(index: number, select = sessionRef.current?.view.id) {
     const [previous] = returns.current.splice(index);
+    if (previous.sourceReturn) {
+      setDrawerView("source");
+      selectDrawerRow(select);
+      setDrawerOpen(true);
+    }
     readingSession.finish("back");
     translation.detach();
     const next = { ...previous, ticket: requests.open(previous.view.id), openedAt: Date.now() };
@@ -709,7 +754,8 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
 
   // 正文显示后再备下一篇：取只读快照并预热两篇的前几张本地图片，按 J / K 切换时图片直接出现。
   const shownId = open ? session?.view.id : undefined;
-  const prefetchIds = !open || !session ? [] : session.search ? session.search.results : session.skipNav ? [] : navigationIds();
+  const prefetchIds = !open || !session ? [] : session.search ? session.search.results
+    : session.detour === "source" ? visibleSourceRows(source.data).map((row) => row.id) : session.skipNav ? [] : navigationIds();
   const prefetchId = shownId === undefined ? undefined : prefetchIds[prefetchIds.indexOf(shownId) + 1];
   useEffect(() => {
     const cur = sessionRef.current;
@@ -819,6 +865,8 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     setOpening(null);
     setOps({});
     setDrawerOpen(false);
+    drawerViewRef.current = "list";
+    setDrawerViewState("list");
     selectDrawerRow(undefined);
     if (edgeTimer.current !== undefined) window.clearTimeout(edgeTimer.current);
   }, [open, requests, selectDrawerRow]);
@@ -848,7 +896,26 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     return () => { disposed = true; unlisten?.(); };
   }, [cache, setView]);
 
+  /** 来源岔路里的下一篇：已取的页里没有就先取下一页。 */
+  const sourceNeighbor = async (id: number, dir: -1 | 1, rows = visibleSourceRows()) => {
+    const at = rows.findIndex((row) => row.id === id);
+    if (at < 0) return undefined;
+    if (rows[at + dir] || dir === -1 || !sourceRef.current.hasNextPage) return rows[at + dir]?.id;
+    const cur = sessionRef.current;
+    const result = await sourceRef.current.fetchNextPage();
+    if (!cur || sessionRef.current !== cur) return undefined;
+    const next = visibleSourceRows(result.data);
+    return next[next.findIndex((row) => row.id === id) + 1]?.id;
+  };
+
   const openNeighbor = async (dir: -1 | 1) => {
+    // 来源岔路里按 J / K：在来源视图的当前筛选里走，返回仍一步回到原文。
+    if (sessionRef.current?.detour === "source") {
+      const cur = sessionRef.current;
+      const nextId = await sourceNeighbor(cur.view.id, dir);
+      if (nextId !== undefined && sessionRef.current === cur) openInSource(nextId);
+      return;
+    }
     // 相关阅读的岔路里按 J / K：先回到原来那篇，再按原来的列表走。
     if (sessionRef.current?.detour) {
       if (returns.current.length > 0) {
@@ -882,12 +949,38 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   };
 
   const closeDrawer = () => setDrawerOpen(false);
+  /** 用户收起抽屉（关闭钮、遮罩、Esc、再点来源名）：收起来源视图时焦点回到来源名。 */
+  const dismissDrawer = () => {
+    const fromSource = drawerOpenRef.current && drawerViewRef.current === "source";
+    setDrawerOpen(false);
+    if (fromSource) readerBody.current?.querySelector<HTMLElement>("button.reader-source")?.focus({ preventScroll: true });
+  };
+  /** 打开列表视图，选中进入阅读器的那篇（岔路里也是原文）。 */
   const openDrawer = () => {
-    if (sessionRef.current?.skipNav) return;
-    if (sessionRef.current?.sourceOpen) toggleSource();
-    const id = sessionRef.current?.view.id;
-    selectDrawerRow(id);
+    const cur = sessionRef.current;
+    if (!cur || !hasList(cur)) return;
+    cancelDrawerOpen();
+    setDrawerView("list");
+    selectDrawerRow(originOf(cur).view.id);
     setDrawerOpen(true);
+  };
+  const openSourceView = () => {
+    const cur = sessionRef.current;
+    if (!cur) return;
+    cancelDrawerOpen();
+    setDrawerView("source");
+    selectDrawerRow(cur.view.id);
+    setDrawerOpen(true);
+  };
+  /** L：来源视图切回列表；列表视图收起；收起时打开列表（没有列表时开关来源视图）。 */
+  const toggleDrawer = () => {
+    const cur = sessionRef.current;
+    if (!cur) return;
+    if (drawerOpenRef.current) {
+      if (drawerViewRef.current === "source" && hasList(cur)) openDrawer();
+      else dismissDrawer();
+    } else if (hasList(cur)) openDrawer();
+    else if (sourceFeedRef.current > 0) openSourceView();
   };
   const scheduleDrawerOpen = () => {
     if (drawerOpen || edgeTimer.current !== undefined) return;
@@ -896,24 +989,21 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   const cancelDrawerOpen = () => {
     if (edgeTimer.current !== undefined) { window.clearTimeout(edgeTimer.current); edgeTimer.current = undefined; }
   };
+  /** 点文章标题上方的来源名：打开来源视图；已是来源视图就收起。 */
   const toggleSource = () => {
-    const cur = sessionRef.current;
-    if (!cur) return;
-    cancelDrawerOpen();
-    closeDrawer();
-    const next = { ...cur, sourceOpen: !cur.sourceOpen };
-    sessionRef.current = next;
-    setSession(next);
-    if (!next.sourceOpen) readerBody.current?.querySelector<HTMLElement>("button.reader-source")?.focus({ preventScroll: true });
+    if (drawerOpenRef.current && drawerViewRef.current === "source") dismissDrawer();
+    else openSourceView();
   };
+  /** 列表视图点行：回到原列表读那篇；在岔路里点就是岔路结束。 */
   const openDrawerArticle = (id: number) => {
+    const cur = sessionRef.current;
     if (!effectiveDrawerPinned) setDrawerOpen(false);
     selectDrawerRow(id);
-    void openArticle(id, { returnToList: sessionRef.current?.returnToList, via: "drawer" });
+    void openArticle(id, { returnToList: cur ? originOf(cur).returnToList : undefined, via: "drawer" });
   };
   const rateAndOpenNext = async (id: number) => {
     const cur = sessionRef.current;
-    if (!cur || cur.skipNav || dismissedIds.current.has(id)) return;
+    if (!cur || !hasList(cur) || dismissedIds.current.has(id)) return;
     const rows = navigationRows();
     const row = rows.find((article) => article.id === id);
     if (!row) return;
@@ -941,7 +1031,39 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
     if (row.row_kind === 1) expandDrawerCluster(currentNav().expandedCluster === row.cluster_id ? null : row.cluster_id);
     else openDrawerArticle(row.id);
   };
-  drawerActionsRef.current = { close: closeDrawer, open: openDrawer, openArticle: openDrawerRow, rate: rateAndOpenNext, rows: listedRows };
+  /**
+   * 来源视图里踩：只记踩、收起那一行。踩的是来源岔路里正在读的这篇时，接着打开来源里的下一篇
+   * （没有下一篇就上一篇，都没有时回到原文）；在原文上踩它在来源里的那一行不换篇。
+   */
+  const rateInSource = async (id: number) => {
+    const cur = sessionRef.current;
+    if (!cur || dismissedIds.current.has(id)) return;
+    const rows = visibleSourceRows();
+    const row = rows.find((article) => article.id === id);
+    if (!row) return;
+    const leaving = id === cur.view.id && cur.detour === "source";
+    const nextId = leaving ? await sourceNeighbor(id, 1, rows) ?? rows[rows.indexOf(row) - 1]?.id : undefined;
+    if (sessionRef.current !== cur) return;
+    rateArticle(row, false, true);
+    dismissedIds.current.add(id);
+    setDismissedRevision((value) => value + 1);
+    if (!leaving) return;
+    if (nextId !== undefined) openInSource(nextId);
+    else closeReader();
+  };
+  /** 顶栏「踩并看下一篇」与阅读区里的 X：来源岔路里在来源走，其余在列表走。 */
+  const rateCurrent = async () => {
+    const cur = sessionRef.current;
+    if (!cur) return;
+    if (cur.detour === "source") await rateInSource(cur.view.id);
+    else await rateAndOpenNext(cur.view.id);
+  };
+  drawerActionsRef.current = {
+    close: dismissDrawer, toggle: toggleDrawer, rateCurrent,
+    openArticle: (key) => drawerViewRef.current === "source" ? openFromSource(key) : openDrawerRow(key),
+    rate: (id) => drawerViewRef.current === "source" ? rateInSource(id) : rateAndOpenNext(id),
+    rows: () => drawerViewRef.current === "source" ? visibleSourceRows() : listedRows(),
+  };
 
   const cycleTranslateMode = () => {
     if (!reader?.translation_ready) return;
@@ -1120,7 +1242,7 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
         });
       }
       if (drawerOpenRef.current) {
-        if (key === "l") return run(drawerActionsRef.current.close);
+        if (key === "l") return run(drawerActionsRef.current.toggle);
         if (key === "escape" && !pinnedNow()) return;
         if (key === "arrowdown" || key === "arrowup") {
           const rows = drawerActionsRef.current.rows();
@@ -1134,8 +1256,8 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
         if (key === "x") return run(() => { if (selectedId !== undefined && selectedId > 0) void drawerActionsRef.current.rate(selectedId); });
       }
       if (key === "q" && cur.fromThread) return run(() => propsRef.current.onContinueAsking?.());
-      if (key === "l") return run(drawerActionsRef.current.open);
-      if (key === "x") return run(() => void drawerActionsRef.current.rate(cur.view.id));
+      if (key === "l") return run(drawerActionsRef.current.toggle);
+      if (key === "x") return run(() => void drawerActionsRef.current.rateCurrent());
       if (key === "n" && cur.search?.hits) return run(() => act.stepSearchHit(e.shiftKey ? -1 : 1));
       if (key === "j") return run(() => void act.openNeighbor(1));
       if (key === "k") return run(() => void act.openNeighbor(-1));
@@ -1192,23 +1314,37 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
   if (!session || !reader) return null;
 
   const navRows = session.skipNav ? [] : navigationRows();
-  const rows = session.skipNav ? [] : listedRows();
+  const listShown = hasList(session);
+  const rows = listShown ? listedRows() : [];
   const ids = session.search ? session.search.results : navRows.map((row) => row.id);
   const pos = ids.indexOf(reader.id);
   const pager = !session.skipNav || !!session.search;
   const feedId = reader.feed_id;
-  const canShowSource = !!props.onShowFeed && feedId > 0 && !session.web;
+  const canShowSource = sourceFeedId > 0;
+  const sourceView = drawerView === "source" && canShowSource;
+  const sourceRows = sourceView || sourceDetour ? visibleSourceRows(source.data) : [];
+  // 来源岔路：上下篇、位置与文末下一篇都按来源视图的当前筛选。
+  const sourcePos = sourceDetour ? sourceRows.findIndex((row) => row.id === reader.id) : -1;
+  const sourceMore = !!source.hasNextPage;
+  const showFeed = () => {
+    readingSession.finish("back");
+    requests.close();
+    props.onShowFeed?.(feedId);
+  };
 
   return (
     <ReaderOverlay
       reader={reader}
       onSourceToggle={canShowSource ? toggleSource : undefined}
-      sourcePanel={canShowSource && session.sourceOpen ? <ReaderSourcePanel feedId={feedId} title={reader.feed_title} currentId={reader.id}
-        onClose={toggleSource} onOpen={openFromSource} onAll={() => {
-          readingSession.finish("back");
-          requests.close();
-          props.onShowFeed?.(feedId);
-        }} /> : undefined}
+      drawerView={sourceView ? "source" : "list"}
+      drawerSource={sourceView ? {
+        title: reader.feed_title, iconHref: reader.feed_icon_href,
+        listTitle: listShown ? props.listTitle ?? t("drawer.defaultTitle") : undefined, onList: openDrawer,
+        onOpenFeeds: showFeed,
+        pending: source.isPending, error: source.isError && !source.data, loadError: source.isFetchNextPageError,
+        onRetry: () => void source.refetch(),
+      } : undefined}
+      restorePosition={!!session.sourceReturn}
       onOpenUrl={props.onOpenUrl}
       webNav={session.web ? <WebReadingNav page={session.web} returnTitle={returns.current.at(-1)?.view.title} onBack={closeReader} /> : undefined}
       webActions={session.web ? <WebReadingActions page={session.web} onCollect={() => void collect()} collecting={!!ops.collect} /> : undefined}
@@ -1227,12 +1363,13 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       anchor={searchAnchor ?? session.anchor}
       searchTerm={session.search?.query}
       searchHits={searchHits ? { index: Math.min(searchIndex, searchHits.length - 1), total: searchHits.length, onStep: stepSearchHit, onDismiss: dismissSearchHits } : undefined}
-      article={navRows.find(row => row.id === reader.id)}
-      showNextCard={session.returnToList || !!session.search}
-      nextArticle={session.search ? session.search.resultRows.find(row => row.id === ids[pos + 1]) : pos >= 0 ? navRows[pos + 1] : undefined}
+      article={navRows.find(row => row.id === reader.id) ?? (sourceDetour ? sourceRows[sourcePos] : undefined)}
+      showNextCard={session.returnToList || !!session.search || sourceDetour}
+      nextArticle={session.search ? session.search.resultRows.find(row => row.id === ids[pos + 1]) : sourceDetour ? sourceRows[sourcePos + 1] : pos >= 0 ? navRows[pos + 1] : undefined}
       searchPosition={session.search ? { index: Math.max(0, pos), total: ids.length } : undefined}
       onReturnToSearch={session.search ? closeReader : undefined}
-      positionLabel={session.returnToList && pos >= 0 ? `${pos + 1} / ${ids.length}${currentNav().hasMore ? "+" : ""}` : undefined}
+      positionLabel={sourceDetour ? sourcePos >= 0 ? t("head.sourcePosition", { position: `${sourcePos + 1} / ${sourceRows.length}${sourceMore ? "+" : ""}` }) : undefined
+        : session.returnToList && pos >= 0 ? `${pos + 1} / ${ids.length}${currentNav().hasMore ? "+" : ""}` : undefined}
       onBody={onReaderBody}
       readingPosition={positions.current.get(`${reader.id}/${reader.source_hash}`)}
       onReadingPosition={position => {
@@ -1255,10 +1392,10 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       translateMode={translateMode}
       mediaLoading={!!ops.media}
       onMediaRef={(media) => acceptMedia(reader.id, media)}
-      hasPrev={pager && pos > 0}
-      hasNext={pager && pos >= 0 && (pos < ids.length - 1 || (!session.search && nav.hasMore))}
-      onPrev={session.detour ? undefined : () => void openNeighbor(-1)}
-      onNext={session.detour ? undefined : () => void openNeighbor(1)}
+      hasPrev={sourceDetour ? sourcePos > 0 : pager && pos > 0}
+      hasNext={sourceDetour ? sourcePos >= 0 && (sourcePos < sourceRows.length - 1 || sourceMore) : pager && pos >= 0 && (pos < ids.length - 1 || (!session.search && nav.hasMore))}
+      onPrev={session.detour === "related" ? undefined : () => void openNeighbor(-1)}
+      onNext={session.detour === "related" ? undefined : () => void openNeighbor(1)}
       fetchingFulltext={!!ops.fulltext}
       onFetchFulltext={() => void fetchFulltext()}
       onStar={() => void toggleStar()}
@@ -1272,25 +1409,27 @@ export const ReaderHost = forwardRef<ReaderHostHandle, ReaderHostProps>(function
       onTranslateMode={changeMode}
       stageRef={observeStage}
       onRate={(up) => rateArticle({ ...articleForRate(reader), feedback: reader.feedback || undefined }, up)}
-      drawerOpen={drawerOpen && !session.skipNav}
+      drawerOpen={drawerOpen && (sourceView || listShown)}
       drawerPinned={drawerOpen && effectiveDrawerPinned}
       canPinDrawer={canPinDrawer}
-      drawerRows={rows}
+      drawerRows={sourceView ? sourceRows : rows}
       drawerTitle={props.listTitle}
-      drawerScope={currentNav().scope ?? "all"}
+      drawerScope={sourceView ? sourceScope : currentNav().scope ?? "all"}
       drawerSelectedId={drawerSelectedId}
       drawerExpandedCluster={currentNav().expandedCluster}
       onDrawerExpand={expandDrawerCluster}
-      drawerHasMore={!!currentNav().hasMore}
-      drawerLoadingMore={!!currentNav().loadingMore}
-      onDrawerOpen={session.skipNav ? undefined : openDrawer}
-      onDrawerClose={closeDrawer}
+      drawerHasMore={sourceView ? sourceMore : !!currentNav().hasMore}
+      drawerLoadingMore={sourceView ? source.isFetchingNextPage : !!currentNav().loadingMore}
+      onDrawerOpen={listShown ? openDrawer : undefined}
+      onDrawerClose={dismissDrawer}
       onDrawerPin={() => setDrawerPinned((value) => !value)}
-      onDrawerScope={(scope) => { dismissedIds.current.clear(); void navRef.current.setScope?.(scope); }}
+      onDrawerScope={sourceView ? (scope) => setSourceFilter({ feedId: sourceFeedId, scope })
+        : (scope) => { dismissedIds.current.clear(); void navRef.current.setScope?.(scope); }}
       onDrawerSelect={selectDrawerRow}
-      onDrawerOpenArticle={openDrawerArticle}
-      onDrawerRate={session.skipNav ? undefined : (id) => void rateAndOpenNext(id)}
-      onDrawerLoadMore={() => void navRef.current.loadMore()}
+      onDrawerOpenArticle={sourceView ? openFromSource : openDrawerArticle}
+      onDrawerRate={sourceView ? (id) => void rateInSource(id) : listShown ? (id) => void rateAndOpenNext(id) : undefined}
+      onRateNext={!session.skipNav || sourceDetour ? () => void rateCurrent() : undefined}
+      onDrawerLoadMore={sourceView ? () => { if (!source.isFetchingNextPage) void source.fetchNextPage(); } : () => void navRef.current.loadMore()}
       onDrawerEdgeEnter={scheduleDrawerOpen}
       onDrawerEdgeLeave={cancelDrawerOpen}
     />

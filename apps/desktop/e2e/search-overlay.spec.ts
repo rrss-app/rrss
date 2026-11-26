@@ -2,6 +2,9 @@ import { expect, test } from "./fixtures";
 import { shot } from "./shots";
 import { installMockHost, MOCK_FOCUS, MOCK_MESSAGES, MOCK_READER } from "./mockHost";
 
+/** 篇目抽屉（来源视图）里某篇的行：行里还有一枚「踩」按钮，名字也带标题。 */
+const sourceRow = (panel: import("@playwright/test").Locator, title: string) => panel.locator(".reader-article-drawer-main").filter({ hasText: title });
+
 const lastQuery = (page: import("@playwright/test").Page) =>
   page.evaluate(() => (window as any).__mockHost.args.search_articles?.query);
 
@@ -19,7 +22,7 @@ test("browse a result's source, return to the article and open the feed timeline
   const reader = page.locator(".reader-stage");
   await reader.locator("button.reader-source").click();
   const panel = reader.getByRole("complementary", { name: first.feed_title });
-  await panel.getByRole("button", { name: sibling.title, exact: false }).click();
+  await sourceRow(panel, sibling.title).click();
   await expect(reader.locator(".reader-title")).toHaveText(sibling.title);
   await reader.locator(".reader-back").click();
   await expect(reader.locator(".reader-title")).toHaveText(first.title);
@@ -35,7 +38,36 @@ test("browse a result's source, return to the article and open the feed timeline
   await expect(page.locator(`.feeds-item[data-article-id="${sibling.id}"]`)).toBeVisible();
 });
 
-test("reopening the original article from a sibling's source panel unwinds instead of stacking", async ({ page }) => {
+test("the source view lists the whole feed page by page as it scrolls", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 420 });
+  const first = MOCK_FOCUS.articles.find(row => row.id === MOCK_READER.id)!;
+  const entries = Array.from({ length: 10 }, (_, i) => ({ ...first, id: 9001 + i, title: `Feed entry ${i + 1}`, published_at: first.published_at! - i * 3_600_000, read: false }));
+  await installMockHost(page, { timelineArticles: entries, feedsPageSize: 4, readers: {
+    [first.id]: { ...MOCK_READER, feed_id: first.feed_id, feed_title: first.feed_title },
+    9010: { ...MOCK_READER, id: 9010, title: "Feed entry 10", feed_id: first.feed_id, feed_title: first.feed_title },
+  } });
+  await page.goto("/");
+  await expect(page.getByRole("article").first()).toBeVisible();
+  const search = await openSearch(page, "sqlite");
+  await search.getByRole("option").filter({ hasText: first.title }).click();
+  const reader = page.locator(".reader-stage");
+  await reader.locator("button.reader-source").click();
+  const panel = reader.getByRole("complementary", { name: first.feed_title });
+  // 第一页铺不满就接着取第二页；铺满后第三页要等滚到底。
+  await expect(sourceRow(panel, "Feed entry 8")).toBeAttached();
+  await expect(sourceRow(panel, "Feed entry 10")).toHaveCount(0);
+  const list = panel.locator(".reader-article-drawer-list");
+  await expect(async () => {
+    await list.evaluate(node => { node.scrollTop = node.scrollHeight; });
+    await expect(sourceRow(panel, "Feed entry 10")).toBeInViewport({ timeout: 500 });
+  }).toPass();
+  await sourceRow(panel, "Feed entry 10").click();
+  await expect(reader.locator(".reader-title")).toHaveText("Feed entry 10");
+  await reader.locator(".reader-back").click();
+  await expect(sourceRow(panel, "Feed entry 10")).toBeInViewport();
+});
+
+test("reopening the original article from a sibling's source view unwinds instead of stacking", async ({ page }) => {
   const first = MOCK_FOCUS.articles.find(row => row.id === MOCK_READER.id)!;
   const sibling = MOCK_FOCUS.articles.find(row => row.row_kind === 0 && row.id !== first.id && row.feed_id === first.feed_id)!;
   await installMockHost(page, { readers: {
@@ -49,10 +81,10 @@ test("reopening the original article from a sibling's source panel unwinds inste
   const reader = page.locator(".reader-stage");
   const panel = reader.getByRole("complementary", { name: first.feed_title });
   await reader.locator("button.reader-source").click();
-  await panel.getByRole("button", { name: sibling.title, exact: false }).click();
+  await sourceRow(panel, sibling.title).click();
   await expect(reader.locator(".reader-title")).toHaveText(sibling.title);
   await reader.locator("button.reader-source").click();
-  await panel.getByRole("button", { name: first.title, exact: false }).click();
+  await sourceRow(panel, first.title).click();
   await expect(reader.locator(".reader-title")).toHaveText(first.title);
   await expect(panel).toBeVisible();
   // 原文回到返回路径最底层：浏览器后退直接回搜索，不再经过同源那篇。

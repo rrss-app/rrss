@@ -1,7 +1,8 @@
 {
   "source": {
-    "all": "查看全部文章",
-    "empty": "暂无近期文章",
+    "openFeeds": "在订阅中打开",
+    "empty": "这个来源还没有文章",
+    "emptyScope": "没有符合筛选的文章",
     "loading": "正在加载文章…",
     "retry": "重新加载文章"
   },
@@ -25,7 +26,8 @@
     "drawer": "篇目",
     "pager": "上下篇",
     "position": "篇位 {{label}}",
-    "rateNext": "踩并看下一篇"
+    "rateNext": "踩并看下一篇",
+    "sourcePosition": "来源 {{position}}"
   },
   "tools": {
     "busy": "处理中…",
@@ -70,6 +72,7 @@
     "defaultTitle": "今日焦点",
     "collapse": "收起篇目",
     "collapseTitle": "收起（L）",
+    "backToList": "回到「{{title}}」（L）",
     "pin": "钉住",
     "unpin": "取消钉住",
     "filter": "筛选",
@@ -85,7 +88,8 @@
     "loading": "加载中…",
     "footMove": "移动",
     "footOpen": "打开",
-    "footCollapse": "收起"
+    "footCollapse": "收起",
+    "footBackToList": "回到列表"
   },
   "menu": {
     "label": "本篇操作",

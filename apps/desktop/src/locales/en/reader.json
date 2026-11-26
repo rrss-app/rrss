@@ -1,7 +1,8 @@
 {
   "source": {
-    "all": "View all articles",
-    "empty": "No recent articles",
+    "openFeeds": "Open in Feeds",
+    "empty": "No articles from this source yet",
+    "emptyScope": "No articles match this filter",
     "loading": "Loading articles…",
     "retry": "Retry loading articles"
   },
@@ -25,7 +26,8 @@
     "drawer": "Articles",
     "pager": "Article navigation",
     "position": "Article {{label}}",
-    "rateNext": "Dislike and open the next article"
+    "rateNext": "Dislike and open the next article",
+    "sourcePosition": "Source {{position}}"
   },
   "tools": {
     "busy": "Working…",
@@ -70,6 +72,7 @@
     "defaultTitle": "Today",
     "collapse": "Collapse article list",
     "collapseTitle": "Collapse (L)",
+    "backToList": "Back to {{title}} (L)",
     "pin": "Pin",
     "unpin": "Unpin",
     "filter": "Filter",
@@ -86,7 +89,8 @@
     "loading": "Loading…",
     "footMove": "Move",
     "footOpen": "Open",
-    "footCollapse": "Collapse"
+    "footCollapse": "Collapse",
+    "footBackToList": "Back to list"
   },
   "menu": {
     "label": "Article actions",

@@ -16,6 +16,11 @@ User-visible changes in each version. The format follows [Keep a Changelog](http
 
 - A feed that returns HTTP 503 without a Retry-After header now fails on its own instead of pausing every feed on the same server. Previously one broken RSSHub route could hold back all other routes on that instance for one to four hours; 429 responses, and 503 responses that say when to retry, still pause the server.
 - Improved AI input selection and budgeting across article summaries, daily/weekly digests, and related coverage overviews: summary extraction now balances budgets across CJK and English text, retains bounded short code snippets and key table rows, avoids orphan headings and unnecessary re-segmentation, and skips read, disliked, hidden noisy, or link-only items in automatic background summaries; digests filter disliked and noisy sources, interleave feeds, include lead snippets for unsummarized articles, redistribute unused excerpt budget with publication timestamps, keep busy weekly digests and large related-coverage clusters bounded without duplicate-story collisions, narrow digest write conflict checks, and cache provider structured-output and temperature fallbacks to avoid repeated failed requests.
+- Clicking the source name above an article title now shows that source in the reader's article drawer instead of a separate panel with the latest three articles. The drawer lists all of the source's articles, loading more as you scroll, with its own All / Unread / Starred filter, and L switches back to the list you came from. In an article opened from the source, J / K, "Dislike and open the next article" and the position follow the source, and going back returns to the article you started from in one step.
+
+### Fixed
+
+- Option switches in settings rows such as "AI output language" and the hidden-article "Spot check" no longer stretch across half the row; they take only the width of their options.
 
 ## [0.5.1] - 2026-11-24
 
