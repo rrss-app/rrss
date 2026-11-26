@@ -321,8 +321,7 @@ async fn missing_retry_after_uses_host_staircase_and_fast_response_resets_the_ti
         runtime::Limits::default(),
         clock.clone(),
     );
-    for (code, hours) in [(429, 1), (503, 2), (429, 4), (503, 4)] {
-        status.store(code, Ordering::Release);
+    for hours in [1, 2, 4, 4] {
         let result = fetch(&scheduler, 1).await;
         let RefreshStatus::Skipped {
             retry_at: Some(until),
@@ -350,6 +349,52 @@ async fn missing_retry_after_uses_host_staircase_and_fast_response_resets_the_ti
         panic!("expected cooldown")
     };
     assert_eq!(until - clock.now().utc, 3_600_000);
+    assert!(scheduler.shutdown().await);
+}
+
+#[tokio::test]
+async fn bare_503_fails_only_its_source_and_leaves_host_peers_dispatchable() {
+    // RSSHub answers 503 without Retry-After when one route's upstream fails.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(request_path("/broken"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(request_path("/peer"))
+        .respond_with(ResponseTemplate::new(304))
+        .mount(&server)
+        .await;
+    let (_dir, path) = fixture();
+    let conn = db::open_at(&path).unwrap();
+    let broken = format!("{}/broken", server.uri());
+    let peer = format!("{}/peer", server.uri());
+    seed(&conn, 1, broken.clone());
+    seed(&conn, 2, peer.clone());
+    let scheduler = Scheduler::create(NetworkClients::new(&path)).unwrap();
+    for _ in 0..2 {
+        assert!(matches!(
+            fetch(&scheduler, 1).await.status,
+            RefreshStatus::Failed { .. }
+        ));
+        assert!(scheduler.shared.deferred(1, &broken).is_none());
+        assert!(scheduler.shared.deferred(2, &peer).is_none());
+    }
+    assert!(!matches!(
+        fetch(&scheduler, 2).await.status,
+        RefreshStatus::Skipped { .. } | RefreshStatus::Failed { .. }
+    ));
+    assert_eq!(
+        conn.query_row(
+            "SELECT fail_count,slow_fail_count FROM feeds WHERE id=1",
+            [],
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+        )
+        .unwrap(),
+        (2, 0)
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 3);
     assert!(scheduler.shutdown().await);
 }
 

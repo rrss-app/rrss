@@ -149,6 +149,22 @@ struct Snapshot {
     recovery_until: Option<i64>,
 }
 
+/// Whether a response limits its whole host, and the server deadline if usable.
+/// 429 always does. A bare 503 is that source's failure: RSSHub-style gateways
+/// answer 503 without Retry-After whenever one route's upstream fails, and
+/// cooling the host would hold every other route behind it.
+fn host_limit(head: &ResponseHead, received: i64) -> Option<Option<i64>> {
+    let deadline = head
+        .retry_after
+        .as_deref()
+        .and_then(|after| retry_after_deadline(after, received));
+    match head.status {
+        429 => Some(deadline),
+        503 => deadline.map(Some),
+        _ => None,
+    }
+}
+
 fn valid_host(host: &str) -> bool {
     reqwest::Url::parse(&format!("http://{host}/")).is_ok_and(|url| {
         url.host_str().is_some()
@@ -643,7 +659,7 @@ impl Cooldowns {
                         .any(|host| self.blocks.contains_key(host));
             }
         }
-        if matches!(head.status, 429 | 503) {
+        if let Some(deadline) = host_limit(head, received.utc) {
             let tier = if self.penalties.len() >= LIMIT && !self.penalties.contains_key(&host) {
                 3
             } else {
@@ -657,16 +673,11 @@ impl Cooldowns {
             if self.penalties.len() < LIMIT || self.penalties.contains_key(&host) {
                 self.penalties.insert(host.clone(), tier);
             }
-            let until = head
-                .retry_after
-                .as_deref()
-                .and_then(|after| retry_after_deadline(after, received.utc))
-                .unwrap_or_else(|| {
-                    received.utc.saturating_add(
-                        slow_retry_interval(feed.interval_secs, i64::from(tier))
-                            .saturating_mul(1000),
-                    )
-                });
+            let until = deadline.unwrap_or_else(|| {
+                received.utc.saturating_add(
+                    slow_retry_interval(feed.interval_secs, i64::from(tier)).saturating_mul(1000),
+                )
+            });
             let block = Block::new(until, received);
             if let Some(current) = self.blocks.get_mut(&host) {
                 current.merge(block, now);
@@ -1019,7 +1030,7 @@ impl super::runtime::Shared {
         }
         let received = self.clock.now();
         let host = key(&head.url);
-        let limited = matches!(head.status, 429 | 503);
+        let limited = host_limit(&head, received.utc).is_some();
         let needed = limited
             || head.visited.iter().map(key).any(|other| other != host)
             || self.cooldowns.lock().unwrap().penalties.contains_key(&host);
