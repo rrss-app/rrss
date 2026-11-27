@@ -69,7 +69,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Self-hosted cache
-        run: bash .github/ci/prepare-runner.sh rust node
+        run: bash .github/ci/prepare-runner.sh --target-scope release-${{ matrix.kind }} rust node
 
       - uses: dtolnay/rust-toolchain@stable
         if: runner.environment != 'self-hosted'
@@ -78,7 +78,11 @@ jobs:
 
       - name: Ensure Rust target (self-hosted)
         if: runner.environment == 'self-hosted'
-        run: rustup target add ${{ matrix.target }}
+        run: bash .github/ci/prepare-runner.sh ensure-rust-target ${{ matrix.target }}
+
+      - name: Ensure Cargo crates offline (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: bash .github/ci/prepare-runner.sh fetch-rust
 
       - uses: pnpm/action-setup@v5
         if: runner.environment != 'self-hosted'
@@ -98,11 +102,7 @@ jobs:
 
       - name: Install mingw cross toolchain
         if: matrix.kind == 'cross-windows-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 zip unzip ca-certificates
-          rustup target add x86_64-pc-windows-gnu
+        run: .github/apt/install.sh .github/apt/windows-release.txt
 
       - uses: swatinem/rust-cache@v2
         if: runner.environment != 'self-hosted'
@@ -112,7 +112,7 @@ jobs:
       - name: Frontend build
         working-directory: apps/desktop
         run: |
-          pnpm install --frozen-lockfile
+          bash ../../.github/ci/prepare-runner.sh pnpm-install
           pnpm build
 
       - name: cargo build release (native Linux)
@@ -142,6 +142,10 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}.*
+
+      - name: Prune stale target artifacts (self-hosted)
+        if: always() && runner.environment == 'self-hosted'
+        run: bash .github/ci/prepare-runner.sh clean-target
 
   msvc:
     needs: version

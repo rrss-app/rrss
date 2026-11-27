@@ -72,6 +72,7 @@ jobs:
               - '.github/ci/**'
               - 'scripts/*i18n*'
               - 'scripts/test_apt_install.py'
+              - 'scripts/test_prepare_runner.py'
             frontend:
               - 'apps/desktop/**'
               - 'testdata/**'
@@ -101,7 +102,7 @@ jobs:
       - name: Types, hooks, deps, IPC contract and tooling tests
         working-directory: apps/desktop
         run: |
-          pnpm install --frozen-lockfile --prefer-offline
+          bash ../../.github/ci/prepare-runner.sh pnpm-install
           pnpm check:frontend
           pnpm test:tooling
 
@@ -133,7 +134,7 @@ jobs:
       - name: Unit tests
         working-directory: apps/desktop
         run: |
-          pnpm install --frozen-lockfile --prefer-offline
+          bash ../../.github/ci/prepare-runner.sh pnpm-install
           pnpm test --shard=${{ matrix.shard }}/${{ needs.changes.outputs.hosted == 'true' && 2 || 1 }}${{ needs.changes.outputs.arm64 == 'true' && ' --maxWorkers=3' || runner.environment == 'self-hosted' && ' --maxWorkers=4' || '' }}
 
   # 私仓 ARM64 跑两片，各用 2 个 worker。原 x86 自托管配置跑一片，GitHub 托管跑三片。
@@ -164,11 +165,11 @@ jobs:
       - name: Install dependencies
         working-directory: apps/desktop
         run: |
-          pnpm install --frozen-lockfile --prefer-offline
+          bash ../../.github/ci/prepare-runner.sh pnpm-install
           echo "PLAYWRIGHT_VERSION=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_ENV"
 
       # 浏览器按 Playwright 版本缓存；运行镜像自带 Chrome 的系统库，命中时不再装 apt 依赖。
-      # 自托管把浏览器放在 /ci-cache，不上传到 GitHub。
+      # 自托管把浏览器放在 /ci-cache，不上传到 GitHub；已就绪时跳过 apt-get update。
       - name: Cache Playwright browsers
         id: playwright-cache
         if: runner.environment != 'self-hosted'
@@ -179,7 +180,7 @@ jobs:
       - name: Install Playwright Chromium
         if: runner.environment == 'self-hosted' || steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: apps/desktop
-        run: pnpm exec playwright install --with-deps --only-shell chromium
+        run: bash ../../.github/ci/prepare-runner.sh ensure-playwright "$PLAYWRIGHT_VERSION"
       - name: e2e
         working-directory: apps/desktop
         env:
@@ -225,10 +226,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Self-hosted cache
-        run: bash .github/ci/prepare-runner.sh rust node
+        run: bash .github/ci/prepare-runner.sh --target-scope linux rust node
 
-      - name: Apt installer regression tests
-        run: python3 scripts/test_apt_install.py
+      - name: CI helper script regression tests
+        run: |
+          python3 scripts/test_apt_install.py
+          python3 scripts/test_prepare_runner.py
 
       - uses: actions/setup-node@v5
         if: runner.environment != 'self-hosted' && needs.changes.outputs.release != 'true'
@@ -271,6 +274,15 @@ jobs:
           key: ${{ steps.apt-cache.outputs.cache-primary-key }}
 
       - uses: rui314/setup-mold@v1
+        if: env.RRSS_MOLD_READY != '1'
+
+      - name: Cache mold (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: bash .github/ci/prepare-runner.sh cache-mold
+
+      - name: Ensure Cargo crates offline (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: bash .github/ci/prepare-runner.sh fetch-rust
 
       # 只由 main 写缓存：PR 缓存别的分支读不到，还会挤占仓库 10GB 配额把 main 的缓存挤掉。
       # 自托管用卷上的 CARGO_HOME / CARGO_TARGET_DIR，不走 GitHub 缓存。
@@ -302,7 +314,7 @@ jobs:
         if: needs.changes.outputs.release == 'true'
         working-directory: apps/desktop
         run: |
-          pnpm install --frozen-lockfile --prefer-offline
+          bash ../../.github/ci/prepare-runner.sh pnpm-install
           pnpm build
 
       # Rust 构建与测试降低调度优先级：机器空闲时照样用满核，和前端测试同机时把 CPU 先让给有超时的 vitest / Playwright。
@@ -316,6 +328,10 @@ jobs:
       - name: cargo build release
         if: needs.changes.outputs.release == 'true'
         run: nice -n 15 cargo build --release -p rrss-desktop
+
+      - name: Prune stale target artifacts (self-hosted)
+        if: always() && runner.environment == 'self-hosted'
+        run: bash .github/ci/prepare-runner.sh clean-target
 
   # Windows 目标只在 CI 里交叉检查：Linux runner + mingw，与 release.yml 的 Windows 包同一路线，只编译不运行。
   # 本地不装 mingw、不跑这一步；平台、网络与 webview 原生改动以这里的结果为准，原生行为仍需真机验证。
@@ -331,7 +347,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Self-hosted cache
-        run: bash .github/ci/prepare-runner.sh rust
+        run: bash .github/ci/prepare-runner.sh --target-scope wincheck rust
 
       - uses: dtolnay/rust-toolchain@stable
         if: runner.environment != 'self-hosted'
@@ -339,7 +355,11 @@ jobs:
           targets: x86_64-pc-windows-gnu
       - name: Ensure Rust target (self-hosted)
         if: runner.environment == 'self-hosted'
-        run: flock "$RUSTUP_HOME/.targets.lock" rustup target add x86_64-pc-windows-gnu
+        run: bash .github/ci/prepare-runner.sh ensure-rust-target x86_64-pc-windows-gnu
+
+      - name: Ensure Cargo crates offline (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: bash .github/ci/prepare-runner.sh fetch-rust
 
       # mingw 在托管 runner 上也先从缓存离线安装；与 Linux 依赖使用不同的键。
       - name: Runner image version
@@ -380,3 +400,7 @@ jobs:
 
       - name: cargo check (x86_64-pc-windows-gnu)
         run: nice -n 15 cargo --config .github/ci/cargo-profiles.toml check --locked --target x86_64-pc-windows-gnu --workspace --all-targets
+
+      - name: Prune stale target artifacts (self-hosted)
+        if: always() && runner.environment == 'self-hosted'
+        run: bash .github/ci/prepare-runner.sh clean-target

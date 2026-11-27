@@ -1,0 +1,6 @@
+# Windows 发布包（release.yml）用的 mingw 工具链与打包工具；由 .github/apt/install.sh 安装与缓存。
+gcc-mingw-w64-x86-64
+g++-mingw-w64-x86-64
+zip
+unzip
+ca-certificates
